@@ -20,6 +20,7 @@ use App\Http\Controllers\App\HomeController;
 use App\Http\Controllers\App\LoanController;
 use App\Http\Controllers\App\LoanPaymentController;
 use App\Http\Controllers\App\MedicineCatalogController;
+use App\Http\Controllers\App\KdsController;
 use App\Http\Controllers\App\ReservationController;
 use App\Http\Controllers\App\WorkPeriodController;
 use App\Http\Controllers\RatingController;
@@ -125,6 +126,10 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         });
 
         Route::middleware('feature:restaurant_tables')->group(function () {
+            Route::get('kds', [KdsController::class, 'index'])->name('kds.index');
+            Route::post('kds/items/{tableOrderItem}/cook', [KdsController::class, 'cook'])->name('kds.cook');
+            Route::post('kds/orders/{tableOrder}/cook-all', [KdsController::class, 'cookAll'])->name('kds.cookAll');
+
             Route::get('reservations', [ReservationController::class, 'index'])->name('reservations.index');
             Route::post('reservations', [ReservationController::class, 'store'])->name('reservations.store');
             Route::put('reservations/{reservation}', [ReservationController::class, 'update'])->name('reservations.update');
