@@ -220,6 +220,9 @@ onMounted(() => {
             <Link v-if="hasPerm('pos') && features.includes('restaurant_tables')" :href="route('app.kds.index')" class="row">
                 <div class="ava">🍳</div><div class="mid"><b>{{ t('nav.kds') }}</b><span>{{ t('kds.subtitle') }}</span></div><div class="end">›</div>
             </Link>
+            <Link v-if="hasPerm('pos') && features.includes('restaurant_tables')" :href="route('app.cds.index')" class="row">
+                <div class="ava">🖥️</div><div class="mid"><b>{{ t('nav.cds') }}</b><span>{{ t('cds.subtitle') }}</span></div><div class="end">›</div>
+            </Link>
             <button v-if="hasPerm('pos') && !activeWorkPeriod" class="row" style="width:100%;text-align:left;border:none;background:none;cursor:pointer" @click="workPeriodSheet = true">
                 <div class="ava">🕒</div><div class="mid"><b>{{ t('workPeriod.startPrompt') }}</b><span>{{ t('workPeriod.startPromptSub') }}</span></div><div class="end">›</div>
             </button>

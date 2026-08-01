@@ -20,6 +20,7 @@ use App\Http\Controllers\App\HomeController;
 use App\Http\Controllers\App\LoanController;
 use App\Http\Controllers\App\LoanPaymentController;
 use App\Http\Controllers\App\MedicineCatalogController;
+use App\Http\Controllers\App\CdsController;
 use App\Http\Controllers\App\KdsController;
 use App\Http\Controllers\App\ReservationController;
 use App\Http\Controllers\App\WorkPeriodController;
@@ -126,6 +127,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         });
 
         Route::middleware('feature:restaurant_tables')->group(function () {
+            Route::get('cds', [CdsController::class, 'index'])->name('cds.index');
             Route::get('kds', [KdsController::class, 'index'])->name('kds.index');
             Route::post('kds/items/{tableOrderItem}/cook', [KdsController::class, 'cook'])->name('kds.cook');
             Route::post('kds/orders/{tableOrder}/cook-all', [KdsController::class, 'cookAll'])->name('kds.cookAll');

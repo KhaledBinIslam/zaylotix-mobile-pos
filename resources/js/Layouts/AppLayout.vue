@@ -163,6 +163,7 @@ const sidebarGroups = computed(() => [
             { key: 'restaurant', label: t('nav.restaurant'), href: route('app.restaurant.tables.index'), icon: '🍽️', on: props.active === 'restaurant', show: hasPerm('pos') && hasFeature('restaurant_tables') },
             { key: 'reservations', label: t('nav.reservations'), href: route('app.reservations.index'), icon: '📅', on: props.active === 'reservations', show: hasPerm('pos') && hasFeature('restaurant_tables') },
             { key: 'kds', label: t('nav.kds'), href: route('app.kds.index'), icon: '🍳', on: props.active === 'kds', show: hasPerm('pos') && hasFeature('restaurant_tables') },
+            { key: 'cds', label: t('nav.cds'), href: route('app.cds.index'), icon: '🖥️', on: props.active === 'cds', show: hasPerm('pos') && hasFeature('restaurant_tables') },
             { key: 'sales', label: t('nav.salesHistory'), href: route('app.sales'), icon: '🧮', on: props.active === 'sales', show: hasPerm('sales_history') },
             { key: 'due', label: t('nav.dueFull'), href: route('app.customers'), icon: '🧾', on: props.active === 'due', show: hasPerm('customers') },
             { key: 'promotions', label: t('nav.promotions'), href: route('app.promotions.index'), icon: '🎁', on: props.active === 'promotions', show: hasPerm('promotions') && hasFeature('promotions') },
