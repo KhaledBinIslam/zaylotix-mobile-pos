@@ -7,7 +7,7 @@ import { useI18n } from '@/composables/useI18n';
 const props = defineProps({
     from: String, to: String, preset: String, stats: Object, sales: Array, topProducts: Array, bottomProducts: Array,
     expiringSoon: Array, cashierBreakdown: Array, restaurantBreakdown: Object, salesByType: Object, itemWisePurchases: Array,
-    summary: Object,
+    summary: Object, categoryReport: Object, discountReport: Object, wastageReport: Array, ratingReport: Object, heatmap: Object,
 });
 const { t } = useI18n();
 
@@ -50,6 +50,27 @@ function urgencyCls(dateStr) {
     if (d <= 14) return 'rose';
     if (d <= 30) return 'gold';
     return 'mut';
+}
+
+const WEEKDAY_LABELS = ['রবি', 'সোম', 'মঙ্গল', 'বুধ', 'বৃহঃ', 'শুক্র', 'শনি'];
+// only the hours a sale has ever actually landed in, across the whole grid —
+// a 24-column table for a shop that only sells 10am-10pm is mostly empty space
+const activeHours = computed(() => {
+    if (!props.heatmap) return [];
+    const hours = new Set();
+    Object.values(props.heatmap).forEach((row) => {
+        Object.entries(row).forEach(([h, cell]) => { if (cell.count > 0) hours.add(Number(h)); });
+    });
+    return [...hours].sort((a, b) => a - b);
+});
+const heatmapMax = computed(() => {
+    if (!props.heatmap) return 0;
+    return Math.max(1, ...Object.values(props.heatmap).flatMap((row) => Object.values(row).map((c) => c.count)));
+});
+function heatColor(count) {
+    if (!count) return 'transparent';
+    const intensity = Math.min(1, count / heatmapMax.value);
+    return `rgba(31, 164, 99, ${0.15 + intensity * 0.7})`;
 }
 </script>
 
@@ -201,6 +222,76 @@ function urgencyCls(dateStr) {
                         <span>{{ name }} <span style="color:var(--dim)">× {{ row.count }}</span></span><b>{{ money(row.total) }}</b>
                     </div>
                 </div>
+            </div>
+        </template>
+
+        <template v-if="categoryReport && Object.keys(categoryReport).length">
+            <div class="sechead"><h2>{{ t('rep.categoryReport') }}</h2></div>
+            <div class="card" style="padding:0;margin-bottom:14px">
+                <div v-for="(row, name) in categoryReport" :key="name" class="row" style="cursor:default">
+                    <div class="mid"><b>{{ name }}</b><span>{{ row.qty }} {{ t('rep.unitsSold') }}</span></div>
+                    <div class="end"><b>{{ money(row.revenue) }}</b></div>
+                </div>
+            </div>
+        </template>
+
+        <template v-if="discountReport && discountReport.total > 0">
+            <div class="sechead"><h2>{{ t('rep.discountReport') }}</h2></div>
+            <div class="card" style="margin-bottom:14px">
+                <div style="display:flex;justify-content:space-between;padding:5px 0"><span>{{ t('rep.overallDiscountLabel') }}</span><b>{{ money(discountReport.overall_discount) }}</b></div>
+                <div style="display:flex;justify-content:space-between;padding:5px 0"><span>{{ t('rep.itemDiscountLabel') }}</span><b>{{ money(discountReport.item_discount) }}</b></div>
+                <div style="display:flex;justify-content:space-between;padding:8px 0 2px;border-top:1px solid var(--line);margin-top:4px;font-weight:800"><span>{{ t('rep.totalDiscountLabel') }}</span><b style="color:var(--rose)">{{ money(discountReport.total) }}</b></div>
+                <div style="font-size:12px;color:var(--dim);margin-top:6px">{{ t('rep.salesWithDiscount', { n: discountReport.sales_with_discount }) }}</div>
+            </div>
+        </template>
+
+        <template v-if="wastageReport?.length">
+            <div class="sechead"><h2>{{ t('rep.wastageReport') }}</h2></div>
+            <div class="card" style="padding:0;margin-bottom:14px">
+                <div v-for="(row, i) in wastageReport" :key="i" class="row" style="cursor:default" :style="i > 0 ? 'border-top:1px solid var(--line)' : ''">
+                    <div class="mid"><b>{{ row.product_name }}</b><span>{{ row.reason }} • {{ row.qty }} {{ t('stock.pieces') }}</span></div>
+                    <div class="end"><b style="color:var(--rose)">−{{ money(row.loss) }}</b></div>
+                </div>
+            </div>
+        </template>
+
+        <template v-if="ratingReport && ratingReport.count > 0">
+            <div class="sechead"><h2>{{ t('rep.ratingReport') }}</h2></div>
+            <div class="card" style="margin-bottom:14px">
+                <div style="text-align:center;margin-bottom:10px">
+                    <div style="font-size:28px;font-weight:850;color:var(--gold)">{{ ratingReport.average }} <span style="font-size:16px">★</span></div>
+                    <div style="font-size:12px;color:var(--dim)">{{ t('rep.basedOnRatings', { n: ratingReport.count }) }}</div>
+                </div>
+                <template v-if="ratingReport.low.length">
+                    <div style="font-size:11px;font-weight:800;color:var(--dim);text-transform:uppercase;margin-bottom:6px">{{ t('rep.lowRatings') }}</div>
+                    <div v-for="(r, i) in ratingReport.low" :key="i" style="padding:8px 0" :style="i > 0 ? 'border-top:1px solid var(--line)' : ''">
+                        <div style="display:flex;justify-content:space-between"><b>{{ r.invoice_no }}</b><span>{{ '★'.repeat(r.stars) }}{{ '☆'.repeat(5 - r.stars) }}</span></div>
+                        <div v-if="r.comment" style="font-size:12.5px;color:var(--mut);margin-top:2px">{{ r.comment }}</div>
+                    </div>
+                </template>
+            </div>
+        </template>
+
+        <template v-if="heatmap && activeHours.length">
+            <div class="sechead"><h2>{{ t('rep.heatmap') }}</h2></div>
+            <div class="card" style="margin-bottom:14px;overflow-x:auto">
+                <div style="font-size:12px;color:var(--mut);margin-bottom:10px">{{ t('rep.heatmapHint') }}</div>
+                <table style="border-collapse:collapse;font-size:10.5px">
+                    <thead>
+                        <tr>
+                            <th style="padding:2px 6px"></th>
+                            <th v-for="h in activeHours" :key="h" style="padding:2px 4px;font-weight:600;color:var(--dim)">{{ h }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="d in 7" :key="d">
+                            <td style="padding:2px 6px;font-weight:700;color:var(--dim);white-space:nowrap">{{ WEEKDAY_LABELS[d - 1] }}</td>
+                            <td v-for="h in activeHours" :key="h" :title="heatmap[d - 1][h].count + ' bill • ' + money(heatmap[d - 1][h].total)" :style="{ background: heatColor(heatmap[d - 1][h].count), width: '20px', height: '20px', textAlign: 'center', border: '1px solid var(--line)' }">
+                                {{ heatmap[d - 1][h].count || '' }}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </template>
 

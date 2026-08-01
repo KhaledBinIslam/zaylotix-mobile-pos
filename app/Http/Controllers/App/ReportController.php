@@ -46,6 +46,11 @@ class ReportController extends Controller
             'restaurantBreakdown' => $shop?->hasFeature('restaurant_tables') ? Reports::restaurantBreakdown($from, $to) : null,
             'salesByType' => $shop?->hasFeature('wholesale_pricing') ? Reports::salesByType($from, $to) : null,
             'itemWisePurchases' => $shop?->hasFeature('purchases') ? Reports::itemWisePurchases($from, $to) : null,
+            'categoryReport' => Reports::categoryReport($from, $to),
+            'discountReport' => Reports::discountReport($from, $to),
+            'wastageReport' => $shop?->hasFeature('damages') ? Reports::wastageReport($from, $to) : null,
+            'ratingReport' => Reports::ratingReport($from, $to),
+            'heatmap' => Reports::heatmap($from, $to),
             // one-click "everything" summary — customer due and supplier
             // payable totals alongside the P&L already in $stats, so an
             // owner never has to visit three separate pages to see the

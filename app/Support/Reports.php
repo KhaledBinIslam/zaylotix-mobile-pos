@@ -8,6 +8,7 @@ use App\Models\Payment;
 use App\Models\Purchase;
 use App\Models\Sale;
 use App\Models\SaleItem;
+use App\Models\SaleRating;
 use App\Models\SalesReturn;
 use App\Models\User;
 
@@ -193,5 +194,112 @@ class Reports
             ->all();
 
         return ['by_source' => $bySource, 'by_waiter' => $byWaiter];
+    }
+
+    /** Revenue/qty per product category over the range — a line item with no category (or a since-deleted product) falls into a single "uncategorized" bucket rather than being silently dropped. */
+    public static function categoryReport(string $from, string $to): array
+    {
+        return SaleItem::whereHas('sale', fn ($q) => $q->whereDate('date', '>=', $from)->whereDate('date', '<=', $to))
+            ->with('product.category')
+            ->get()
+            ->groupBy(fn (SaleItem $i) => $i->product?->category?->name ?: 'অশ্রেণীবদ্ধ')
+            ->map(fn ($group) => [
+                'qty' => (float) $group->sum('qty'),
+                'revenue' => round((float) $group->sum(fn (SaleItem $i) => $i->qty * $i->price - $i->discount), 2),
+            ])
+            ->sortByDesc('revenue')
+            ->all();
+    }
+
+    /**
+     * Total discount given away over the range, split into the overall
+     * per-sale discount (Sale.discount) and the sum of every line's own
+     * discount (SaleItem.discount) — the two are never double-counted
+     * elsewhere in the app (an item discount reduces what a sale's own
+     * `discount` field would otherwise need to cover), so they're reported
+     * as two distinct figures rather than added together.
+     */
+    public static function discountReport(string $from, string $to): array
+    {
+        $inRange = fn ($query) => $query->whereDate('date', '>=', $from)->whereDate('date', '<=', $to);
+
+        $sales = $inRange(Sale::query())->get();
+        $overallDiscount = (float) $sales->sum('discount');
+        $itemDiscount = (float) SaleItem::whereIn('sale_id', $sales->pluck('id'))->sum('discount');
+
+        return [
+            'overall_discount' => round($overallDiscount, 2),
+            'item_discount' => round($itemDiscount, 2),
+            'total' => round($overallDiscount + $itemDiscount, 2),
+            'sales_with_discount' => $sales->filter(fn (Sale $s) => (float) $s->discount > 0)->count(),
+        ];
+    }
+
+    /** Wastage over the range, grouped by product and reason — a view over the existing Damage entity, not a new one. */
+    public static function wastageReport(string $from, string $to, int $limit = 50)
+    {
+        return Damage::whereDate('date', '>=', $from)->whereDate('date', '<=', $to)
+            ->with('product:id,name,emoji')
+            ->get()
+            ->groupBy(fn (Damage $d) => $d->product_id.':'.$d->reason)
+            ->map(fn ($group) => [
+                'product_name' => $group->first()->product?->name ?? 'অজানা',
+                'reason' => $group->first()->reason,
+                'qty' => (float) $group->sum('qty'),
+                'loss' => round((float) $group->sum('loss'), 2),
+            ])
+            ->sortByDesc('loss')
+            ->take($limit)
+            ->values();
+    }
+
+    /** Average customer rating + the lowest-rated feedback in the range, from the public /rate/{sale} page. */
+    public static function ratingReport(string $from, string $to): array
+    {
+        $ratings = SaleRating::whereHas('sale', fn ($q) => $q->whereDate('date', '>=', $from)->whereDate('date', '<=', $to))
+            ->with('sale:id,invoice_no,date')
+            ->get();
+
+        return [
+            'average' => $ratings->count() ? round($ratings->avg('stars'), 2) : null,
+            'count' => $ratings->count(),
+            'low' => $ratings->where('stars', '<=', 3)
+                ->sortBy('stars')
+                ->take(20)
+                ->map(fn (SaleRating $r) => [
+                    'invoice_no' => $r->sale?->invoice_no,
+                    'stars' => $r->stars,
+                    'comment' => $r->comment,
+                    'date' => $r->sale?->date,
+                ])->values(),
+        ];
+    }
+
+    /**
+     * Sales volume by hour-of-day (0-23) × day-of-week (0=Sunday..6=Saturday)
+     * over the range — a plain grid of counts, not a chart, since no
+     * charting library exists in this project yet and one row of numbers
+     * per weekday is enough to spot a shop's busy hours.
+     */
+    public static function heatmap(string $from, string $to): array
+    {
+        $sales = Sale::whereDate('date', '>=', $from)->whereDate('date', '<=', $to)->get(['date', 'time', 'total']);
+
+        // grid[dayOfWeek][hour] = ['count' => n, 'total' => sum]
+        $grid = [];
+        foreach (range(0, 6) as $d) {
+            foreach (range(0, 23) as $h) {
+                $grid[$d][$h] = ['count' => 0, 'total' => 0.0];
+            }
+        }
+
+        foreach ($sales as $sale) {
+            $dow = (int) \Carbon\Carbon::parse($sale->date)->dayOfWeek;
+            $hour = (int) substr((string) $sale->time, 0, 2);
+            $grid[$dow][$hour]['count']++;
+            $grid[$dow][$hour]['total'] += (float) $sale->total;
+        }
+
+        return $grid;
     }
 }
