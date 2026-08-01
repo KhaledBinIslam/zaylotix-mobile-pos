@@ -32,7 +32,11 @@ const vatPreview = computed(() => {
 const q = ref('');
 const cat = ref('all');
 const filtered = computed(() => props.products.filter((p) =>
-    (!q.value || p.name.toLowerCase().includes(q.value.toLowerCase())) &&
+    (!q.value
+        || p.name.toLowerCase().includes(q.value.toLowerCase())
+        || p.name_en?.toLowerCase().includes(q.value.toLowerCase())
+        || (p.barcode || '').includes(q.value)
+    ) &&
     (cat.value === 'all' || p.category_id === cat.value)
 ));
 

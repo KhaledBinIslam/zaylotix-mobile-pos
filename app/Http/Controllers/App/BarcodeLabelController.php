@@ -20,7 +20,7 @@ class BarcodeLabelController extends Controller
             // regardless of what the template chooses to render
             'products' => Product::whereNotNull('barcode')->where('barcode', '!=', '')
                 ->orderBy('name')
-                ->get(['id', 'name', 'emoji', 'barcode', 'price', 'discount_price']),
+                ->get(['id', 'name', 'name_en', 'emoji', 'barcode', 'price', 'discount_price']),
         ]);
     }
 }

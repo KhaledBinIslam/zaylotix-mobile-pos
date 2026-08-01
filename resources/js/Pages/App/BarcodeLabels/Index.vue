@@ -18,7 +18,10 @@ function toggle(p) {
 }
 
 const filtered = () => props.products.filter((p) =>
-    !q.value || p.name.toLowerCase().includes(q.value.toLowerCase()) || (p.barcode || '').includes(q.value)
+    !q.value
+    || p.name.toLowerCase().includes(q.value.toLowerCase())
+    || p.name_en?.toLowerCase().includes(q.value.toLowerCase())
+    || (p.barcode || '').includes(q.value)
 );
 
 const labels = ref([]); // flattened list of {product, copyIndex} for print view

@@ -38,6 +38,7 @@ class ProductController extends Controller
         $products = Product::with($with)
             ->when($q !== '', fn ($query) => $query->where(fn ($w) => $w
                 ->where('name', 'like', "%{$q}%")
+                ->orWhere('name_en', 'like', "%{$q}%")
                 ->orWhere('barcode', 'like', "%{$q}%")
                 ->orWhere('generic_name', 'like', "%{$q}%")))
             ->when($categoryId, fn ($query) => $query->where('category_id', $categoryId))
