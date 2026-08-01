@@ -285,7 +285,7 @@ onBeforeUnmount(() => clearInterval(pollTimer));
                      screen while the cart above scrolls, so the total and the
                      buttons a cashier needs most are never scrolled out of view,
                      the same way on mobile, tablet and desktop -->
-                <div class="order-sticky-footer">
+                <div class="sticky-footer">
                     <div v-if="order.items.length" class="card" style="margin-bottom:8px;padding:10px 14px">
                         <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--mut);padding:2px 0"><span>{{ t('pos.subtotal') }}</span><span>{{ money(order.total) }}</span></div>
                         <div v-if="vatPreview > 0" style="display:flex;justify-content:space-between;font-size:13px;color:var(--mut);padding:2px 0"><span>{{ t('restaurant.vatEstimate') }}</span><span>{{ money(vatPreview) }}</span></div>

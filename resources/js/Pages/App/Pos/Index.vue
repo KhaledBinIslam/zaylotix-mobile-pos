@@ -932,26 +932,32 @@ useKeyboardShortcuts({
 
                 <div v-if="errorMsg" class="card" style="background:var(--roseSoft);color:var(--rose);margin-bottom:14px;font-size:13px">{{ errorMsg }}</div>
 
-                <div class="card" style="margin-bottom:10px">
-                    <div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--mut);font-size:13.5px"><span>{{ t('pos.subtotal') }}</span><b>{{ money(subtotal) }}</b></div>
-                    <div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--mut);font-size:13.5px"><span>{{ t('pos.overallDiscount') }}</span><b>− {{ money(discount || 0) }}</b></div>
-                </div>
+                <!-- subtotal/total + checkout stay pinned to the bottom of this
+                     sheet as it scrolls past customer/payment/discount fields —
+                     the number and button a cashier needs most are never
+                     scrolled out of view -->
+                <div class="sticky-footer">
+                    <div class="card" style="margin-bottom:10px">
+                        <div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--mut);font-size:13.5px"><span>{{ t('pos.subtotal') }}</span><b>{{ money(subtotal) }}</b></div>
+                        <div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--mut);font-size:13.5px"><span>{{ t('pos.overallDiscount') }}</span><b>− {{ money(discount || 0) }}</b></div>
+                    </div>
 
-                <!-- grand total gets its own bold, full-width bar — the one
-                     number a cashier absolutely must not misread before
-                     collecting payment, so it shouldn't share visual weight
-                     with the subtotal/discount breakdown above it -->
-                <div class="grand-total-bar">
-                    <span>{{ t('pos.grandTotal') }}</span>
-                    <b>{{ money(total) }}</b>
-                </div>
+                    <!-- grand total gets its own bold, full-width bar — the one
+                         number a cashier absolutely must not misread before
+                         collecting payment, so it shouldn't share visual weight
+                         with the subtotal/discount breakdown above it -->
+                    <div class="grand-total-bar">
+                        <span>{{ t('pos.grandTotal') }}</span>
+                        <b>{{ money(total) }}</b>
+                    </div>
 
-                <button class="btn" :disabled="submitting" @click="submitCheckout">
-                    {{ submitting ? t('pos.processing') : `${t('pos.checkoutButton')} ${money(total)}` }}
-                </button>
-                <button class="btn ghost" style="margin-top:10px" :disabled="submitting" @click="holdCart">
-                    ⏸️ {{ t('pos.holdCart') }}
-                </button>
+                    <button class="btn" :disabled="submitting" @click="submitCheckout">
+                        {{ submitting ? t('pos.processing') : `${t('pos.checkoutButton')} ${money(total)}` }}
+                    </button>
+                    <button class="btn ghost" style="margin-top:10px" :disabled="submitting" @click="holdCart">
+                        ⏸️ {{ t('pos.holdCart') }}
+                    </button>
+                </div>
             </div>
             <div v-else class="empty"><div class="big">🛒</div>{{ t('pos.cartEmpty') }}</div>
         </Sheet>
