@@ -1,0 +1,550 @@
+<script setup>
+import { Head, useForm, router, usePage } from '@inertiajs/vue3';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import AppLayout from '@/Layouts/AppLayout.vue';
+import Sheet from '@/Components/Sheet.vue';
+import Pagination from '@/Components/Pagination.vue';
+import { useI18n } from '@/composables/useI18n';
+
+const props = defineProps({
+    products: Object, categories: Array, units: Array, stats: Object, q: String, categoryId: [Number, String],
+    company: String, genericName: String, companies: { type: Array, default: () => [] }, genericNames: { type: Array, default: () => [] },
+});
+
+const page = usePage();
+const features = computed(() => page.props.features || []);
+const hasUnitConversion = computed(() => features.value.includes('unit_conversion'));
+const hasLowStockAlerts = computed(() => features.value.includes('low_stock_alerts'));
+const hasBatchTracking = computed(() => features.value.includes('batch_tracking'));
+const hasProductVariants = computed(() => features.value.includes('product_variants'));
+const hasSerialTracking = computed(() => features.value.includes('serial_tracking'));
+const hasPrescriptionRecords = computed(() => features.value.includes('prescription_records'));
+const hasWeightBasedSelling = computed(() => features.value.includes('weight_based_selling'));
+const hasWholesalePricing = computed(() => features.value.includes('wholesale_pricing'));
+const { t } = useI18n();
+
+const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
+
+// search/category filter now run server-side (see ProductController::index)
+// — necessary once the list is paginated, since a client-side filter can
+// only ever see whatever page happened to load, not the whole catalog
+const q = ref(props.q || '');
+const cat = ref(props.categoryId || 'all');
+const companyFilter = ref(props.company || '');
+const genericFilter = ref(props.genericName || '');
+const filtered = computed(() => props.products.data);
+function applyFilter() {
+    router.get(route('app.stock'), {
+        q: q.value || undefined,
+        category_id: cat.value === 'all' ? undefined : cat.value,
+        company: companyFilter.value || undefined,
+        generic_name: genericFilter.value || undefined,
+    }, { preserveState: true, preserveScroll: true });
+}
+function setCategory(id) {
+    cat.value = id;
+    applyFilter();
+}
+
+// a weighed product's own "low" threshold is 1 kg/litre, not 6 pieces —
+// 6 loose grams left on the shelf would be meaningless as a low-stock signal
+function lowThreshold(p) {
+    return p.sold_by_weight ? 1 : 6;
+}
+// computed server-side against the WHOLE catalog (see ProductController) —
+// these are dashboard totals, not a summary of whichever page is showing
+const totalProducts = computed(() => props.stats.total);
+const lowStockCount = computed(() => props.stats.low_stock);
+const outOfStockCount = computed(() => props.stats.out_of_stock);
+const expiringSoonCount = computed(() => props.stats.expiring_soon);
+const categoryCounts = computed(() => props.stats.category_counts);
+
+function unitLabel(p) {
+    if (!p.sold_by_weight) return t('stock.pieces');
+    return p.weight_unit === 'litre' ? t('stock.unitLitre') : t('stock.unitKg');
+}
+// weighed stock shows up to 3 decimals (never trailing zeros past what's
+// needed) so 0.25 kg reads as "0.25 kg", not "0.250 kg" or rounded to "0 kg"
+function formatQty(p, val) {
+    const n = Number(val);
+    return p.sold_by_weight ? (Math.round(n * 1000) / 1000) : Math.round(n);
+}
+function badge(p) {
+    const stock = Number(p.stock);
+    if (stock <= 0) return { cls: 'rose', text: t('stock.outOfStock') };
+    if (stock <= lowThreshold(p)) return { cls: 'gold', text: `${t('stock.lowStock')} ${formatQty(p, stock)} ${unitLabel(p)}` };
+    return { cls: 'mut', text: `${formatQty(p, stock)} ${unitLabel(p)}` };
+}
+
+// --- add / edit product sheet ---
+const productSheet = ref(false);
+const editing = ref(null);
+// a variant product's stock is a live-maintained sum of its variants —
+// the generic stock field/stock-in flow is hidden for these so nothing
+// can write a number that drifts away from that sum (see variant
+// management section below instead)
+const editingHasVariants = computed(() => (editing.value?.variants?.length ?? 0) > 0);
+const form = useForm({
+    name: '', name_en: '', generic_name: '', company: '', shelf_location: '', requires_prescription: false, emoji: '📦', photo: null, remove_photo: false, category_id: '', new_category_name: '',
+    unit_id: '', new_unit_name: '', barcode: '', cost: '', price: '', wholesale_price: '', discount_price: '', stock: '',
+    reorder_point: '', sold_by_weight: false, weight_unit: 'kg',
+});
+
+// live preview of a newly-picked photo, before it's actually uploaded —
+// falls back to the product's already-saved photo (when editing) or nothing
+const newPhotoPreview = ref(null);
+function pickPhoto(e) {
+    const file = e.target.files[0];
+    form.photo = file || null;
+    form.remove_photo = false;
+    newPhotoPreview.value = file ? URL.createObjectURL(file) : null;
+}
+function removePhoto() {
+    form.photo = null;
+    form.remove_photo = true;
+    newPhotoPreview.value = null;
+}
+
+// --- medicine catalog search (pharmacy) — a lookup helper only, never a
+// source of price/stock; picking a result just pre-fills name/generic/company ---
+const medicineQuery = ref('');
+const medicineResults = ref([]);
+let medicineSearchTimer = null;
+function searchMedicineCatalog() {
+    clearTimeout(medicineSearchTimer);
+    medicineSearchTimer = setTimeout(async () => {
+        if (medicineQuery.value.trim().length < 2) { medicineResults.value = []; return; }
+        const res = await fetch(route('app.medicineCatalog.search') + '?q=' + encodeURIComponent(medicineQuery.value), { headers: { Accept: 'application/json' } });
+        const data = await res.json();
+        medicineResults.value = data.results;
+    }, 300);
+}
+function pickMedicine(m) {
+    form.name = m.name;
+    form.generic_name = m.generic_name;
+    form.company = m.company;
+    medicineQuery.value = '';
+    medicineResults.value = [];
+}
+
+function openNew() {
+    editing.value = null;
+    form.reset();
+    newPhotoPreview.value = null;
+    medicineQuery.value = '';
+    medicineResults.value = [];
+    productSheet.value = true;
+}
+function openEdit(p) {
+    editing.value = p;
+    form.name = p.name; form.name_en = p.name_en; form.emoji = p.emoji;
+    form.generic_name = p.generic_name; form.company = p.company; form.shelf_location = p.shelf_location; form.requires_prescription = p.requires_prescription;
+    form.category_id = p.category_id; form.unit_id = p.unit_id; form.barcode = p.barcode;
+    form.cost = p.cost; form.price = p.price; form.wholesale_price = p.wholesale_price; form.discount_price = p.discount_price; form.stock = p.stock;
+    form.reorder_point = p.reorder_point;
+    form.sold_by_weight = !!p.sold_by_weight; form.weight_unit = p.weight_unit || 'kg';
+    form.photo = null; form.remove_photo = false;
+    newPhotoPreview.value = null;
+    form.new_category_name = ''; form.new_unit_name = '';
+    productSheet.value = true;
+}
+
+// --- pack sizes (box/strip/...) — only relevant with unit_conversion feature ---
+const packForm = useForm({ unit_id: '', new_unit_name: '', factor: '', price: '' });
+function addPackSize() {
+    packForm.post(route('app.productUnits.store', editing.value.id), {
+        preserveScroll: true,
+        onSuccess: () => packForm.reset(),
+    });
+}
+function removePackSize(pu) {
+    if (!confirm(`"${pu.unit?.name}" ${t('stock.removePackConfirm')}`)) return;
+    router.delete(route('app.productUnits.destroy', pu.id), { preserveScroll: true });
+}
+
+// --- variants (size/color) — only relevant with product_variants feature ---
+const variantForm = useForm({ size: '', color: '', barcode: '', stock: '', price: '', cost: '' });
+function addVariant() {
+    variantForm.post(route('app.productVariants.store', editing.value.id), {
+        preserveScroll: true,
+        onSuccess: () => variantForm.reset(),
+    });
+}
+function variantLabel(v) {
+    return [v.size, v.color].filter(Boolean).join(', ');
+}
+function removeVariant(v) {
+    if (!confirm(`"${variantLabel(v)}" ${t('stock.removeVariantConfirm')}`)) return;
+    router.delete(route('app.productVariants.destroy', v.id), { preserveScroll: true });
+}
+const variantStockInQty = ref({}); // { [variantId]: qty }
+function stockInVariant(v) {
+    const qty = variantStockInQty.value[v.id];
+    if (!qty || qty <= 0) return;
+    router.post(route('app.productVariants.stockIn', v.id), { qty }, {
+        preserveScroll: true,
+        onSuccess: () => (variantStockInQty.value[v.id] = ''),
+    });
+}
+function saveProduct() {
+    if (editing.value) {
+        form.put(route('app.products.update', editing.value.id), { onSuccess: () => (productSheet.value = false) });
+    } else {
+        form.post(route('app.products.store'), { onSuccess: () => (productSheet.value = false) });
+    }
+}
+
+function deleteProduct() {
+    if (!editing.value) return;
+    if (!confirm(`"${editing.value.name}" ${t('stock.deleteConfirm')}`)) return;
+    router.delete(route('app.products.destroy', editing.value.id), {
+        onSuccess: () => (productSheet.value = false),
+    });
+}
+
+// --- stock-in sheet ---
+const stockInSheet = ref(false);
+const stockInProduct = ref(null);
+const stockInQty = ref('');
+const stockInCost = ref('');
+const stockInBatchNo = ref('');
+const stockInExpiryDate = ref('');
+const stockInImeis = ref('');
+const stockInWarrantyExpiry = ref('');
+const stockInSubmitting = ref(false);
+function openStockIn(p) {
+    stockInProduct.value = p;
+    stockInQty.value = '';
+    stockInCost.value = '';
+    stockInBatchNo.value = '';
+    stockInExpiryDate.value = '';
+    stockInImeis.value = '';
+    stockInWarrantyExpiry.value = '';
+    stockInSheet.value = true;
+}
+function applyStockIn() {
+    if (!stockInQty.value || stockInQty.value <= 0) return;
+    stockInSubmitting.value = true;
+    router.post(route('app.products.stockIn', stockInProduct.value.id), {
+        qty: stockInQty.value, cost: stockInCost.value,
+        batch_no: hasBatchTracking.value ? stockInBatchNo.value : '',
+        expiry_date: hasBatchTracking.value ? stockInExpiryDate.value : '',
+        imeis: hasSerialTracking.value ? stockInImeis.value : '',
+        warranty_expiry: hasSerialTracking.value ? stockInWarrantyExpiry.value : '',
+    }, {
+        onSuccess: () => (stockInSheet.value = false),
+        onFinish: () => (stockInSubmitting.value = false),
+    });
+}
+
+// --- CSV import sheet ---
+const importSheet = ref(false);
+const importForm = useForm({ file: null });
+function saveImport() {
+    importForm.post(route('app.products.import.store'), {
+        onSuccess: () => { importSheet.value = false; importForm.reset(); },
+    });
+}
+
+// same reasoning as the POS page — another device (cashier, or the owner
+// on a second phone) can change stock at any moment, so quietly re-check
+// every 15s rather than showing a number that's gone stale
+let pollTimer = null;
+onMounted(() => {
+    pollTimer = setInterval(() => {
+        if (productSheet.value || stockInSheet.value) return;
+        router.reload({ only: ['products'], preserveScroll: true, preserveState: true });
+    }, 15000);
+});
+onBeforeUnmount(() => clearInterval(pollTimer));
+</script>
+
+<template>
+    <Head :title="t('nav.stock')" />
+    <AppLayout active="stock">
+        <div class="pgttl">{{ t('nav.stockFull') }}</div>
+        <div class="pgsub">{{ t('stock.subtitle') }} {{ totalProducts }} {{ t('home.products') }}</div>
+
+        <div class="grid2" style="margin-bottom:14px">
+            <div class="stat sky"><div class="k">{{ t('stock.totalProducts') }}</div><div class="v">{{ totalProducts }}</div></div>
+            <div class="stat gold"><div class="k">{{ t('stock.lowStockCount') }}</div><div class="v">{{ lowStockCount }}</div></div>
+            <div class="stat rose"><div class="k">{{ t('stock.outOfStockCount') }}</div><div class="v">{{ outOfStockCount }}</div></div>
+            <div v-if="hasBatchTracking" class="stat mint"><div class="k">{{ t('stock.expiringSoonCount') }}</div><div class="v">{{ expiringSoonCount }}</div></div>
+        </div>
+
+        <div class="btnrow" style="margin-bottom:12px">
+            <button class="btn ghost" style="flex:1" @click="openNew">{{ t('stock.addProduct') }}</button>
+            <button class="btn ghost" style="flex:1" @click="importSheet = true">{{ t('stock.importCsv') }}</button>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+            <input v-model="q" :placeholder="t('stock.searchPlaceholder')" style="flex:1" @keyup.enter="applyFilter">
+            <button class="btn sm" style="width:auto;padding:0 16px" @click="applyFilter">{{ t('sales.searchButton') }}</button>
+        </div>
+
+        <div v-if="hasBatchTracking && (companies.length || genericNames.length)" class="f2" style="margin-bottom:12px">
+            <div v-if="companies.length" class="field" style="margin-bottom:0">
+                <select v-model="companyFilter" @change="applyFilter">
+                    <option value="">{{ t('stock.allCompanies') }}</option>
+                    <option v-for="c in companies" :key="c" :value="c">{{ c }}</option>
+                </select>
+            </div>
+            <div v-if="genericNames.length" class="field" style="margin-bottom:0">
+                <select v-model="genericFilter" @change="applyFilter">
+                    <option value="">{{ t('stock.allGenerics') }}</option>
+                    <option v-for="g in genericNames" :key="g" :value="g">{{ g }}</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="tabbar">
+            <button :class="{ on: cat === 'all' }" @click="setCategory('all')">{{ t('stock.allCategories') }} · {{ totalProducts }}</button>
+            <button v-for="c in categories" :key="c.id" :class="{ on: cat === c.id }" @click="setCategory(c.id)">{{ c.emoji }} {{ c.name }} · {{ categoryCounts[c.id] || 0 }}</button>
+        </div>
+
+        <div v-for="p in filtered" :key="p.id" class="row" @click="openEdit(p)">
+            <div class="ava" style="overflow:hidden;padding:0">
+                <img v-if="p.photo_url" :src="p.photo_url" style="width:100%;height:100%;object-fit:cover" :alt="p.name">
+                <template v-else>{{ p.emoji }}</template>
+            </div>
+            <div class="mid">
+                <b>{{ p.name }} <span v-if="p.requires_prescription" title="Rx" style="color:var(--rose)">℞</span></b>
+                <span>{{ p.category?.emoji }} {{ p.category?.name }} • {{ money(p.price) }}{{ p.sold_by_weight ? '/' + unitLabel(p) : '' }}</span>
+                <span v-if="p.generic_name || p.company" style="color:var(--mut)">💊 {{ p.generic_name }}<template v-if="p.company"> • 🏭 {{ p.company }}</template><template v-if="p.shelf_location"> • 📍 {{ p.shelf_location }}</template></span>
+                <span v-if="p.nearest_batch" style="color:var(--rose);font-weight:600">⏳ {{ t('stock.expiresOn') }} {{ p.nearest_batch.expiry_date }}</span>
+            </div>
+            <div class="end">
+                <span class="pill" :class="badge(p).cls">{{ badge(p).text }}</span>
+                <button v-if="!p.variants?.length" class="btn sm ghost" style="margin-top:6px" @click.stop="openStockIn(p)">{{ t('stock.stockIn') }}</button>
+            </div>
+        </div>
+        <div v-if="!filtered.length" class="empty"><div class="big">📦</div>{{ t('stock.noProducts') }}</div>
+        <Pagination :links="products.links" />
+
+        <Sheet v-model="productSheet" :title="editing ? t('stock.editTitle') : t('stock.newTitle')">
+            <div v-if="!editing && hasBatchTracking" class="field">
+                <label>{{ t('stock.medicineCatalogSearch') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
+                <input v-model="medicineQuery" :placeholder="t('stock.medicineCatalogPlaceholder')" @input="searchMedicineCatalog">
+                <div v-if="medicineResults.length" class="card" style="margin-top:6px;padding:0">
+                    <button
+                        v-for="m in medicineResults" :key="m.id" type="button" class="row" style="width:100%;text-align:left;box-shadow:none"
+                        @click="pickMedicine(m)"
+                    >
+                        <div class="mid"><b>{{ m.name }}</b><span>{{ m.generic_name }} • {{ m.company }}</span></div>
+                    </button>
+                </div>
+            </div>
+            <div class="field">
+                <label>{{ t('stock.productName') }}</label>
+                <input v-model="form.name">
+                <div v-if="form.errors.name" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.name }}</div>
+            </div>
+            <div v-if="hasBatchTracking" class="field">
+                <label>{{ t('stock.genericName') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.genericNameHint') }}</span></label>
+                <input v-model="form.generic_name" :placeholder="t('stock.genericNamePlaceholder')" list="generic-name-options">
+                <datalist id="generic-name-options"><option v-for="g in genericNames" :key="g" :value="g" /></datalist>
+                <div v-if="form.errors.generic_name" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.generic_name }}</div>
+            </div>
+            <div v-if="hasBatchTracking" class="field">
+                <label>{{ t('stock.company') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
+                <input v-model="form.company" :placeholder="t('stock.companyPlaceholder')" list="company-options">
+                <datalist id="company-options"><option v-for="c in companies" :key="c" :value="c" /></datalist>
+                <div v-if="form.errors.company" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.company }}</div>
+            </div>
+            <div v-if="hasBatchTracking" class="field">
+                <label>{{ t('stock.shelfLocation') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
+                <input v-model="form.shelf_location" :placeholder="t('stock.shelfLocationPlaceholder')">
+                <div v-if="form.errors.shelf_location" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.shelf_location }}</div>
+            </div>
+            <label v-if="hasPrescriptionRecords" style="display:flex;align-items:center;gap:8px;margin-bottom:16px;font-size:13.5px;font-weight:600;cursor:pointer">
+                <input v-model="form.requires_prescription" type="checkbox" style="width:auto">
+                {{ t('stock.requiresPrescription') }}
+            </label>
+            <div class="field">
+                <label>{{ t('stock.photo') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.photoHint') }}</span></label>
+                <div style="display:flex;align-items:center;gap:12px">
+                    <div class="ava" style="width:56px;height:56px;overflow:hidden;padding:0;flex:0 0 auto">
+                        <img v-if="newPhotoPreview || (editing?.photo_url && !form.remove_photo)" :src="newPhotoPreview || editing.photo_url" style="width:100%;height:100%;object-fit:cover">
+                        <template v-else>{{ form.emoji }}</template>
+                    </div>
+                    <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+                        <input type="file" accept="image/*" @change="pickPhoto">
+                        <button v-if="newPhotoPreview || (editing?.photo_url && !form.remove_photo)" class="btn sm ghost" type="button" @click="removePhoto">{{ t('stock.removePhoto') }}</button>
+                    </div>
+                </div>
+                <div v-if="form.errors.photo" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.photo }}</div>
+            </div>
+            <div class="field">
+                <label>{{ t('stock.category') }}</label>
+                <select v-model="form.category_id">
+                    <option :value="''">{{ t('stock.selectPlaceholder') }}</option>
+                    <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.emoji }} {{ c.name }}</option>
+                </select>
+                <div v-if="form.errors.category_id" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.category_id }}</div>
+            </div>
+            <div class="field"><label>{{ t('stock.orNewCategory') }}</label><input v-model="form.new_category_name" :placeholder="t('stock.orNewCategoryPlaceholder')"></div>
+            <div class="field">
+                <label>{{ t('stock.unit') }}</label>
+                <select v-model="form.unit_id">
+                    <option :value="''">{{ t('stock.selectPlaceholder') }}</option>
+                    <option v-for="u in units" :key="u.id" :value="u.id">{{ u.name }}</option>
+                </select>
+                <div v-if="form.errors.unit_id" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.unit_id }}</div>
+            </div>
+            <div class="field"><label>{{ t('stock.orNewUnit') }}</label><input v-model="form.new_unit_name" :placeholder="t('stock.orNewUnitPlaceholder')"></div>
+
+            <div v-if="hasWeightBasedSelling && !editingHasVariants" class="field">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                    <input v-model="form.sold_by_weight" type="checkbox" style="width:auto">
+                    {{ t('stock.soldByWeight') }}
+                </label>
+                <div style="color:var(--dim);font-size:12px;margin-top:4px">{{ t('stock.soldByWeightHint') }}</div>
+                <div v-if="form.sold_by_weight" class="seg" style="margin-top:8px">
+                    <button type="button" :class="{ on: form.weight_unit === 'kg' }" @click="form.weight_unit = 'kg'">{{ t('stock.unitKg') }}</button>
+                    <button type="button" :class="{ on: form.weight_unit === 'litre' }" @click="form.weight_unit = 'litre'">{{ t('stock.unitLitre') }}</button>
+                </div>
+            </div>
+
+            <div class="f2">
+                <div class="field">
+                    <label>{{ form.sold_by_weight ? t('stock.sellPricePerUnit', { unit: form.weight_unit === 'litre' ? t('stock.unitLitre') : t('stock.unitKg') }) : t('stock.sellPrice') }}</label>
+                    <input v-model="form.price" type="number" step="0.01">
+                    <div v-if="form.errors.price" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.price }}</div>
+                </div>
+                <div class="field">
+                    <label>{{ t('stock.costPrice') }}</label>
+                    <input v-model="form.cost" type="number" step="0.01">
+                    <div v-if="form.errors.cost" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.cost }}</div>
+                </div>
+            </div>
+            <div v-if="hasWholesalePricing && !form.sold_by_weight" class="field">
+                <label>{{ t('stock.wholesalePrice') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.wholesalePriceHint') }}</span></label>
+                <input v-model="form.wholesale_price" type="number" step="0.01">
+                <div v-if="form.errors.wholesale_price" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.wholesale_price }}</div>
+            </div>
+            <div class="f2">
+                <div class="field" v-if="!editingHasVariants">
+                    <label>{{ t('stock.stock') }}{{ form.sold_by_weight ? ` (${form.weight_unit === 'litre' ? t('stock.unitLitre') : t('stock.unitKg')})` : '' }}</label>
+                    <input v-model="form.stock" type="number" :step="form.sold_by_weight ? 0.001 : 1">
+                    <div v-if="form.errors.stock" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.stock }}</div>
+                </div>
+                <div class="field" v-else>
+                    <label>{{ t('stock.stock') }}</label>
+                    <input :value="`${editing.stock} ${t('stock.pieces')}`" disabled>
+                    <div style="color:var(--mut);font-size:12px;margin-top:6px">{{ t('stock.variantStockHint') }}</div>
+                </div>
+                <div class="field"><label>{{ t('stock.barcode') }}</label><input v-model="form.barcode"></div>
+            </div>
+            <div class="field">
+                <label>{{ t('stock.discountPrice') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.discountPriceHint') }}</span></label>
+                <input v-model="form.discount_price" type="number">
+                <div v-if="form.errors.discount_price" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.discount_price }}</div>
+            </div>
+            <div v-if="hasLowStockAlerts" class="field">
+                <label>{{ t('stock.reorderPoint') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.reorderPointHint') }}</span></label>
+                <input v-model="form.reorder_point" type="number" min="0">
+                <div v-if="form.errors.reorder_point" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.reorder_point }}</div>
+            </div>
+            <button class="btn" :disabled="form.processing" @click="saveProduct">
+                {{ form.processing ? '...' : t('stock.save') }}
+            </button>
+
+            <div v-if="editing && hasUnitConversion" class="hr"></div>
+            <div v-if="editing && hasUnitConversion" class="field">
+                <label>{{ t('stock.packSizes') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.packSizesHint') }}</span></label>
+                <div v-for="pu in editing.product_units" :key="pu.id" class="cart-line">
+                    <div class="nm"><b>{{ pu.unit?.name }}</b><span>{{ pu.factor }}× = {{ money(pu.price) }}</span></div>
+                    <button class="btn sm rose" @click="removePackSize(pu)">✕</button>
+                </div>
+                <div class="f2" style="margin-top:8px">
+                    <select v-model="packForm.unit_id">
+                        <option :value="''">{{ t('stock.selectUnit') }}</option>
+                        <option v-for="u in units" :key="u.id" :value="u.id">{{ u.name }}</option>
+                    </select>
+                    <input v-model="packForm.new_unit_name" :placeholder="t('stock.orNewUnit')">
+                </div>
+                <div class="f2" style="margin-top:8px">
+                    <input v-model="packForm.factor" type="number" :placeholder="t('stock.howManyPieces')">
+                    <input v-model="packForm.price" type="number" :placeholder="t('stock.price')">
+                </div>
+                <div v-if="packForm.errors.unit_id || packForm.errors.factor || packForm.errors.price" style="color:var(--rose);font-size:12px;margin-top:6px">
+                    {{ packForm.errors.unit_id || packForm.errors.factor || packForm.errors.price }}
+                </div>
+                <button class="btn ghost sm" style="width:100%;margin-top:8px" :disabled="packForm.processing" @click="addPackSize">
+                    {{ t('stock.addPackSize') }}
+                </button>
+            </div>
+
+            <div v-if="editing && hasProductVariants" class="hr"></div>
+            <div v-if="editing && hasProductVariants" class="field">
+                <label>{{ t('stock.variants') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.variantsHint') }}</span></label>
+                <div v-for="v in editing.variants" :key="v.id" class="cart-line" style="align-items:flex-start">
+                    <div class="nm">
+                        <b>{{ variantLabel(v) }}</b>
+                        <span>{{ v.stock }} {{ t('stock.pieces') }}<template v-if="v.price"> • {{ money(v.price) }}</template></span>
+                        <div style="display:flex;gap:6px;margin-top:6px">
+                            <input v-model="variantStockInQty[v.id]" type="number" :placeholder="t('stock.stockIn')" style="width:90px">
+                            <button class="btn sm ghost" @click="stockInVariant(v)">+</button>
+                        </div>
+                    </div>
+                    <button class="btn sm rose" @click="removeVariant(v)">✕</button>
+                </div>
+                <div class="f2" style="margin-top:8px">
+                    <input v-model="variantForm.size" :placeholder="t('stock.size')">
+                    <input v-model="variantForm.color" :placeholder="t('stock.color')">
+                </div>
+                <div class="f2" style="margin-top:8px">
+                    <input v-model="variantForm.stock" type="number" :placeholder="t('stock.startingStock')">
+                    <input v-model="variantForm.price" type="number" :placeholder="t('stock.variantPriceOptional')">
+                </div>
+                <div v-if="variantForm.errors.size" style="color:var(--rose);font-size:12px;margin-top:6px">{{ variantForm.errors.size }}</div>
+                <button class="btn ghost sm" style="width:100%;margin-top:8px" :disabled="variantForm.processing" @click="addVariant">
+                    {{ t('stock.addVariant') }}
+                </button>
+            </div>
+
+            <button v-if="editing" class="btn rose" style="margin-top:10px" @click="deleteProduct">{{ t('stock.deleteProduct') }}</button>
+            <button class="btn ghost" style="margin-top:10px" @click="productSheet = false">{{ t('common.cancel') }}</button>
+        </Sheet>
+
+        <Sheet v-model="stockInSheet" :title="t('stock.stockInTitle')">
+            <div v-if="stockInProduct" class="card" style="margin-bottom:14px">
+                <b>{{ stockInProduct.emoji }} {{ stockInProduct.name }}</b>
+                <div style="color:var(--mut);font-size:12px;margin-top:4px">{{ t('stock.currentStock') }} {{ formatQty(stockInProduct, stockInProduct.stock) }} {{ unitLabel(stockInProduct) }}</div>
+            </div>
+            <div class="f2">
+                <div class="field"><label>{{ t('stock.howManyArrived') }}{{ stockInProduct?.sold_by_weight ? ` (${unitLabel(stockInProduct)})` : '' }}</label><input v-model="stockInQty" type="number" :step="stockInProduct?.sold_by_weight ? 0.001 : 1"></div>
+                <div class="field"><label>{{ t('stock.costOptional') }}</label><input v-model="stockInCost" type="number" step="0.01"></div>
+            </div>
+            <div v-if="hasBatchTracking" class="f2">
+                <div class="field"><label>{{ t('stock.batchNo') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label><input v-model="stockInBatchNo"></div>
+                <div class="field"><label>{{ t('stock.expiryDate') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label><input v-model="stockInExpiryDate" type="date"></div>
+            </div>
+            <template v-if="hasSerialTracking">
+                <div class="field">
+                    <label>{{ t('stock.imeis') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.imeisHint') }}</span></label>
+                    <textarea v-model="stockInImeis" rows="3" :placeholder="t('stock.imeisPlaceholder')"></textarea>
+                    <div v-if="page.props.errors?.imeis" style="color:var(--rose);font-size:12px;margin-top:6px">{{ page.props.errors.imeis }}</div>
+                </div>
+                <div class="field"><label>{{ t('stock.warrantyUntil') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label><input v-model="stockInWarrantyExpiry" type="date"></div>
+            </template>
+            <button class="btn" :disabled="stockInSubmitting" @click="applyStockIn">
+                {{ stockInSubmitting ? '...' : t('stock.addToStock') }}
+            </button>
+            <button class="btn ghost" style="margin-top:10px" @click="stockInSheet = false">{{ t('common.cancel') }}</button>
+        </Sheet>
+
+        <Sheet v-model="importSheet" :title="t('stock.importCsv')" :subtitle="t('stock.importCsvSub')">
+            <a :href="route('app.products.import.template')" class="btn ghost sm" style="margin-bottom:14px;display:inline-block">{{ t('stock.downloadTemplate') }}</a>
+            <div class="field">
+                <label>{{ t('stock.chooseFile') }}</label>
+                <input type="file" accept=".csv,text/csv" @change="importForm.file = $event.target.files[0]">
+                <div v-if="importForm.errors.file" style="color:var(--rose);font-size:12px;margin-top:6px">{{ importForm.errors.file }}</div>
+            </div>
+            <button class="btn" :disabled="importForm.processing || !importForm.file" @click="saveImport">
+                {{ importForm.processing ? '...' : t('stock.importSubmit') }}
+            </button>
+            <button class="btn ghost" style="margin-top:10px" @click="importSheet = false">{{ t('common.cancel') }}</button>
+        </Sheet>
+    </AppLayout>
+</template>

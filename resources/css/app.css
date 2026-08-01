@@ -1,0 +1,265 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #F2F7F2;
+  --bg2: #E7F1E8;
+  --panel: #FFFFFF;
+  --panel2: #F5FAF5;
+  --ink: #12261C;
+  --tx: #12261C;
+  --mut: #5F7A67;
+  --dim: #93A99A;
+  --line: #DCE8DD;
+  --line2: #C4DAC7;
+  --green: #1FA463;
+  --green2: #178A52;
+  --greenSoft: #E4F3EA;
+  --gold: #F26A1B;
+  --gold2: #D9560D;
+  --goldSoft: #FDE9DC;
+  --mint: #1FA463;
+  --rose: #E5484D;
+  --roseSoft: #FBE3E4;
+  --sky: #2E7DD1;
+  --wa: #25D366;
+  --r: 16px;
+  --r2: 22px;
+  --sh: 0 6px 20px rgba(18, 38, 28, .08);
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+body {
+  background:
+    radial-gradient(680px 360px at 88% -6%, rgba(242, 106, 27, .07), transparent),
+    radial-gradient(600px 420px at -8% 106%, rgba(31, 164, 99, .09), transparent),
+    var(--bg);
+  color: var(--tx);
+  font-family: "Inter", "Hind Siliguri", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  letter-spacing: -.1px;
+  overscroll-behavior: none;
+}
+
+#phone { max-width: 430px; margin: 0 auto; min-height: 100vh; position: relative; background: var(--bg); display: flex; flex-direction: column; box-shadow: 0 0 0 1px var(--line); }
+@media (min-width: 480px) { #phone { border-left: 1px solid var(--line); border-right: 1px solid var(--line); } }
+
+/* desktop web view (sidebar layout, see AppLayout.vue) — a real wide page,
+   not a phone mockup shrunk into the middle of the screen */
+@media (min-width: 1024px) {
+    #phone { max-width: 1180px; width: 100%; box-shadow: none; border: none; min-height: 0; }
+    #view { padding: 24px 32px 48px; }
+    .pgrid { grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    .grid2 { grid-template-columns: repeat(4, 1fr); gap: 14px; }
+}
+@media (min-width: 1024px) and (max-width: 1300px) {
+    .pgrid { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* restaurant order screen's desktop category rail + a denser menu grid than
+   .pgrid's normal viewport-width breakpoints assume, since here the grid
+   shares the row with a rail and an order panel rather than spanning full
+   width */
+.rest-rail-btn { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 10px 14px; border-radius: 10px; font-size: 13.5px; font-weight: 650; color: var(--mut); background: transparent; border: none; margin-bottom: 3px; cursor: pointer; }
+.rest-rail-btn.on { background: var(--goldSoft); color: var(--gold2); }
+@media (min-width: 1024px) {
+    .pgrid.rest-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+}
+
+#top { position: sticky; top: 0; z-index: 30; padding: 14px 18px 12px; background: rgba(242, 247, 242, .9); backdrop-filter: blur(12px); display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--line); }
+.blogo { width: 40px; height: 40px; border-radius: 12px; flex: 0 0 auto; background: linear-gradient(140deg, var(--green), #0F7A45); display: flex; align-items: center; justify-content: center; font-weight: 800; color: #fff; font-size: 20px; box-shadow: 0 4px 14px rgba(31, 164, 99, .3); }
+
+#view { flex: 1; overflow-y: auto; padding: 18px 18px 110px; }
+.backbtn { display: inline-flex; align-items: center; gap: 5px; background: none; border: none; padding: 0; margin-bottom: 12px; color: var(--mut); font-size: 13px; font-weight: 650; }
+.expiry-banner { background: var(--goldSoft); border: 1px solid var(--gold); color: var(--gold2); border-radius: 12px; padding: 10px 14px; font-size: 12.5px; font-weight: 600; margin-bottom: 14px; line-height: 1.5; }
+.expiry-banner a { color: inherit; text-decoration: underline; font-weight: 800; white-space: nowrap; }
+.expiry-banner.urgent { background: var(--roseSoft); border-color: var(--rose); color: var(--rose); }
+.pgttl { font-size: 22px; font-weight: 750; letter-spacing: -.3px; margin-bottom: 2px; }
+.pgsub { color: var(--mut); font-size: 13px; margin-bottom: 16px; }
+
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; box-shadow: var(--sh); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 15px; box-shadow: var(--sh); }
+.stat .k { font-size: 12px; color: var(--mut); display: flex; align-items: center; gap: 6px; }
+.stat .v { font-size: 23px; font-weight: 800; margin-top: 7px; letter-spacing: -.5px; font-variant-numeric: tabular-nums; }
+.stat .h { font-size: 11px; color: var(--dim); margin-top: 2px; }
+.stat.gold .v { color: var(--gold); }
+.stat.gold { background: linear-gradient(160deg, var(--goldSoft), #fff); }
+.stat.mint .v { color: var(--mint); }
+.stat.mint { background: linear-gradient(160deg, var(--greenSoft), #fff); }
+.stat.rose .v { color: var(--rose); }
+.stat.rose { background: linear-gradient(160deg, var(--roseSoft), #fff); }
+.stat.sky .v { color: var(--sky); }
+.stat.sky { background: linear-gradient(160deg, #E3EFFB, #fff); }
+
+.sechead { display: flex; align-items: center; justify-content: space-between; margin: 22px 2px 12px; }
+.sechead h2 { font-size: 16px; font-weight: 700; }
+.sechead .link { color: var(--gold); font-size: 13px; font-weight: 600; cursor: pointer; }
+
+.row { display: flex; align-items: center; gap: 12px; padding: 13px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; margin-bottom: 10px; box-shadow: var(--sh); }
+.row .ava { width: 42px; height: 42px; border-radius: 12px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; font-weight: 750; font-size: 16px; background: var(--greenSoft); color: var(--green); border: 1px solid var(--line2); }
+.row .mid { flex: 1; min-width: 0; }
+.row .mid b { font-size: 14.5px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .mid span { font-size: 12px; color: var(--mut); }
+.row .end { text-align: right; flex: 0 0 auto; }
+.row .end b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.row .end span { font-size: 11px; color: var(--dim); display: block; }
+
+.pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 11px; border-radius: 99px; font-size: 11.5px; font-weight: 700; }
+.pill.mint { background: var(--greenSoft); color: var(--mint); }
+.pill.rose { background: var(--roseSoft); color: var(--rose); }
+.pill.gold { background: var(--goldSoft); color: var(--gold2); }
+.pill.sky { background: #E3EFFB; color: var(--sky); }
+.pill.mut { background: #EDF2ED; color: var(--mut); }
+
+.btn { background: var(--gold); color: #fff; font-weight: 750; border-radius: 13px; padding: 14px 18px; display: inline-flex; align-items: center; justify-content: center; gap: 9px; width: 100%; font-size: 15px; box-shadow: 0 4px 14px rgba(242, 106, 27, .28); border: 0; cursor: pointer; }
+.btn:active { transform: translateY(1px); }
+.btn.ghost { background: var(--panel); color: var(--tx); border: 1.5px solid var(--line2); box-shadow: none; }
+.btn.wa { background: var(--wa); color: #04220F; }
+.btn.rose { background: var(--rose); color: #2A0509; }
+.btn.sm { padding: 9px 13px; font-size: 13px; width: auto; border-radius: 10px; }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
+.btnrow { display: flex; gap: 10px; }
+
+#nav { position: sticky; bottom: 0; z-index: 30; display: grid; grid-template-columns: repeat(5, 1fr); background: rgba(255, 255, 255, .94); backdrop-filter: blur(12px); border-top: 1px solid var(--line); padding: 8px 6px calc(8px + env(safe-area-inset-bottom)); }
+.tab { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0; color: var(--dim); font-size: 10.5px; font-weight: 600; border-radius: 12px; }
+.tab svg { width: 23px; height: 23px; stroke: currentColor; fill: none; stroke-width: 1.9; }
+.tab.on { color: var(--gold); }
+.tab.sell { position: relative; }
+.tab.sell .fab { width: 52px; height: 52px; border-radius: 16px; margin-top: -24px; margin-bottom: 2px; background: linear-gradient(140deg, var(--gold), var(--gold2)); color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 18px rgba(242, 106, 27, .42); }
+.tab.sell .fab svg { width: 26px; height: 26px; stroke-width: 2.4; stroke: #fff; }
+
+#scrim { position: fixed; inset: 0; background: rgba(4, 6, 20, .6); z-index: 50; }
+#sheet { position: fixed; left: 50%; transform: translateX(-50%); bottom: 0; z-index: 60; width: 100%; max-width: 430px; background: var(--bg); border-radius: 24px 24px 0 0; border: 1px solid var(--line2); border-bottom: 0; padding: 8px 18px calc(40px + env(safe-area-inset-bottom)); max-height: 90vh; overflow-y: auto; }
+.grab { width: 44px; height: 5px; border-radius: 99px; background: var(--line2); margin: 8px auto 14px; }
+
+/* notification bell dropdown — small panel anchored near the bell, not the
+   big bottom Sheet used for forms; positioned near the mobile top bar's
+   bell by default, and re-anchored near the sidebar's bell on desktop
+   (see AppLayout.vue) since that button lives in the sidebar footer instead */
+.notif-scrim { position: fixed; inset: 0; background: transparent; z-index: 62; }
+.notif-dropdown {
+  position: fixed; z-index: 63; top: 62px; right: 14px; width: 320px; max-width: 90vw;
+  max-height: 60vh; overflow-y: auto; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 16px; box-shadow: 0 12px 32px rgba(18, 38, 28, .18); padding: 8px;
+}
+@media (min-width: 1024px) {
+  .notif-dropdown { top: auto; right: auto; bottom: 78px; left: 16px; }
+}
+.notif-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px 10px; font-size: 14px; }
+.notif-markall { font-size: 11px; font-weight: 700; color: var(--green); background: none; border: none; }
+.notif-list { display: flex; flex-direction: column; gap: 4px; }
+.notif-item { width: 100%; text-align: left; padding: 9px 8px; border-radius: 10px; background: none; border: none; display: flex; flex-direction: column; gap: 2px; }
+.notif-item.unread { background: var(--goldSoft); }
+.notif-item b { font-size: 12.5px; }
+.notif-item span { font-size: 11.5px; color: var(--mut); }
+.notif-item .notif-time { font-size: 10px; color: var(--dim); }
+.notif-empty { text-align: center; padding: 24px 10px; color: var(--dim); font-size: 12.5px; }
+.shttl { font-size: 18px; font-weight: 750; margin-bottom: 4px; }
+.shsub { color: var(--mut); font-size: 13px; margin-bottom: 16px; }
+.field { margin-bottom: 14px; }
+.field label { display: block; font-size: 12.5px; color: var(--mut); margin-bottom: 6px; font-weight: 600; }
+.f2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+.cart-line { display: flex; align-items: center; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+.cart-line .nm { flex: 1; min-width: 0; }
+.cart-line .nm b { font-size: 14px; display: block; }
+.cart-line .nm span { font-size: 12px; color: var(--mut); }
+.qbtn { width: 30px; height: 30px; border-radius: 9px; background: var(--greenSoft); color: var(--green); border: 1px solid var(--line2); display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 700; }
+.qn { min-width: 26px; text-align: center; font-weight: 750; font-variant-numeric: tabular-nums; }
+
+.pgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pcard { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--sh); position: relative; width: 100%; }
+.pcard-main { display: block; width: 100%; padding: 12px; text-align: left; background: transparent; border: none; }
+.pcard .em { font-size: 22px; }
+/* a real product photo bleeds to the card's edges and sits above the name/
+   price, matching a photo-forward catalog look — falls back to the big
+   emoji glyph above when no photo is set, so nothing looks unfinished for
+   products that don't have one */
+.pcard .pimg { display: block; width: calc(100% + 24px); height: 84px; object-fit: cover; margin: -12px -12px 8px -12px; border-radius: 14px 14px 0 0; background: var(--greenSoft); }
+.pcard .pn { font-weight: 700; font-size: 13.5px; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pcard .pp { color: var(--green); font-weight: 750; margin-top: 2px; font-size: 13px; }
+.pcard.incart { border-color: var(--gold); background: var(--goldSoft); }
+.pcard.occupied { border-color: var(--rose); background: var(--roseSoft); }
+.pcard .qbadge { position: absolute; top: 8px; right: 8px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: var(--gold); color: #fff; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(242, 106, 27, .4); z-index: 2; }
+.pcard .ps { font-size: 11px; color: var(--dim); margin-top: 1px; }
+.punits { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 12px; }
+.upill { background: var(--greenSoft); color: var(--green); border: 1px solid var(--line2); border-radius: 8px; padding: 5px 9px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.cart-line-discount { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: 11.5px; color: var(--mut); }
+.cart-line-discount input { width: 78px; padding: 5px 8px; font-size: 12.5px; text-align: right; }
+.posbar { position: sticky; bottom: 0; left: 0; right: 0; padding: 12px 0 4px; background: linear-gradient(0deg, var(--bg) 70%, transparent); }
+.posbar-empty { text-align: center; color: var(--dim); font-size: 13px; padding: 14px; }
+.cartcount { background: rgba(255, 255, 255, .28); min-width: 24px; height: 24px; padding: 0 7px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; font-weight: 850; font-size: 13px; }
+
+.receipt { background: #fff; color: #1a1a1a; border-radius: 14px; padding: 18px; font-size: 13px; }
+.receipt h3 { text-align: center; font-size: 16px; margin-bottom: 2px; }
+.receipt .rc-sub { text-align: center; color: #666; font-size: 11px; margin-bottom: 12px; }
+.receipt .rc-l { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dashed #ddd; }
+.receipt .rc-t { display: flex; justify-content: space-between; padding: 8px 0; font-weight: 800; border-top: 2px solid #222; margin-top: 6px; font-size: 15px; }
+.receipt .rc-f { text-align: center; color: #888; font-size: 10.5px; margin-top: 12px; }
+.receipt .rc-brand { text-align: center; color: #aaa; font-size: 9px; margin-top: 6px; letter-spacing: .02em; }
+.receipt .rc-brand img { max-height: 16px; max-width: 80px; opacity: .75; }
+
+/* Global print baseline — the shared app chrome (sidebar, mobile top bar,
+   bottom tab bar, back button, credit bar, the bottom-sheet's drag handle)
+   has no business appearing on a printed receipt/label/ticket regardless of
+   which page triggered the print, so it's hidden here once instead of every
+   page having to remember to do it. `.no-print` is defined here (not per
+   page) specifically so it actually is global — Vite code-splits each
+   page's own <style> block into that page's own async chunk, so a rule
+   defined inside e.g. Pos/Index.vue's <style> is NOT available to Sheet.vue
+   or any other page that doesn't happen to load that same chunk. Individual
+   pages still use the `.no-print` class on whatever page-specific content
+   (buttons, cards, banners) also shouldn't print — only the class itself
+   needs to live somewhere truly shared. */
+@media print {
+    aside, .brandbar, #top, #nav, .backbtn, #scrim, .notif-dropdown, .grab { display: none !important; }
+    .no-print { display: none !important; }
+}
+
+.seg { display: flex; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 4px; gap: 4px; }
+.seg button { flex: 1; padding: 10px; border-radius: 9px; font-size: 13px; font-weight: 650; color: var(--mut); }
+.seg button.on { background: var(--gold); color: #fff; }
+
+.empty { text-align: center; color: var(--dim); padding: 40px 20px; }
+.empty .big { font-size: 40px; margin-bottom: 10px; }
+.hr { height: 1px; background: var(--line); margin: 16px 0; }
+.chip { display: inline-flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 99px; padding: 8px 13px; font-size: 12.5px; font-weight: 600; color: var(--mut); }
+.tabbar { display: flex; gap: 8px; margin-bottom: 16px; overflow-x: auto; padding-bottom: 2px; }
+.tabbar button { white-space: nowrap; padding: 9px 15px; border-radius: 99px; background: var(--panel); border: 1px solid var(--line); font-size: 13px; font-weight: 650; color: var(--mut); }
+.tabbar button.on { background: var(--gold); color: #fff; border-color: var(--gold); }
+
+.brandbar { background: var(--ink); color: #DCEBE1; font-size: 11px; text-align: center; padding: 6px 12px; letter-spacing: .2px; font-weight: 500; }
+.brandbar a { color: var(--gold); font-weight: 700; text-decoration: none; }
+
+#login { position: fixed; inset: 0; z-index: 100; overflow-y: auto; background: radial-gradient(600px 340px at 85% -6%, rgba(242, 106, 27, .10), transparent), radial-gradient(560px 400px at -8% 106%, rgba(31, 164, 99, .14), transparent), var(--bg); display: flex; align-items: center; justify-content: center; padding: 24px 18px; }
+.login-inner { width: 100%; max-width: 400px; }
+.login-brand { text-align: center; margin-bottom: 22px; }
+.login-brand .blogo { margin: 0 auto 12px; box-shadow: 0 8px 22px rgba(31, 164, 99, .32); }
+.login-name { font-size: 30px; font-weight: 850; letter-spacing: -.6px; color: var(--ink); }
+.login-tag { font-size: 13.5px; color: var(--mut); margin-top: 3px; }
+.login-card { background: var(--panel); border: 1px solid var(--line); border-radius: 22px; padding: 24px 20px; box-shadow: 0 12px 40px rgba(18, 38, 28, .12); }
+.lc-h { font-size: 20px; font-weight: 800; }
+.lc-s { font-size: 13px; color: var(--mut); margin-bottom: 18px; }
+.remember { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--mut); margin: 6px 0 16px; cursor: pointer; }
+.lc-hint { text-align: center; font-size: 12px; color: var(--dim); margin-top: 14px; }
+.login-foot { text-align: center; font-size: 12px; color: var(--mut); margin-top: 22px; line-height: 1.9; }
+.login-foot a { color: var(--green); font-weight: 700; text-decoration: none; }
+.login-foot a[href^="tel"] { color: var(--gold); }
+
+input, select, textarea { font: inherit; background: #fff; border: 1.5px solid var(--line); color: var(--tx); border-radius: 12px; padding: 13px 14px; outline: none; width: 100%; }
+input:focus, select:focus, textarea:focus { border-color: var(--gold); }
+::placeholder { color: var(--dim); }
+
+#toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 100px; z-index: 90; background: var(--ink); border: 1px solid var(--ink); color: #fff; padding: 12px 18px; border-radius: 14px; font-size: 13.5px; font-weight: 600; box-shadow: 0 8px 24px rgba(18, 38, 28, .28); max-width: 90%; text-align: center; }
+
+/* ---- barcode scanner overlay ---- */
+#scanwrap { position: fixed; inset: 0; z-index: 70; background: #000; display: flex; flex-direction: column; }
+#reader { flex: 1; overflow: hidden; }
+#reader video { object-fit: cover !important; }
+.scan-top { position: absolute; top: 0; left: 0; right: 0; z-index: 5; padding: 16px 18px calc(16px + env(safe-area-inset-top)); display: flex; align-items: center; gap: 12px; background: linear-gradient(180deg, rgba(0, 0, 0, .6), transparent); }
+.scan-x { width: 40px; height: 40px; border-radius: 50%; background: rgba(0, 0, 0, .5); display: flex; align-items: center; justify-content: center; font-size: 20px; color: #fff; border: 1px solid rgba(255, 255, 255, .2); }
+.scan-hint { position: absolute; left: 0; right: 0; bottom: 120px; text-align: center; color: #fff; z-index: 5; font-size: 14px; text-shadow: 0 1px 6px #000; }
+.scan-frame { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 66%; aspect-ratio: 1.3; border: 3px solid var(--gold); border-radius: 18px; box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .45); z-index: 4; }
+.scan-manual { position: absolute; left: 18px; right: 18px; bottom: calc(30px + env(safe-area-inset-bottom)); z-index: 6; }
