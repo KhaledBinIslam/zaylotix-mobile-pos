@@ -103,7 +103,7 @@ function goBack() {
 // so support immediately knows which screen the owner is stuck on without
 // them having to explain it themselves
 const SCREEN_LABELS = {
-    home: 'হোম', sell: 'বিক্রি (POS)', restaurant: 'টেবিল', stock: 'স্টক', due: 'বাকি',
+    home: 'হোম', sell: 'বিক্রি (POS)', restaurant: 'টেবিল', reservations: 'রিজার্ভেশন', stock: 'স্টক', due: 'বাকি',
     sales: 'বিক্রির ইতিহাস', promotions: 'অফার/কুপন', quotations: 'কোটেশন', accounts: 'হিসাব-নিকাশ',
     reports: 'রিপোর্ট', expenses: 'খরচ', purchaseHistory: 'ক্রয়ের ইতিহাস', suppliers: 'সাপ্লায়ার',
     serials: 'IMEI/ওয়ারেন্টি', cashier: 'ক্যাশিয়ার', activity: 'অ্যাক্টিভিটি লগ', more: 'আরও', help: 'সাহায্য', partners: 'পার্টনার হিসাব', employees: 'কর্মচারী ও বেতন',
@@ -140,6 +140,7 @@ const sidebarGroups = computed(() => [
         items: [
             { key: 'sell', label: t('nav.sellFull'), href: route('app.pos'), icon: '🛒', on: props.active === 'sell', show: hasPerm('pos') },
             { key: 'restaurant', label: t('nav.restaurant'), href: route('app.restaurant.tables.index'), icon: '🍽️', on: props.active === 'restaurant', show: hasPerm('pos') && hasFeature('restaurant_tables') },
+            { key: 'reservations', label: t('nav.reservations'), href: route('app.reservations.index'), icon: '📅', on: props.active === 'reservations', show: hasPerm('pos') && hasFeature('restaurant_tables') },
             { key: 'sales', label: t('nav.salesHistory'), href: route('app.sales'), icon: '🧮', on: props.active === 'sales', show: hasPerm('sales_history') },
             { key: 'due', label: t('nav.dueFull'), href: route('app.customers'), icon: '🧾', on: props.active === 'due', show: hasPerm('customers') },
             { key: 'promotions', label: t('nav.promotions'), href: route('app.promotions.index'), icon: '🎁', on: props.active === 'promotions', show: hasPerm('promotions') && hasFeature('promotions') },

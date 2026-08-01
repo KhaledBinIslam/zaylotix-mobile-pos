@@ -20,6 +20,7 @@ use App\Http\Controllers\App\HomeController;
 use App\Http\Controllers\App\LoanController;
 use App\Http\Controllers\App\LoanPaymentController;
 use App\Http\Controllers\App\MedicineCatalogController;
+use App\Http\Controllers\App\ReservationController;
 use App\Http\Controllers\RatingController;
 use App\Http\Controllers\App\MoreController;
 use App\Http\Controllers\App\NotificationController;
@@ -120,6 +121,13 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         });
 
         Route::middleware('feature:restaurant_tables')->group(function () {
+            Route::get('reservations', [ReservationController::class, 'index'])->name('reservations.index');
+            Route::post('reservations', [ReservationController::class, 'store'])->name('reservations.store');
+            Route::put('reservations/{reservation}', [ReservationController::class, 'update'])->name('reservations.update');
+            Route::post('reservations/{reservation}/cancel', [ReservationController::class, 'cancel'])->name('reservations.cancel');
+            Route::post('reservations/{reservation}/no-show', [ReservationController::class, 'noShow'])->name('reservations.noShow');
+            Route::post('reservations/{reservation}/seat', [ReservationController::class, 'seat'])->name('reservations.seat');
+
             Route::get('restaurant/tables', [RestaurantTableController::class, 'index'])->name('restaurant.tables.index');
             Route::post('restaurant/tables', [RestaurantTableController::class, 'store'])->name('restaurant.tables.store');
             Route::delete('restaurant/tables/{restaurantTable}', [RestaurantTableController::class, 'destroy'])->name('restaurant.tables.destroy');

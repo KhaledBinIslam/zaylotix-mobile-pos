@@ -204,6 +204,9 @@ onMounted(() => {
             <Link v-if="hasPerm('pos') && features.includes('restaurant_tables')" :href="route('app.restaurant.tables.index')" class="row">
                 <div class="ava">🍽️</div><div class="mid"><b>{{ t('nav.restaurant') }}</b><span>{{ t('restaurant.tablesSubtitle') }}</span></div><div class="end">›</div>
             </Link>
+            <Link v-if="hasPerm('pos') && features.includes('restaurant_tables')" :href="route('app.reservations.index')" class="row">
+                <div class="ava">📅</div><div class="mid"><b>{{ t('nav.reservations') }}</b><span>{{ t('reservation.subtitle') }}</span></div><div class="end">›</div>
+            </Link>
             <Link v-if="hasPerm('sales_history')" :href="route('app.sales')" class="row">
                 <div class="ava">🧾</div><div class="mid"><b>{{ t('nav.salesHistory') }}</b><span>{{ t('more.salesHistorySub') }}</span></div><div class="end">›</div>
             </Link>
