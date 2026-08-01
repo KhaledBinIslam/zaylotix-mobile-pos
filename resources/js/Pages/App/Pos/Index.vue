@@ -1,6 +1,6 @@
 <script setup>
 import { Head, router, usePage } from '@inertiajs/vue3';
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import HowToHint from '@/Components/HowToHint.vue';
@@ -231,7 +231,15 @@ function lineTotal(l) {
 }
 
 const subtotal = computed(() => cart.value.reduce((s, l) => s + lineTotal(l), 0));
-const total = computed(() => Math.max(0, subtotal.value - (discount.value || 0)));
+// mirrors the server's own PosController::checkout() math exactly — service
+// charge is additive on top of the discounted subtotal, unlike VAT (which is
+// backed out of an already-inclusive price and shown separately, never added)
+const serviceCharge = computed(() => {
+    const rate = shop.value?.service_charge_rate;
+    if (rate === null || rate === undefined) return 0;
+    return Math.round(Math.max(0, subtotal.value - (discount.value || 0)) * Number(rate) / 100 * 100) / 100;
+});
+const total = computed(() => Math.max(0, subtotal.value - (discount.value || 0)) + serviceCharge.value);
 
 // Split mode: cashier types how much came in via each method; whatever's
 // left of the total is shown live as due (server enforces the same math —
@@ -463,6 +471,28 @@ function printMemo() {
     window.print();
 }
 
+// same CODE128 (scans back to this exact sale) + rating QR as the reprint
+// page (Sales/Show.vue) — re-rendered every time a new sale completes, since
+// this sheet's #printable-memo is reused across sales, not remounted fresh
+watch(lastSale, async (sale) => {
+    if (!sale) return;
+    await nextTick();
+    const { default: JsBarcode } = await import('jsbarcode');
+    const el = document.getElementById('pos-receipt-barcode-svg');
+    if (el) {
+        try {
+            JsBarcode(el, 'INV-' + sale.id, { format: 'CODE128', width: 1.3, height: 30, fontSize: 9, margin: 2 });
+        } catch (e) { /* shouldn't happen — id is always numeric */ }
+    }
+    const QRCode = (await import('qrcode')).default;
+    const qrEl = document.getElementById('pos-receipt-rating-qr');
+    if (qrEl) {
+        try {
+            await QRCode.toCanvas(qrEl, window.location.origin + route('rate.show', sale.id), { width: 90, margin: 1 });
+        } catch (e) { /* non-critical */ }
+    }
+}, { flush: 'post' });
+
 function sendMemoWA() {
     const s = lastSale.value;
     if (!s) return;
@@ -554,6 +584,16 @@ async function handleBarcode(decodedText, onFeedback) {
     lastScanAt = now;
 
     if (navigator.vibrate) navigator.vibrate(40);
+
+    // a receipt's own barcode (printed on every memo) encodes "INV-{sale id}"
+    // — distinct from a product barcode, so it can be told apart before ever
+    // reaching the product lookup below; scanning an old receipt just reopens it
+    const invMatch = decodedText.trim().match(/^INV-(\d+)$/);
+    if (invMatch) {
+        closeScanner();
+        router.visit(route('app.sales.show', invMatch[1]));
+        return;
+    }
 
     const product = props.products.find((p) => p.barcode === decodedText.trim());
     if (product) {
@@ -940,6 +980,7 @@ useKeyboardShortcuts({
                     <div class="card" style="margin-bottom:10px">
                         <div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--mut);font-size:13.5px"><span>{{ t('pos.subtotal') }}</span><b>{{ money(subtotal) }}</b></div>
                         <div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--mut);font-size:13.5px"><span>{{ t('pos.overallDiscount') }}</span><b>− {{ money(discount || 0) }}</b></div>
+                        <div v-if="serviceCharge > 0" style="display:flex;justify-content:space-between;padding:3px 0;color:var(--mut);font-size:13.5px"><span>{{ t('pos.serviceCharge') }}</span><b>+ {{ money(serviceCharge) }}</b></div>
                     </div>
 
                     <!-- grand total gets its own bold, full-width bar — the one
@@ -1014,7 +1055,11 @@ useKeyboardShortcuts({
             <div v-if="lastSale" id="printable-memo" class="receipt">
                 <img v-if="shop?.logo_url" :src="shop.logo_url" style="max-width:100px;display:block;margin:0 auto 8px">
                 <h3>{{ shop?.name || 'Zaylotix POS' }}</h3>
-                <div class="rc-sub">📞 {{ shop?.phone }}<br>মেমো — {{ lastSale.invoice_no }}</div>
+                <div class="rc-sub">
+                    📞 {{ shop?.phone }}
+                    <template v-if="shop?.bin_no"><br>BIN: {{ shop.bin_no }}</template>
+                    <br>মেমো — {{ lastSale.invoice_no }}
+                </div>
                 <div v-for="l in lastSale.items" :key="l.id" class="rc-l">
                     <span>
                         {{ l.product_name }}{{ (l.unit_label || l.variant_label) ? ' (' + (l.unit_label || l.variant_label) + ')' : '' }} ×{{ l.qty }}
@@ -1023,6 +1068,8 @@ useKeyboardShortcuts({
                     <b>{{ money(l.price * l.qty - (l.discount || 0)) }}</b>
                 </div>
                 <div v-if="lastSale.discount > 0" class="rc-l"><span>ওভারঅল ছাড়{{ lastSale.coupon_code ? ` (${lastSale.coupon_code})` : '' }}</span><b>− {{ money(lastSale.discount) }}</b></div>
+                <div v-if="lastSale.service_charge > 0" class="rc-l"><span>{{ t('pos.serviceCharge') }}</span><b>+ {{ money(lastSale.service_charge) }}</b></div>
+                <div v-if="lastSale.vat > 0" class="rc-l"><span>VAT</span><b>{{ money(lastSale.vat) }}</b></div>
                 <div class="rc-t"><span>মোট</span><span>{{ money(lastSale.total) }}</span></div>
                 <template v-if="lastSale.payments?.length > 1 || (lastSale.payments?.length && lastSale.payment_mode === 'split')">
                     <div v-for="p in lastSale.payments" :key="p.id" class="rc-l" style="font-size:10.5px;color:#555">
@@ -1037,6 +1084,11 @@ useKeyboardShortcuts({
                     <span v-if="lastSale.points_earned">{{ t('pos.pointsEarnedReceipt', { n: lastSale.points_earned }) }}</span>
                 </div>
                 <div class="rc-f">{{ shop?.receipt_footer || 'ধন্যবাদ! আবার আসবেন 🙏' }}</div>
+                <div style="display:flex;justify-content:center;margin-top:8px"><svg id="pos-receipt-barcode-svg"></svg></div>
+                <div style="display:flex;flex-direction:column;align-items:center;margin-top:6px;gap:2px">
+                    <canvas id="pos-receipt-rating-qr"></canvas>
+                    <div style="font-size:9px;color:#666">{{ t('sales.rateHint') }}</div>
+                </div>
                 <div class="rc-brand">
                     <template v-if="platformLogoUrl"><img :src="platformLogoUrl" alt="Zaylotix"></template>
                     <template v-else>A Zaylotix product · zaylotix.com</template>

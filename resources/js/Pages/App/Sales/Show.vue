@@ -1,6 +1,6 @@
 <script setup>
 import { Head, router, usePage } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { computed, onMounted } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useI18n } from '@/composables/useI18n';
 
@@ -67,6 +67,32 @@ function sendKotWA() {
 function printMemo() {
     window.print();
 }
+
+// CODE128 barcode of this invoice — scanning it (with the same
+// hardware/camera scanner already wired into the POS screen) re-opens this
+// exact page. "INV-" prefixes the id so the POS scan handler can tell this
+// apart from a product barcode before falling back to a product lookup.
+onMounted(async () => {
+    const { default: JsBarcode } = await import('jsbarcode');
+    const el = document.getElementById('sale-barcode-svg');
+    if (el) {
+        try {
+            JsBarcode(el, 'INV-' + props.sale.id, { format: 'CODE128', width: 1.3, height: 30, fontSize: 9, margin: 2 });
+        } catch (e) { /* shouldn't happen — id is always numeric */ }
+    }
+
+    // QR code linking to the public (no-login) rating page for this sale —
+    // a customer scanning this from the paper receipt has no Zaylotix
+    // account, so the target route must not require auth
+    const QRCode = (await import('qrcode')).default;
+    const qrEl = document.getElementById('sale-rating-qr');
+    if (qrEl) {
+        try {
+            await QRCode.toCanvas(qrEl, ratingUrl.value, { width: 90, margin: 1 });
+        } catch (e) { /* non-critical — receipt still works without it */ }
+    }
+});
+const ratingUrl = computed(() => window.location.origin + route('rate.show', props.sale.id));
 </script>
 
 <template>
@@ -99,12 +125,23 @@ function printMemo() {
         <div id="printable-memo" class="receipt" :style="memoStyle">
             <img v-if="shop?.logo_url" :src="shop.logo_url" style="max-width:120px;display:block;margin:0 auto 8px">
             <h3>{{ shop?.name || 'Zaylotix POS' }}</h3>
-            <div class="rc-sub">📞 {{ shop?.phone }} • {{ shop?.area }}<br>মেমো — {{ sale.invoice_no }}</div>
+            <div class="rc-sub">
+                📞 {{ shop?.phone }} • {{ shop?.area }}
+                <template v-if="shop?.bin_no"><br>BIN: {{ shop.bin_no }}</template>
+                <br>মেমো — {{ sale.invoice_no }} • {{ sale.date }} {{ sale.time }}
+                <template v-if="tableOrder">
+                    <br>{{ tableOrder.order_source === 'delivery' ? t('restaurant.sourceDelivery') : tableOrder.order_source === 'takeaway' ? t('restaurant.sourceTakeaway') : t('restaurant.sourceDineIn') }}{{ tableOrder.table?.name ? ' — ' + tableOrder.table.name : '' }}
+                    <template v-if="tableOrder.waiter_name"> • {{ tableOrder.waiter_name }}</template>
+                </template>
+            </div>
             <div style="font-size:11px;color:#666;margin-bottom:6px">কাস্টমার: {{ sale.customer?.name || 'নগদ কাস্টমার' }}</div>
             <div v-for="l in sale.items" :key="l.id" class="rc-l">
                 <span>{{ l.product_name }}{{ (l.unit_label || l.variant_label) ? ' (' + (l.unit_label || l.variant_label) + ')' : '' }} ×{{ l.qty }}</span><b>{{ money(l.price * l.qty) }}</b>
             </div>
+            <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:10.5px;color:#555;border-top:1px dashed #999;margin-top:4px;padding-top:4px"><span>Subtotal</span><span>{{ money(sale.subtotal) }}</span></div>
             <div v-if="sale.discount > 0" class="rc-l"><span>ছাড়{{ sale.coupon_code ? ` (${sale.coupon_code})` : '' }}</span><b>− {{ money(sale.discount) }}</b></div>
+            <div v-if="sale.service_charge > 0" class="rc-l"><span>{{ t('pos.serviceCharge') }}</span><b>+ {{ money(sale.service_charge) }}</b></div>
+            <div v-if="sale.vat > 0" class="rc-l"><span>VAT</span><b>{{ money(sale.vat) }}</b></div>
             <div class="rc-t"><span>মোট</span><span>{{ money(sale.total) }}</span></div>
             <div v-if="sale.points_redeemed || sale.points_earned" style="text-align:center;color:#555;margin-top:6px;font-size:10.5px">
                 <span v-if="sale.points_redeemed">{{ t('pos.pointsRedeemedReceipt', { n: sale.points_redeemed }) }} </span>
@@ -112,6 +149,11 @@ function printMemo() {
             </div>
             <div style="text-align:center;color:#c0392b;font-weight:700;margin-top:8px;font-size:12px" v-if="dueRemainder > 0">বাকি বিল — {{ money(dueRemainder) }}</div>
             <div class="rc-f">{{ shop?.receipt_footer || 'ধন্যবাদ! আবার আসবেন 🙏' }}</div>
+            <div style="display:flex;justify-content:center;margin-top:8px"><svg id="sale-barcode-svg"></svg></div>
+            <div style="display:flex;flex-direction:column;align-items:center;margin-top:6px;gap:2px">
+                <canvas id="sale-rating-qr"></canvas>
+                <div style="font-size:9px;color:#666">{{ t('sales.rateHint') }}</div>
+            </div>
             <div class="rc-brand">
                 <template v-if="platformLogoUrl"><img :src="platformLogoUrl" alt="Zaylotix"></template>
                 <template v-else>A Zaylotix product · zaylotix.com</template>

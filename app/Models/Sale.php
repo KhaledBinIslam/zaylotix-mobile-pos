@@ -11,7 +11,7 @@ class Sale extends Model
 
     protected $fillable = [
         'shop_id', 'customer_id', 'table_order_id', 'user_id', 'invoice_no', 'date', 'time',
-        'subtotal', 'discount', 'vat', 'total', 'profit', 'payment_mode', 'sale_type', 'prescription_note', 'coupon_code',
+        'subtotal', 'discount', 'service_charge', 'vat', 'total', 'profit', 'payment_mode', 'sale_type', 'prescription_note', 'coupon_code',
         'points_earned', 'points_redeemed',
         'voided_at', 'voided_reason', 'voided_by',
     ];

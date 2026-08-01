@@ -31,6 +31,10 @@ const receiptFooterForm = useForm({ receipt_footer: props.shop?.receipt_footer |
 function saveReceiptFooter() {
     receiptFooterForm.patch(route('app.settings.receiptFooter'), { preserveScroll: true });
 }
+const binForm = useForm({ bin_no: props.shop?.bin_no || '' });
+function saveBinNo() {
+    binForm.patch(route('app.settings.binNo'), { preserveScroll: true });
+}
 
 // --- hardware barcode scanner (USB/Bluetooth keyboard-wedge) on/off ---
 const hardwareScannerForm = useForm({ hardware_scanner_enabled: props.shop?.hardware_scanner_enabled ?? true });
@@ -352,6 +356,14 @@ onMounted(() => {
                 <div v-if="receiptFooterForm.errors.receipt_footer" style="color:var(--rose);font-size:12px;margin-top:6px">{{ receiptFooterForm.errors.receipt_footer }}</div>
             </div>
             <button class="btn sm ghost" style="width:100%" :disabled="receiptFooterForm.processing" @click="saveReceiptFooter">{{ receiptFooterForm.processing ? '...' : t('stock.save') }}</button>
+
+            <div class="hr"></div>
+            <div class="field">
+                <label>{{ t('logo.binLabel') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
+                <input v-model="binForm.bin_no" :placeholder="t('logo.binPlaceholder')" maxlength="50">
+                <div v-if="binForm.errors.bin_no" style="color:var(--rose);font-size:12px;margin-top:6px">{{ binForm.errors.bin_no }}</div>
+            </div>
+            <button class="btn sm ghost" style="width:100%" :disabled="binForm.processing" @click="saveBinNo">{{ binForm.processing ? '...' : t('stock.save') }}</button>
 
             <button class="btn ghost" style="margin-top:10px" @click="logoSheet = false">{{ t('common.cancel') }}</button>
         </Sheet>

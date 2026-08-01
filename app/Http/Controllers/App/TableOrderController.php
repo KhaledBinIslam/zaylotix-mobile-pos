@@ -322,6 +322,15 @@ class TableOrderController extends Controller
                 $vat = round($total * (float) $shop->turnover_rate / 100, 2);
             }
 
+            // additive, unlike VAT above — a restaurant's service charge is
+            // added on top of the bill, not backed out of an already-inclusive
+            // price, so it must be folded into $total before payments/due below
+            $serviceCharge = 0;
+            if ($shop->service_charge_rate !== null) {
+                $serviceCharge = round($total * (float) $shop->service_charge_rate / 100, 2);
+                $total += $serviceCharge;
+            }
+
             $customer = null;
             $phone = trim($data['customer_phone'] ?? '');
             $name = trim($data['customer_name'] ?? '');
@@ -369,6 +378,7 @@ class TableOrderController extends Controller
                 'time' => now()->toTimeString(),
                 'subtotal' => $subtotal,
                 'discount' => $discount,
+                'service_charge' => $serviceCharge,
                 'vat' => $vat,
                 'total' => $total,
                 'profit' => $profit,

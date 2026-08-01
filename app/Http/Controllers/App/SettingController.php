@@ -107,6 +107,35 @@ class SettingController extends Controller
         return back()->with('success', 'মেমোর ফুটার সংরক্ষণ করা হয়েছে।');
     }
 
+    /** VAT registration (BIN) number, printed on the receipt only when set — most small shops don't have one. */
+    public function updateBinNo(Request $request)
+    {
+        $data = $request->validate([
+            'bin_no' => ['nullable', 'string', 'max:50'],
+        ]);
+
+        Tenancy::shop()->update(['bin_no' => $data['bin_no'] ?: null]);
+
+        return back()->with('success', 'BIN নম্বর সংরক্ষণ করা হয়েছে।');
+    }
+
+    /**
+     * Additive on top of the bill (unlike VAT, which is backed out of an
+     * already-inclusive price) — see PosController::checkout() and
+     * TableOrderController::bill() for the actual computation. Null turns it
+     * off entirely; most non-restaurant shops never set this.
+     */
+    public function updateServiceCharge(Request $request)
+    {
+        $data = $request->validate([
+            'service_charge_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+        ]);
+
+        Tenancy::shop()->update(['service_charge_rate' => $data['service_charge_rate']]);
+
+        return back()->with('success', 'সার্ভিস চার্জ সংরক্ষণ করা হয়েছে।');
+    }
+
     /** Shop logo, printed on POS receipts and barcode labels once uploaded. */
     public function updateLogo(Request $request)
     {

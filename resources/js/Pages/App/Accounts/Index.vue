@@ -1,6 +1,6 @@
 <script setup>
 import { Head, router, usePage } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useI18n } from '@/composables/useI18n';
 
@@ -17,6 +17,13 @@ const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 
 function setVat(mode) {
     router.patch(route('app.settings.vat'), { vat_mode: mode });
+}
+
+const serviceChargeRate = ref(props.shop?.service_charge_rate ?? '');
+function saveServiceCharge() {
+    router.patch(route('app.settings.serviceCharge'), {
+        service_charge_rate: serviceChargeRate.value === '' ? null : serviceChargeRate.value,
+    }, { preserveScroll: true });
 }
 </script>
 
@@ -57,6 +64,17 @@ function setVat(mode) {
                     <button :class="{ on: shop?.vat_mode === 'none' }" @click="setVat('none')">{{ t('acc.vatNone') }}</button>
                     <button :class="{ on: shop?.vat_mode === 'turnover' }" @click="setVat('turnover')">{{ t('acc.vatTurnover') }}</button>
                     <button :class="{ on: shop?.vat_mode === 'full' }" @click="setVat('full')">{{ t('acc.vatFull') }}</button>
+                </div>
+            </div>
+        </template>
+
+        <template v-if="features.includes('restaurant_tables')">
+            <div class="sechead"><h2>{{ t('acc.serviceChargeSection') }}</h2></div>
+            <div class="card">
+                <div style="font-size:12.5px;color:var(--mut);margin-bottom:10px">{{ t('acc.serviceChargeHint') }}</div>
+                <div style="display:flex;gap:8px">
+                    <input v-model="serviceChargeRate" type="number" inputmode="decimal" min="0" max="100" step="0.5" :placeholder="t('acc.serviceChargeOffPlaceholder')" style="flex:1;margin:0">
+                    <button class="btn sm" style="width:auto;padding:0 16px" @click="saveServiceCharge">{{ t('stock.save') }}</button>
                 </div>
             </div>
         </template>

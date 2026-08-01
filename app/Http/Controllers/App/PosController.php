@@ -346,6 +346,17 @@ class PosController extends Controller
                 $vat = round($total * (float) $shop->turnover_rate / 100, 2);
             }
 
+            // unlike VAT above (which is backed out of $total for display —
+            // Bangladeshi retail prices are already VAT-inclusive), a
+            // restaurant service charge is genuinely additive: it's a
+            // percentage added ON TOP of the bill, so it must be folded into
+            // $total before payments/due are computed below
+            $serviceCharge = 0;
+            if ($shop->service_charge_rate !== null) {
+                $serviceCharge = round($total * (float) $shop->service_charge_rate / 100, 2);
+                $total += $serviceCharge;
+            }
+
             // points earned on what was actually paid (post every
             // discount, including any just-redeemed points) — never on the
             // pre-discount subtotal, or redeeming-then-immediately-earning
@@ -411,6 +422,7 @@ class PosController extends Controller
                 'time' => now()->toTimeString(),
                 'subtotal' => $subtotal,
                 'discount' => $discount,
+                'service_charge' => $serviceCharge,
                 'vat' => $vat,
                 'total' => $total,
                 'profit' => $profit,

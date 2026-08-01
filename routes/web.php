@@ -20,6 +20,7 @@ use App\Http\Controllers\App\HomeController;
 use App\Http\Controllers\App\LoanController;
 use App\Http\Controllers\App\LoanPaymentController;
 use App\Http\Controllers\App\MedicineCatalogController;
+use App\Http\Controllers\RatingController;
 use App\Http\Controllers\App\MoreController;
 use App\Http\Controllers\App\NotificationController;
 use App\Http\Controllers\App\OnboardingController;
@@ -78,6 +79,11 @@ Route::middleware('guest')->group(function () {
     Route::get('signup', [SignupController::class, 'create'])->name('signup');
     Route::post('signup', [SignupController::class, 'store'])->name('signup.store');
 });
+
+// Public — no auth. A customer scanning the QR code printed on their paper
+// receipt has no Zaylotix account, so this must be reachable without login.
+Route::get('rate/{sale}', [RatingController::class, 'show'])->name('rate.show');
+Route::post('rate/{sale}', [RatingController::class, 'store'])->name('rate.store');
 
 Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(function () {
     Route::post('logout', [LoginController::class, 'destroy'])->name('logout');
@@ -253,10 +259,15 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
     Route::middleware('perm:settings')->group(function () {
         Route::post('settings/logo', [SettingController::class, 'updateLogo'])->name('settings.logo');
         Route::patch('settings/receipt-footer', [SettingController::class, 'updateReceiptFooter'])->name('settings.receiptFooter');
+        Route::patch('settings/bin', [SettingController::class, 'updateBinNo'])->name('settings.binNo');
         Route::patch('settings/hardware-scanner', [SettingController::class, 'updateHardwareScanner'])->name('settings.hardwareScanner');
 
         Route::middleware('feature:vat')->group(function () {
             Route::patch('settings/vat', [SettingController::class, 'updateVat'])->name('settings.vat');
+        });
+
+        Route::middleware('feature:restaurant_tables')->group(function () {
+            Route::patch('settings/service-charge', [SettingController::class, 'updateServiceCharge'])->name('settings.serviceCharge');
         });
 
         Route::middleware('feature:loyalty_points')->group(function () {
