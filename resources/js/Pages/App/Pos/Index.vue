@@ -3,9 +3,12 @@ import { Head, router, usePage } from '@inertiajs/vue3';
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
+import HowToHint from '@/Components/HowToHint.vue';
 import { useToast } from '@/composables/useToast';
 import { useI18n } from '@/composables/useI18n';
 import { useHardwareScanner } from '@/composables/useHardwareScanner';
+import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts';
+import { useOfflineSync } from '@/composables/useOfflineSync';
 
 const props = defineProps({
     products: Array,
@@ -29,11 +32,13 @@ const hasLoyaltyPoints = computed(() => features.value.includes('loyalty_points'
 const hasWholesalePricing = computed(() => features.value.includes('wholesale_pricing'));
 const { toast } = useToast();
 const { t } = useI18n();
+const offlineSync = useOfflineSync();
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 
 const canScan = computed(() => props.salesMode === 'scan' || props.salesMode === 'both');
 
 const q = ref('');
+const searchInput = ref(null);
 const cat = ref('all');
 const cart = ref([]); // [{product_id, product_unit_id, qty, discount}]
 const cartOpen = ref(false);
@@ -248,12 +253,44 @@ function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]')?.content || '';
 }
 
+function buildCheckoutPayload() {
+    return {
+        items: cart.value.map((l) => ({ product_id: l.product_id, product_unit_id: l.product_unit_id, product_variant_id: l.product_variant_id, qty: l.qty, discount: l.discount || 0, imei: l.imei || '' })),
+        discount: discount.value || 0,
+        coupon_code: couponCode.value || '',
+        redeem_points: redeemPoints.value || 0,
+        quotation_id: quotationId.value,
+        payments: buildPayments(),
+        customer_phone: customerPhone.value,
+        customer_name: customerName.value,
+        prescription_note: cartNeedsPrescription.value ? prescriptionNote.value : '',
+        sale_type: saleType.value,
+    };
+}
+
+function resetCartAfterCheckout() {
+    cart.value = [];
+    discount.value = 0;
+    couponCode.value = '';
+    redeemPoints.value = '';
+    quotationId.value = null;
+    customerPhone.value = '';
+    customerName.value = '';
+    customerLookup.value = null;
+    splitMode.value = false;
+    splitAmounts.value = { cash: '', bkash: '', nagad: '' };
+    saleType.value = 'retail';
+    prescriptionNote.value = '';
+    cartOpen.value = false;
+}
+
 // The checkout endpoint returns JSON (not an Inertia response), so use fetch
 // directly to get the sale/receipt payload back without a full page visit.
 async function submitCheckout() {
     if (!cart.value.length || submitting.value) return;
     submitting.value = true;
     errorMsg.value = '';
+    const payload = buildCheckoutPayload();
 
     try {
         const res = await fetch(route('app.pos.checkout'), {
@@ -263,18 +300,7 @@ async function submitCheckout() {
                 'X-CSRF-TOKEN': csrfToken(),
                 'Accept': 'application/json',
             },
-            body: JSON.stringify({
-                items: cart.value.map((l) => ({ product_id: l.product_id, product_unit_id: l.product_unit_id, product_variant_id: l.product_variant_id, qty: l.qty, discount: l.discount || 0, imei: l.imei || '' })),
-                discount: discount.value || 0,
-                coupon_code: couponCode.value || '',
-                redeem_points: redeemPoints.value || 0,
-                quotation_id: quotationId.value,
-                payments: buildPayments(),
-                customer_phone: customerPhone.value,
-                customer_name: customerName.value,
-                prescription_note: cartNeedsPrescription.value ? prescriptionNote.value : '',
-                sale_type: saleType.value,
-            }),
+            body: JSON.stringify(payload),
         });
 
         const data = await res.json();
@@ -285,23 +311,22 @@ async function submitCheckout() {
         }
 
         lastSale.value = data.sale;
-        cart.value = [];
-        discount.value = 0;
-        couponCode.value = '';
-        redeemPoints.value = '';
-        quotationId.value = null;
-        customerPhone.value = '';
-        customerName.value = '';
-        customerLookup.value = null;
-        splitMode.value = false;
-        splitAmounts.value = { cash: '', bkash: '', nagad: '' };
-        saleType.value = 'retail';
-        prescriptionNote.value = '';
-        cartOpen.value = false;
+        resetCartAfterCheckout();
         receiptOpen.value = true;
         router.reload({ only: ['products'] });
     } catch (e) {
-        errorMsg.value = t('pos.networkError');
+        // A real connectivity failure (fetch itself throwing, or
+        // navigator.onLine already false) never loses the sale — it's
+        // queued locally and replayed automatically once the connection
+        // returns (see useOfflineSync), same as a cashier's paper backup
+        // notebook, but self-syncing instead of needing manual re-entry.
+        if (!navigator.onLine || e instanceof TypeError) {
+            await offlineSync.queueSale(payload);
+            resetCartAfterCheckout();
+            toast(t('pos.savedOffline'));
+        } else {
+            errorMsg.value = t('pos.networkError');
+        }
     } finally {
         submitting.value = false;
     }
@@ -612,6 +637,20 @@ onMounted(() => {
     }, 15000);
 });
 onBeforeUnmount(() => clearInterval(pollTimer));
+
+// F-keys never collide with normal typing, so these work regardless of
+// which field currently has focus — F2 to jump into product search, F9 to
+// open checkout once something's in the cart, F4 to hold the cart for
+// later, Escape to back out of whatever's open right now.
+useKeyboardShortcuts({
+    F2: () => searchInput.value?.focus(),
+    F9: () => { if (cart.value.length) cartOpen.value = true; },
+    F4: () => holdCart(),
+    Escape: () => {
+        if (scannerOpen.value) closeScanner();
+        else if (cartOpen.value) cartOpen.value = false;
+    },
+});
 </script>
 
 <template>
@@ -619,6 +658,8 @@ onBeforeUnmount(() => clearInterval(pollTimer));
     <AppLayout active="sell">
         <div class="pgttl">{{ t('pos.title') }}</div>
         <div class="pgsub">{{ t('pos.subtitleTap') }}{{ canScan ? t('pos.subtitleScan') : '' }}</div>
+        <HowToHint :text="t('help.a1')" />
+        <div class="hidden lg:block" style="font-size:11.5px;color:var(--dim);margin-bottom:10px">{{ t('pos.shortcutsHint') }}</div>
 
         <div class="lg:flex lg:gap-6 lg:items-start">
             <!-- category rail — desktop only, the mobile tabbar below covers the same job on phone -->
@@ -630,7 +671,7 @@ onBeforeUnmount(() => clearInterval(pollTimer));
             <!-- menu -->
             <div class="lg:order-2 lg:flex-1 lg:min-w-0">
                 <div style="display:flex;gap:8px;margin-bottom:12px">
-                    <input v-model="q" :placeholder="t('pos.searchPlaceholder')" style="flex:1">
+                    <input ref="searchInput" v-model="q" :placeholder="t('pos.searchPlaceholder')" style="flex:1">
                     <button v-if="canScan" class="btn ghost" style="width:auto;padding:0 16px" :title="t('pos.scanTitle')" @click="openScanner">📷</button>
                     <button class="btn ghost lg:hidden" style="width:auto;padding:0 16px;position:relative" :title="t('pos.heldCarts')" @click="heldSheet = true">
                         📋

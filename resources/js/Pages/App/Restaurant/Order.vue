@@ -15,6 +15,10 @@ const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 
 const page = usePage();
 const shop = computed(() => page.props.shop);
+// a takeaway/parcel order has no restaurant_table_id at all (see
+// RestaurantTableController::openTakeaway), so table_name is null — this is
+// the one place that fallback label is needed everywhere the name is shown
+const displayName = computed(() => props.order.table_name || t('restaurant.takeawayLabel'));
 // preview only, mirrors TableOrderController::bill()'s exact formula — the
 // server remains authoritative at billing time, this just shows the
 // cashier roughly what to expect while still building the order
@@ -79,6 +83,24 @@ function printKot() {
     });
 }
 
+// one-click combo: sends whatever hasn't reached the kitchen yet (same
+// action as the "Print KOT" button) and, without a second tap, opens the
+// bill sheet right after — for a cashier who wants both done together
+// instead of pressing two separate buttons in sequence
+function billAndPrintKot() {
+    if (splitMode.value && !selectedItemIds.value.length) return;
+    printKot();
+    billSheet.value = true;
+}
+
+// same one-click idea, but sends the kitchen ticket over WhatsApp instead of
+// printing it — for a kitchen that reads orders off a phone, not a printer
+function billAndSendKotWA() {
+    if (splitMode.value && !selectedItemIds.value.length) return;
+    sendKotWA();
+    billSheet.value = true;
+}
+
 // UI-only preference (see the migration's comment) — reorders/relabels the
 // kitchen-send vs bill-now actions below, never blocks either one
 const payFirst = computed(() => shop.value?.payment_timing === 'pay_first');
@@ -91,7 +113,7 @@ function sendKotWA() {
         ? `\n🛵 ${t('restaurant.sourceDelivery')} — ${props.order.delivery_platform || ''}`
         : props.order.order_source === 'takeaway' ? `\n🥡 ${t('restaurant.sourceTakeaway')}` : '';
     const noteLine = props.order.kitchen_note ? `\n📝 ${props.order.kitchen_note}` : '';
-    const text = `*${t('restaurant.kotTitle')}*\n${'─'.repeat(16)}\n${props.order.table_name}${sourceLine}\n${'─'.repeat(16)}\n${lines}${noteLine}`;
+    const text = `*${t('restaurant.kotTitle')}*\n${'─'.repeat(16)}\n${displayName.value}${sourceLine}\n${'─'.repeat(16)}\n${lines}${noteLine}`;
     // mark as sent to kitchen too, same as the print button — WhatsApp is
     // just an alternate delivery channel for the same "sent to kitchen" event
     router.post(route('app.restaurant.orders.kot', props.order.id), {}, {
@@ -176,9 +198,9 @@ onBeforeUnmount(() => clearInterval(pollTimer));
 </script>
 
 <template>
-    <Head :title="order.table_name" />
+    <Head :title="displayName" />
     <AppLayout active="restaurant">
-        <div class="pgttl">{{ order.table_name }}</div>
+        <div class="pgttl">{{ displayName }}</div>
         <div class="pgsub">{{ t('restaurant.orderTitle') }} • {{ money(order.total) }}</div>
 
         <div class="lg:flex lg:gap-6 lg:items-start">
@@ -212,7 +234,7 @@ onBeforeUnmount(() => clearInterval(pollTimer));
                     <button v-if="metaChanged" class="btn sm ghost" style="width:100%" :disabled="metaForm.processing" @click="saveMeta">{{ metaForm.processing ? '...' : t('stock.save') }}</button>
                 </div>
 
-                <div v-if="freeTables.length || otherOccupiedTables.length" class="btnrow" style="margin-bottom:14px">
+                <div v-if="order.table_id && (freeTables.length || otherOccupiedTables.length)" class="btnrow" style="margin-bottom:14px">
                     <button v-if="freeTables.length" class="btn sm ghost" style="flex:1" @click="tableActionMode = 'transfer'; tableActionTargetId = ''; tableActionSheet = true">🔀 {{ t('restaurant.transferTable') }}</button>
                     <button v-if="otherOccupiedTables.length" class="btn sm ghost" style="flex:1" @click="tableActionMode = 'merge'; tableActionTargetId = ''; tableActionSheet = true">🔗 {{ t('restaurant.mergeTable') }}</button>
                 </div>
@@ -283,6 +305,12 @@ onBeforeUnmount(() => clearInterval(pollTimer));
                         <button class="btn sm" style="flex:1" :disabled="!order.items.length || (splitMode && !selectedItemIds.length)" @click="openBillSheet">{{ splitMode ? t('restaurant.billSelected') : t('restaurant.billNow') }}</button>
                     </div>
                 </template>
+                <button class="btn" style="margin-bottom:8px;background:var(--green)" :disabled="!order.items.length || (splitMode && !selectedItemIds.length)" @click="billAndPrintKot">
+                    🧾 {{ t('restaurant.billAndKot') }}
+                </button>
+                <button v-if="kitchenWaNumber" class="btn wa" style="margin-bottom:10px" :disabled="!order.items.length || (splitMode && !selectedItemIds.length)" @click="billAndSendKotWA">
+                    📤 {{ t('restaurant.billAndKotWa') }}
+                </button>
                 <button class="btn ghost" style="margin-bottom:16px;color:var(--rose);border-color:var(--rose)" @click="cancelOrder">{{ t('restaurant.cancelOrder') }}</button>
             </div>
 
@@ -323,7 +351,7 @@ onBeforeUnmount(() => clearInterval(pollTimer));
             <div id="printable-kot">
                 <h3>{{ t('restaurant.kotTitle') }}</h3>
                 <div class="rc-sub">
-                    {{ order.table_name }} • {{ new Date().toLocaleString() }}
+                    {{ displayName }} • {{ new Date().toLocaleString() }}
                     <template v-if="order.order_source === 'delivery'"><br>🛵 {{ t('restaurant.sourceDelivery') }} — {{ order.delivery_platform }}</template>
                     <template v-else-if="order.order_source === 'takeaway'"><br>🥡 {{ t('restaurant.sourceTakeaway') }}</template>
                 </div>

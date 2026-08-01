@@ -44,7 +44,7 @@ class TableOrderController extends Controller
                 'id' => $tableOrder->id,
                 'status' => $tableOrder->status,
                 'table_id' => $tableOrder->restaurant_table_id,
-                'table_name' => $tableOrder->table->name,
+                'table_name' => $tableOrder->table?->name,
                 'items' => $tableOrder->items,
                 'total' => $tableOrder->total(),
                 'has_unprinted' => $tableOrder->items->whereNull('kot_printed_at')->isNotEmpty(),
@@ -243,9 +243,10 @@ class TableOrderController extends Controller
                 }
             }
             $lockedOrder->update(['status' => 'cancelled']);
-            $lockedOrder->table->update(['status' => 'free']);
+            $lockedOrder->table?->update(['status' => 'free']);
 
-            Activity::log('restaurant.cancel', "টেবিল '{$lockedOrder->table->name}'-এর অর্ডার বাতিল করা হয়েছে (স্টক ফেরত)।", $lockedOrder);
+            $label = $lockedOrder->table?->name ?? 'টেকঅ্যাওয়ে/পার্সেল';
+            Activity::log('restaurant.cancel', "'{$label}'-এর অর্ডার বাতিল করা হয়েছে (স্টক ফেরত)।", $lockedOrder);
         });
 
         return redirect()->route('app.restaurant.tables.index')->with('success', 'অর্ডার বাতিল করা হয়েছে — স্টক ফেরত দেওয়া হয়েছে।');
@@ -420,15 +421,16 @@ class TableOrderController extends Controller
             // billed — a split bill that still leaves items open must
             // keep the table occupied and the order open for the rest
             $stillOpen = TableOrderItem::where('table_order_id', $lockedOrder->id)->whereNull('sale_id')->exists();
+            $label = $lockedOrder->table?->name ?? 'টেকঅ্যাওয়ে/পার্সেল';
             if ($stillOpen) {
-                Activity::log('restaurant.splitBill', "টেবিল '{$lockedOrder->table->name}'-এর একটি স্প্লিট বিল করা হয়েছে — মেমো {$invoiceNo}, বাকি আইটেম এখনো খোলা।", $sale, [
+                Activity::log('restaurant.splitBill', "'{$label}'-এর একটি স্প্লিট বিল করা হয়েছে — মেমো {$invoiceNo}, বাকি আইটেম এখনো খোলা।", $sale, [
                     'total' => $total,
                 ]);
             } else {
                 $lockedOrder->update(['status' => 'billed', 'sale_id' => $sale->id]);
-                $lockedOrder->table->update(['status' => 'free']);
+                $lockedOrder->table?->update(['status' => 'free']);
 
-                Activity::log('restaurant.bill', "টেবিল '{$lockedOrder->table->name}' বিল করা হয়েছে — মেমো {$invoiceNo}।", $sale, [
+                Activity::log('restaurant.bill', "'{$label}' বিল করা হয়েছে — মেমো {$invoiceNo}।", $sale, [
                     'total' => $total,
                 ]);
             }

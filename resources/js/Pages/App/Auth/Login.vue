@@ -1,5 +1,5 @@
 <script setup>
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, useForm, Link } from '@inertiajs/vue3';
 import ZaylotixLogo from '@/Components/ZaylotixLogo.vue';
 import { useI18n } from '@/composables/useI18n';
 
@@ -56,6 +56,7 @@ function submit() {
                         {{ form.processing ? '...' : t('login.submit') }}
                     </button>
                     <div class="lc-hint">{{ t('login.hint') }} <b>1234</b></div>
+                    <div class="lc-hint">{{ t('login.noAccount') }}<Link :href="route('signup')" style="color:var(--green);font-weight:700">{{ t('login.signupLink') }}</Link></div>
                 </form>
             </div>
 

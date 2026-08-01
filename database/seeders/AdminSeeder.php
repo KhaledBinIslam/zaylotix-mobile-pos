@@ -11,7 +11,7 @@ class AdminSeeder extends Seeder
     {
         Admin::updateOrCreate(
             ['email' => 'admin@zaylotix.com'],
-            ['name' => 'Khaled Bin Islam', 'password' => 'password']
+            ['name' => 'Khaled Bin Islam', 'password' => 'password', 'role' => 'super_admin']
         );
     }
 }

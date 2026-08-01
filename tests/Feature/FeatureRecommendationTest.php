@@ -30,6 +30,19 @@ class FeatureRecommendationTest extends TestCase
         $this->assertContains('activity_log', $supershop);
     }
 
+    public function test_every_business_type_with_memo_print_also_gets_memo_whatsapp(): void
+    {
+        // A shop that can print a memo must also be able to send it over
+        // WhatsApp — this was previously true only for 'supershop', leaving
+        // every other business type without the WhatsApp bill option.
+        foreach (array_keys(config('business_types')) as $slug) {
+            $features = config("business_types.{$slug}.features");
+            if (in_array('memo_print', $features, true)) {
+                $this->assertContains('memo_whatsapp', $features, "{$slug} has memo_print but not memo_whatsapp");
+            }
+        }
+    }
+
     public function test_unknown_business_type_returns_no_recommendations(): void
     {
         $this->assertSame([], FeatureRecommendations::forBusinessType('not-a-real-type'));

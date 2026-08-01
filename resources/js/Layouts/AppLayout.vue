@@ -2,13 +2,22 @@
 import { Link, usePage, router } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
 import Toast from '@/Components/Toast.vue';
+import HelpButton from '@/Components/HelpButton.vue';
 import ZaylotixMark from '@/Components/ZaylotixMark.vue';
+import Sheet from '@/Components/Sheet.vue';
 import { useToast } from '@/composables/useToast';
 import { useI18n } from '@/composables/useI18n';
+import { useOfflineSync } from '@/composables/useOfflineSync';
 
 const props = defineProps({ active: { type: String, default: 'home' } });
 
 const page = usePage();
+const offlineSync = useOfflineSync();
+const failedSheet = ref(false);
+const impersonating = computed(() => page.props.impersonating);
+function stopImpersonating() {
+    router.post(route('admin.impersonate.stop'));
+}
 const shop = computed(() => page.props.shop);
 const platformLogoUrl = computed(() => page.props.platformLogoUrl);
 const user = computed(() => page.props.auth?.user);
@@ -90,6 +99,17 @@ function goBack() {
     window.history.back();
 }
 
+// friendly Bengali screen name sent along with the WhatsApp help message —
+// so support immediately knows which screen the owner is stuck on without
+// them having to explain it themselves
+const SCREEN_LABELS = {
+    home: 'হোম', sell: 'বিক্রি (POS)', restaurant: 'টেবিল', stock: 'স্টক', due: 'বাকি',
+    sales: 'বিক্রির ইতিহাস', promotions: 'অফার/কুপন', quotations: 'কোটেশন', accounts: 'হিসাব-নিকাশ',
+    reports: 'রিপোর্ট', expenses: 'খরচ', purchaseHistory: 'ক্রয়ের ইতিহাস', suppliers: 'সাপ্লায়ার',
+    serials: 'IMEI/ওয়ারেন্টি', cashier: 'ক্যাশিয়ার', activity: 'অ্যাক্টিভিটি লগ', more: 'আরও', help: 'সাহায্য', partners: 'পার্টনার হিসাব', employees: 'কর্মচারী ও বেতন',
+};
+const screenLabel = computed(() => SCREEN_LABELS[props.active] || props.active);
+
 // The "আরো" page (More.vue) holds a few actions that don't have their own
 // route — a cashier form, the shop logo, purchase/damage/return/stock-count
 // sheets, and data export — they're all opened as sheets on that one page.
@@ -104,6 +124,13 @@ function isMoreLinkActive(openKey) {
     const params = new URLSearchParams(page.url.split('?')[1] || '');
     return (params.get('open') || null) === (openKey || null);
 }
+
+// The mobile bottom bar only has room for ONE big "Sell" button (unlike the
+// desktop sidebar, which lists Sell and Tables as two separate links) — for
+// a shop with table service turned on, that one button has to go straight to
+// the table/kitchen flow, or a phone-only cashier would never reach it at all.
+const mobileSellHref = computed(() => hasFeature('restaurant_tables') ? route('app.restaurant.tables.index') : route('app.pos'));
+const mobileSellActive = computed(() => props.active === 'sell' || props.active === 'restaurant');
 
 // Grouped nav for the desktop sidebar — richer than the 5-icon mobile
 // bottom bar since a sidebar has room to show everything at once.
@@ -137,6 +164,7 @@ const sidebarGroups = computed(() => [
         label: t('nav.category.accounts'),
         items: [
             { key: 'accounts', label: t('nav.accounts'), href: route('app.accounts'), icon: '💼', on: props.active === 'accounts', show: hasPerm('accounts') && hasFeature('accounts') },
+            { key: 'partners', label: t('nav.partners'), href: route('app.partners.index'), icon: '🤝', on: props.active === 'partners', show: isOwner.value && hasFeature('partners') },
             { key: 'reports', label: t('nav.reports'), href: route('app.reports'), icon: '📊', on: props.active === 'reports', show: hasPerm('reports') && hasFeature('reports') },
             { key: 'expenses', label: t('nav.expenses'), href: route('app.expenses'), icon: '💸', on: props.active === 'expenses', show: hasPerm('expenses') && hasFeature('expenses') },
             { key: 'export', label: t('nav.export'), href: moreLink('export'), icon: '📤', on: isMoreLinkActive('export'), show: hasPerm('export') && hasFeature('export') },
@@ -147,6 +175,8 @@ const sidebarGroups = computed(() => [
         items: [
             { key: 'cashier', label: t('nav.cashier'), href: route('app.staff.index'), icon: '👤', on: props.active === 'cashier', show: isOwner.value && hasFeature('cashier_management') },
             { key: 'activity', label: t('nav.activity'), href: route('app.activity'), icon: '📋', on: props.active === 'activity', show: isOwner.value && hasFeature('activity_log') },
+            { key: 'help', label: t('nav.help'), href: route('app.help'), icon: '❓', on: props.active === 'help', show: true },
+            { key: 'employees', label: t('nav.employees'), href: route('app.employees.index'), icon: '👥', on: props.active === 'employees', show: isOwner.value && hasFeature('hr_payroll') },
             { key: 'logo', label: t('nav.logo'), href: moreLink('logo'), icon: '🖼️', on: isMoreLinkActive('logo'), show: hasPerm('settings') },
             { key: 'more', label: t('nav.moreAll'), href: moreLink(), icon: '⚙️', on: isMoreLinkActive(), show: true },
         ],
@@ -253,6 +283,16 @@ const sidebarGroups = computed(() => [
                 </div>
 
                 <div id="view">
+                    <button v-if="impersonating" class="expiry-banner urgent" style="width:100%;text-align:left;cursor:pointer" @click="stopImpersonating">
+                        🕵️ {{ t('impersonate.banner', { admin: impersonating.adminName || 'Admin' }) }}
+                    </button>
+                    <div v-if="!offlineSync.isOnline.value" class="expiry-banner urgent">
+                        📴 {{ t('offline.banner') }}
+                    </div>
+                    <button v-if="offlineSync.pendingCount.value || offlineSync.failedCount.value" class="expiry-banner" style="width:100%;text-align:left;cursor:pointer" @click="offlineSync.failedCount.value ? (failedSheet = true) : offlineSync.trySync()">
+                        <template v-if="offlineSync.failedCount.value">⚠️ {{ t('offline.failedCount', { n: offlineSync.failedCount.value }) }}</template>
+                        <template v-else>🔄 {{ t('offline.pendingCount', { n: offlineSync.pendingCount.value }) }}</template>
+                    </button>
                     <div v-if="showExpiryBanner" class="expiry-banner" :class="{ urgent: daysLeft <= 1 }">
                         ⏰ {{ expiryBannerText }} <a href="tel:01979894356">01979894356</a>
                     </div>
@@ -272,7 +312,7 @@ const sidebarGroups = computed(() => [
                         <svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4z" /><path d="M3 7v10l9 4 9-4V7" /><path d="M12 11v10" /></svg>
                         <span>{{ t('nav.stock') }}</span>
                     </Link>
-                    <Link v-if="hasPerm('pos')" :href="route('app.pos')" class="tab sell" :class="{ on: active === 'sell' }">
+                    <Link v-if="hasPerm('pos')" :href="mobileSellHref" class="tab sell" :class="{ on: mobileSellActive }">
                         <span class="fab"><svg viewBox="0 0 24 24"><path d="M4 7V5a1 1 0 0 1 1-1h2M4 17v2a1 1 0 0 0 1 1h2M20 7V5a1 1 0 0 0-1-1h-2M20 17v2a1 1 0 0 1-1 1h-2M4 12h16" /></svg></span>
                         <span>{{ t('nav.sell') }}</span>
                     </Link>
@@ -311,5 +351,20 @@ const sidebarGroups = computed(() => [
         </div>
     </template>
 
+    <Sheet v-model="failedSheet" :title="t('offline.failedTitle')">
+        <div v-for="entry in offlineSync.queue.value.filter(e => e.status === 'failed')" :key="entry.id" class="row" style="cursor:default">
+            <div class="ava pill rose" style="border-radius:12px;padding:0;width:42px;height:42px;font-size:18px">⚠️</div>
+            <div class="mid">
+                <b>{{ t('offline.saleQueuedAt', { time: new Date(entry.queuedAt).toLocaleString() }) }}</b>
+                <span>{{ entry.error }}</span>
+            </div>
+        </div>
+        <div class="btnrow" style="margin-top:12px">
+            <button class="btn sm" style="flex:1" @click="offlineSync.queue.value.filter(e => e.status === 'failed').forEach(e => offlineSync.retry(e.id))">{{ t('offline.retryAll') }}</button>
+            <button class="btn sm ghost" style="flex:1" @click="offlineSync.queue.value.filter(e => e.status === 'failed').forEach(e => offlineSync.discard(e.id)); failedSheet = false">{{ t('offline.discardAll') }}</button>
+        </div>
+    </Sheet>
+
+    <HelpButton :screen-label="screenLabel" />
     <Toast />
 </template>

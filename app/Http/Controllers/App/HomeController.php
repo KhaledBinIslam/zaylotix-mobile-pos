@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Support\Tenancy;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 
 class HomeController extends Controller
@@ -15,6 +16,14 @@ class HomeController extends Controller
     public function index()
     {
         $shop = Tenancy::shop();
+
+        // Only the owner sees the first-run wizard — a cashier logging in
+        // for the first time on a shop the owner already set up shouldn't
+        // be walked through "how to use this app" as if it were new to them.
+        if (Auth::guard('web')->user()?->role === 'owner' && ! $shop?->onboarded_at) {
+            return redirect()->route('app.onboarding');
+        }
+
         $today = now()->toDateString();
         $weekAgo = now()->subDays(6)->toDateString();
         $monthAgo = now()->subDays(29)->toDateString();

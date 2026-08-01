@@ -4,7 +4,9 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import Pagination from '@/Components/Pagination.vue';
+import HowToHint from '@/Components/HowToHint.vue';
 import { useI18n } from '@/composables/useI18n';
+import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts';
 
 const props = defineProps({
     products: Object, categories: Array, units: Array, stats: Object, q: String, categoryId: [Number, String],
@@ -29,6 +31,7 @@ const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 // — necessary once the list is paginated, since a client-side filter can
 // only ever see whatever page happened to load, not the whole catalog
 const q = ref(props.q || '');
+const searchInput = ref(null);
 const cat = ref(props.categoryId || 'all');
 const companyFilter = ref(props.company || '');
 const genericFilter = ref(props.genericName || '');
@@ -257,6 +260,12 @@ onMounted(() => {
     }, 15000);
 });
 onBeforeUnmount(() => clearInterval(pollTimer));
+
+useKeyboardShortcuts({
+    F2: () => searchInput.value?.focus(),
+    F9: () => openNew(),
+    Escape: () => { if (productSheet.value) productSheet.value = false; },
+});
 </script>
 
 <template>
@@ -264,6 +273,8 @@ onBeforeUnmount(() => clearInterval(pollTimer));
     <AppLayout active="stock">
         <div class="pgttl">{{ t('nav.stockFull') }}</div>
         <div class="pgsub">{{ t('stock.subtitle') }} {{ totalProducts }} {{ t('home.products') }}</div>
+        <HowToHint :text="t('help.a2')" />
+        <div class="hidden lg:block" style="font-size:11.5px;color:var(--dim);margin-bottom:10px">{{ t('stock.shortcutsHint') }}</div>
 
         <div class="grid2" style="margin-bottom:14px">
             <div class="stat sky"><div class="k">{{ t('stock.totalProducts') }}</div><div class="v">{{ totalProducts }}</div></div>
@@ -278,7 +289,7 @@ onBeforeUnmount(() => clearInterval(pollTimer));
         </div>
 
         <div style="display:flex;gap:8px;margin-bottom:12px">
-            <input v-model="q" :placeholder="t('stock.searchPlaceholder')" style="flex:1" @keyup.enter="applyFilter">
+            <input ref="searchInput" v-model="q" :placeholder="t('stock.searchPlaceholder')" style="flex:1" @keyup.enter="applyFilter">
             <button class="btn sm" style="width:auto;padding:0 16px" @click="applyFilter">{{ t('sales.searchButton') }}</button>
         </div>
 

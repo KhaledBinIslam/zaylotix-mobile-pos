@@ -29,7 +29,7 @@ return [
         'features' => [
             'memo_print', 'memo_whatsapp', 'unit_conversion', 'weight_based_selling', 'wholesale_pricing', 'barcode_printing',
             'purchases', 'suppliers', 'damages', 'returns', 'stock_count', 'low_stock_alerts',
-            'batch_tracking', 'accounts', 'expenses', 'reports', 'export', 'vat',
+            'batch_tracking', 'accounts', 'partners', 'expenses', 'reports', 'export', 'vat',
             'cashier_management', 'activity_log',
         ],
         'categories' => [
@@ -63,7 +63,7 @@ return [
         // purchase ledger or stock-count reconciliation to run day to day;
         // loose-selling from a box (unit_conversion) is the one thing even
         // the smallest shop here actually uses constantly
-        'features' => ['memo_print', 'unit_conversion', 'weight_based_selling', 'accounts', 'expenses', 'reports'],
+        'features' => ['memo_print', 'memo_whatsapp', 'unit_conversion', 'weight_based_selling', 'accounts', 'partners', 'expenses', 'reports'],
         'categories' => [
             ['name' => 'মুদি', 'name_en' => 'Grocery', 'emoji' => '🛒'],
             ['name' => 'তেল-ঘি', 'name_en' => 'Oil & Ghee', 'emoji' => '🫒'],
@@ -93,8 +93,8 @@ return [
         // returns matter a lot here (size/fit exchanges); perishable-stock
         // features (damages, low-stock alerts) are less relevant
         'features' => [
-            'memo_print', 'barcode_printing', 'purchases', 'returns', 'stock_count', 'product_variants',
-            'accounts', 'expenses', 'reports', 'export', 'cashier_management',
+            'memo_print', 'memo_whatsapp', 'barcode_printing', 'purchases', 'returns', 'stock_count', 'product_variants',
+            'accounts', 'partners', 'expenses', 'reports', 'export', 'cashier_management',
         ],
         'categories' => [
             ['name' => 'শার্ট', 'name_en' => 'Shirts', 'emoji' => '👔'],
@@ -120,8 +120,8 @@ return [
         'fields' => ['expiry', 'batch'],
         // regulated, perishable stock — full tracking + VAT + accountability
         'features' => [
-            'memo_print', 'barcode_printing', 'purchases', 'suppliers', 'damages', 'returns',
-            'stock_count', 'low_stock_alerts', 'batch_tracking', 'prescription_records', 'wholesale_pricing', 'accounts', 'expenses', 'reports', 'export', 'vat',
+            'memo_print', 'memo_whatsapp', 'barcode_printing', 'purchases', 'suppliers', 'damages', 'returns',
+            'stock_count', 'low_stock_alerts', 'batch_tracking', 'prescription_records', 'wholesale_pricing', 'accounts', 'partners', 'expenses', 'reports', 'export', 'vat',
             'cashier_management', 'activity_log',
         ],
         'categories' => [
@@ -146,8 +146,8 @@ return [
         // high-value, theft-prone stock — accountability (activity_log) and
         // full purchase/damage tracking matter more here than in a grocery
         'features' => [
-            'memo_print', 'barcode_printing', 'purchases', 'damages', 'returns', 'stock_count',
-            'low_stock_alerts', 'serial_tracking', 'accounts', 'expenses', 'reports', 'export', 'vat',
+            'memo_print', 'memo_whatsapp', 'barcode_printing', 'purchases', 'damages', 'returns', 'stock_count',
+            'low_stock_alerts', 'serial_tracking', 'accounts', 'partners', 'expenses', 'reports', 'export', 'vat',
             'cashier_management', 'activity_log',
         ],
         'categories' => [
@@ -171,8 +171,8 @@ return [
         // expiry-sensitive but smaller-scale than a pharmacy — skip vat/
         // activity_log/suppliers by default, admin can add if the shop grows
         'features' => [
-            'memo_print', 'barcode_printing', 'purchases', 'damages', 'returns',
-            'stock_count', 'low_stock_alerts', 'batch_tracking', 'accounts', 'expenses', 'reports',
+            'memo_print', 'memo_whatsapp', 'barcode_printing', 'purchases', 'damages', 'returns',
+            'stock_count', 'low_stock_alerts', 'batch_tracking', 'accounts', 'partners', 'expenses', 'reports',
         ],
         'categories' => [
             ['name' => 'স্কিন কেয়ার', 'name_en' => 'Skin care', 'emoji' => '🧴'],
@@ -194,7 +194,7 @@ return [
         'fields' => [],
         // catch-all for a shop that doesn't fit a specific type — stays
         // conservative like grocery, admin adjusts once they know the shop
-        'features' => ['memo_print', 'accounts', 'expenses', 'reports'],
+        'features' => ['memo_print', 'memo_whatsapp', 'accounts', 'partners', 'expenses', 'reports'],
         'categories' => [
             ['name' => 'সাধারণ', 'name_en' => 'General', 'emoji' => '📦'],
             ['name' => 'অন্যান্য', 'name_en' => 'Other', 'emoji' => '🗂️'],
@@ -220,8 +220,8 @@ return [
         // happens), no unit-conversion/batch/variant/serial verticals since
         // those aren't how a restaurant's menu items work
         'features' => [
-            'memo_print', 'restaurant_tables', 'purchases', 'damages', 'low_stock_alerts',
-            'accounts', 'expenses', 'reports', 'export', 'vat', 'cashier_management', 'activity_log',
+            'memo_print', 'memo_whatsapp', 'restaurant_tables', 'purchases', 'damages', 'low_stock_alerts',
+            'accounts', 'partners', 'expenses', 'reports', 'export', 'vat', 'cashier_management', 'activity_log',
         ],
         'categories' => [
             ['name' => 'ভাত-তরকারি', 'name_en' => 'Rice & Curry', 'emoji' => '🍛'],

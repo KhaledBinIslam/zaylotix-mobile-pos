@@ -8,6 +8,7 @@ use App\Http\Requests\Admin\UpdateShopRequest;
 use App\Models\BusinessType;
 use App\Models\Feature;
 use App\Models\Shop;
+use App\Support\AdminActivity;
 use App\Support\ShopProvisioner;
 use App\Support\Tenancy;
 use Illuminate\Http\Request;
@@ -82,6 +83,8 @@ class ShopController extends Controller
             featureKeys: $data['features'] ?? [],
         );
 
+        AdminActivity::log('shop.create', "Created shop '{$shop->name}'.", $shop);
+
         return redirect()->route('admin.shops.index')->with('success', "Shop '{$shop->name}' created.");
     }
 
@@ -111,12 +114,16 @@ class ShopController extends Controller
         $ids = Feature::whereIn('key', $featureKeys)->pluck('id');
         $shop->features()->sync($ids);
 
+        AdminActivity::log('shop.update', "Updated shop '{$shop->name}'.", $shop);
+
         return redirect()->route('admin.shops.index')->with('success', 'Shop updated.');
     }
 
     public function toggleStatus(Shop $shop)
     {
         $shop->update(['status' => $shop->status === 'active' ? 'inactive' : 'active']);
+
+        AdminActivity::log('shop.toggleStatus', "Shop '{$shop->name}' is now {$shop->status}.", $shop);
 
         return back()->with('success', "Shop is now {$shop->status}.");
     }
@@ -176,6 +183,8 @@ class ShopController extends Controller
         }
 
         $shop->delete();
+
+        AdminActivity::log('shop.delete', "Permanently deleted shop '{$name}' and all its data.");
 
         return redirect()->route('admin.shops.index')->with('success', "শপ '{$name}' এবং এর সমস্ত ডেটা স্থায়ীভাবে মুছে ফেলা হয়েছে।");
     }

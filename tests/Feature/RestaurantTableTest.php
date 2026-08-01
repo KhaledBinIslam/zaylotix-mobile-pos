@@ -234,6 +234,27 @@ class RestaurantTableTest extends TestCase
         $this->assertEquals(10, $product->fresh()->stock);
     }
 
+    public function test_tables_index_shows_waiter_source_and_unprinted_status_for_occupied_tables(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'restaurant_tables');
+        $table = RestaurantTable::create(['shop_id' => $shop->id, 'name' => 'T1', 'status' => 'occupied']);
+        $order = TableOrder::create([
+            'shop_id' => $shop->id, 'restaurant_table_id' => $table->id, 'status' => 'open', 'opened_at' => now(),
+            'waiter_name' => 'Karim', 'order_source' => 'takeaway',
+        ]);
+        TableOrderItem::create(['shop_id' => $shop->id, 'table_order_id' => $order->id, 'product_name' => 'Biryani', 'qty' => 1, 'price' => 200, 'cost' => 100]);
+
+        $response = $this->actingAs($owner, 'web')->get('/app/restaurant/tables');
+
+        $response->assertOk()->assertInertia(fn ($page) => $page
+            ->where('tables.0.waiter_name', 'Karim')
+            ->where('tables.0.order_source', 'takeaway')
+            ->where('tables.0.has_unprinted', true)
+            ->has('tables.0.opened_at')
+        );
+    }
+
     public function test_tables_are_tenant_scoped(): void
     {
         [$shopA, $ownerA] = $this->createShopWithOwner();

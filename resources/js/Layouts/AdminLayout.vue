@@ -10,6 +10,7 @@ defineProps({ active: String });
 const page = usePage();
 const { toast } = useToast();
 const platformLogoUrl = computed(() => page.props.platformLogoUrl);
+const isSuperAdmin = computed(() => page.props.auth?.admin?.role === 'super_admin');
 watch(() => page.props.flash?.success, (msg) => { if (msg) toast(msg); });
 
 const mobileOpen = ref(false);
@@ -19,15 +20,19 @@ function logout() {
     router.post(route('admin.logout'));
 }
 
-const nav = [
-    { key: 'dashboard', label: 'Dashboard', icon: '📊', route: 'admin.dashboard' },
-    { key: 'shops', label: 'Shops', icon: '🏬', route: 'admin.shops.index' },
-    { key: 'subscriptions', label: 'Subscriptions', icon: '💳', route: 'admin.subscriptions.index' },
-    { key: 'businessTypes', label: 'Business Types', icon: '🗂️', route: 'admin.businessTypes.index' },
-    { key: 'features', label: 'Features', icon: '🧩', route: 'admin.features.index' },
-    { key: 'siteSettings', label: 'Site Settings', icon: '🖼️', route: 'admin.siteSettings.edit' },
-    { key: 'backups', label: 'Backups', icon: '💾', route: 'admin.backups.index' },
-];
+const nav = computed(() => [
+    { key: 'dashboard', label: 'Dashboard', icon: '📊', route: 'admin.dashboard', show: true },
+    { key: 'shops', label: 'Shops', icon: '🏬', route: 'admin.shops.index', show: true },
+    { key: 'analytics', label: 'Analytics', icon: '📈', route: 'admin.analytics.index', show: true },
+    { key: 'subscriptions', label: 'Subscriptions', icon: '💳', route: 'admin.subscriptions.index', show: true },
+    { key: 'businessTypes', label: 'Business Types', icon: '🗂️', route: 'admin.businessTypes.index', show: isSuperAdmin.value },
+    { key: 'features', label: 'Features', icon: '🧩', route: 'admin.features.index', show: isSuperAdmin.value },
+    { key: 'activityLog', label: 'Activity Log', icon: '📋', route: 'admin.activityLog.index', show: true },
+    { key: 'systemHealth', label: 'System Health', icon: '🩺', route: 'admin.systemHealth.index', show: true },
+    { key: 'admins', label: 'Admin Accounts', icon: '🔑', route: 'admin.admins.index', show: isSuperAdmin.value },
+    { key: 'siteSettings', label: 'Site Settings', icon: '🖼️', route: 'admin.siteSettings.edit', show: isSuperAdmin.value },
+    { key: 'backups', label: 'Backups', icon: '💾', route: 'admin.backups.index', show: isSuperAdmin.value },
+].filter((i) => i.show));
 </script>
 
 <template>

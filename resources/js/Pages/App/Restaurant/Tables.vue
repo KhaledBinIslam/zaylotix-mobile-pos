@@ -5,7 +5,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import { useI18n } from '@/composables/useI18n';
 
-const props = defineProps({ tables: Array });
+const props = defineProps({ tables: Array, takeawayOrders: { type: Array, default: () => [] } });
 const { t } = useI18n();
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 
@@ -39,6 +39,11 @@ function openTable(tbl) {
 function goToOrder(tbl) {
     if (tbl.open_order_id) router.visit(route('app.restaurant.orders.show', tbl.open_order_id));
 }
+// takeaway/parcel customers have no table to sit at — this starts an order
+// with no table attached at all, instead of forcing one to be picked first
+function startTakeaway() {
+    router.post(route('app.restaurant.takeaway.open'));
+}
 function removeTable(tbl) {
     if (!confirm(`"${tbl.name}" ${t('restaurant.removeTableConfirm')}`)) return;
     router.delete(route('app.restaurant.tables.destroy', tbl.id));
@@ -57,6 +62,24 @@ onBeforeUnmount(() => clearInterval(pollTimer));
     <AppLayout active="restaurant">
         <div class="pgttl">{{ t('restaurant.tablesTitle') }}</div>
         <div class="pgsub">{{ t('restaurant.tablesSubtitle') }}</div>
+
+        <!-- takeaway/parcel has nothing to do with a physical table, so this
+             starts one directly instead of being buried behind picking a table -->
+        <button class="btn" style="margin-bottom:14px;background:var(--gold)" @click="startTakeaway">
+            🥡 {{ t('restaurant.newTakeaway') }}
+        </button>
+
+        <div v-if="takeawayOrders.length" style="margin-bottom:14px">
+            <div class="sechead"><h2>{{ t('restaurant.activeTakeaway') }}</h2></div>
+            <div v-for="o in takeawayOrders" :key="o.id" class="row" @click="router.visit(route('app.restaurant.orders.show', o.id))">
+                <div class="ava">🥡</div>
+                <div class="mid">
+                    <b>{{ o.order_source === 'delivery' ? t('restaurant.sourceDelivery') : t('restaurant.sourceTakeaway') }} #{{ o.id }}</b>
+                    <span>{{ o.item_count }} {{ t('restaurant.items') }} • {{ o.opened_at }}</span>
+                </div>
+                <div class="end"><b>{{ money(o.total) }}</b></div>
+            </div>
+        </div>
 
         <div class="grid2" style="margin-bottom:14px">
             <div class="stat rose">
@@ -110,6 +133,12 @@ onBeforeUnmount(() => clearInterval(pollTimer));
                     <div class="ps">
                         <span v-if="tb.status === 'occupied'" style="color:var(--rose)">{{ t('restaurant.occupied') }}</span>
                         <span v-else style="color:var(--green)">{{ t('restaurant.free') }}</span>
+                    </div>
+                    <div v-if="tb.status === 'occupied'" style="font-size:10.5px;color:var(--mut);margin-top:4px;line-height:1.5">
+                        <div v-if="tb.waiter_name">🧑‍🍳 {{ tb.waiter_name }}</div>
+                        <div v-if="tb.order_source && tb.order_source !== 'dine_in'">{{ tb.order_source === 'delivery' ? '🛵' : '🥡' }} {{ tb.order_source === 'delivery' ? t('restaurant.sourceDelivery') : t('restaurant.sourceTakeaway') }}</div>
+                        <div v-if="tb.opened_at">🕒 {{ tb.opened_at }}</div>
+                        <div v-if="tb.has_unprinted" style="color:var(--gold2);font-weight:700">⏳ {{ t('restaurant.kotPending') }}</div>
                     </div>
                 </button>
                 <button v-if="tb.status !== 'occupied'" class="btn sm ghost" style="margin-top:6px" @click.stop="removeTable(tb)">{{ t('common.delete') }}</button>

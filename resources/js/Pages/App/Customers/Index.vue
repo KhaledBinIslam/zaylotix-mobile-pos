@@ -3,6 +3,7 @@ import { Head, useForm, router, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
+import HowToHint from '@/Components/HowToHint.vue';
 import { useToast } from '@/composables/useToast';
 import { useI18n } from '@/composables/useI18n';
 
@@ -101,6 +102,7 @@ function sendOffer() {
     <AppLayout active="due">
         <div class="pgttl">{{ t('nav.dueFull') }}</div>
         <div class="pgsub">{{ t('due.subtitle') }}</div>
+        <HowToHint :text="t('help.a3')" />
 
         <div class="card" style="background:linear-gradient(135deg,var(--roseSoft),#fff);border-color:var(--line2);margin-bottom:16px">
             <div class="k" style="color:var(--mut);font-size:12px">{{ t('due.totalReceivable') }}</div>

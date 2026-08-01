@@ -214,9 +214,16 @@ body {
    (buttons, cards, banners) also shouldn't print — only the class itself
    needs to live somewhere truly shared. */
 @media print {
-    aside, .brandbar, #top, #nav, .backbtn, #scrim, .notif-dropdown, .grab { display: none !important; }
+    aside, .brandbar, #top, #nav, .backbtn, #scrim, .notif-dropdown, .grab, .help-fab { display: none !important; }
     .no-print { display: none !important; }
 }
+
+.howto { background: var(--greenSoft); border: 1px solid var(--line2); border-radius: 12px; padding: 10px 14px; margin-bottom: 14px; cursor: pointer; }
+.howto-head { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; font-weight: 700; color: var(--green2); }
+.howto-body { margin-top: 8px; font-size: 12.5px; color: var(--mut); line-height: 1.6; }
+
+.help-fab { position: fixed; right: 16px; bottom: calc(84px + env(safe-area-inset-bottom)); width: 48px; height: 48px; border-radius: 50%; background: #25D366; color: #fff; font-size: 21px; display: flex; align-items: center; justify-content: center; border: none; box-shadow: 0 6px 18px rgba(37, 211, 102, .4); z-index: 40; cursor: pointer; }
+@media (min-width: 1024px) { .help-fab { bottom: 24px; } }
 
 .seg { display: flex; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 4px; gap: 4px; }
 .seg button { flex: 1; padding: 10px; border-radius: 9px; font-size: 13px; font-weight: 650; color: var(--mut); }
@@ -247,6 +254,24 @@ body {
 .login-foot { text-align: center; font-size: 12px; color: var(--mut); margin-top: 22px; line-height: 1.9; }
 .login-foot a { color: var(--green); font-weight: 700; text-decoration: none; }
 .login-foot a[href^="tel"] { color: var(--gold); }
+
+#onboarding { position: fixed; inset: 0; z-index: 100; overflow-y: auto; background: radial-gradient(600px 340px at 85% -6%, rgba(242, 106, 27, .10), transparent), radial-gradient(560px 400px at -8% 106%, rgba(31, 164, 99, .14), transparent), var(--bg); display: flex; align-items: center; justify-content: center; padding: 24px 18px; }
+.onb-inner { width: 100%; max-width: 400px; }
+.onb-dots { display: flex; justify-content: center; gap: 7px; margin-bottom: 18px; }
+.onb-dots span { width: 8px; height: 8px; border-radius: 50%; background: var(--line2); }
+.onb-dots span.on { background: var(--gold); width: 22px; border-radius: 5px; }
+.onb-card { background: var(--panel); border: 1px solid var(--line); border-radius: 22px; padding: 30px 24px; box-shadow: 0 12px 40px rgba(18, 38, 28, .12); text-align: center; }
+.onb-emoji { font-size: 52px; margin-bottom: 14px; }
+.onb-title { font-size: 21px; font-weight: 850; margin-bottom: 10px; }
+.onb-body { font-size: 14px; color: var(--mut); line-height: 1.75; margin-bottom: 22px; }
+.onb-actions { display: flex; gap: 10px; align-items: center; }
+.onb-actions .btn.ghost { flex: 0 0 auto; padding-left: 18px; padding-right: 18px; }
+.onb-3grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 22px; text-align: center; }
+.onb-3grid .item { background: var(--greenSoft); border-radius: 14px; padding: 14px 8px; }
+.onb-3grid .item .ic { font-size: 26px; margin-bottom: 6px; }
+.onb-3grid .item b { display: block; font-size: 12.5px; color: var(--green2); }
+.onb-3grid .item span { display: block; font-size: 10.5px; color: var(--mut); margin-top: 2px; line-height: 1.4; }
+.onb-skip { display: block; text-align: center; margin-top: 16px; font-size: 12.5px; color: var(--dim); }
 
 input, select, textarea { font: inherit; background: #fff; border: 1.5px solid var(--line); color: var(--tx); border-radius: 12px; padding: 13px 14px; outline: none; width: 100%; }
 input:focus, select:focus, textarea:focus { border-color: var(--gold); }

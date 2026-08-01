@@ -18,7 +18,7 @@ class Shop extends Model
         'subscription_start', 'subscription_expiry',
         'cash_balance', 'bank_balance', 'capital',
         'vat_mode', 'vat_rate', 'turnover_rate', 'invoice_counter',
-        'loyalty_earn_rate', 'loyalty_point_value',
+        'loyalty_earn_rate', 'loyalty_point_value', 'onboarded_at',
     ];
 
     protected $appends = ['logo_url'];
@@ -37,6 +37,7 @@ class Shop extends Model
             'turnover_rate' => 'decimal:2',
             'loyalty_earn_rate' => 'decimal:2',
             'loyalty_point_value' => 'decimal:2',
+            'onboarded_at' => 'datetime',
         ];
     }
 

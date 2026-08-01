@@ -37,6 +37,11 @@ class FeatureSeeder extends Seeder
             // accounts — money the shop is tracking
             ['key' => 'accounts', 'label_bn' => 'হিসাব-নিকাশ', 'label_en' => 'Accounts & balance sheet', 'category' => 'accounts', 'description' => 'Assets, liabilities, capital and net worth in one view.'],
             ['key' => 'expenses', 'label_bn' => 'খরচ ব্যবস্থাপনা', 'label_en' => 'Expense tracking', 'category' => 'accounts', 'description' => 'Record shop expenses (rent, salary, utilities) and their effect on cash/bank balance.'],
+            ['key' => 'partners', 'label_bn' => 'পার্টনার হিসাব', 'label_en' => 'Partner accounts', 'category' => 'accounts', 'description' => 'Multi-owner investment and profit-share tracking within one shop.'],
+            // opt-in only — not granted by default to any business type, an
+            // admin/owner turns it on specifically for a shop that has staff
+            // to run payroll for
+            ['key' => 'hr_payroll', 'label_bn' => 'কর্মচারী ও বেতন (HR/Payroll)', 'label_en' => 'HR & Payroll', 'category' => 'accounts', 'description' => 'Employee records, daily attendance, salary advances, and monthly payroll runs.'],
 
             // tax — NBR-facing calculations
             ['key' => 'vat', 'label_bn' => 'ভ্যাট/ট্যাক্স ব্যবস্থাপনা', 'label_en' => 'VAT & tax management', 'category' => 'tax', 'description' => 'Set the shop\'s VAT mode (none / turnover / full) and apply it to sales.'],

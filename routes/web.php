@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\App\Auth\LoginController;
+use App\Http\Controllers\App\Auth\SignupController;
 use App\Http\Controllers\App\AccountsController;
 use App\Http\Controllers\App\ActivityLogController;
 use App\Http\Controllers\App\BarcodeLabelController;
@@ -10,17 +11,25 @@ use App\Http\Controllers\App\ExpenseController;
 use App\Http\Controllers\App\ExportController;
 use App\Http\Controllers\App\GatewayCheckoutController;
 use App\Http\Controllers\App\GatewayWebhookController;
+use App\Http\Controllers\App\AttendanceController;
 use App\Http\Controllers\App\CashTransactionController;
+use App\Http\Controllers\App\EmployeeController;
 use App\Http\Controllers\App\HeldCartController;
+use App\Http\Controllers\App\HelpController;
 use App\Http\Controllers\App\HomeController;
 use App\Http\Controllers\App\LoanController;
 use App\Http\Controllers\App\LoanPaymentController;
 use App\Http\Controllers\App\MedicineCatalogController;
 use App\Http\Controllers\App\MoreController;
 use App\Http\Controllers\App\NotificationController;
+use App\Http\Controllers\App\OnboardingController;
 use App\Http\Controllers\App\PaymentController;
 use App\Http\Controllers\App\PaymentGatewayController;
+use App\Http\Controllers\App\PartnerController;
+use App\Http\Controllers\App\PartnerTransactionController;
 use App\Http\Controllers\App\PosController;
+use App\Http\Controllers\App\SalaryAdvanceController;
+use App\Http\Controllers\App\SalaryPaymentController;
 use App\Http\Controllers\App\ProductController;
 use App\Http\Controllers\App\ProductImportController;
 use App\Http\Controllers\App\ProductUnitController;
@@ -66,6 +75,8 @@ Route::get('/', function () {
 Route::middleware('guest')->group(function () {
     Route::get('login', [LoginController::class, 'create'])->name('login');
     Route::post('login', [LoginController::class, 'store'])->name('login.store');
+    Route::get('signup', [SignupController::class, 'create'])->name('signup');
+    Route::post('signup', [SignupController::class, 'store'])->name('signup.store');
 });
 
 Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(function () {
@@ -74,6 +85,9 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
     // always reachable regardless of permission grants
     Route::get('home', [HomeController::class, 'index'])->name('home');
     Route::get('more', [MoreController::class, 'index'])->name('more');
+    Route::get('help', [HelpController::class, 'index'])->name('help');
+    Route::get('onboarding', [OnboardingController::class, 'index'])->name('onboarding');
+    Route::post('onboarding/complete', [OnboardingController::class, 'complete'])->name('onboarding.complete');
     Route::patch('settings/lang', [SettingController::class, 'updateLang'])->name('settings.lang');
     Route::post('notifications/{id}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
     Route::post('notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.readAll');
@@ -104,6 +118,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
             Route::post('restaurant/tables', [RestaurantTableController::class, 'store'])->name('restaurant.tables.store');
             Route::delete('restaurant/tables/{restaurantTable}', [RestaurantTableController::class, 'destroy'])->name('restaurant.tables.destroy');
             Route::post('restaurant/tables/{restaurantTable}/open', [RestaurantTableController::class, 'open'])->name('restaurant.tables.open');
+            Route::post('restaurant/takeaway', [RestaurantTableController::class, 'openTakeaway'])->name('restaurant.takeaway.open');
             Route::post('restaurant/tables/{restaurantTable}/transfer', [RestaurantTableController::class, 'transfer'])->name('restaurant.tables.transfer');
             Route::post('restaurant/tables/{restaurantTable}/merge', [RestaurantTableController::class, 'merge'])->name('restaurant.tables.merge');
 
@@ -203,6 +218,28 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::get('accounts/loans', [LoanController::class, 'index'])->name('loans.index');
         Route::post('accounts/loans', [LoanController::class, 'store'])->name('loans.store');
         Route::post('accounts/loans/{loan}/payments', [LoanPaymentController::class, 'store'])->name('loans.payments.store');
+
+        Route::middleware('owner')->group(function () {
+            Route::get('accounts/partners', [PartnerController::class, 'index'])->name('partners.index');
+            Route::post('accounts/partners', [PartnerController::class, 'store'])->name('partners.store');
+            Route::post('accounts/partners/{partner}/transactions', [PartnerTransactionController::class, 'store'])->name('partners.transactions.store');
+        });
+    });
+
+    // salary details are owner-only — a cashier never needs to see what
+    // colleagues are paid
+    Route::middleware(['owner', 'feature:hr_payroll'])->group(function () {
+        Route::get('employees', [EmployeeController::class, 'index'])->name('employees.index');
+        Route::post('employees', [EmployeeController::class, 'store'])->name('employees.store');
+        Route::put('employees/{employee}', [EmployeeController::class, 'update'])->name('employees.update');
+
+        Route::get('attendance', [AttendanceController::class, 'index'])->name('attendance.index');
+        Route::post('attendance', [AttendanceController::class, 'mark'])->name('attendance.mark');
+
+        Route::post('employees/{employee}/advances', [SalaryAdvanceController::class, 'store'])->name('employees.advances.store');
+
+        Route::get('payroll', [SalaryPaymentController::class, 'index'])->name('payroll.index');
+        Route::post('employees/{employee}/salary', [SalaryPaymentController::class, 'store'])->name('payroll.pay');
     });
 
     Route::middleware(['perm:reports', 'feature:reports'])->group(function () {

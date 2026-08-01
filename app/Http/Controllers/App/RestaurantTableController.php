@@ -28,9 +28,50 @@ class RestaurantTableController extends Controller
                 'open_order_id' => $t->openOrder?->id,
                 'total' => $t->openOrder?->total() ?? 0,
                 'item_count' => $t->openOrder?->items->sum('qty') ?? 0,
+                'waiter_name' => $t->openOrder?->waiter_name,
+                'order_source' => $t->openOrder?->order_source,
+                // lets the cashier spot, at a glance across the whole grid,
+                // which occupied tables still have something the kitchen
+                // hasn't been told about yet — without opening each one
+                'has_unprinted' => $t->openOrder?->items->whereNull('kot_printed_at')->isNotEmpty() ?? false,
+                'opened_at' => $t->openOrder?->created_at?->diffForHumans(),
             ]);
 
-        return Inertia::render('App/Restaurant/Tables', ['tables' => $tables]);
+        // takeaway/parcel orders have no restaurant_table_id at all (see
+        // openTakeaway()) so they never appear in the table grid above —
+        // this is the only place a cashier can get back to one already in progress
+        $takeawayOrders = TableOrder::whereNull('restaurant_table_id')
+            ->where('status', 'open')
+            ->with(['items' => fn ($q) => $q->whereNull('sale_id')])
+            ->orderBy('opened_at')
+            ->get()
+            ->map(fn (TableOrder $o) => [
+                'id' => $o->id,
+                'order_source' => $o->order_source,
+                'total' => $o->total(),
+                'item_count' => $o->items->sum('qty'),
+                'opened_at' => $o->created_at?->diffForHumans(),
+            ]);
+
+        return Inertia::render('App/Restaurant/Tables', ['tables' => $tables, 'takeawayOrders' => $takeawayOrders]);
+    }
+
+    /**
+     * Starts an order with no physical table at all — a takeaway/parcel
+     * customer has no seat to occupy, so forcing the cashier to pick one
+     * (as dine-in requires) made no sense and was the actual point of
+     * confusion this method exists to remove.
+     */
+    public function openTakeaway()
+    {
+        $order = TableOrder::create([
+            'restaurant_table_id' => null,
+            'status' => 'open',
+            'order_source' => 'takeaway',
+            'opened_at' => now(),
+        ]);
+
+        return redirect()->route('app.restaurant.orders.show', $order->id);
     }
 
     public function store(Request $request)

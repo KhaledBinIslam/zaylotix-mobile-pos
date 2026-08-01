@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Admin;
 use App\Models\SiteSetting;
 use App\Support\Tenancy;
 use Illuminate\Http\Request;
@@ -29,6 +30,13 @@ class HandleInertiaRequests extends Middleware
                 'admin' => $admin,
             ],
             'shop' => fn () => $shopUser ? Tenancy::shop() : null,
+            // when an admin is impersonating this shop's owner, every
+            // page carries this so AppLayout can show a persistent
+            // "you're viewing as X — exit" banner that's never mistakable
+            // for the owner's own normal session
+            'impersonating' => fn () => $request->session()->has('impersonating_admin_id')
+                ? ['adminName' => Admin::find($request->session()->get('impersonating_admin_id'))?->name]
+                : null,
             'features' => fn () => $shopUser ? Tenancy::shop()?->featureKeys()->values() : [],
             // "A Zaylotix product" credit shown on every printed memo/label —
             // falls back to plain text (see the Vue templates) until an

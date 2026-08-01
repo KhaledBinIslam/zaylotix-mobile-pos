@@ -32,6 +32,11 @@ trait CreatesShops
             'capital' => 0,
             'vat_mode' => 'none',
             'invoice_counter' => 1000,
+            // Most tests use this helper to stand up a shop that's already
+            // "in normal use" and don't care about the first-login wizard —
+            // only OnboardingWizardTest passes onboarded_at: null explicitly
+            // to exercise that flow.
+            'onboarded_at' => now(),
         ], $shopAttrs));
 
         $user = User::create(array_merge([

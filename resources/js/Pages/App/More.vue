@@ -257,6 +257,18 @@ onMounted(() => {
         <Link v-if="isOwner && features.includes('activity_log')" :href="route('app.activity')" class="row">
             <div class="ava">📋</div><div class="mid"><b>{{ t('nav.activity') }}</b><span>{{ t('activity.subtitle') }}</span></div><div class="end">›</div>
         </Link>
+        <Link :href="route('app.help')" class="row">
+            <div class="ava">❓</div><div class="mid"><b>{{ t('nav.help') }}</b><span>{{ t('more.helpSub') }}</span></div><div class="end">›</div>
+        </Link>
+        <Link v-if="isOwner && features.includes('hr_payroll')" :href="route('app.employees.index')" class="row">
+            <div class="ava">👥</div><div class="mid"><b>{{ t('nav.employees') }}</b><span>{{ t('more.hrSub') }}</span></div><div class="end">›</div>
+        </Link>
+        <Link v-if="isOwner && features.includes('hr_payroll')" :href="route('app.attendance.index')" class="row">
+            <div class="ava">📅</div><div class="mid"><b>{{ t('nav.attendance') }}</b><span>{{ t('att.subtitle') }}</span></div><div class="end">›</div>
+        </Link>
+        <Link v-if="isOwner && features.includes('hr_payroll')" :href="route('app.payroll.index')" class="row">
+            <div class="ava">💰</div><div class="mid"><b>{{ t('nav.payroll') }}</b><span>{{ t('pay.subtitle') }}</span></div><div class="end">›</div>
+        </Link>
 
         <template v-if="(hasPerm('accounts') && features.includes('accounts')) || (hasPerm('reports') && features.includes('reports')) || (hasPerm('expenses') && features.includes('expenses'))">
             <div class="sechead"><h2>{{ t('more.sectionAccounts') }}</h2></div>
@@ -268,6 +280,9 @@ onMounted(() => {
             </Link>
             <Link v-if="hasPerm('accounts') && features.includes('accounts')" :href="route('app.loans.index')" class="row">
                 <div class="ava">🤲</div><div class="mid"><b>{{ t('nav.loans') }}</b><span>{{ t('more.loansSub') }}</span></div><div class="end">›</div>
+            </Link>
+            <Link v-if="isOwner && features.includes('partners')" :href="route('app.partners.index')" class="row">
+                <div class="ava">🤝</div><div class="mid"><b>{{ t('nav.partners') }}</b><span>{{ t('more.partnersSub') }}</span></div><div class="end">›</div>
             </Link>
             <Link v-if="hasPerm('reports') && features.includes('reports')" :href="route('app.reports')" class="row">
                 <div class="ava">📊</div><div class="mid"><b>{{ t('more.reportsTitle') }}</b><span>{{ t('more.reportsSub') }}</span></div><div class="end">›</div>
