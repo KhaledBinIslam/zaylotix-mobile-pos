@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Admin;
+use App\Models\Product;
 use App\Models\Sale;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\CreatesShops;
@@ -30,6 +31,22 @@ class AdminAnalyticsAndAccountsTest extends TestCase
             ->where('stats.salesToday', 300)
             ->where('stats.billsToday', 2)
             ->where('stats.activeShopsToday', 2)
+        );
+    }
+
+    public function test_analytics_shows_per_shop_row_counts_for_hosting_visibility(): void
+    {
+        [$shopA] = $this->createShopWithOwner();
+        Product::create(['shop_id' => $shopA->id, 'name' => 'A', 'cost' => 1, 'price' => 2, 'stock' => 5]);
+        Product::create(['shop_id' => $shopA->id, 'name' => 'B', 'cost' => 1, 'price' => 2, 'stock' => 5]);
+        Sale::create(['shop_id' => $shopA->id, 'invoice_no' => 'A-1', 'date' => now()->toDateString(), 'time' => '10:00:00', 'subtotal' => 100, 'discount' => 0, 'vat' => 0, 'total' => 100, 'profit' => 20, 'payment_mode' => 'cash']);
+
+        $response = $this->actingAs($this->superAdmin(), 'admin')->get('/admin/analytics');
+
+        $response->assertOk()->assertInertia(fn ($page) => $page
+            ->has('shopUsage')
+            ->where('shopUsage.0.product_count', 2)
+            ->where('shopUsage.0.sale_count', 1)
         );
     }
 

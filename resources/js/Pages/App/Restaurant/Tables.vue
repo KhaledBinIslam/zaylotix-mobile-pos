@@ -33,6 +33,12 @@ function addTable() {
     form.post(route('app.restaurant.tables.store'), { onSuccess: () => { addSheet.value = false; form.reset(); } });
 }
 
+// settings (kitchen WhatsApp number, pay-first/later, print order) used to
+// sit permanently expanded on this screen, pushing the actual tables far
+// down every single day just to configure something once — tucked into a
+// single sheet now, reached with one small tap instead of always-on clutter
+const settingsSheet = ref(false);
+
 function openTable(tbl) {
     router.post(route('app.restaurant.tables.open', tbl.id));
 }
@@ -60,8 +66,13 @@ onBeforeUnmount(() => clearInterval(pollTimer));
 <template>
     <Head :title="t('restaurant.tablesTitle')" />
     <AppLayout active="restaurant">
-        <div class="pgttl">{{ t('restaurant.tablesTitle') }}</div>
-        <div class="pgsub">{{ t('restaurant.tablesSubtitle') }}</div>
+        <div style="display:flex;align-items:start;justify-content:space-between;gap:10px">
+            <div>
+                <div class="pgttl">{{ t('restaurant.tablesTitle') }}</div>
+                <div class="pgsub">{{ t('restaurant.tablesSubtitle') }}</div>
+            </div>
+            <button v-if="isOwner" class="btn ghost sm" style="width:auto;padding:8px 14px;flex:0 0 auto" @click="settingsSheet = true">⚙️ {{ t('common.settings') }}</button>
+        </div>
 
         <!-- takeaway/parcel has nothing to do with a physical table, so this
              starts one directly instead of being buried behind picking a table -->
@@ -92,35 +103,9 @@ onBeforeUnmount(() => clearInterval(pollTimer));
             </div>
         </div>
 
-        <button class="btn ghost" style="margin-bottom:14px" @click="addSheet = true">{{ t('restaurant.addTable') }}</button>
+        <button class="btn ghost sm" style="margin-bottom:14px" @click="addSheet = true">{{ t('restaurant.addTable') }}</button>
 
-        <div v-if="isOwner" class="card" style="margin-bottom:16px">
-            <div style="font-size:12.5px;color:var(--mut);margin-bottom:8px">{{ t('restaurant.kitchenWaHint') }}</div>
-            <div style="display:flex;gap:8px">
-                <input v-model="waForm.kitchen_whatsapp" inputmode="tel" placeholder="01XXXXXXXXX" style="flex:1;margin:0">
-                <button class="btn sm" :disabled="waForm.processing" @click="saveKitchenWa">{{ waForm.processing ? '...' : t('stock.save') }}</button>
-            </div>
-        </div>
-
-        <div v-if="isOwner" class="card" style="margin-bottom:16px">
-            <div class="field" style="margin-bottom:10px">
-                <label>{{ t('restaurant.paymentTiming') }}</label>
-                <div class="seg">
-                    <button :class="{ on: prefsForm.payment_timing === 'pay_later' }" @click="prefsForm.payment_timing = 'pay_later'">{{ t('restaurant.payLater') }}</button>
-                    <button :class="{ on: prefsForm.payment_timing === 'pay_first' }" @click="prefsForm.payment_timing = 'pay_first'">{{ t('restaurant.payFirst') }}</button>
-                </div>
-            </div>
-            <div class="field" style="margin-bottom:10px">
-                <label>{{ t('restaurant.printOrderPref') }}</label>
-                <div class="seg">
-                    <button :class="{ on: prefsForm.kitchen_print_order === 'kitchen_first' }" @click="prefsForm.kitchen_print_order = 'kitchen_first'">{{ t('restaurant.kitchenFirst') }}</button>
-                    <button :class="{ on: prefsForm.kitchen_print_order === 'customer_first' }" @click="prefsForm.kitchen_print_order = 'customer_first'">{{ t('restaurant.customerFirst') }}</button>
-                </div>
-            </div>
-            <button class="btn sm ghost" style="width:100%" :disabled="prefsForm.processing" @click="savePrefs">{{ prefsForm.processing ? '...' : t('stock.save') }}</button>
-        </div>
-
-        <div class="pgrid">
+        <div class="pgrid rest-tables-grid">
             <div
                 v-for="tb in tables" :key="tb.id" class="pcard"
                 :class="{ occupied: tb.status === 'occupied' }"
@@ -153,6 +138,32 @@ onBeforeUnmount(() => clearInterval(pollTimer));
                 <div v-if="form.errors.name" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.name }}</div>
             </div>
             <button class="btn" :disabled="form.processing" @click="addTable">{{ form.processing ? '...' : t('stock.save') }}</button>
+        </Sheet>
+
+        <Sheet v-model="settingsSheet" :title="t('common.settings')">
+            <div class="card" style="margin-bottom:16px">
+                <div style="font-size:12.5px;color:var(--mut);margin-bottom:8px">{{ t('restaurant.kitchenWaHint') }}</div>
+                <div style="display:flex;gap:8px">
+                    <input v-model="waForm.kitchen_whatsapp" inputmode="tel" placeholder="01XXXXXXXXX" style="flex:1;margin:0">
+                    <button class="btn sm" :disabled="waForm.processing" @click="saveKitchenWa">{{ waForm.processing ? '...' : t('stock.save') }}</button>
+                </div>
+            </div>
+
+            <div class="field" style="margin-bottom:10px">
+                <label>{{ t('restaurant.paymentTiming') }}</label>
+                <div class="seg">
+                    <button :class="{ on: prefsForm.payment_timing === 'pay_later' }" @click="prefsForm.payment_timing = 'pay_later'">{{ t('restaurant.payLater') }}</button>
+                    <button :class="{ on: prefsForm.payment_timing === 'pay_first' }" @click="prefsForm.payment_timing = 'pay_first'">{{ t('restaurant.payFirst') }}</button>
+                </div>
+            </div>
+            <div class="field" style="margin-bottom:14px">
+                <label>{{ t('restaurant.printOrderPref') }}</label>
+                <div class="seg">
+                    <button :class="{ on: prefsForm.kitchen_print_order === 'kitchen_first' }" @click="prefsForm.kitchen_print_order = 'kitchen_first'">{{ t('restaurant.kitchenFirst') }}</button>
+                    <button :class="{ on: prefsForm.kitchen_print_order === 'customer_first' }" @click="prefsForm.kitchen_print_order = 'customer_first'">{{ t('restaurant.customerFirst') }}</button>
+                </div>
+            </div>
+            <button class="btn" :disabled="prefsForm.processing" @click="savePrefs">{{ prefsForm.processing ? '...' : t('stock.save') }}</button>
         </Sheet>
     </AppLayout>
 </template>

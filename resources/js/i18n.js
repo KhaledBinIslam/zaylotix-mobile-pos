@@ -126,6 +126,7 @@ export const translations = {
     'common.logoutConfirm': { bn: 'লগ আউট করতে চান?', en: 'Log out of your account?' },
     'common.close': { bn: 'বন্ধ করুন', en: 'Close' },
     'common.cancel': { bn: 'বাতিল', en: 'Cancel' },
+    'common.settings': { bn: 'সেটিংস', en: 'Settings' },
     'common.howToDoThis': { bn: 'কীভাবে করব?', en: 'How do I do this?' },
     'common.edit': { bn: 'এডিট', en: 'Edit' },
     'common.delete': { bn: 'মুছুন', en: 'Delete' },
@@ -473,7 +474,7 @@ export const translations = {
     'pos.savedOffline': { bn: '📴 নেট নেই — বিক্রিটি সংরক্ষিত হয়েছে, নেট আসলে অটো পাঠানো হবে', en: "📴 Offline — sale saved, will auto-send once you're back online" },
 
     // ---- offline mode ----
-    'offline.banner': { bn: 'নেট সংযোগ নেই — বিক্রি করলে অটো সংরক্ষণ হবে, নেট আসলে পাঠানো হবে', en: "No internet — sales you make now are saved and will send automatically once you're back online" },
+    'offline.banner': { bn: 'নেট সংযোগ নেই — বিক্রি করলে ফোনেই সংরক্ষণ হবে। দ্রুত ইন্টারনেট চালু করুন, যাতে ডেটা নিরাপদে সার্ভারে ব্যাকআপ হয়ে যায়।', en: "No internet — sales made now are saved on this phone. Turn your internet back on soon so this data safely backs up to the server." },
     'offline.pendingCount': { bn: '{n} টি বিক্রি পাঠানো হচ্ছে...', en: 'Sending {n} queued sale(s)...' },
     'offline.failedCount': { bn: '{n} টি বিক্রি সিঙ্ক ব্যর্থ হয়েছে — দেখতে চাপুন', en: '{n} sale(s) failed to sync — tap to review' },
     'offline.failedTitle': { bn: 'সিঙ্ক ব্যর্থ হওয়া বিক্রি', en: 'Sales that failed to sync' },

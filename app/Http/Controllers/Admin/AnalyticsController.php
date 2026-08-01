@@ -3,9 +3,13 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Customer;
 use App\Models\Feature;
+use App\Models\Product;
 use App\Models\Sale;
+use App\Models\SaleItem;
 use App\Models\Shop;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 
 /**
@@ -65,6 +69,7 @@ class AnalyticsController extends Controller
         $activeShopsWeek = Sale::withoutGlobalScopes()->whereDate('date', '>=', $weekAgo)->whereNull('voided_at')->distinct('shop_id')->count('shop_id');
 
         return Inertia::render('Admin/Analytics/Index', [
+            'shopUsage' => $this->shopUsage(),
             'stats' => [
                 'salesToday' => (float) Sale::withoutGlobalScopes()->whereDate('date', $today)->whereNull('voided_at')->sum('total'),
                 'billsToday' => Sale::withoutGlobalScopes()->whereDate('date', $today)->whereNull('voided_at')->count(),
@@ -78,5 +83,59 @@ class AnalyticsController extends Controller
             'featureAdoption' => $featureAdoption,
             'signupTrend' => $signupTrend,
         ]);
+    }
+
+    /**
+     * Per-shop resource footprint — this is a shared-schema multi-tenant
+     * app (every shop's rows live in the same tables, not a database per
+     * tenant), so there's no per-tenant disk-usage number the OS can just
+     * report. Row counts across the biggest tables are the closest real
+     * proxy for "how much of the hosting is this shop actually using",
+     * plus the one genuinely separate-per-shop disk cost: uploaded files
+     * (logo + product photos) on the public storage disk.
+     */
+    private function shopUsage(): array
+    {
+        $shops = Shop::withoutGlobalScopes()->get(['id', 'name', 'phone', 'status', 'created_at']);
+
+        $productCounts = Product::withoutGlobalScopes()->selectRaw('shop_id, COUNT(*) as c')->groupBy('shop_id')->pluck('c', 'shop_id');
+        $saleCounts = Sale::withoutGlobalScopes()->selectRaw('shop_id, COUNT(*) as c')->groupBy('shop_id')->pluck('c', 'shop_id');
+        $saleItemCounts = SaleItem::withoutGlobalScopes()->selectRaw('shop_id, COUNT(*) as c')->groupBy('shop_id')->pluck('c', 'shop_id');
+        $customerCounts = Customer::withoutGlobalScopes()->selectRaw('shop_id, COUNT(*) as c')->groupBy('shop_id')->pluck('c', 'shop_id');
+
+        $disk = Storage::disk('public');
+        $logoSizes = [];
+        foreach (Shop::withoutGlobalScopes()->whereNotNull('logo_path')->pluck('logo_path', 'id') as $shopId => $path) {
+            $logoSizes[$shopId] = $disk->exists($path) ? $disk->size($path) : 0;
+        }
+        // photo files are stored flat (product-photos/{random}.ext, no
+        // per-shop subfolder — see ProductController::store()), so the only
+        // reliable way to attribute one to a shop is via the DB row that
+        // references it, not the file path itself
+        $photoBytesByShop = [];
+        foreach (Product::withoutGlobalScopes()->whereNotNull('photo_path')->get(['shop_id', 'photo_path']) as $product) {
+            if ($disk->exists($product->photo_path)) {
+                $photoBytesByShop[$product->shop_id] = ($photoBytesByShop[$product->shop_id] ?? 0) + $disk->size($product->photo_path);
+            }
+        }
+
+        return $shops->map(function (Shop $shop) use ($productCounts, $saleCounts, $saleItemCounts, $customerCounts, $logoSizes, $photoBytesByShop) {
+            $rowCount = ($productCounts[$shop->id] ?? 0) + ($saleCounts[$shop->id] ?? 0) + ($saleItemCounts[$shop->id] ?? 0) + ($customerCounts[$shop->id] ?? 0);
+            $storageBytes = ($logoSizes[$shop->id] ?? 0) + ($photoBytesByShop[$shop->id] ?? 0);
+
+            return [
+                'id' => $shop->id,
+                'name' => $shop->name,
+                'phone' => $shop->phone,
+                'status' => $shop->status,
+                'created_at' => $shop->created_at->toDateString(),
+                'product_count' => (int) ($productCounts[$shop->id] ?? 0),
+                'sale_count' => (int) ($saleCounts[$shop->id] ?? 0),
+                'sale_item_count' => (int) ($saleItemCounts[$shop->id] ?? 0),
+                'customer_count' => (int) ($customerCounts[$shop->id] ?? 0),
+                'row_count' => $rowCount,
+                'storage_mb' => round($storageBytes / 1048576, 2),
+            ];
+        })->sortByDesc('row_count')->values()->all();
     }
 }

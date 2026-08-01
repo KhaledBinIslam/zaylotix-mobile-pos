@@ -204,41 +204,10 @@ onBeforeUnmount(() => clearInterval(pollTimer));
         <div class="pgsub">{{ t('restaurant.orderTitle') }} • {{ money(order.total) }}</div>
 
         <div class="lg:flex lg:gap-6 lg:items-start">
-            <!-- order/cart panel — natural first on mobile (unchanged position), becomes the sticky right column on desktop -->
+            <!-- order/cart panel — natural first on mobile (unchanged position), becomes the sticky right column on desktop.
+                 Cart contents + bill actions come first (what a cashier needs the instant they open a table); order-type/
+                 kitchen-note/waiter/transfer-merge are secondary details and sit below, not above, the primary actions. -->
             <div class="lg:order-3 lg:w-80 lg:shrink-0 lg:sticky lg:top-6">
-                <div class="card" style="margin-bottom:14px">
-                    <div class="field" style="margin-bottom:8px">
-                        <label>{{ t('restaurant.orderSource') }}</label>
-                        <div class="seg">
-                            <button :class="{ on: metaForm.order_source === 'dine_in' }" @click="metaForm.order_source = 'dine_in'">{{ t('restaurant.sourceDineIn') }}</button>
-                            <button :class="{ on: metaForm.order_source === 'takeaway' }" @click="metaForm.order_source = 'takeaway'">{{ t('restaurant.sourceTakeaway') }}</button>
-                            <button :class="{ on: metaForm.order_source === 'delivery' }" @click="metaForm.order_source = 'delivery'">{{ t('restaurant.sourceDelivery') }}</button>
-                        </div>
-                    </div>
-                    <div v-if="metaForm.order_source === 'delivery'" class="field" style="margin-bottom:8px">
-                        <label>{{ t('restaurant.deliveryPlatform') }}</label>
-                        <select v-model="metaForm.delivery_platform">
-                            <option value="">{{ t('damage.selectPlaceholder') }}</option>
-                            <option v-for="p in DELIVERY_PLATFORMS" :key="p" :value="p">{{ p }}</option>
-                        </select>
-                        <input v-if="metaForm.delivery_platform === 'অন্য কিছু'" v-model="metaForm.delivery_platform" :placeholder="t('restaurant.deliveryPlatformCustom')" style="margin-top:6px">
-                    </div>
-                    <div class="field" style="margin-bottom:8px">
-                        <label>{{ t('restaurant.kitchenNote') }} <span style="color:var(--dim);font-weight:400">{{ t('restaurant.kitchenNoteHint') }}</span></label>
-                        <textarea v-model="metaForm.kitchen_note" rows="2" :placeholder="t('restaurant.kitchenNotePlaceholder')"></textarea>
-                    </div>
-                    <div class="field" style="margin-bottom:8px">
-                        <label>{{ t('restaurant.waiterName') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
-                        <input v-model="metaForm.waiter_name" :placeholder="t('restaurant.waiterNamePlaceholder')">
-                    </div>
-                    <button v-if="metaChanged" class="btn sm ghost" style="width:100%" :disabled="metaForm.processing" @click="saveMeta">{{ metaForm.processing ? '...' : t('stock.save') }}</button>
-                </div>
-
-                <div v-if="order.table_id && (freeTables.length || otherOccupiedTables.length)" class="btnrow" style="margin-bottom:14px">
-                    <button v-if="freeTables.length" class="btn sm ghost" style="flex:1" @click="tableActionMode = 'transfer'; tableActionTargetId = ''; tableActionSheet = true">🔀 {{ t('restaurant.transferTable') }}</button>
-                    <button v-if="otherOccupiedTables.length" class="btn sm ghost" style="flex:1" @click="tableActionMode = 'merge'; tableActionTargetId = ''; tableActionSheet = true">🔗 {{ t('restaurant.mergeTable') }}</button>
-                </div>
-
                 <div class="card" style="margin-bottom:14px">
                     <div v-if="order.items.length">
                         <div v-if="order.items.length > 1" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -308,9 +277,46 @@ onBeforeUnmount(() => clearInterval(pollTimer));
                 <button class="btn" style="margin-bottom:8px;background:var(--green)" :disabled="!order.items.length || (splitMode && !selectedItemIds.length)" @click="billAndPrintKot">
                     🧾 {{ t('restaurant.billAndKot') }}
                 </button>
-                <button v-if="kitchenWaNumber" class="btn wa" style="margin-bottom:10px" :disabled="!order.items.length || (splitMode && !selectedItemIds.length)" @click="billAndSendKotWA">
+                <button v-if="kitchenWaNumber" class="btn wa" style="margin-bottom:16px" :disabled="!order.items.length || (splitMode && !selectedItemIds.length)" @click="billAndSendKotWA">
                     📤 {{ t('restaurant.billAndKotWa') }}
                 </button>
+
+                <!-- secondary details — order type, kitchen note, waiter, table
+                     move/merge — set once per order, not needed at a glance
+                     every time like the cart/bill actions above are -->
+                <div class="card" style="margin-bottom:14px">
+                    <div class="field" style="margin-bottom:8px">
+                        <label>{{ t('restaurant.orderSource') }}</label>
+                        <div class="seg">
+                            <button :class="{ on: metaForm.order_source === 'dine_in' }" @click="metaForm.order_source = 'dine_in'">{{ t('restaurant.sourceDineIn') }}</button>
+                            <button :class="{ on: metaForm.order_source === 'takeaway' }" @click="metaForm.order_source = 'takeaway'">{{ t('restaurant.sourceTakeaway') }}</button>
+                            <button :class="{ on: metaForm.order_source === 'delivery' }" @click="metaForm.order_source = 'delivery'">{{ t('restaurant.sourceDelivery') }}</button>
+                        </div>
+                    </div>
+                    <div v-if="metaForm.order_source === 'delivery'" class="field" style="margin-bottom:8px">
+                        <label>{{ t('restaurant.deliveryPlatform') }}</label>
+                        <select v-model="metaForm.delivery_platform">
+                            <option value="">{{ t('damage.selectPlaceholder') }}</option>
+                            <option v-for="p in DELIVERY_PLATFORMS" :key="p" :value="p">{{ p }}</option>
+                        </select>
+                        <input v-if="metaForm.delivery_platform === 'অন্য কিছু'" v-model="metaForm.delivery_platform" :placeholder="t('restaurant.deliveryPlatformCustom')" style="margin-top:6px">
+                    </div>
+                    <div class="field" style="margin-bottom:8px">
+                        <label>{{ t('restaurant.kitchenNote') }} <span style="color:var(--dim);font-weight:400">{{ t('restaurant.kitchenNoteHint') }}</span></label>
+                        <textarea v-model="metaForm.kitchen_note" rows="2" :placeholder="t('restaurant.kitchenNotePlaceholder')"></textarea>
+                    </div>
+                    <div class="field" style="margin-bottom:8px">
+                        <label>{{ t('restaurant.waiterName') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
+                        <input v-model="metaForm.waiter_name" :placeholder="t('restaurant.waiterNamePlaceholder')">
+                    </div>
+                    <button v-if="metaChanged" class="btn sm ghost" style="width:100%" :disabled="metaForm.processing" @click="saveMeta">{{ metaForm.processing ? '...' : t('stock.save') }}</button>
+                </div>
+
+                <div v-if="order.table_id && (freeTables.length || otherOccupiedTables.length)" class="btnrow" style="margin-bottom:14px">
+                    <button v-if="freeTables.length" class="btn sm ghost" style="flex:1" @click="tableActionMode = 'transfer'; tableActionTargetId = ''; tableActionSheet = true">🔀 {{ t('restaurant.transferTable') }}</button>
+                    <button v-if="otherOccupiedTables.length" class="btn sm ghost" style="flex:1" @click="tableActionMode = 'merge'; tableActionTargetId = ''; tableActionSheet = true">🔗 {{ t('restaurant.mergeTable') }}</button>
+                </div>
+
                 <button class="btn ghost" style="margin-bottom:16px;color:var(--rose);border-color:var(--rose)" @click="cancelOrder">{{ t('restaurant.cancelOrder') }}</button>
             </div>
 

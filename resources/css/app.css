@@ -185,6 +185,16 @@ body {
 .pcard .qbadge { position: absolute; top: 8px; right: 8px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: var(--gold); color: #fff; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(242, 106, 27, .4); z-index: 2; }
 .pcard .ps { font-size: 11px; color: var(--dim); margin-top: 1px; }
 .punits { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 12px; }
+
+/* tighter than the default .pcard (which was sized for a product photo
+   grid) — a table card only ever shows a few short lines of text, so the
+   same generous padding just wasted vertical space and made the whole
+   grid feel oversized for what it's actually displaying */
+.rest-tables-grid .pcard-main { padding: 9px 10px; }
+.rest-tables-grid .em { font-size: 17px; }
+.rest-tables-grid .pn { font-size: 12.5px; margin-top: 3px; }
+.rest-tables-grid .pp { font-size: 11.5px; }
+.rest-tables-grid .ps { font-size: 10px; }
 .upill { background: var(--greenSoft); color: var(--green); border: 1px solid var(--line2); border-radius: 8px; padding: 5px 9px; font-size: 11px; font-weight: 700; white-space: nowrap; }
 .cart-line-discount { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: 11.5px; color: var(--mut); }
 .cart-line-discount input { width: 78px; padding: 5px 8px; font-size: 12.5px; text-align: right; }

@@ -2,7 +2,7 @@
 import { Head } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 
-defineProps({ stats: Object, mostActiveShops: Array, featureAdoption: Array, signupTrend: Array });
+defineProps({ stats: Object, mostActiveShops: Array, featureAdoption: Array, signupTrend: Array, shopUsage: Array });
 
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 </script>
@@ -62,6 +62,40 @@ const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
                     <div class="text-sm text-gray-600">Week of {{ w.week_of }}</div>
                     <div class="text-sm font-semibold">{{ w.count }}</div>
                 </div>
+            </div>
+        </div>
+
+        <div class="bg-white border rounded-xl p-5 mb-6">
+            <div class="font-bold mb-1">📦 Per-shop usage (hosting load)</div>
+            <div class="text-xs text-gray-400 mb-3">Shared-schema app — no per-tenant disk number exists, so row counts across the biggest tables are the closest real proxy for load. Storage is actual uploaded file size (logo + product photos).</div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
+                        <tr>
+                            <th class="text-left px-3 py-2">Shop</th>
+                            <th class="text-right px-3 py-2">Products</th>
+                            <th class="text-right px-3 py-2">Sales</th>
+                            <th class="text-right px-3 py-2">Sale lines</th>
+                            <th class="text-right px-3 py-2">Customers</th>
+                            <th class="text-right px-3 py-2">Total rows</th>
+                            <th class="text-right px-3 py-2">Storage (MB)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="s in shopUsage" :key="s.id" class="border-t">
+                            <td class="px-3 py-2">
+                                <div class="font-medium">{{ s.name }}</div>
+                                <div class="text-xs text-gray-400">{{ s.phone }}</div>
+                            </td>
+                            <td class="text-right px-3 py-2">{{ s.product_count }}</td>
+                            <td class="text-right px-3 py-2">{{ s.sale_count }}</td>
+                            <td class="text-right px-3 py-2">{{ s.sale_item_count }}</td>
+                            <td class="text-right px-3 py-2">{{ s.customer_count }}</td>
+                            <td class="text-right px-3 py-2 font-semibold">{{ s.row_count }}</td>
+                            <td class="text-right px-3 py-2">{{ s.storage_mb }}</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
 
