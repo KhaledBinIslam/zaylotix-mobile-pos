@@ -127,6 +127,7 @@ export const translations = {
     'common.close': { bn: 'বন্ধ করুন', en: 'Close' },
     'common.cancel': { bn: 'বাতিল', en: 'Cancel' },
     'common.settings': { bn: 'সেটিংস', en: 'Settings' },
+    'common.more': { bn: 'আরও', en: 'More' },
     'common.howToDoThis': { bn: 'কীভাবে করব?', en: 'How do I do this?' },
     'common.edit': { bn: 'এডিট', en: 'Edit' },
     'common.delete': { bn: 'মুছুন', en: 'Delete' },

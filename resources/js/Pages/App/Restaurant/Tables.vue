@@ -55,10 +55,16 @@ function removeTable(tbl) {
     router.delete(route('app.restaurant.tables.destroy', tbl.id));
 }
 
-// tables can free up on another device while this screen is open
+// tables can free up on another device while this screen is open — but not
+// while a sheet here is actually mid-submit, same guard the other polled
+// screens (Order/Stock) already use, so a background refresh never queues
+// in front of something the owner just tapped
 let pollTimer = null;
 onMounted(() => {
-    pollTimer = setInterval(() => router.reload({ only: ['tables'], preserveScroll: true }), 10000);
+    pollTimer = setInterval(() => {
+        if (addSheet.value || settingsSheet.value) return;
+        router.reload({ only: ['tables'], preserveScroll: true });
+    }, 10000);
 });
 onBeforeUnmount(() => clearInterval(pollTimer));
 </script>

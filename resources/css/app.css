@@ -65,7 +65,15 @@ body {
 .rest-rail-btn.on { background: var(--goldSoft); color: var(--gold2); }
 @media (min-width: 1024px) {
     .pgrid.rest-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+    /* the order panel is a sticky column on desktop — capping its height and
+       scrolling internally keeps the sticky footer below reachable without
+       scrolling the whole page, same as the phone-scroll behavior below */
+    .order-panel { max-height: calc(100vh - 2rem); overflow-y: auto; padding-right: 2px; }
 }
+/* bill total + kitchen/bill actions stay on screen while the cart above
+   scrolls — this is what actually stops the total/buttons from being
+   scrolled out of view, on phone, tablet and desktop alike */
+.order-sticky-footer { position: sticky; bottom: 0; background: var(--bg); padding-top: 6px; z-index: 5; }
 
 #top { position: sticky; top: 0; z-index: 30; padding: 14px 18px 12px; background: rgba(242, 247, 242, .9); backdrop-filter: blur(12px); display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--line); }
 .blogo { width: 40px; height: 40px; border-radius: 12px; flex: 0 0 auto; background: linear-gradient(140deg, var(--green), #0F7A45); display: flex; align-items: center; justify-content: center; font-weight: 800; color: #fff; font-size: 20px; box-shadow: 0 4px 14px rgba(31, 164, 99, .3); }
@@ -119,6 +127,9 @@ body {
 .btn.wa { background: var(--wa); color: #04220F; }
 .btn.rose { background: var(--rose); color: #2A0509; }
 .btn.sm { padding: 9px 13px; font-size: 13px; width: auto; border-radius: 10px; }
+
+.grand-total-bar { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, var(--green), var(--green2)); color: #fff; border-radius: 13px; padding: 14px 18px; margin-bottom: 14px; font-size: 15px; font-weight: 700; box-shadow: 0 4px 14px rgba(31, 164, 99, .3); }
+.grand-total-bar b { font-size: 22px; font-weight: 850; letter-spacing: -.3px; }
 .btn:disabled { opacity: .55; cursor: not-allowed; }
 .btnrow { display: flex; gap: 10px; }
 

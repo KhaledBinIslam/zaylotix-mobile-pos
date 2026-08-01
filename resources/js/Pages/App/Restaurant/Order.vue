@@ -186,6 +186,11 @@ function submitTableAction() {
     }
 }
 
+// transfer/merge/cancel are rare, one-off actions — tucked behind a single
+// header button instead of sitting in the main scroll flow, so they're
+// still reachable in one tap but never push the everyday fields further down
+const moreSheet = ref(false);
+
 // another device could add/remove items on the same table order
 let pollTimer = null;
 onMounted(() => {
@@ -200,14 +205,42 @@ onBeforeUnmount(() => clearInterval(pollTimer));
 <template>
     <Head :title="displayName" />
     <AppLayout active="restaurant">
-        <div class="pgttl">{{ displayName }}</div>
-        <div class="pgsub">{{ t('restaurant.orderTitle') }} • {{ money(order.total) }}</div>
+        <div style="display:flex;align-items:start;justify-content:space-between;gap:10px">
+            <div>
+                <div class="pgttl">{{ displayName }}</div>
+                <div class="pgsub">{{ t('restaurant.orderTitle') }} • {{ money(order.total) }}</div>
+            </div>
+            <button class="btn ghost sm" style="width:auto;padding:8px 14px;flex:0 0 auto" @click="moreSheet = true">⋯ {{ t('common.more') }}</button>
+        </div>
 
         <div class="lg:flex lg:gap-6 lg:items-start">
             <!-- order/cart panel — natural first on mobile (unchanged position), becomes the sticky right column on desktop.
-                 Cart contents + bill actions come first (what a cashier needs the instant they open a table); order-type/
-                 kitchen-note/waiter/transfer-merge are secondary details and sit below, not above, the primary actions. -->
-            <div class="lg:order-3 lg:w-80 lg:shrink-0 lg:sticky lg:top-6">
+                 Order type + waiter go first (set once, but must be visible without scrolling); cart is the scrollable
+                 middle; bill total + actions are a sticky footer so they stay on screen while scrolling the cart —
+                 same layout on mobile/tablet/desktop, no screen-size-specific hunting for the total or the buttons. -->
+            <div class="lg:order-3 lg:w-80 lg:shrink-0 lg:sticky lg:top-6 order-panel">
+                <!-- order type + waiter — set once per order, kept at the very top so
+                     it's visible immediately instead of buried under the cart -->
+                <div class="card" style="margin-bottom:10px;padding:10px 12px">
+                    <div class="seg" style="margin-bottom:8px">
+                        <button :class="{ on: metaForm.order_source === 'dine_in' }" @click="metaForm.order_source = 'dine_in'">{{ t('restaurant.sourceDineIn') }}</button>
+                        <button :class="{ on: metaForm.order_source === 'takeaway' }" @click="metaForm.order_source = 'takeaway'">{{ t('restaurant.sourceTakeaway') }}</button>
+                        <button :class="{ on: metaForm.order_source === 'delivery' }" @click="metaForm.order_source = 'delivery'">{{ t('restaurant.sourceDelivery') }}</button>
+                    </div>
+                    <div v-if="metaForm.order_source === 'delivery'" style="margin-bottom:8px">
+                        <select v-model="metaForm.delivery_platform">
+                            <option value="">{{ t('damage.selectPlaceholder') }}</option>
+                            <option v-for="p in DELIVERY_PLATFORMS" :key="p" :value="p">{{ p }}</option>
+                        </select>
+                        <input v-if="metaForm.delivery_platform === 'অন্য কিছু'" v-model="metaForm.delivery_platform" :placeholder="t('restaurant.deliveryPlatformCustom')" style="margin-top:6px">
+                    </div>
+                    <div style="display:flex;gap:8px;margin-bottom:8px">
+                        <input v-model="metaForm.waiter_name" :placeholder="t('restaurant.waiterNamePlaceholder')" style="flex:1;margin:0">
+                    </div>
+                    <textarea v-model="metaForm.kitchen_note" rows="1" :placeholder="t('restaurant.kitchenNotePlaceholder')" style="margin:0"></textarea>
+                    <button v-if="metaChanged" class="btn sm ghost" style="width:100%;margin-top:8px" :disabled="metaForm.processing" @click="saveMeta">{{ metaForm.processing ? '...' : t('stock.save') }}</button>
+                </div>
+
                 <div class="card" style="margin-bottom:14px">
                     <div v-if="order.items.length">
                         <div v-if="order.items.length > 1" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -248,76 +281,42 @@ onBeforeUnmount(() => clearInterval(pollTimer));
                     <div v-else class="empty" style="padding:20px 0"><div class="big">🍽️</div>{{ t('restaurant.noItemsYet') }}</div>
                 </div>
 
-                <div v-if="order.items.length" class="card" style="margin-bottom:14px;padding:12px 16px">
-                    <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--mut);padding:2px 0"><span>{{ t('pos.subtotal') }}</span><span>{{ money(order.total) }}</span></div>
-                    <div v-if="vatPreview > 0" style="display:flex;justify-content:space-between;font-size:13px;color:var(--mut);padding:2px 0"><span>{{ t('restaurant.vatEstimate') }}</span><span>{{ money(vatPreview) }}</span></div>
-                </div>
+                <!-- sticky footer — subtotal + total + bill/kitchen actions stay on
+                     screen while the cart above scrolls, so the total and the
+                     buttons a cashier needs most are never scrolled out of view,
+                     the same way on mobile, tablet and desktop -->
+                <div class="order-sticky-footer">
+                    <div v-if="order.items.length" class="card" style="margin-bottom:8px;padding:10px 14px">
+                        <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--mut);padding:2px 0"><span>{{ t('pos.subtotal') }}</span><span>{{ money(order.total) }}</span></div>
+                        <div v-if="vatPreview > 0" style="display:flex;justify-content:space-between;font-size:13px;color:var(--mut);padding:2px 0"><span>{{ t('restaurant.vatEstimate') }}</span><span>{{ money(vatPreview) }}</span></div>
+                    </div>
 
-                <!-- order flips to bill-first when the shop's payment_timing preference is pay_first — the actions themselves are identical either way, only which one a cashier sees emphasized first changes -->
-                <template v-if="payFirst">
-                    <div style="font-size:11.5px;color:var(--dim);margin-bottom:8px">{{ t('restaurant.payFirstHint') }}</div>
-                    <div class="btnrow" style="margin-bottom:8px">
-                        <button class="btn sm" style="flex:1" :disabled="!order.items.length || (splitMode && !selectedItemIds.length)" @click="openBillSheet">{{ splitMode ? t('restaurant.billSelected') : t('restaurant.billNow') }}</button>
-                    </div>
-                    <div class="btnrow" style="margin-bottom:14px">
-                        <button class="btn ghost sm" style="flex:1" @click="printKot">{{ t('restaurant.printKot') }}</button>
-                        <button v-if="kitchenWaNumber" class="btn wa sm" style="flex:1" @click="sendKotWA">📤 {{ t('restaurant.kotWa') }}</button>
-                    </div>
-                </template>
-                <template v-else>
-                    <div class="btnrow" style="margin-bottom:8px">
-                        <button class="btn ghost sm" style="flex:1" @click="printKot">{{ t('restaurant.printKot') }}</button>
-                        <button v-if="kitchenWaNumber" class="btn wa sm" style="flex:1" @click="sendKotWA">📤 {{ t('restaurant.kotWa') }}</button>
-                    </div>
-                    <div style="font-size:11.5px;color:var(--dim);margin-bottom:8px">{{ t('restaurant.payLaterHint') }}</div>
-                    <div class="btnrow" style="margin-bottom:14px">
-                        <button class="btn sm" style="flex:1" :disabled="!order.items.length || (splitMode && !selectedItemIds.length)" @click="openBillSheet">{{ splitMode ? t('restaurant.billSelected') : t('restaurant.billNow') }}</button>
-                    </div>
-                </template>
-                <button class="btn" style="margin-bottom:8px;background:var(--green)" :disabled="!order.items.length || (splitMode && !selectedItemIds.length)" @click="billAndPrintKot">
-                    🧾 {{ t('restaurant.billAndKot') }}
-                </button>
-                <button v-if="kitchenWaNumber" class="btn wa" style="margin-bottom:16px" :disabled="!order.items.length || (splitMode && !selectedItemIds.length)" @click="billAndSendKotWA">
-                    📤 {{ t('restaurant.billAndKotWa') }}
-                </button>
-
-                <!-- secondary details — order type, kitchen note, waiter, table
-                     move/merge — set once per order, not needed at a glance
-                     every time like the cart/bill actions above are -->
-                <div class="card" style="margin-bottom:14px">
-                    <div class="field" style="margin-bottom:8px">
-                        <label>{{ t('restaurant.orderSource') }}</label>
-                        <div class="seg">
-                            <button :class="{ on: metaForm.order_source === 'dine_in' }" @click="metaForm.order_source = 'dine_in'">{{ t('restaurant.sourceDineIn') }}</button>
-                            <button :class="{ on: metaForm.order_source === 'takeaway' }" @click="metaForm.order_source = 'takeaway'">{{ t('restaurant.sourceTakeaway') }}</button>
-                            <button :class="{ on: metaForm.order_source === 'delivery' }" @click="metaForm.order_source = 'delivery'">{{ t('restaurant.sourceDelivery') }}</button>
+                    <!-- order flips to bill-first when the shop's payment_timing preference is pay_first — the actions themselves are identical either way, only which one a cashier sees emphasized first changes -->
+                    <template v-if="payFirst">
+                        <div class="btnrow" style="margin-bottom:6px">
+                            <button class="btn sm" style="flex:1" :disabled="!order.items.length || (splitMode && !selectedItemIds.length)" @click="openBillSheet">{{ splitMode ? t('restaurant.billSelected') : t('restaurant.billNow') }}</button>
                         </div>
-                    </div>
-                    <div v-if="metaForm.order_source === 'delivery'" class="field" style="margin-bottom:8px">
-                        <label>{{ t('restaurant.deliveryPlatform') }}</label>
-                        <select v-model="metaForm.delivery_platform">
-                            <option value="">{{ t('damage.selectPlaceholder') }}</option>
-                            <option v-for="p in DELIVERY_PLATFORMS" :key="p" :value="p">{{ p }}</option>
-                        </select>
-                        <input v-if="metaForm.delivery_platform === 'অন্য কিছু'" v-model="metaForm.delivery_platform" :placeholder="t('restaurant.deliveryPlatformCustom')" style="margin-top:6px">
-                    </div>
-                    <div class="field" style="margin-bottom:8px">
-                        <label>{{ t('restaurant.kitchenNote') }} <span style="color:var(--dim);font-weight:400">{{ t('restaurant.kitchenNoteHint') }}</span></label>
-                        <textarea v-model="metaForm.kitchen_note" rows="2" :placeholder="t('restaurant.kitchenNotePlaceholder')"></textarea>
-                    </div>
-                    <div class="field" style="margin-bottom:8px">
-                        <label>{{ t('restaurant.waiterName') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
-                        <input v-model="metaForm.waiter_name" :placeholder="t('restaurant.waiterNamePlaceholder')">
-                    </div>
-                    <button v-if="metaChanged" class="btn sm ghost" style="width:100%" :disabled="metaForm.processing" @click="saveMeta">{{ metaForm.processing ? '...' : t('stock.save') }}</button>
+                        <div class="btnrow" style="margin-bottom:6px">
+                            <button class="btn ghost sm" style="flex:1" @click="printKot">{{ t('restaurant.printKot') }}</button>
+                            <button v-if="kitchenWaNumber" class="btn wa sm" style="flex:1" @click="sendKotWA">📤 {{ t('restaurant.kotWa') }}</button>
+                        </div>
+                    </template>
+                    <template v-else>
+                        <div class="btnrow" style="margin-bottom:6px">
+                            <button class="btn ghost sm" style="flex:1" @click="printKot">{{ t('restaurant.printKot') }}</button>
+                            <button v-if="kitchenWaNumber" class="btn wa sm" style="flex:1" @click="sendKotWA">📤 {{ t('restaurant.kotWa') }}</button>
+                        </div>
+                        <div class="btnrow" style="margin-bottom:6px">
+                            <button class="btn sm" style="flex:1" :disabled="!order.items.length || (splitMode && !selectedItemIds.length)" @click="openBillSheet">{{ splitMode ? t('restaurant.billSelected') : t('restaurant.billNow') }}</button>
+                        </div>
+                    </template>
+                    <button class="btn" style="margin-bottom:6px;background:var(--green)" :disabled="!order.items.length || (splitMode && !selectedItemIds.length)" @click="billAndPrintKot">
+                        🧾 {{ t('restaurant.billAndKot') }}
+                    </button>
+                    <button v-if="kitchenWaNumber" class="btn wa" :disabled="!order.items.length || (splitMode && !selectedItemIds.length)" @click="billAndSendKotWA">
+                        📤 {{ t('restaurant.billAndKotWa') }}
+                    </button>
                 </div>
-
-                <div v-if="order.table_id && (freeTables.length || otherOccupiedTables.length)" class="btnrow" style="margin-bottom:14px">
-                    <button v-if="freeTables.length" class="btn sm ghost" style="flex:1" @click="tableActionMode = 'transfer'; tableActionTargetId = ''; tableActionSheet = true">🔀 {{ t('restaurant.transferTable') }}</button>
-                    <button v-if="otherOccupiedTables.length" class="btn sm ghost" style="flex:1" @click="tableActionMode = 'merge'; tableActionTargetId = ''; tableActionSheet = true">🔗 {{ t('restaurant.mergeTable') }}</button>
-                </div>
-
-                <button class="btn ghost" style="margin-bottom:16px;color:var(--rose);border-color:var(--rose)" @click="cancelOrder">{{ t('restaurant.cancelOrder') }}</button>
             </div>
 
             <!-- category rail — desktop only, the mobile tabbar below covers the same job on phone -->
@@ -397,6 +396,14 @@ onBeforeUnmount(() => clearInterval(pollTimer));
             <button class="btn" :disabled="billForm.processing" @click="submitBill">
                 {{ billForm.processing ? t('pos.processing') : t('restaurant.billNow') }}
             </button>
+        </Sheet>
+
+        <!-- table move/merge + cancel — rare actions, reachable in one tap from
+             the header's ⋯ button instead of sitting in the everyday scroll flow -->
+        <Sheet v-model="moreSheet" :title="t('common.more')">
+            <button v-if="freeTables.length" class="btn ghost" style="margin-bottom:10px" @click="moreSheet = false; tableActionMode = 'transfer'; tableActionTargetId = ''; tableActionSheet = true">🔀 {{ t('restaurant.transferTable') }}</button>
+            <button v-if="otherOccupiedTables.length" class="btn ghost" style="margin-bottom:10px" @click="moreSheet = false; tableActionMode = 'merge'; tableActionTargetId = ''; tableActionSheet = true">🔗 {{ t('restaurant.mergeTable') }}</button>
+            <button class="btn ghost" style="color:var(--rose);border-color:var(--rose)" @click="moreSheet = false; cancelOrder()">{{ t('restaurant.cancelOrder') }}</button>
         </Sheet>
 
         <!-- table transfer / merge -->

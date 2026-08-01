@@ -932,11 +932,18 @@ useKeyboardShortcuts({
 
                 <div v-if="errorMsg" class="card" style="background:var(--roseSoft);color:var(--rose);margin-bottom:14px;font-size:13px">{{ errorMsg }}</div>
 
-                <div class="card" style="margin-bottom:14px">
-                    <div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--mut)"><span>{{ t('pos.subtotal') }}</span><b>{{ money(subtotal) }}</b></div>
-                    <div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--mut)"><span>{{ t('pos.overallDiscount') }}</span><b>− {{ money(discount || 0) }}</b></div>
-                    <div class="hr" style="margin:8px 0"></div>
-                    <div style="display:flex;justify-content:space-between;font-size:19px;font-weight:800"><span>{{ t('pos.grandTotal') }}</span><b style="color:var(--gold)">{{ money(total) }}</b></div>
+                <div class="card" style="margin-bottom:10px">
+                    <div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--mut);font-size:13.5px"><span>{{ t('pos.subtotal') }}</span><b>{{ money(subtotal) }}</b></div>
+                    <div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--mut);font-size:13.5px"><span>{{ t('pos.overallDiscount') }}</span><b>− {{ money(discount || 0) }}</b></div>
+                </div>
+
+                <!-- grand total gets its own bold, full-width bar — the one
+                     number a cashier absolutely must not misread before
+                     collecting payment, so it shouldn't share visual weight
+                     with the subtotal/discount breakdown above it -->
+                <div class="grand-total-bar">
+                    <span>{{ t('pos.grandTotal') }}</span>
+                    <b>{{ money(total) }}</b>
                 </div>
 
                 <button class="btn" :disabled="submitting" @click="submitCheckout">
