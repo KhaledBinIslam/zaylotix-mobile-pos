@@ -21,6 +21,7 @@ use App\Http\Controllers\App\LoanController;
 use App\Http\Controllers\App\LoanPaymentController;
 use App\Http\Controllers\App\MedicineCatalogController;
 use App\Http\Controllers\App\ReservationController;
+use App\Http\Controllers\App\WorkPeriodController;
 use App\Http\Controllers\RatingController;
 use App\Http\Controllers\App\MoreController;
 use App\Http\Controllers\App\NotificationController;
@@ -108,6 +109,9 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
 
         Route::post('pos/gateway/{provider}/initiate', [GatewayCheckoutController::class, 'initiate'])->name('gatewayCheckout.initiate');
         Route::get('pos/gateway/status/{reference}', [GatewayCheckoutController::class, 'status'])->name('gatewayCheckout.status');
+
+        Route::post('work-period/open', [WorkPeriodController::class, 'open'])->name('workPeriod.open');
+        Route::post('work-period/{workPeriod}/close', [WorkPeriodController::class, 'close'])->name('workPeriod.close');
 
         Route::post('pos/held-carts', [HeldCartController::class, 'store'])->name('heldCarts.store');
         Route::post('pos/held-carts/{heldCart}/resume', [HeldCartController::class, 'resume'])->name('heldCarts.resume');

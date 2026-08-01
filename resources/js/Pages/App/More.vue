@@ -21,6 +21,16 @@ function setLang(value) {
     router.patch(route('app.settings.lang'), { lang: value }, { preserveScroll: true });
 }
 
+// --- work period (shift/cash-drawer) — entirely optional, see AppLayout.vue
+// for the running-shift banner; this is just the opt-in entry point to
+// start one, so a shop that never uses this feature never sees it nagged ---
+const activeWorkPeriod = computed(() => page.props.activeWorkPeriod);
+const workPeriodSheet = ref(false);
+const workPeriodForm = useForm({ opening_cash: '' });
+function submitOpenShift() {
+    workPeriodForm.post(route('app.workPeriod.open'), { onSuccess: () => { workPeriodSheet.value = false; workPeriodForm.reset(); } });
+}
+
 // --- shop logo + receipt footer ---
 const logoSheet = ref(false);
 const logoForm = useForm({ logo: null });
@@ -207,6 +217,9 @@ onMounted(() => {
             <Link v-if="hasPerm('pos') && features.includes('restaurant_tables')" :href="route('app.reservations.index')" class="row">
                 <div class="ava">📅</div><div class="mid"><b>{{ t('nav.reservations') }}</b><span>{{ t('reservation.subtitle') }}</span></div><div class="end">›</div>
             </Link>
+            <button v-if="hasPerm('pos') && !activeWorkPeriod" class="row" style="width:100%;text-align:left;border:none;background:none;cursor:pointer" @click="workPeriodSheet = true">
+                <div class="ava">🕒</div><div class="mid"><b>{{ t('workPeriod.startPrompt') }}</b><span>{{ t('workPeriod.startPromptSub') }}</span></div><div class="end">›</div>
+            </button>
             <Link v-if="hasPerm('sales_history')" :href="route('app.sales')" class="row">
                 <div class="ava">🧾</div><div class="mid"><b>{{ t('nav.salesHistory') }}</b><span>{{ t('more.salesHistorySub') }}</span></div><div class="end">›</div>
             </Link>
@@ -614,6 +627,15 @@ onMounted(() => {
                 <button class="btn ghost sm" style="margin-left:6px" @click="download(kind, 'pdf')">PDF</button>
             </div>
             <button class="btn ghost" style="margin-top:12px" @click="exportSheet = false">{{ t('common.cancel') }}</button>
+        </Sheet>
+
+        <Sheet v-model="workPeriodSheet" :title="t('workPeriod.openTitle')">
+            <div class="field">
+                <label>{{ t('workPeriod.openingCash') }}</label>
+                <input v-model="workPeriodForm.opening_cash" type="number" min="0" placeholder="0">
+                <div v-if="workPeriodForm.errors.opening_cash" style="color:var(--rose);font-size:12px;margin-top:6px">{{ workPeriodForm.errors.opening_cash }}</div>
+            </div>
+            <button class="btn" :disabled="workPeriodForm.processing" @click="submitOpenShift">{{ workPeriodForm.processing ? '...' : t('workPeriod.startButton') }}</button>
         </Sheet>
     </AppLayout>
 </template>

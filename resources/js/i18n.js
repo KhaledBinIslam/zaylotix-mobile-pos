@@ -163,6 +163,16 @@ export const translations = {
     'expiry.expired': { bn: 'মেয়াদ শেষ হয়ে গেছে — এখনই যোগাযোগ করুন, না হলে অ্যাকাউন্ট বন্ধ হয়ে যাবে।', en: 'Already expired — contact us now or the account will be shut off.' },
     'expiry.today': { bn: 'আজই শেষ হচ্ছে — বিল পরিশোধ করুন।', en: 'ends today — please pay now.' },
     'expiry.soon': { bn: 'শেষ হতে আর {d} দিন বাকি — মেয়াদ শেষ হলে দোকান বন্ধ হয়ে যাবে।', en: 'ends in {d} more day(s) — the shop will be locked when it expires.' },
+    'workPeriod.running': { bn: 'শিফট চলছে — {time}', en: 'Shift running — {time}' },
+    'workPeriod.startPrompt': { bn: 'শিফট শুরু করুন', en: 'Start a shift' },
+    'workPeriod.startPromptSub': { bn: 'ক্যাশ গোনা ও মিলানোর জন্য (ঐচ্ছিক)', en: 'Optional cash-drawer tracking' },
+    'workPeriod.openTitle': { bn: 'শিফট শুরু করুন', en: 'Start shift' },
+    'workPeriod.openingCash': { bn: 'শুরুতে ক্যাশ আছে', en: 'Opening cash' },
+    'workPeriod.startButton': { bn: 'শিফট শুরু করুন', en: 'Start shift' },
+    'workPeriod.closeTitle': { bn: 'শিফট বন্ধ করুন', en: 'Close shift' },
+    'workPeriod.closeHint': { bn: 'শিফট চলছে {time} ধরে — এখন হাতে থাকা ক্যাশ গুনে লিখুন', en: 'Shift has run for {time} — count and enter the cash on hand now' },
+    'workPeriod.closingCash': { bn: 'এখন হাতে ক্যাশ আছে', en: 'Closing cash' },
+    'workPeriod.endButton': { bn: 'শিফট বন্ধ করুন', en: 'Close shift' },
 
     // ---- login ----
     'login.title': { bn: 'লগইন', en: 'Log in' },

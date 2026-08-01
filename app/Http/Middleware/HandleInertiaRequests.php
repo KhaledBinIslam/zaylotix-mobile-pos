@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Models\Admin;
 use App\Models\SiteSetting;
+use App\Models\WorkPeriod;
 use App\Support\Tenancy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -52,6 +53,10 @@ class HandleInertiaRequests extends Middleware
                     'created_at' => $n->created_at->diffForHumans(),
                 ])->values(),
             ] : null,
+            // entirely optional shift/cash-drawer tracking — null on every
+            // page for a shop that's never opened one, so AppLayout's banner
+            // simply doesn't render and nothing else changes
+            'activeWorkPeriod' => fn () => $shopUser ? WorkPeriod::whereNull('closed_at')->with('openedByUser:id,name')->first() : null,
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),

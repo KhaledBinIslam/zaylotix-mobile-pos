@@ -1,6 +1,6 @@
 <script setup>
-import { Link, usePage, router } from '@inertiajs/vue3';
-import { computed, ref, watch } from 'vue';
+import { Link, usePage, router, useForm } from '@inertiajs/vue3';
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import Toast from '@/Components/Toast.vue';
 import HelpButton from '@/Components/HelpButton.vue';
 import ZaylotixMark from '@/Components/ZaylotixMark.vue';
@@ -42,6 +42,27 @@ const daysLeft = computed(() => {
     return Math.round((expiry - today) / 86400000);
 });
 const showExpiryBanner = computed(() => isOwner.value && daysLeft.value !== null && daysLeft.value <= 7);
+
+// entirely optional shift/cash-drawer tracking (see WorkPeriodController) —
+// a shop that never opens one never sees any of this UI at all
+const activeWorkPeriod = computed(() => page.props.activeWorkPeriod);
+const now = ref(Date.now());
+let clockTimer = null;
+onMounted(() => { clockTimer = setInterval(() => { now.value = Date.now(); }, 30000); });
+onBeforeUnmount(() => clearInterval(clockTimer));
+const workPeriodElapsed = computed(() => {
+    if (!activeWorkPeriod.value) return '';
+    const mins = Math.max(0, Math.floor((now.value - new Date(activeWorkPeriod.value.opened_at).getTime()) / 60000));
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+});
+
+const closeShiftSheet = ref(false);
+const closeShiftForm = useForm({ closing_cash: '' });
+function submitCloseShift() {
+    closeShiftForm.post(route('app.workPeriod.close', activeWorkPeriod.value.id), { onSuccess: () => { closeShiftSheet.value = false; closeShiftForm.reset(); } });
+}
 const expiryBannerText = computed(() => {
     const d = daysLeft.value;
     const plan = shop.value?.plan === 'trial' ? t('expiry.trialWord') : t('expiry.subWord');
@@ -297,6 +318,9 @@ const sidebarGroups = computed(() => [
                     <div v-if="showExpiryBanner" class="expiry-banner" :class="{ urgent: daysLeft <= 1 }">
                         ⏰ {{ expiryBannerText }} <a href="tel:01979894356">01979894356</a>
                     </div>
+                    <button v-if="activeWorkPeriod" class="expiry-banner" style="width:100%;text-align:left;cursor:pointer" @click="closeShiftSheet = true">
+                        🕒 {{ t('workPeriod.running', { time: workPeriodElapsed }) }}
+                    </button>
                     <button v-if="active !== 'home'" class="backbtn" @click="goBack">
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 19l-7-7 7-7" /></svg>
                         {{ t('common.back') }}
@@ -364,6 +388,16 @@ const sidebarGroups = computed(() => [
             <button class="btn sm" style="flex:1" @click="offlineSync.queue.value.filter(e => e.status === 'failed').forEach(e => offlineSync.retry(e.id))">{{ t('offline.retryAll') }}</button>
             <button class="btn sm ghost" style="flex:1" @click="offlineSync.queue.value.filter(e => e.status === 'failed').forEach(e => offlineSync.discard(e.id)); failedSheet = false">{{ t('offline.discardAll') }}</button>
         </div>
+    </Sheet>
+
+    <Sheet v-model="closeShiftSheet" :title="t('workPeriod.closeTitle')">
+        <div v-if="activeWorkPeriod" style="font-size:12.5px;color:var(--mut);margin-bottom:10px">{{ t('workPeriod.closeHint', { time: workPeriodElapsed }) }}</div>
+        <div class="field">
+            <label>{{ t('workPeriod.closingCash') }}</label>
+            <input v-model="closeShiftForm.closing_cash" type="number" min="0" placeholder="0">
+            <div v-if="closeShiftForm.errors.closing_cash" style="color:var(--rose);font-size:12px;margin-top:6px">{{ closeShiftForm.errors.closing_cash }}</div>
+        </div>
+        <button class="btn" :disabled="closeShiftForm.processing" @click="submitCloseShift">{{ closeShiftForm.processing ? '...' : t('workPeriod.endButton') }}</button>
     </Sheet>
 
     <HelpButton :screen-label="screenLabel" />
