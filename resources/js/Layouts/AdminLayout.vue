@@ -31,6 +31,8 @@ const nav = computed(() => [
     { key: 'systemHealth', label: 'System Health', icon: '🩺', route: 'admin.systemHealth.index', show: true },
     { key: 'admins', label: 'Admin Accounts', icon: '🔑', route: 'admin.admins.index', show: isSuperAdmin.value },
     { key: 'siteSettings', label: 'Site Settings', icon: '🖼️', route: 'admin.siteSettings.edit', show: isSuperAdmin.value },
+    { key: 'faqs', label: 'FAQs', icon: '❓', route: 'admin.faqs.index', show: isSuperAdmin.value },
+    { key: 'screenGuides', label: 'Screen Guides', icon: '📖', route: 'admin.screenGuides.index', show: isSuperAdmin.value },
     { key: 'backups', label: 'Backups', icon: '💾', route: 'admin.backups.index', show: isSuperAdmin.value },
 ].filter((i) => i.show));
 </script>

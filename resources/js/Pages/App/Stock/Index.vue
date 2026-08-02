@@ -273,7 +273,7 @@ useKeyboardShortcuts({
     <AppLayout active="stock">
         <div class="pgttl">{{ t('nav.stockFull') }}</div>
         <div class="pgsub">{{ t('stock.subtitle') }} {{ totalProducts }} {{ t('home.products') }}</div>
-        <HowToHint :text="t('help.a2')" />
+        <HowToHint screen-key="stock" />
         <div class="hidden lg:block" style="font-size:11.5px;color:var(--dim);margin-bottom:10px">{{ t('stock.shortcutsHint') }}</div>
 
         <div class="grid2" style="margin-bottom:14px">

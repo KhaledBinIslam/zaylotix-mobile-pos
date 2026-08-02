@@ -715,7 +715,7 @@ useKeyboardShortcuts({
     <AppLayout active="sell">
         <div class="pgttl">{{ t('pos.title') }}</div>
         <div class="pgsub">{{ t('pos.subtitleTap') }}{{ canScan ? t('pos.subtitleScan') : '' }}</div>
-        <HowToHint :text="t('help.a1')" />
+        <HowToHint screen-key="pos" />
         <div class="hidden lg:block" style="font-size:11.5px;color:var(--dim);margin-bottom:10px">{{ t('pos.shortcutsHint') }}</div>
 
         <div class="lg:flex lg:gap-6 lg:items-start">

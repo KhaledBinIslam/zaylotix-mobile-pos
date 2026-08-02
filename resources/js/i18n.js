@@ -910,6 +910,7 @@ export const translations = {
 
     // ---- help / support ----
     'help.fabTitle': { bn: 'সাহায্য প্রয়োজন?', en: 'Need help?' },
+    'help.fabLabel': { bn: 'সাপোর্টের জন্য ক্লিক করুন', en: 'Click for support' },
     'help.menuTitle': { bn: 'কীভাবে সাহায্য চান?', en: 'How can we help?' },
     'help.menuFaq': { bn: 'সহজ প্রশ্ন-উত্তর দেখুন', en: 'See simple FAQ' },
     'help.menuFaqSub': { bn: 'অ্যাপের ভেতরেই, নেট লাগবে না', en: 'Right inside the app, no WhatsApp needed' },
@@ -920,6 +921,7 @@ export const translations = {
     'help.title': { bn: 'সাহায্য কেন্দ্র', en: 'Help Center' },
     'help.subtitle': { bn: 'সহজ ভাষায় প্রশ্ন-উত্তর — সমাধান না পেলে সরাসরি WhatsApp করুন', en: "Simple answers — message us on WhatsApp if you're still stuck" },
     'help.whatsappCta': { bn: '💬 WhatsApp-এ সরাসরি সাহায্য চান', en: '💬 Get help directly on WhatsApp' },
+    'help.noFaqs': { bn: 'এখনো কোনো প্রশ্ন-উত্তর যোগ করা হয়নি', en: 'No FAQs added yet' },
     'help.q1': { bn: 'কীভাবে একটা জিনিস বিক্রি করব?', en: 'How do I sell an item?' },
     'help.a1': { bn: 'নিচের সবুজ "বিক্রি" বাটনে চাপ দিন। পণ্যে ট্যাপ করলে কার্টে যোগ হবে। শেষে "টাকা নিন" চাপুন — ব্যাস, বিক্রি হয়ে গেল।', en: 'Tap the green "Sell" button below. Tap a product to add it to the cart. Then tap "Take payment" — done.' },
     'help.q2': { bn: 'কীভাবে নতুন পণ্য/স্টক যোগ করব?', en: 'How do I add a new product/stock?' },

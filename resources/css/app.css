@@ -248,7 +248,12 @@ body {
 .howto-head { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; font-weight: 700; color: var(--green2); }
 .howto-body { margin-top: 8px; font-size: 12.5px; color: var(--mut); line-height: 1.6; }
 
-.help-fab { position: fixed; right: 16px; bottom: calc(84px + env(safe-area-inset-bottom)); width: 48px; height: 48px; border-radius: 50%; background: #25D366; color: #fff; font-size: 21px; display: flex; align-items: center; justify-content: center; border: none; box-shadow: 0 6px 18px rgba(37, 211, 102, .4); z-index: 40; cursor: pointer; }
+/* a plain "?" circle with only a hover title (invisible on touch devices —
+   most of this app's users) reads as an unlabeled mystery button; the
+   visible text label is what actually tells a non-tech owner what tapping
+   it does, without them needing to discover that first */
+.help-fab { position: fixed; right: 16px; bottom: calc(84px + env(safe-area-inset-bottom)); height: 44px; padding: 0 16px 0 14px; border-radius: 99px; background: #25D366; color: #fff; font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 7px; border: none; box-shadow: 0 6px 18px rgba(37, 211, 102, .4); z-index: 40; cursor: pointer; white-space: nowrap; }
+.help-fab span:first-child { font-size: 19px; }
 @media (min-width: 1024px) { .help-fab { bottom: 24px; } }
 
 .seg { display: flex; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 4px; gap: 4px; }

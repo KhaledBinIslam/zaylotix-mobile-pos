@@ -231,32 +231,13 @@ onBeforeUnmount(() => clearInterval(pollTimer));
 
         <div class="lg:flex lg:gap-6 lg:items-start">
             <!-- order/cart panel — natural first on mobile (unchanged position), becomes the sticky right column on desktop.
-                 Order type + waiter go first (set once, but must be visible without scrolling); cart is the scrollable
-                 middle; bill total + actions are a sticky footer so they stay on screen while scrolling the cart —
-                 same layout on mobile/tablet/desktop, no screen-size-specific hunting for the total or the buttons. -->
+                 Cart items come first (what a cashier actually needs to see/manage the instant they open an order); order-
+                 type/waiter/kitchen-note are set once and rarely touched again, so they sit below the bill actions, not
+                 above the items — restored here after briefly moving them to the top to mirror a reference screenshot,
+                 which undid an earlier, already-confirmed-good fix (see git history: cart-first was explicitly validated
+                 by the user before this file mirrored a different reference's top-first layout — that reference's layout
+                 wasn't actually requested to replace this one). -->
             <div class="lg:order-3 lg:w-80 lg:shrink-0 lg:sticky lg:top-6 order-panel">
-                <!-- order type + waiter — set once per order, kept at the very top so
-                     it's visible immediately instead of buried under the cart -->
-                <div class="card" style="margin-bottom:10px;padding:10px 12px">
-                    <div class="seg" style="margin-bottom:8px">
-                        <button :class="{ on: metaForm.order_source === 'dine_in' }" @click="metaForm.order_source = 'dine_in'">{{ t('restaurant.sourceDineIn') }}</button>
-                        <button :class="{ on: metaForm.order_source === 'takeaway' }" @click="metaForm.order_source = 'takeaway'">{{ t('restaurant.sourceTakeaway') }}</button>
-                        <button :class="{ on: metaForm.order_source === 'delivery' }" @click="metaForm.order_source = 'delivery'">{{ t('restaurant.sourceDelivery') }}</button>
-                    </div>
-                    <div v-if="metaForm.order_source === 'delivery'" style="margin-bottom:8px">
-                        <select v-model="metaForm.delivery_platform">
-                            <option value="">{{ t('damage.selectPlaceholder') }}</option>
-                            <option v-for="p in DELIVERY_PLATFORMS" :key="p" :value="p">{{ p }}</option>
-                        </select>
-                        <input v-if="metaForm.delivery_platform === 'অন্য কিছু'" v-model="metaForm.delivery_platform" :placeholder="t('restaurant.deliveryPlatformCustom')" style="margin-top:6px">
-                    </div>
-                    <div style="display:flex;gap:8px;margin-bottom:8px">
-                        <input v-model="metaForm.waiter_name" :placeholder="t('restaurant.waiterNamePlaceholder')" style="flex:1;margin:0">
-                    </div>
-                    <textarea v-model="metaForm.kitchen_note" rows="1" :placeholder="t('restaurant.kitchenNotePlaceholder')" style="margin:0"></textarea>
-                    <button v-if="metaChanged" class="btn sm ghost" style="width:100%;margin-top:8px" :disabled="metaForm.processing" @click="saveMeta">{{ metaForm.processing ? '...' : t('stock.save') }}</button>
-                </div>
-
                 <div class="card" style="margin-bottom:14px">
                     <div v-if="order.items.length">
                         <div v-if="order.items.length > 1" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -332,6 +313,37 @@ onBeforeUnmount(() => clearInterval(pollTimer));
                     <button v-if="kitchenWaNumber" class="btn wa" :disabled="!order.items.length || (splitMode && !selectedItemIds.length)" @click="billAndSendKotWA">
                         📤 {{ t('restaurant.billAndKotWa') }}
                     </button>
+                </div>
+
+                <!-- secondary details — order type, kitchen note, waiter — set
+                     once per order, not needed at a glance every time like the
+                     cart/bill actions above are, so they sit below those, not above -->
+                <div class="card" style="margin-bottom:14px">
+                    <div class="field" style="margin-bottom:8px">
+                        <label>{{ t('restaurant.orderSource') }}</label>
+                        <div class="seg">
+                            <button :class="{ on: metaForm.order_source === 'dine_in' }" @click="metaForm.order_source = 'dine_in'">{{ t('restaurant.sourceDineIn') }}</button>
+                            <button :class="{ on: metaForm.order_source === 'takeaway' }" @click="metaForm.order_source = 'takeaway'">{{ t('restaurant.sourceTakeaway') }}</button>
+                            <button :class="{ on: metaForm.order_source === 'delivery' }" @click="metaForm.order_source = 'delivery'">{{ t('restaurant.sourceDelivery') }}</button>
+                        </div>
+                    </div>
+                    <div v-if="metaForm.order_source === 'delivery'" class="field" style="margin-bottom:8px">
+                        <label>{{ t('restaurant.deliveryPlatform') }}</label>
+                        <select v-model="metaForm.delivery_platform">
+                            <option value="">{{ t('damage.selectPlaceholder') }}</option>
+                            <option v-for="p in DELIVERY_PLATFORMS" :key="p" :value="p">{{ p }}</option>
+                        </select>
+                        <input v-if="metaForm.delivery_platform === 'অন্য কিছু'" v-model="metaForm.delivery_platform" :placeholder="t('restaurant.deliveryPlatformCustom')" style="margin-top:6px">
+                    </div>
+                    <div class="field" style="margin-bottom:8px">
+                        <label>{{ t('restaurant.kitchenNote') }} <span style="color:var(--dim);font-weight:400">{{ t('restaurant.kitchenNoteHint') }}</span></label>
+                        <textarea v-model="metaForm.kitchen_note" rows="2" :placeholder="t('restaurant.kitchenNotePlaceholder')"></textarea>
+                    </div>
+                    <div class="field" style="margin-bottom:8px">
+                        <label>{{ t('restaurant.waiterName') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
+                        <input v-model="metaForm.waiter_name" :placeholder="t('restaurant.waiterNamePlaceholder')">
+                    </div>
+                    <button v-if="metaChanged" class="btn sm ghost" style="width:100%" :disabled="metaForm.processing" @click="saveMeta">{{ metaForm.processing ? '...' : t('stock.save') }}</button>
                 </div>
             </div>
 

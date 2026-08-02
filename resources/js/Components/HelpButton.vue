@@ -25,6 +25,7 @@ function openWhatsApp() {
 <template>
     <button class="help-fab" :title="t('help.fabTitle')" @click="menuOpen = true">
         <span>❓</span>
+        <span>{{ t('help.fabLabel') }}</span>
     </button>
 
     <Sheet v-model="menuOpen" :title="t('help.menuTitle')">

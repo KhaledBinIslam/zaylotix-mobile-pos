@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\Admin;
+use App\Models\ScreenGuide;
 use App\Models\Shop;
 use App\Models\SiteSetting;
 use App\Models\User;
@@ -46,6 +47,12 @@ class HandleInertiaRequests extends Middleware
                 ? ['adminName' => Admin::find($request->session()->get('impersonating_admin_id'))?->name]
                 : null,
             'features' => fn () => $shopUser ? Tenancy::shop()?->featureKeys()->values() : [],
+            // admin-managed per-screen "how do I do this" hints -- keyed by
+            // screen_key so HowToHint.vue can look its own up; a screen with
+            // nothing set here just renders nothing, see ScreenGuide/admin panel
+            'guides' => fn () => $shopUser
+                ? ScreenGuide::where('is_active', true)->get(['screen_key', 'text_bn', 'text_en'])->keyBy('screen_key')
+                : null,
             // "A Zaylotix product" credit shown on every printed memo/label —
             // falls back to plain text (see the Vue templates) until an
             // admin actually uploads one, so this is never a broken <img>

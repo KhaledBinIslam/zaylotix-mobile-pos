@@ -5,6 +5,8 @@ use App\Http\Controllers\Admin\AnalyticsController;
 use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\BackupController;
 use App\Http\Controllers\Admin\BusinessTypeController;
+use App\Http\Controllers\Admin\FaqController;
+use App\Http\Controllers\Admin\ScreenGuideController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\FeatureController;
 use App\Http\Controllers\Admin\ImpersonationController;
@@ -81,6 +83,16 @@ Route::middleware('admin')->group(function () {
         Route::post('site-settings', [SiteSettingController::class, 'update'])->name('siteSettings.update');
         Route::delete('site-settings', [SiteSettingController::class, 'destroy'])->name('siteSettings.destroy');
         Route::patch('site-settings/reminder-days', [SiteSettingController::class, 'updateReminderDays'])->name('siteSettings.reminderDays');
+
+        Route::get('faqs', [FaqController::class, 'index'])->name('faqs.index');
+        Route::post('faqs', [FaqController::class, 'store'])->name('faqs.store');
+        Route::put('faqs/{faq}', [FaqController::class, 'update'])->name('faqs.update');
+        Route::delete('faqs/{faq}', [FaqController::class, 'destroy'])->name('faqs.destroy');
+
+        Route::get('screen-guides', [ScreenGuideController::class, 'index'])->name('screenGuides.index');
+        Route::post('screen-guides', [ScreenGuideController::class, 'store'])->name('screenGuides.store');
+        Route::put('screen-guides/{screenGuide}', [ScreenGuideController::class, 'update'])->name('screenGuides.update');
+        Route::delete('screen-guides/{screenGuide}', [ScreenGuideController::class, 'destroy'])->name('screenGuides.destroy');
 
         Route::get('backups', [BackupController::class, 'index'])->name('backups.index');
         Route::post('backups', [BackupController::class, 'store'])->name('backups.store');
