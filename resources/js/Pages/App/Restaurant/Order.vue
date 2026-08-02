@@ -15,6 +15,9 @@ const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 
 const page = usePage();
 const shop = computed(() => page.props.shop);
+// complimentary (free/staff-meal) bills give away real inventory for free —
+// owner-only, same reasoning as Pos/Index.vue
+const isOwner = computed(() => page.props.auth?.user?.role === 'owner');
 // a takeaway/parcel order has no restaurant_table_id at all (see
 // RestaurantTableController::openTakeaway), so table_name is null — this is
 // the one place that fallback label is needed everywhere the name is shown
@@ -172,7 +175,8 @@ function openBillSheet() {
 function submitBill() {
     billForm.transform(() => ({
         discount: discount.value || 0,
-        payments: payMode.value === 'credit' ? [] : [{ method: payMode.value, amount: billTotal.value }],
+        complimentary: payMode.value === 'complimentary',
+        payments: (payMode.value === 'credit' || payMode.value === 'complimentary') ? [] : [{ method: payMode.value, amount: billTotal.value }],
         customer_phone: customerPhone.value,
         customer_name: customerName.value,
         item_ids: splitMode.value ? selectedItemIds.value : undefined,
@@ -391,11 +395,16 @@ onBeforeUnmount(() => clearInterval(pollTimer));
             </div>
             <div class="field">
                 <label>{{ t('pos.payment') }}</label>
-                <div class="seg">
+                <div v-if="payMode !== 'complimentary'" class="seg">
                     <button :class="{ on: payMode === 'cash' }" @click="payMode = 'cash'">{{ t('pay.cash') }}</button>
                     <button :class="{ on: payMode === 'bkash' }" @click="payMode = 'bkash'">{{ t('pay.bkash') }}</button>
                     <button :class="{ on: payMode === 'nagad' }" @click="payMode = 'nagad'">{{ t('pay.nagad') }}</button>
                     <button :class="{ on: payMode === 'credit' }" @click="payMode = 'credit'">{{ t('pay.credit') }}</button>
+                </div>
+                <button v-if="isOwner && payMode !== 'complimentary'" type="button" class="btn sm ghost" style="margin-top:8px;color:var(--gold2);border-color:var(--gold2)" @click="payMode = 'complimentary'">🎁 {{ t('pay.complimentary') }}</button>
+                <div v-if="payMode === 'complimentary'" class="card" style="margin-top:8px;background:var(--goldSoft);border-color:var(--gold2)">
+                    <div style="font-size:13px;font-weight:700;color:var(--gold2)">🎁 {{ t('pay.complimentaryActiveHint') }}</div>
+                    <button type="button" class="btn sm ghost" style="margin-top:8px" @click="payMode = 'cash'">{{ t('common.cancel') }}</button>
                 </div>
             </div>
             <div class="field">

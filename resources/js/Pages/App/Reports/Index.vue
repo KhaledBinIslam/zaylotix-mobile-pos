@@ -7,7 +7,7 @@ import { useI18n } from '@/composables/useI18n';
 const props = defineProps({
     from: String, to: String, preset: String, stats: Object, sales: Array, topProducts: Array, bottomProducts: Array,
     expiringSoon: Array, cashierBreakdown: Array, restaurantBreakdown: Object, salesByType: Object, itemWisePurchases: Array,
-    summary: Object, categoryReport: Object, discountReport: Object, wastageReport: Array, ratingReport: Object, heatmap: Object, consumptionReport: Array,
+    summary: Object, categoryReport: Object, discountReport: Object, wastageReport: Array, ratingReport: Object, heatmap: Object, consumptionReport: Array, complimentaryReport: Object, combinedStats: Object,
 });
 const { t } = useI18n();
 
@@ -123,6 +123,20 @@ function heatColor(count) {
 
         <button class="btn" @click="exportReport('pl', 'xlsx')">{{ t('rep.downloadExcel') }}</button>
         <button class="btn ghost" style="margin-top:10px" @click="exportReport('pl', 'csv')">CSV</button>
+
+        <template v-if="combinedStats">
+            <div class="sechead"><h2>{{ t('rep.combinedReport') }}</h2></div>
+            <div class="grid2" style="margin-bottom:10px">
+                <div class="stat gold"><div class="k">{{ t('rep.combinedSales') }}</div><div class="v">{{ money(combinedStats.salesAmt) }}</div></div>
+                <div class="stat mint"><div class="k">{{ t('rep.combinedNetProfit') }}</div><div class="v">{{ money(combinedStats.net) }}</div></div>
+            </div>
+            <div class="card" style="padding:0;margin-bottom:14px">
+                <div v-for="(b, i) in combinedStats.byBranch" :key="i" class="row" style="cursor:default" :style="i > 0 ? 'border-top:1px solid var(--line)' : ''">
+                    <div class="mid"><b>🏬 {{ b.shop_name }}</b><span>{{ b.count }} {{ t('rep.bills') }}</span></div>
+                    <div class="end"><b>{{ money(b.total) }}</b></div>
+                </div>
+            </div>
+        </template>
 
         <template v-if="expiringSoon">
             <div class="sechead"><h2>{{ t('rep.expiringSoon') }}</h2></div>
@@ -251,6 +265,20 @@ function heatColor(count) {
                 <div v-for="(row, i) in wastageReport" :key="i" class="row" style="cursor:default" :style="i > 0 ? 'border-top:1px solid var(--line)' : ''">
                     <div class="mid"><b>{{ row.product_name }}</b><span>{{ row.reason }} • {{ row.qty }} {{ t('stock.pieces') }}</span></div>
                     <div class="end"><b style="color:var(--rose)">−{{ money(row.loss) }}</b></div>
+                </div>
+            </div>
+        </template>
+
+        <template v-if="complimentaryReport?.count > 0">
+            <div class="sechead"><h2>{{ t('rep.complimentaryReport') }}</h2></div>
+            <div class="card" style="margin-bottom:14px">
+                <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--mut);padding:2px 0"><span>{{ t('rep.complimentaryCount') }}</span><b>{{ complimentaryReport.count }}</b></div>
+                <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--mut);padding:2px 0"><span>{{ t('rep.complimentaryValue') }}</span><b style="color:var(--gold2)">{{ money(complimentaryReport.value_given_away) }}</b></div>
+            </div>
+            <div class="card" style="padding:0;margin-bottom:14px">
+                <div v-for="(s, i) in complimentaryReport.sales" :key="s.id" class="row" style="cursor:default" :style="i > 0 ? 'border-top:1px solid var(--line)' : ''">
+                    <div class="mid"><b>{{ s.invoice_no }}</b><span>{{ s.date }}{{ s.user_name ? ' • ' + s.user_name : '' }}</span></div>
+                    <div class="end"><b>{{ money(s.subtotal) }}</b></div>
                 </div>
             </div>
         </template>

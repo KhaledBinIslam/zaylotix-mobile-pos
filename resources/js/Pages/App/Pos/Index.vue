@@ -21,6 +21,9 @@ const props = defineProps({
 
 const page = usePage();
 const shop = computed(() => page.props.shop);
+// complimentary (free/staff-meal) sales give away real inventory for free —
+// owner-only, same reasoning as void-sale being owner-only elsewhere
+const isOwner = computed(() => page.props.auth?.user?.role === 'owner');
 const features = computed(() => page.props.features || []);
 const platformLogoUrl = computed(() => page.props.platformLogoUrl);
 const hasUnitConversion = computed(() => features.value.includes('unit_conversion'));
@@ -253,7 +256,7 @@ function buildPayments() {
             .filter((m) => Number(splitAmounts.value[m]) > 0)
             .map((m) => ({ method: m, amount: Number(splitAmounts.value[m]) }));
     }
-    if (payMode.value === 'credit') return [];
+    if (payMode.value === 'credit' || payMode.value === 'complimentary') return [];
     return [{ method: payMode.value, amount: total.value }];
 }
 
@@ -265,6 +268,7 @@ function buildCheckoutPayload() {
     return {
         items: cart.value.map((l) => ({ product_id: l.product_id, product_unit_id: l.product_unit_id, product_variant_id: l.product_variant_id, qty: l.qty, discount: l.discount || 0, imei: l.imei || '' })),
         discount: discount.value || 0,
+        complimentary: payMode.value === 'complimentary',
         coupon_code: couponCode.value || '',
         redeem_points: redeemPoints.value || 0,
         quotation_id: quotationId.value,
@@ -915,11 +919,18 @@ useKeyboardShortcuts({
                         </button>
                     </div>
 
-                    <div v-if="!splitMode" class="seg">
+                    <div v-if="!splitMode && payMode !== 'complimentary'" class="seg">
                         <button :class="{ on: payMode === 'cash' }" @click="payMode = 'cash'">{{ t('pay.cash') }}</button>
                         <button :class="{ on: payMode === 'bkash' }" @click="payMode = 'bkash'">{{ t('pay.bkash') }}</button>
                         <button :class="{ on: payMode === 'nagad' }" @click="payMode = 'nagad'">{{ t('pay.nagad') }}</button>
                         <button :class="{ on: payMode === 'credit' }" @click="payMode = 'credit'">{{ t('pay.credit') }}</button>
+                    </div>
+                    <div v-if="!splitMode && isOwner && payMode !== 'complimentary'" style="margin-top:8px">
+                        <button type="button" class="btn sm ghost" style="color:var(--gold2);border-color:var(--gold2)" @click="payMode = 'complimentary'">🎁 {{ t('pay.complimentary') }}</button>
+                    </div>
+                    <div v-if="payMode === 'complimentary'" class="card" style="margin-top:8px;background:var(--goldSoft);border-color:var(--gold2)">
+                        <div style="font-size:13px;font-weight:700;color:var(--gold2)">🎁 {{ t('pay.complimentaryActiveHint') }}</div>
+                        <button type="button" class="btn sm ghost" style="margin-top:8px" @click="payMode = 'cash'">{{ t('common.cancel') }}</button>
                     </div>
 
                     <div v-else style="margin-top:6px">

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\ProductBatch;
 use App\Models\Sale;
+use App\Models\Shop;
 use App\Models\Supplier;
 use App\Support\Reports;
 use App\Support\Tenancy;
@@ -50,8 +51,13 @@ class ReportController extends Controller
             'discountReport' => Reports::discountReport($from, $to),
             'wastageReport' => $shop?->hasFeature('damages') ? Reports::wastageReport($from, $to) : null,
             'ratingReport' => Reports::ratingReport($from, $to),
+            'complimentaryReport' => Reports::complimentaryReport($from, $to),
             'heatmap' => Reports::heatmap($from, $to),
             'consumptionReport' => $shop?->hasFeature('ingredient_tracking') ? Reports::consumptionReport($from, $to) : null,
+            // combined across every branch of this business -- only present
+            // when viewing the main shop itself (never from inside a branch)
+            // and it actually has siblings, see Reports::combinedRangeStats()
+            'combinedStats' => $this->combinedStatsIfMainShop($shop, $from, $to),
             // one-click "everything" summary — customer due and supplier
             // payable totals alongside the P&L already in $stats, so an
             // owner never has to visit three separate pages to see the
@@ -63,6 +69,20 @@ class ReportController extends Controller
                 'supplier_payable_count' => $shop?->hasFeature('suppliers') ? Supplier::where('payable', '>', 0)->count() : null,
             ],
         ]);
+    }
+
+    private function combinedStatsIfMainShop(?Shop $shop, string $from, string $to): ?array
+    {
+        if (! $shop || $shop->parent_shop_id) {
+            return null;
+        }
+
+        $branchIds = Shop::withoutGlobalScopes()->where('parent_shop_id', $shop->id)->pluck('id')->all();
+        if (! $branchIds) {
+            return null;
+        }
+
+        return Reports::combinedRangeStats([$shop->id, ...$branchIds], $from, $to);
     }
 
     private function resolveRange(string $preset, ?string $from, ?string $to): array

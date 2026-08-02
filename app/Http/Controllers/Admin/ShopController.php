@@ -160,44 +160,10 @@ class ShopController extends Controller
 
             $branch->features()->sync($shop->features()->pluck('features.id'));
 
-            Tenancy::set($branch->id);
-
-            $categoryMap = [];
-            foreach (\App\Models\ProductCategory::withoutGlobalScopes()->where('shop_id', $shop->id)->get() as $cat) {
-                $new = \App\Models\ProductCategory::create([
-                    'shop_id' => $branch->id, 'name' => $cat->name, 'name_en' => $cat->name_en, 'emoji' => $cat->emoji,
-                ]);
-                $categoryMap[$cat->id] = $new->id;
-            }
-
-            $unitMap = [];
-            foreach (\App\Models\Unit::withoutGlobalScopes()->where('shop_id', $shop->id)->get() as $unit) {
-                $new = \App\Models\Unit::create([
-                    'shop_id' => $branch->id, 'name' => $unit->name, 'name_en' => $unit->name_en, 'code' => $unit->code,
-                ]);
-                $unitMap[$unit->id] = $new->id;
-            }
-
             // base fields only for this first cut -- variants/batches/serials
             // don't carry over; a branch starts at 0 stock and is stocked
             // in physically, same as any brand-new shop's onboarding
-            foreach (\App\Models\Product::withoutGlobalScopes()->where('shop_id', $shop->id)->get() as $p) {
-                \App\Models\Product::create([
-                    'shop_id' => $branch->id,
-                    'category_id' => $p->category_id ? ($categoryMap[$p->category_id] ?? null) : null,
-                    'unit_id' => $p->unit_id ? ($unitMap[$p->unit_id] ?? null) : null,
-                    'name' => $p->name, 'name_en' => $p->name_en, 'generic_name' => $p->generic_name,
-                    'company' => $p->company, 'shelf_location' => $p->shelf_location,
-                    'requires_prescription' => $p->requires_prescription, 'emoji' => $p->emoji,
-                    'photo_path' => $p->photo_path, 'barcode' => $p->barcode,
-                    'sold_by_weight' => $p->sold_by_weight, 'weight_unit' => $p->weight_unit,
-                    'cost' => $p->cost, 'price' => $p->price, 'wholesale_price' => $p->wholesale_price,
-                    'discount_price' => $p->discount_price, 'stock' => 0,
-                    'reorder_point' => $p->reorder_point,
-                ]);
-            }
-
-            Tenancy::clear();
+            \App\Support\CatalogSync::syncToBranch($shop, $branch);
 
             return $branch;
         });

@@ -25,6 +25,14 @@ function setLang(value) {
 // for the running-shift banner; this is just the opt-in entry point to
 // start one, so a shop that never uses this feature never sees it nagged ---
 const activeWorkPeriod = computed(() => page.props.activeWorkPeriod);
+
+// --- multi-branch: owner-triggered catalog re-sync (only from the main shop itself) ---
+const branches = computed(() => page.props.branches);
+const isMainShopWithBranches = computed(() => isOwner.value && branches.value && !props.shop?.parent_shop_id);
+function syncBranchCatalog() {
+    if (!confirm(t('branch.syncConfirm'))) return;
+    router.post(route('app.branches.syncCatalog'), {}, { preserveScroll: true });
+}
 const workPeriodSheet = ref(false);
 const workPeriodForm = useForm({ opening_cash: '' });
 function submitOpenShift() {
@@ -209,7 +217,7 @@ onMounted(() => {
         <div class="pgttl">{{ t('more.title') }}</div>
         <div class="pgsub">{{ shop?.name }} • {{ shop?.phone }}</div>
 
-        <template v-if="hasPerm('sales_history') || (hasPerm('barcode_labels') && features.includes('barcode_printing')) || (hasPerm('pos') && features.includes('restaurant_tables')) || (hasPerm('promotions') && features.includes('promotions')) || (hasPerm('pos') && features.includes('quotations'))">
+        <template v-if="hasPerm('sales_history') || (hasPerm('barcode_labels') && features.includes('barcode_printing')) || (hasPerm('pos') && features.includes('restaurant_tables')) || (hasPerm('promotions') && features.includes('promotions')) || (hasPerm('pos') && features.includes('quotations')) || hasPerm('pos') || isMainShopWithBranches">
             <div class="sechead"><h2>{{ t('more.sectionSales') }}</h2></div>
             <Link v-if="hasPerm('pos') && features.includes('restaurant_tables')" :href="route('app.restaurant.tables.index')" class="row">
                 <div class="ava">🍽️</div><div class="mid"><b>{{ t('nav.restaurant') }}</b><span>{{ t('restaurant.tablesSubtitle') }}</span></div><div class="end">›</div>
@@ -225,6 +233,9 @@ onMounted(() => {
             </Link>
             <button v-if="hasPerm('pos') && !activeWorkPeriod" class="row" style="width:100%;text-align:left;border:none;background:none;cursor:pointer" @click="workPeriodSheet = true">
                 <div class="ava">🕒</div><div class="mid"><b>{{ t('workPeriod.startPrompt') }}</b><span>{{ t('workPeriod.startPromptSub') }}</span></div><div class="end">›</div>
+            </button>
+            <button v-if="isMainShopWithBranches" class="row" style="width:100%;text-align:left;border:none;background:none;cursor:pointer" @click="syncBranchCatalog">
+                <div class="ava">🔄</div><div class="mid"><b>{{ t('branch.syncButton') }}</b><span>{{ t('branch.syncButtonSub') }}</span></div><div class="end">›</div>
             </button>
             <Link v-if="hasPerm('sales_history')" :href="route('app.sales')" class="row">
                 <div class="ava">🧾</div><div class="mid"><b>{{ t('nav.salesHistory') }}</b><span>{{ t('more.salesHistorySub') }}</span></div><div class="end">›</div>

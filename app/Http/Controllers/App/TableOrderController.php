@@ -271,6 +271,7 @@ class TableOrderController extends Controller
     {
         $data = $request->validate([
             'discount' => ['nullable', 'numeric', 'min:0'],
+            'complimentary' => ['nullable', 'boolean'],
             'payments' => ['nullable', 'array'],
             'payments.*.method' => ['required_with:payments', 'in:cash,bkash,nagad'],
             'payments.*.amount' => ['required_with:payments', 'numeric', 'min:0.01'],
@@ -313,7 +314,11 @@ class TableOrderController extends Controller
             $subtotal = (float) $items->sum(fn (TableOrderItem $i) => $i->price * $i->qty);
             $profit = (float) $items->sum(fn (TableOrderItem $i) => ($i->price - $i->cost) * $i->qty);
 
-            $discount = min((float) ($data['discount'] ?? 0), $subtotal);
+            // free/staff-meal bill — see PosController::performCheckout's
+            // matching comment; forcing discount = subtotal lands $total on
+            // 0 and flows through every check below unchanged
+            $isComplimentary = (bool) ($data['complimentary'] ?? false);
+            $discount = $isComplimentary ? $subtotal : min((float) ($data['discount'] ?? 0), $subtotal);
             $total = $subtotal - $discount;
             $profit -= $discount;
 
@@ -380,6 +385,7 @@ class TableOrderController extends Controller
                 'time' => now()->toTimeString(),
                 'subtotal' => $subtotal,
                 'discount' => $discount,
+                'is_complimentary' => $isComplimentary,
                 'service_charge' => $serviceCharge,
                 'vat' => $vat,
                 'total' => $total,

@@ -11,6 +11,7 @@ use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\SaleRating;
 use App\Models\SalesReturn;
+use App\Models\Shop;
 use App\Models\User;
 
 class Reports
@@ -39,6 +40,42 @@ class Reports
         $net = $grossProfit - $exp - $dmg - $ret;
 
         return compact('salesAmt', 'cogs', 'grossProfit', 'exp', 'dmg', 'ret', 'vat', 'net') + [
+            'count' => $sales->count(),
+        ];
+    }
+
+    /**
+     * Same shape as rangeStats(), but across every shop_id in a multi-branch
+     * business at once -- explicitly bypasses the tenant scope (Sale/Expense/
+     * Damage/SalesReturn are all normally scoped to just Tenancy::id(), one
+     * shop) since this is the one place summing across shops is intentional.
+     * Also breaks the total down per branch so an owner can compare them.
+     */
+    public static function combinedRangeStats(array $shopIds, string $from, string $to): array
+    {
+        $inRange = fn ($query) => $query->withoutGlobalScopes()->whereIn('shop_id', $shopIds)
+            ->whereDate('date', '>=', $from)->whereDate('date', '<=', $to);
+
+        $sales = $inRange(Sale::query())->get();
+        $salesAmt = (float) $sales->sum('total');
+        $grossProfit = (float) $sales->sum('profit');
+        $cogs = $salesAmt - $grossProfit;
+
+        $exp = (float) $inRange(Expense::query())->sum('amount');
+        $dmg = (float) $inRange(Damage::query())->sum('loss');
+        $ret = (float) $inRange(SalesReturn::query())->sum('refund');
+        $vat = (float) $sales->sum('vat');
+        $net = $grossProfit - $exp - $dmg - $ret;
+
+        $shopNames = Shop::withoutGlobalScopes()->whereIn('id', $shopIds)->pluck('name', 'id');
+        $byBranch = $sales->groupBy('shop_id')->map(fn ($group, $shopId) => [
+            'shop_name' => $shopNames->get($shopId, '—'),
+            'count' => $group->count(),
+            'total' => round((float) $group->sum('total'), 2),
+            'profit' => round((float) $group->sum('profit'), 2),
+        ])->sortByDesc('total')->values()->all();
+
+        return compact('salesAmt', 'cogs', 'grossProfit', 'exp', 'dmg', 'ret', 'vat', 'net', 'byBranch') + [
             'count' => $sales->count(),
         ];
     }
@@ -224,7 +261,10 @@ class Reports
     {
         $inRange = fn ($query) => $query->whereDate('date', '>=', $from)->whereDate('date', '<=', $to);
 
-        $sales = $inRange(Sale::query())->get();
+        // a complimentary sale's discount = its full subtotal (see
+        // PosController::performCheckout) — that's a gift, not merchandising
+        // discount, and belongs in complimentaryReport() instead, not here
+        $sales = $inRange(Sale::query())->where('is_complimentary', false)->get();
         $overallDiscount = (float) $sales->sum('discount');
         $itemDiscount = (float) SaleItem::whereIn('sale_id', $sales->pluck('id'))->sum('discount');
 
@@ -233,6 +273,25 @@ class Reports
             'item_discount' => round($itemDiscount, 2),
             'total' => round($overallDiscount + $itemDiscount, 2),
             'sales_with_discount' => $sales->filter(fn (Sale $s) => (float) $s->discount > 0)->count(),
+        ];
+    }
+
+    /** Free/staff-meal sales over the range — separate from discountReport() since these are gifts, not merchandising discounts. */
+    public static function complimentaryReport(string $from, string $to): array
+    {
+        $sales = Sale::whereDate('date', '>=', $from)->whereDate('date', '<=', $to)
+            ->where('is_complimentary', true)
+            ->with('user:id,name')
+            ->orderByDesc('id')
+            ->get();
+
+        return [
+            'count' => $sales->count(),
+            'value_given_away' => round((float) $sales->sum('subtotal'), 2),
+            'sales' => $sales->map(fn (Sale $s) => [
+                'id' => $s->id, 'invoice_no' => $s->invoice_no, 'date' => $s->date->toDateString(),
+                'subtotal' => (float) $s->subtotal, 'user_name' => $s->user?->name,
+            ])->values(),
         ];
     }
 

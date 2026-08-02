@@ -334,8 +334,15 @@ class PosController extends Controller
             $couponResult = $shop->hasFeature('promotions')
                 ? PromotionEngine::resolveCoupon($data['coupon_code'] ?? null, $subtotal)
                 : ['discount' => 0.0, 'promotion' => null];
+            // free/staff-meal sale — the whole bill is comped, tracked
+            // separately from a manual discount (see Reports::complimentaryReport()).
+            // Forcing discount = subtotal here means $total lands on 0 and
+            // flows through every check below (tender validation, due-needs-
+            // customer, payment_mode) exactly like any other fully-discounted
+            // sale already does — no special-casing needed past this point.
+            $isComplimentary = (bool) ($data['complimentary'] ?? false);
             $manualDiscount = (float) ($data['discount'] ?? 0);
-            $discount = min($manualDiscount + $couponResult['discount'] + $loyaltyDiscount, $subtotal);
+            $discount = $isComplimentary ? $subtotal : min($manualDiscount + $couponResult['discount'] + $loyaltyDiscount, $subtotal);
             $total = $subtotal - $discount;
             $profit -= $discount;
 
@@ -422,6 +429,7 @@ class PosController extends Controller
                 'time' => now()->toTimeString(),
                 'subtotal' => $subtotal,
                 'discount' => $discount,
+                'is_complimentary' => $isComplimentary,
                 'service_charge' => $serviceCharge,
                 'vat' => $vat,
                 'total' => $total,

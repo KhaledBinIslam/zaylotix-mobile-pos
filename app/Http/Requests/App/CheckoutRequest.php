@@ -34,6 +34,9 @@ class CheckoutRequest extends FormRequest
             'items.*.qty' => ['required', 'numeric', 'min:0.001'],
             'items.*.discount' => ['nullable', 'numeric', 'min:0'],
             'discount' => ['nullable', 'numeric', 'min:0'],
+            // free/staff-meal sale — no payment collected at all, tracked
+            // separately from a manual discount (see Reports::complimentaryReport())
+            'complimentary' => ['nullable', 'boolean'],
             // Zero or more actual tender lines — e.g. [{method:cash,amount:300},
             // {method:bkash,amount:200}]. Whatever the total isn't covered by
             // these becomes the attached customer's due; an empty/absent
