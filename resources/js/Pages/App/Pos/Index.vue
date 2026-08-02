@@ -784,13 +784,17 @@ useKeyboardShortcuts({
                         </div>
                         <!-- size/color variant options — same pill treatment as pack sizes, each carries its own stock -->
                         <div v-if="hasProductVariants && p.variants?.length" class="punits">
+                            <!-- a variant's own price only shows when it actually
+                                 differs from the base product's — e.g. an XXL that
+                                 costs more — so the common same-price-every-size
+                                 case doesn't get cluttered with a redundant number -->
                             <button
                                 v-for="v in p.variants" :key="v.id" class="upill"
                                 :disabled="v.stock <= 0"
                                 :style="v.stock <= 0 ? 'opacity:.45' : ''"
                                 @click="addToCart(p.id, null, { productVariantId: v.id })"
                             >
-                                {{ variantLabel(v) }} {{ v.stock > 0 ? `(${v.stock})` : `— ${t('pos.outOfStock')}` }}
+                                {{ variantLabel(v) }}<span v-if="Number(v.price) !== Number(p.price)"> {{ money(v.price) }}</span> {{ v.stock > 0 ? `(${v.stock})` : `— ${t('pos.outOfStock')}` }}
                             </button>
                         </div>
                     </div>
