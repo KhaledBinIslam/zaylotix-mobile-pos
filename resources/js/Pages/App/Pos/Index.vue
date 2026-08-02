@@ -30,6 +30,7 @@ const hasUnitConversion = computed(() => features.value.includes('unit_conversio
 const hasSerialTracking = computed(() => features.value.includes('serial_tracking'));
 const hasProductVariants = computed(() => features.value.includes('product_variants'));
 const hasPrescriptionRecords = computed(() => features.value.includes('prescription_records'));
+const hasLowStockAlerts = computed(() => features.value.includes('low_stock_alerts'));
 const hasPromotions = computed(() => features.value.includes('promotions'));
 const hasLoyaltyPoints = computed(() => features.value.includes('loyalty_points'));
 const hasWholesalePricing = computed(() => features.value.includes('wholesale_pricing'));
@@ -752,7 +753,7 @@ useKeyboardShortcuts({
                             <div class="pp">{{ money(p.price) }} <span style="color:var(--dim);font-weight:500">/ {{ weightBigUnit(p) }}</span></div>
                             <div class="ps">
                                 <span v-if="stockLevel(p) === 'out'" style="color:var(--rose)">{{ t('pos.outOfStock') }}</span>
-                                <span v-else-if="stockLevel(p) === 'low'" style="color:var(--gold2);font-weight:700">⚠ {{ formatWeightQty(p, p.stock) }} {{ t('pos.lowStock') }}</span>
+                                <span v-else-if="hasLowStockAlerts && stockLevel(p) === 'low'" style="color:var(--gold2);font-weight:700">⚠ {{ formatWeightQty(p, p.stock) }} {{ t('pos.lowStock') }}</span>
                                 <span v-else>{{ formatWeightQty(p, p.stock) }} {{ t('stock.stock').toLowerCase() }}</span>
                             </div>
                         </button>
@@ -765,7 +766,7 @@ useKeyboardShortcuts({
                             <div class="pp">{{ money(p.price) }} <span style="color:var(--dim);font-weight:500">/ {{ p.unit?.name || t('pos.unit') }}</span></div>
                             <div class="ps">
                                 <span v-if="stockLevel(p) === 'out'" style="color:var(--rose)">{{ t('pos.outOfStock') }}</span>
-                                <span v-else-if="stockLevel(p) === 'low'" style="color:var(--gold2);font-weight:700">⚠ {{ t('pos.inStock', { n: p.stock }) }} {{ t('pos.lowStock') }}</span>
+                                <span v-else-if="hasLowStockAlerts && stockLevel(p) === 'low'" style="color:var(--gold2);font-weight:700">⚠ {{ t('pos.inStock', { n: p.stock }) }} {{ t('pos.lowStock') }}</span>
                                 <span v-else>{{ t('pos.inStock', { n: p.stock }) }}</span>
                             </div>
                         </button>
