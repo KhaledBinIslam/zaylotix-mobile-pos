@@ -9,7 +9,7 @@ class SubscriptionPayment extends Model
     // Admin-managed, not tenant-scoped to the shop user (shop users never
     // see billing records — only the admin panel reads/writes this table).
     protected $fillable = [
-        'shop_id', 'admin_id', 'plan', 'amount', 'month', 'method', 'paid_on', 'next_due', 'note',
+        'shop_id', 'admin_id', 'gateway_payment_id', 'plan', 'amount', 'month', 'method', 'paid_on', 'next_due', 'note',
     ];
 
     protected function casts(): array
@@ -29,5 +29,11 @@ class SubscriptionPayment extends Model
     public function admin()
     {
         return $this->belongsTo(Admin::class);
+    }
+
+    /** Set only when this payment was auto-recorded from an owner-initiated bKash/SSLCommerz renewal, not a manual admin entry. */
+    public function gatewayPayment()
+    {
+        return $this->belongsTo(GatewayPayment::class);
     }
 }

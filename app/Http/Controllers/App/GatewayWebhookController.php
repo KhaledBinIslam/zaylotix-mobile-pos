@@ -5,6 +5,9 @@ namespace App\Http\Controllers\App;
 use App\Models\GatewayPayment;
 use App\Http\Controllers\Controller;
 use App\Models\PaymentGatewayCredential;
+use App\Models\PlatformGatewayCredential;
+use App\Models\Shop;
+use App\Models\SubscriptionPayment;
 use App\Support\Gateways\GatewayManager;
 use App\Support\Tenancy;
 use Illuminate\Http\Request;
@@ -50,7 +53,7 @@ class GatewayWebhookController extends Controller
     {
         $result = $this->process($request, $provider);
 
-        return redirect()->route('app.pos', [
+        return redirect()->route($result['redirect_route'], [
             'gateway_reference' => $result['reference'],
             'gateway_status' => $result['body']['ok'] ? 'success' : 'failed',
         ]);
@@ -79,7 +82,7 @@ class GatewayWebhookController extends Controller
         if (! $payment) {
             Log::warning('Gateway webhook for unknown payment', ['provider' => $provider, 'query' => $request->query(), 'body' => $request->post()]);
 
-            return ['body' => ['ok' => false], 'status' => 404, 'reference' => $reference];
+            return ['body' => ['ok' => false], 'status' => 404, 'reference' => $reference, 'redirect_route' => 'app.pos'];
         }
 
         // resolved before anything else — every query from here on
@@ -88,16 +91,26 @@ class GatewayWebhookController extends Controller
         // the normal EnsureShopUser/session-bound tenancy path
         Tenancy::set($payment->shop_id);
 
+        // a subscription-renewal payment (see SubscriptionRenewalController)
+        // is verified against Zaylotix's OWN merchant account, not the
+        // shop's -- everything else about this payment (reference/amount/
+        // shop_id) is identical in shape either way. Also determines where
+        // the owner's own browser lands back on (More.vue, not the POS
+        // screen a customer-facing checkout belongs on).
+        $isSubscriptionRenewal = ($payment->checkout_payload['purpose'] ?? null) === 'subscription_renewal';
+        $redirectRoute = $isSubscriptionRenewal ? 'app.more' : 'app.pos';
+
         if ($payment->status !== 'pending') {
             // already handled (duplicate IPN + callback, or a gateway retry)
-            return ['body' => ['ok' => $payment->status === 'completed', 'status' => $payment->status], 'status' => 200, 'reference' => $payment->reference];
+            return ['body' => ['ok' => $payment->status === 'completed', 'status' => $payment->status], 'status' => 200, 'reference' => $payment->reference, 'redirect_route' => $redirectRoute];
         }
-
-        $credential = PaymentGatewayCredential::where('shop_id', $payment->shop_id)->where('provider', $provider)->first();
+        $credential = $isSubscriptionRenewal
+            ? PlatformGatewayCredential::where('provider', $provider)->first()
+            : PaymentGatewayCredential::where('shop_id', $payment->shop_id)->where('provider', $provider)->first();
         if (! $credential) {
             Log::error('Gateway webhook arrived but credential no longer exists', ['payment_id' => $payment->id]);
 
-            return ['body' => ['ok' => false], 'status' => 422, 'reference' => $payment->reference];
+            return ['body' => ['ok' => false], 'status' => 422, 'reference' => $payment->reference, 'redirect_route' => $redirectRoute];
         }
 
         $verified = GatewayManager::driver($provider)->verifyWebhook($request, $credential->credentials);
@@ -106,7 +119,7 @@ class GatewayWebhookController extends Controller
             Log::warning('Gateway webhook failed verification or amount mismatch', ['payment_id' => $payment->id, 'verified' => $verified]);
             $payment->update(['status' => 'failed']);
 
-            return ['body' => ['ok' => false], 'status' => 422, 'reference' => $payment->reference];
+            return ['body' => ['ok' => false], 'status' => 422, 'reference' => $payment->reference, 'redirect_route' => $redirectRoute];
         }
 
         // re-lock and re-check status INSIDE the transaction — the same
@@ -115,9 +128,15 @@ class GatewayWebhookController extends Controller
         // calls for the same payment can never both pass the earlier
         // pending-check and create two Sales
         try {
-            DB::transaction(function () use ($payment, $verified) {
+            DB::transaction(function () use ($payment, $verified, $isSubscriptionRenewal) {
                 $locked = GatewayPayment::whereKey($payment->id)->lockForUpdate()->first();
                 if ($locked->status !== 'pending') {
+                    return;
+                }
+
+                if ($isSubscriptionRenewal) {
+                    $this->confirmSubscriptionRenewal($locked, $verified);
+
                     return;
                 }
 
@@ -146,9 +165,52 @@ class GatewayWebhookController extends Controller
                 'provider' => $provider, 'error' => $e->getMessage(),
             ]);
 
-            return ['body' => ['ok' => false, 'message' => 'checkout_failed_after_payment'], 'status' => 500, 'reference' => $payment->reference];
+            return ['body' => ['ok' => false, 'message' => 'checkout_failed_after_payment'], 'status' => 500, 'reference' => $payment->reference, 'redirect_route' => $redirectRoute];
         }
 
-        return ['body' => ['ok' => true], 'status' => 200, 'reference' => $payment->reference];
+        return ['body' => ['ok' => true], 'status' => 200, 'reference' => $payment->reference, 'redirect_route' => $redirectRoute];
+    }
+
+    /**
+     * Mirrors what Admin\SubscriptionController::store() does for a manual
+     * cash entry -- extends subscription_expiry and records a
+     * SubscriptionPayment row -- except admin_id stays null (no human
+     * admin acted) and gateway_payment_id traces back to this payment.
+     * Called with $locked already row-locked and re-checked as still
+     * 'pending' by the caller, same discipline as the sale-creation branch.
+     */
+    private function confirmSubscriptionRenewal(GatewayPayment $locked, array $verified): void
+    {
+        $shop = Shop::whereKey($locked->shop_id)->lockForUpdate()->first();
+        $months = (int) ($locked->checkout_payload['months'] ?? 1);
+
+        // extends from whichever is later: today, or a still-active
+        // subscription's current expiry -- a renewal paid a few days early
+        // never loses those remaining days
+        $base = $shop->subscription_expiry && $shop->subscription_expiry->isFuture()
+            ? $shop->subscription_expiry
+            : now();
+        $nextDue = $base->copy()->addMonths($months);
+
+        $shop->update(['subscription_expiry' => $nextDue, 'status' => 'active']);
+
+        $subscriptionPayment = SubscriptionPayment::create([
+            'shop_id' => $shop->id,
+            'gateway_payment_id' => $locked->id,
+            'plan' => $shop->plan,
+            'amount' => $locked->amount,
+            'month' => now()->format('Y-m'),
+            'method' => $locked->provider,
+            'paid_on' => now()->toDateString(),
+            'next_due' => $nextDue->toDateString(),
+            'note' => 'Auto-renewed via '.ucfirst($locked->provider),
+        ]);
+
+        $shop->owner?->notify(new \App\Notifications\PaymentReceived($subscriptionPayment));
+
+        $locked->update([
+            'status' => 'completed',
+            'gateway_transaction_id' => $verified['gateway_transaction_id'] ?? $locked->gateway_transaction_id,
+        ]);
     }
 }

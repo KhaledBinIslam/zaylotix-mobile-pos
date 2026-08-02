@@ -33,6 +33,66 @@ function syncBranchCatalog() {
     if (!confirm(t('branch.syncConfirm'))) return;
     router.post(route('app.branches.syncCatalog'), {}, { preserveScroll: true });
 }
+
+// --- subscription renewal via Zaylotix's own bKash/SSLCommerz account ---
+// (Admin > Platform Payment Gateway) -- distinct from the shop's own
+// payment-gateway settings above, which is for taking money FROM customers.
+// A manual cash/bank payment to the admin is unaffected either way (that
+// stays entirely admin-recorded, see Admin\SubscriptionController).
+const renewalSheet = ref(false);
+const renewalInfo = ref(null);
+const renewalSubmitting = ref(false);
+function openRenewalSheet() {
+    renewalSheet.value = true;
+    fetch(route('app.subscriptionRenewal.index'), { headers: { Accept: 'application/json' } })
+        .then((r) => r.json())
+        .then((data) => { renewalInfo.value = data; });
+}
+async function payRenewal(provider) {
+    renewalSubmitting.value = true;
+    try {
+        const res = await fetch(route('app.subscriptionRenewal.initiate', provider), {
+            method: 'POST',
+            headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content },
+        });
+        const data = await res.json();
+        if (data.redirect_url) {
+            window.location.href = data.redirect_url;
+        }
+    } finally {
+        renewalSubmitting.value = false;
+    }
+}
+const renewalPolling = ref(false);
+async function pollRenewalStatus(reference) {
+    renewalPolling.value = true;
+    for (let attempt = 0; attempt < 15; attempt++) {
+        try {
+            const res = await fetch(route('app.subscriptionRenewal.status', reference), { headers: { Accept: 'application/json' } });
+            const data = await res.json();
+            if (data.status === 'completed') {
+                router.reload();
+                renewalPolling.value = false;
+                return;
+            }
+            if (data.status === 'failed') {
+                renewalPolling.value = false;
+                return;
+            }
+        } catch (e) { /* keep retrying */ }
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+    renewalPolling.value = false;
+}
+onMounted(() => {
+    const params = new URLSearchParams(window.location.search);
+    const reference = params.get('gateway_reference');
+    if (reference) {
+        renewalSheet.value = true;
+        pollRenewalStatus(reference);
+        window.history.replaceState({}, '', window.location.pathname);
+    }
+});
 const workPeriodSheet = ref(false);
 const workPeriodForm = useForm({ opening_cash: '' });
 function submitOpenShift() {
@@ -236,6 +296,9 @@ onMounted(() => {
             </button>
             <button v-if="isMainShopWithBranches" class="row" style="width:100%;text-align:left;border:none;background:none;cursor:pointer" @click="syncBranchCatalog">
                 <div class="ava">🔄</div><div class="mid"><b>{{ t('branch.syncButton') }}</b><span>{{ t('branch.syncButtonSub') }}</span></div><div class="end">›</div>
+            </button>
+            <button v-if="isOwner" class="row" style="width:100%;text-align:left;border:none;background:none;cursor:pointer" @click="openRenewalSheet">
+                <div class="ava">💳</div><div class="mid"><b>{{ t('renewal.menuTitle') }}</b><span>{{ t('renewal.menuSub') }}</span></div><div class="end">›</div>
             </button>
             <Link v-if="hasPerm('sales_history')" :href="route('app.sales')" class="row">
                 <div class="ava">🧾</div><div class="mid"><b>{{ t('nav.salesHistory') }}</b><span>{{ t('more.salesHistorySub') }}</span></div><div class="end">›</div>
@@ -662,6 +725,27 @@ onMounted(() => {
                 <div v-if="workPeriodForm.errors.opening_cash" style="color:var(--rose);font-size:12px;margin-top:6px">{{ workPeriodForm.errors.opening_cash }}</div>
             </div>
             <button class="btn" :disabled="workPeriodForm.processing" @click="submitOpenShift">{{ workPeriodForm.processing ? '...' : t('workPeriod.startButton') }}</button>
+        </Sheet>
+
+        <Sheet v-model="renewalSheet" :title="t('renewal.sheetTitle')">
+            <template v-if="renewalPolling">
+                <div class="empty" style="padding:20px 0"><div class="big">⏳</div>{{ t('renewal.checkingStatus') }}</div>
+            </template>
+            <template v-else-if="renewalInfo">
+                <div class="card" style="margin-bottom:14px">
+                    <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:13.5px"><span>{{ t('renewal.currentPlan') }}</span><b style="text-transform:capitalize">{{ renewalInfo.plan }}</b></div>
+                    <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:13.5px"><span>{{ t('renewal.expiresOn') }}</span><b>{{ renewalInfo.subscription_expiry || '—' }}</b></div>
+                    <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:13.5px"><span>{{ t('renewal.monthlyFee') }}</span><b>৳{{ renewalInfo.monthly_fee }}</b></div>
+                </div>
+                <template v-if="renewalInfo.providers?.length">
+                    <div style="font-size:12.5px;color:var(--mut);margin-bottom:10px">{{ t('renewal.payHint') }}</div>
+                    <button
+                        v-for="p in renewalInfo.providers" :key="p" class="btn" style="margin-bottom:10px;text-transform:capitalize"
+                        :disabled="renewalSubmitting" @click="payRenewal(p)"
+                    >{{ renewalSubmitting ? '...' : `${t('renewal.payVia')} ${p}` }}</button>
+                </template>
+                <div v-else class="empty" style="padding:20px 0"><div class="big">💳</div>{{ t('renewal.notAvailableYet') }}</div>
+            </template>
         </Sheet>
     </AppLayout>
 </template>

@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\BackupController;
 use App\Http\Controllers\Admin\BusinessTypeController;
 use App\Http\Controllers\Admin\FaqController;
+use App\Http\Controllers\Admin\PlatformGatewayController;
 use App\Http\Controllers\Admin\ScreenGuideController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\FeatureController;
@@ -93,6 +94,11 @@ Route::middleware('admin')->group(function () {
         Route::post('screen-guides', [ScreenGuideController::class, 'store'])->name('screenGuides.store');
         Route::put('screen-guides/{screenGuide}', [ScreenGuideController::class, 'update'])->name('screenGuides.update');
         Route::delete('screen-guides/{screenGuide}', [ScreenGuideController::class, 'destroy'])->name('screenGuides.destroy');
+
+        Route::get('platform-gateway', [PlatformGatewayController::class, 'index'])->name('platformGateway.index');
+        Route::post('platform-gateway/{provider}', [PlatformGatewayController::class, 'store'])->name('platformGateway.store');
+        Route::patch('platform-gateway/{provider}/toggle', [PlatformGatewayController::class, 'toggle'])->name('platformGateway.toggle');
+        Route::delete('platform-gateway/{provider}', [PlatformGatewayController::class, 'destroy'])->name('platformGateway.destroy');
 
         Route::get('backups', [BackupController::class, 'index'])->name('backups.index');
         Route::post('backups', [BackupController::class, 'store'])->name('backups.store');

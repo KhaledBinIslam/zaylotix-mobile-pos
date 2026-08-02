@@ -34,6 +34,7 @@ use App\Http\Controllers\App\NotificationController;
 use App\Http\Controllers\App\OnboardingController;
 use App\Http\Controllers\App\PaymentController;
 use App\Http\Controllers\App\PaymentGatewayController;
+use App\Http\Controllers\App\SubscriptionRenewalController;
 use App\Http\Controllers\App\PartnerController;
 use App\Http\Controllers\App\PartnerTransactionController;
 use App\Http\Controllers\App\PosController;
@@ -344,6 +345,10 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::post('payment-gateways/{provider}', [PaymentGatewayController::class, 'store'])->name('paymentGateways.store');
         Route::patch('payment-gateways/{provider}/toggle', [PaymentGatewayController::class, 'toggle'])->name('paymentGateways.toggle');
         Route::delete('payment-gateways/{provider}', [PaymentGatewayController::class, 'destroy'])->name('paymentGateways.destroy');
+
+        Route::get('subscription-renewal', [SubscriptionRenewalController::class, 'index'])->name('subscriptionRenewal.index');
+        Route::post('subscription-renewal/{provider}/initiate', [SubscriptionRenewalController::class, 'initiate'])->name('subscriptionRenewal.initiate');
+        Route::get('subscription-renewal/status/{reference}', [SubscriptionRenewalController::class, 'status'])->name('subscriptionRenewal.status');
     });
 
     Route::middleware(['perm:promotions', 'feature:promotions'])->group(function () {

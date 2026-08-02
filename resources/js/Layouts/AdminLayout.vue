@@ -33,6 +33,7 @@ const nav = computed(() => [
     { key: 'siteSettings', label: 'Site Settings', icon: '🖼️', route: 'admin.siteSettings.edit', show: isSuperAdmin.value },
     { key: 'faqs', label: 'FAQs', icon: '❓', route: 'admin.faqs.index', show: isSuperAdmin.value },
     { key: 'screenGuides', label: 'Screen Guides', icon: '📖', route: 'admin.screenGuides.index', show: isSuperAdmin.value },
+    { key: 'platformGateway', label: 'Platform Payment Gateway', icon: '💳', route: 'admin.platformGateway.index', show: isSuperAdmin.value },
     { key: 'backups', label: 'Backups', icon: '💾', route: 'admin.backups.index', show: isSuperAdmin.value },
 ].filter((i) => i.show));
 </script>
