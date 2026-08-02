@@ -1,0 +1,35 @@
+<?php
+
+namespace App\Http\Controllers\App;
+
+use App\Http\Controllers\Controller;
+use App\Models\Shop;
+use App\Support\Tenancy;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+
+/**
+ * Lets an owner operate as a different branch of their own business without
+ * a fresh login -- same idea as Admin\ImpersonationController's session
+ * override, one level lighter (no guard/login change; the owner stays
+ * logged in as themselves, only Tenancy::id()'s resolution changes for the
+ * rest of this session). Staff never see this -- they're always fixed to
+ * whichever single shop_id their account was created under.
+ */
+class BranchController extends Controller
+{
+    public function switch(Request $request, Shop $branch)
+    {
+        $user = Auth::guard('web')->user();
+        abort_unless($user?->role === 'owner', 403);
+
+        $ownShop = Shop::withoutGlobalScopes()->find($user->shop_id);
+        $ownRoot = $ownShop->parent_shop_id ?? $ownShop->id;
+        $branchRoot = $branch->parent_shop_id ?? $branch->id;
+        abort_unless($ownRoot === $branchRoot, 403);
+
+        $request->session()->put('active_branch_id', $branch->id);
+
+        return redirect()->route('app.home');
+    }
+}

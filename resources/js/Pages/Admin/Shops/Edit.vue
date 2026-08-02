@@ -3,7 +3,21 @@ import { Head, useForm, Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 
-const props = defineProps({ shop: Object, businessTypes: Array, features: Array, shopFeatureKeys: Array });
+const props = defineProps({ shop: Object, businessTypes: Array, features: Array, shopFeatureKeys: Array, branches: { type: Array, default: null } });
+
+// only present when `shop` itself is a main shop (parent_shop_id null) --
+// see ShopController::edit(). Billing fields mirror the main form above
+// since a branch carries its own independent subscription, exactly like
+// any other shop -- no separate billing mechanism needed.
+const branchForm = useForm({
+    name: '', area: '', phone: '', plan: 'monthly', monthly_fee: '',
+    subscription_start: new Date().toISOString().slice(0, 10), subscription_expiry: '',
+});
+function createBranch() {
+    branchForm.post(route('admin.shops.branches.store', props.shop.id), {
+        onSuccess: () => branchForm.reset(),
+    });
+}
 
 const form = useForm({
     name: props.shop.name, name_en: props.shop.name_en, phone: props.shop.phone,
@@ -144,5 +158,40 @@ const recommendedFeatureKeys = () => {
                 {{ form.processing ? 'Saving...' : 'Save changes' }}
             </button>
         </form>
+
+        <div v-if="branches" class="bg-white border rounded-xl p-6 max-w-2xl mt-6">
+            <h2 class="text-lg font-bold mb-3">Branches</h2>
+            <div v-for="b in branches" :key="b.id" class="flex items-center justify-between py-2 border-b last:border-0">
+                <div>
+                    <div class="font-medium">🏬 {{ b.name }}</div>
+                    <div class="text-xs text-gray-400">{{ b.area }} • {{ b.status }} • created {{ b.created_at }}</div>
+                </div>
+                <Link :href="route('admin.shops.edit', b.id)" class="text-violet-600 text-sm">Edit →</Link>
+            </div>
+            <div v-if="!branches.length" class="text-sm text-gray-400 mb-3">No branches yet.</div>
+
+            <form @submit.prevent="createBranch" class="mt-4 pt-4 border-t space-y-3">
+                <div class="text-sm font-semibold text-gray-600">+ Add a branch</div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div><input v-model="branchForm.name" placeholder="Branch name" class="w-full rounded-lg border-gray-300 text-sm">
+                        <div v-if="branchForm.errors.name" class="text-rose-600 text-xs mt-1">{{ branchForm.errors.name }}</div>
+                    </div>
+                    <input v-model="branchForm.area" placeholder="Area" class="w-full rounded-lg border-gray-300 text-sm">
+                    <input v-model="branchForm.phone" placeholder="Phone" class="w-full rounded-lg border-gray-300 text-sm">
+                    <select v-model="branchForm.plan" class="w-full rounded-lg border-gray-300 text-sm">
+                        <option value="trial">Trial</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option>
+                    </select>
+                    <input v-model.number="branchForm.monthly_fee" type="number" min="0" placeholder="Monthly fee (৳)" class="w-full rounded-lg border-gray-300 text-sm">
+                    <div></div>
+                    <div><label class="text-xs text-gray-500">Subscription start</label><input v-model="branchForm.subscription_start" type="date" class="w-full rounded-lg border-gray-300 text-sm"></div>
+                    <div><label class="text-xs text-gray-500">Subscription expiry</label><input v-model="branchForm.subscription_expiry" type="date" class="w-full rounded-lg border-gray-300 text-sm">
+                        <div v-if="branchForm.errors.subscription_expiry" class="text-rose-600 text-xs mt-1">{{ branchForm.errors.subscription_expiry }}</div>
+                    </div>
+                </div>
+                <button class="px-4 py-2 rounded-lg [background:#7C3AED] text-white text-sm font-bold" :disabled="branchForm.processing">
+                    {{ branchForm.processing ? 'Creating...' : 'Create branch' }}
+                </button>
+            </form>
+        </div>
     </AdminLayout>
 </template>

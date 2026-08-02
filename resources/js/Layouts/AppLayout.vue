@@ -19,6 +19,14 @@ function stopImpersonating() {
     router.post(route('admin.impersonate.stop'));
 }
 const shop = computed(() => page.props.shop);
+// owner-only branch switcher — null (nothing rendered) for any shop with no
+// sibling branches, or for a staff account (always fixed to one branch)
+const branches = computed(() => page.props.branches);
+function switchBranch(event) {
+    const id = event.target.value;
+    if (!id) return;
+    router.post(route('app.branches.switch', id));
+}
 const platformLogoUrl = computed(() => page.props.platformLogoUrl);
 const user = computed(() => page.props.auth?.user);
 const isOwner = computed(() => user.value?.role === 'owner');
@@ -226,6 +234,12 @@ const sidebarGroups = computed(() => [
                 </div>
             </div>
 
+            <div v-if="branches" class="px-3 pt-3">
+                <select :value="shop?.id" style="font-size:12.5px;margin:0" @change="switchBranch">
+                    <option v-for="b in branches" :key="b.id" :value="b.id">🏬 {{ b.name }}{{ b.area ? ' — ' + b.area : '' }}</option>
+                </select>
+            </div>
+
             <nav class="flex-1 p-3 space-y-3 overflow-y-auto">
                 <Link
                     :href="route('app.home')"
@@ -284,7 +298,10 @@ const sidebarGroups = computed(() => [
                     <ZaylotixMark v-else :size="40" />
                     <div class="btitle">
                         <b style="font-size:17px;display:block;line-height:1.15">Zaylotix POS</b>
-                        <span style="font-size:11px;color:var(--dim)" v-if="shop">{{ shop.name }} • {{ shop.area }}</span>
+                        <span style="font-size:11px;color:var(--dim)" v-if="shop && !branches">{{ shop.name }} • {{ shop.area }}</span>
+                        <select v-if="branches" :value="shop?.id" style="font-size:11px;margin:2px 0 0;padding:2px 6px;height:auto" @change="switchBranch">
+                            <option v-for="b in branches" :key="b.id" :value="b.id">🏬 {{ b.name }}{{ b.area ? ' — ' + b.area : '' }}</option>
+                        </select>
                     </div>
                     <button
                         v-if="isOwner"

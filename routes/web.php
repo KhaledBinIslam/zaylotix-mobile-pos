@@ -5,6 +5,7 @@ use App\Http\Controllers\App\Auth\SignupController;
 use App\Http\Controllers\App\AccountsController;
 use App\Http\Controllers\App\ActivityLogController;
 use App\Http\Controllers\App\BarcodeLabelController;
+use App\Http\Controllers\App\BranchController;
 use App\Http\Controllers\App\CustomerController;
 use App\Http\Controllers\App\DamageController;
 use App\Http\Controllers\App\ExpenseController;
@@ -104,6 +105,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
     Route::patch('settings/lang', [SettingController::class, 'updateLang'])->name('settings.lang');
     Route::post('notifications/{id}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
     Route::post('notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.readAll');
+    Route::post('branches/{branch}/switch', [BranchController::class, 'switch'])->name('branches.switch');
 
     Route::middleware('perm:pos')->group(function () {
         Route::get('pos', [PosController::class, 'index'])->name('pos');

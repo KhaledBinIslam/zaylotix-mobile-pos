@@ -38,6 +38,7 @@ Route::middleware('admin')->group(function () {
     Route::get('shops/{shop}/edit', [ShopController::class, 'edit'])->name('shops.edit');
     Route::put('shops/{shop}', [ShopController::class, 'update'])->name('shops.update');
     Route::post('shops/{shop}/toggle-status', [ShopController::class, 'toggleStatus'])->name('shops.toggleStatus');
+    Route::post('shops/{shop}/branches', [ShopController::class, 'createBranch'])->name('shops.branches.store');
     Route::get('shops/{shop}', [ShopController::class, 'show'])->name('shops.show');
     Route::get('shops/{shop}/export', [ShopExportController::class, 'download'])->name('shops.export');
     Route::get('shops/{shop}/export-sql', [ShopExportController::class, 'downloadSql'])->name('shops.exportSql');

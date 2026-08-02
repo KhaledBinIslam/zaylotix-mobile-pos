@@ -13,7 +13,7 @@ class Shop extends Model
     // Shop itself is NOT tenant-scoped (it *is* the tenant) — access control
     // happens via ShopPolicy (owner can only see their own; admin sees all).
     protected $fillable = [
-        'business_type_id', 'name', 'name_en', 'phone', 'kitchen_whatsapp', 'payment_timing', 'kitchen_print_order', 'area', 'owner_name', 'logo_path', 'receipt_footer', 'bin_no',
+        'parent_shop_id', 'business_type_id', 'name', 'name_en', 'phone', 'kitchen_whatsapp', 'payment_timing', 'kitchen_print_order', 'area', 'owner_name', 'logo_path', 'receipt_footer', 'bin_no',
         'sales_mode', 'hardware_scanner_enabled', 'lang', 'plan', 'monthly_fee', 'status',
         'subscription_start', 'subscription_expiry',
         'cash_balance', 'bank_balance', 'capital',
@@ -49,6 +49,18 @@ class Shop extends Model
     public function users()
     {
         return $this->hasMany(User::class);
+    }
+
+    /** Null for a main shop (every shop today, unchanged) -- set for a branch, pointing at its business's main shop. */
+    public function parentShop()
+    {
+        return $this->belongsTo(Shop::class, 'parent_shop_id');
+    }
+
+    /** Sibling branches of this (main) shop -- empty unless branches were created under it. */
+    public function branches()
+    {
+        return $this->hasMany(Shop::class, 'parent_shop_id');
     }
 
     public function owner()

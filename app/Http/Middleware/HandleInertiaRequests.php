@@ -3,7 +3,9 @@
 namespace App\Http\Middleware;
 
 use App\Models\Admin;
+use App\Models\Shop;
 use App\Models\SiteSetting;
+use App\Models\User;
 use App\Models\WorkPeriod;
 use App\Support\Tenancy;
 use Illuminate\Http\Request;
@@ -31,6 +33,11 @@ class HandleInertiaRequests extends Middleware
                 'admin' => $admin,
             ],
             'shop' => fn () => $shopUser ? Tenancy::shop() : null,
+            // owner-only -- the branch switcher in AppLayout's header. Null
+            // for a shop with no branches (every shop today, unchanged) or
+            // for a staff account (always fixed to one branch, never sees
+            // this at all). See BranchController + Tenancy::id().
+            'branches' => fn () => $this->branchList($shopUser),
             // when an admin is impersonating this shop's owner, every
             // page carries this so AppLayout can show a persistent
             // "you're viewing as X — exit" banner that's never mistakable
@@ -62,5 +69,37 @@ class HandleInertiaRequests extends Middleware
                 'error' => fn () => $request->session()->get('error'),
             ],
         ];
+    }
+
+    /** Every branch in the same business as $shopUser's own (home) shop, including the main shop itself — null if there's only one (nothing to switch between) or the user isn't an owner. */
+    private function branchList(?User $shopUser): ?array
+    {
+        if (! $shopUser || $shopUser->role !== 'owner') {
+            return null;
+        }
+
+        $homeShop = Shop::withoutGlobalScopes()->find($shopUser->shop_id);
+        if (! $homeShop) {
+            return null;
+        }
+
+        $rootId = $homeShop->parent_shop_id ?? $homeShop->id;
+        $siblings = Shop::withoutGlobalScopes()
+            ->where(fn ($q) => $q->where('id', $rootId)->orWhere('parent_shop_id', $rootId))
+            ->orderBy('id')
+            ->get(['id', 'name', 'area', 'parent_shop_id']);
+
+        if ($siblings->count() < 2) {
+            return null;
+        }
+
+        $activeId = Tenancy::id();
+
+        return $siblings->map(fn (Shop $s) => [
+            'id' => $s->id,
+            'name' => $s->name,
+            'area' => $s->area,
+            'active' => $s->id === $activeId,
+        ])->values()->all();
     }
 }

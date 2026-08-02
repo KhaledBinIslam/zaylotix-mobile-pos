@@ -100,6 +100,9 @@ class ShopController extends Controller
             'businessTypes' => $businessTypes,
             'features' => Feature::where('is_active', true)->orderBy('category')->get(),
             'shopFeatureKeys' => $shop->featureKeys(),
+            // only a main shop (parent_shop_id null) can have branches of
+            // its own -- a branch's edit page just never shows this section
+            'branches' => $shop->parent_shop_id ? null : $shop->branches()->get(['id', 'name', 'area', 'status', 'created_at']),
         ]);
     }
 
@@ -117,6 +120,91 @@ class ShopController extends Controller
         AdminActivity::log('shop.update', "Updated shop '{$shop->name}'.", $shop);
 
         return redirect()->route('admin.shops.index')->with('success', 'Shop updated.');
+    }
+
+    /**
+     * Admin-only, per Khaled's explicit constraint — a shop owner can never
+     * self-create a branch. Reuses the SAME owner (no new login/user row);
+     * the owner reaches it afterward via the branch switcher (see
+     * BranchController). Clones the parent's current Product/ProductCategory/
+     * Unit rows into the new branch's own independent rows (own stock column,
+     * starts at 0 — see the migration/plan note on why this isn't a shared
+     * row) using the exact Tenancy::set() pattern ShopProvisioner already
+     * uses to seed a brand-new shop's categories/units.
+     */
+    public function createBranch(Request $request, Shop $shop)
+    {
+        abort_if($shop->parent_shop_id, 422, 'একটি শাখার অধীনে আরেকটি শাখা তৈরি করা যাবে না।');
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'area' => ['nullable', 'string', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:20'],
+            'plan' => ['required', 'string'],
+            'monthly_fee' => ['nullable', 'numeric', 'min:0'],
+            'subscription_start' => ['required', 'date'],
+            'subscription_expiry' => ['required', 'date'],
+        ]);
+
+        $branch = DB::transaction(function () use ($data, $shop) {
+            $branch = Shop::create([
+                ...$data,
+                'parent_shop_id' => $shop->id,
+                'business_type_id' => $shop->business_type_id,
+                'name_en' => $data['name'],
+                'owner_name' => $shop->owner_name,
+                'sales_mode' => $shop->sales_mode,
+                'lang' => $shop->lang,
+                'status' => 'active',
+            ]);
+
+            $branch->features()->sync($shop->features()->pluck('features.id'));
+
+            Tenancy::set($branch->id);
+
+            $categoryMap = [];
+            foreach (\App\Models\ProductCategory::withoutGlobalScopes()->where('shop_id', $shop->id)->get() as $cat) {
+                $new = \App\Models\ProductCategory::create([
+                    'shop_id' => $branch->id, 'name' => $cat->name, 'name_en' => $cat->name_en, 'emoji' => $cat->emoji,
+                ]);
+                $categoryMap[$cat->id] = $new->id;
+            }
+
+            $unitMap = [];
+            foreach (\App\Models\Unit::withoutGlobalScopes()->where('shop_id', $shop->id)->get() as $unit) {
+                $new = \App\Models\Unit::create([
+                    'shop_id' => $branch->id, 'name' => $unit->name, 'name_en' => $unit->name_en, 'code' => $unit->code,
+                ]);
+                $unitMap[$unit->id] = $new->id;
+            }
+
+            // base fields only for this first cut -- variants/batches/serials
+            // don't carry over; a branch starts at 0 stock and is stocked
+            // in physically, same as any brand-new shop's onboarding
+            foreach (\App\Models\Product::withoutGlobalScopes()->where('shop_id', $shop->id)->get() as $p) {
+                \App\Models\Product::create([
+                    'shop_id' => $branch->id,
+                    'category_id' => $p->category_id ? ($categoryMap[$p->category_id] ?? null) : null,
+                    'unit_id' => $p->unit_id ? ($unitMap[$p->unit_id] ?? null) : null,
+                    'name' => $p->name, 'name_en' => $p->name_en, 'generic_name' => $p->generic_name,
+                    'company' => $p->company, 'shelf_location' => $p->shelf_location,
+                    'requires_prescription' => $p->requires_prescription, 'emoji' => $p->emoji,
+                    'photo_path' => $p->photo_path, 'barcode' => $p->barcode,
+                    'sold_by_weight' => $p->sold_by_weight, 'weight_unit' => $p->weight_unit,
+                    'cost' => $p->cost, 'price' => $p->price, 'wholesale_price' => $p->wholesale_price,
+                    'discount_price' => $p->discount_price, 'stock' => 0,
+                    'reorder_point' => $p->reorder_point,
+                ]);
+            }
+
+            Tenancy::clear();
+
+            return $branch;
+        });
+
+        AdminActivity::log('shop.createBranch', "Created branch '{$branch->name}' under '{$shop->name}'.", $branch);
+
+        return back()->with('success', "শাখা '{$branch->name}' তৈরি হয়েছে।");
     }
 
     public function toggleStatus(Shop $shop)
