@@ -192,6 +192,9 @@ body {
    products that don't have one */
 .pcard .pimg { display: block; width: calc(100% + 24px); height: 84px; object-fit: cover; margin: -12px -12px 8px -12px; border-radius: 14px 14px 0 0; background: var(--greenSoft); }
 .pcard .pn { font-weight: 700; font-size: 13.5px; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* pharmacy only in practice -- generic_name is null for every other shop
+   type's products, so this line simply never renders for them */
+.pcard .pgeneric { font-size: 10.5px; color: var(--mut); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pcard .pp { color: var(--green); font-weight: 750; margin-top: 2px; font-size: 13px; }
 .pcard.incart { border-color: var(--gold); background: var(--goldSoft); }
 .pcard.occupied { border-color: var(--rose); background: var(--roseSoft); }

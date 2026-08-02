@@ -159,6 +159,18 @@ function formatWeightQty(p, qty) {
     return `${Math.round(n * 1000) / 1000} ${weightBigUnit(p)}`;
 }
 
+// low-stock warning between "plenty" and "out" — a cashier restocking
+// decisions benefit from seeing this before it actually runs out, not just
+// a bare "out of stock" after the fact. Uses the product's own owner-set
+// reorder_point when configured, same threshold Product::isLow() uses
+// server-side otherwise (kept in sync deliberately, not re-derived oddly).
+function stockLevel(p) {
+    const stock = Number(p.stock);
+    if (stock <= 0) return 'out';
+    const threshold = Number(p.reorder_point) > 0 ? Number(p.reorder_point) : 6;
+    return stock <= threshold ? 'low' : 'ok';
+}
+
 const weightSheet = ref(false);
 const weightProduct = ref(null);
 const weightEntryUnit = ref('g'); // 'g'/'kg' or 'ml'/'litre', matches the product's weight_unit
@@ -739,8 +751,9 @@ useKeyboardShortcuts({
                             <div class="pn">{{ p.name }}</div>
                             <div class="pp">{{ money(p.price) }} <span style="color:var(--dim);font-weight:500">/ {{ weightBigUnit(p) }}</span></div>
                             <div class="ps">
-                                <span v-if="p.stock > 0">{{ formatWeightQty(p, p.stock) }} {{ t('stock.stock').toLowerCase() }}</span>
-                                <span v-else style="color:var(--rose)">{{ t('pos.outOfStock') }}</span>
+                                <span v-if="stockLevel(p) === 'out'" style="color:var(--rose)">{{ t('pos.outOfStock') }}</span>
+                                <span v-else-if="stockLevel(p) === 'low'" style="color:var(--gold2);font-weight:700">⚠ {{ formatWeightQty(p, p.stock) }} {{ t('pos.lowStock') }}</span>
+                                <span v-else>{{ formatWeightQty(p, p.stock) }} {{ t('stock.stock').toLowerCase() }}</span>
                             </div>
                         </button>
                         <!-- a product with variants can't be sold "in general" — the size/color pills below are the only way to add it -->
@@ -748,10 +761,12 @@ useKeyboardShortcuts({
                             <img v-if="p.photo_url" :src="p.photo_url" class="pimg" :alt="p.name">
                             <div v-else class="em">{{ p.emoji }}</div>
                             <div class="pn">{{ p.name }} <span v-if="p.requires_prescription" style="color:var(--rose)">℞</span></div>
+                            <div v-if="p.generic_name" class="pgeneric">{{ p.generic_name }}</div>
                             <div class="pp">{{ money(p.price) }} <span style="color:var(--dim);font-weight:500">/ {{ p.unit?.name || t('pos.unit') }}</span></div>
                             <div class="ps">
-                                <span v-if="p.stock > 0">{{ t('pos.inStock', { n: p.stock }) }}</span>
-                                <span v-else style="color:var(--rose)">{{ t('pos.outOfStock') }}</span>
+                                <span v-if="stockLevel(p) === 'out'" style="color:var(--rose)">{{ t('pos.outOfStock') }}</span>
+                                <span v-else-if="stockLevel(p) === 'low'" style="color:var(--gold2);font-weight:700">⚠ {{ t('pos.inStock', { n: p.stock }) }} {{ t('pos.lowStock') }}</span>
+                                <span v-else>{{ t('pos.inStock', { n: p.stock }) }}</span>
                             </div>
                         </button>
                         <div v-else class="pcard-main" style="cursor:default">

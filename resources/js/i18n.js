@@ -504,6 +504,7 @@ export const translations = {
     'pos.unit': { bn: 'পিস', en: 'pc' },
     'pos.inStock': { bn: '{n} পিস আছে', en: '{n} in stock' },
     'pos.outOfStock': { bn: 'শেষ', en: 'Out of stock' },
+    'pos.lowStock': { bn: '— কম আছে', en: '— low' },
     'pos.notFound': { bn: 'কোনো পণ্য পাওয়া যায়নি', en: 'No products found' },
     'pos.cartEmptyHint': { bn: 'কার্ট খালি — পণ্যে ট্যাপ করুন', en: 'Cart empty — tap a product' },
     'pos.orScan': { bn: ' বা স্ক্যান করুন', en: ' or scan' },
