@@ -127,7 +127,7 @@ const ratingUrl = computed(() => window.location.origin + route('rate.show', pro
             <h3>{{ shop?.name || 'Zaylotix POS' }}</h3>
             <div class="rc-sub">
                 📞 {{ shop?.phone }} • {{ shop?.area }}
-                <template v-if="shop?.bin_no"><br>BIN: {{ shop.bin_no }}</template>
+                <template v-if="shop?.bin_no && sale.vat > 0"><br>BIN: {{ shop.bin_no }}</template>
                 <br>মেমো — {{ sale.invoice_no }} • {{ sale.date }} {{ sale.time }}
                 <template v-if="tableOrder">
                     <br>{{ tableOrder.order_source === 'delivery' ? t('restaurant.sourceDelivery') : tableOrder.order_source === 'takeaway' ? t('restaurant.sourceTakeaway') : t('restaurant.sourceDineIn') }}{{ tableOrder.table?.name ? ' — ' + tableOrder.table.name : '' }}

@@ -324,7 +324,8 @@ class TableOrderController extends Controller
 
             $vat = 0;
             if ($shop->vat_mode === 'full') {
-                $vat = round($total * 15 / 115, 2);
+                $rate = (float) $shop->vat_rate;
+                $vat = round($total * $rate / (100 + $rate), 2);
             } elseif ($shop->vat_mode === 'turnover') {
                 $vat = round($total * (float) $shop->turnover_rate / 100, 2);
             }

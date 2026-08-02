@@ -1,6 +1,6 @@
 <script setup>
 import { Head, router, usePage } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useI18n } from '@/composables/useI18n';
 
@@ -16,7 +16,22 @@ const { t } = useI18n();
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 
 function setVat(mode) {
-    router.patch(route('app.settings.vat'), { vat_mode: mode });
+    router.patch(route('app.settings.vat'), { vat_mode: mode }, { preserveScroll: true });
+}
+
+const vatRateInput = ref(
+    props.shop?.vat_mode === 'turnover' ? props.shop?.turnover_rate : props.shop?.vat_rate,
+);
+// re-syncs the input after switching mode (e.g. none -> full), so it shows
+// that mode's own saved rate instead of whatever was last typed
+watch(() => props.shop?.vat_mode, () => {
+    vatRateInput.value = props.shop?.vat_mode === 'turnover' ? props.shop?.turnover_rate : props.shop?.vat_rate;
+});
+function saveVatRate() {
+    router.patch(route('app.settings.vat'), {
+        vat_mode: props.shop?.vat_mode,
+        rate: vatRateInput.value,
+    }, { preserveScroll: true });
 }
 
 const serviceChargeRate = ref(props.shop?.service_charge_rate ?? '');
@@ -64,6 +79,11 @@ function saveServiceCharge() {
                     <button :class="{ on: shop?.vat_mode === 'none' }" @click="setVat('none')">{{ t('acc.vatNone') }}</button>
                     <button :class="{ on: shop?.vat_mode === 'turnover' }" @click="setVat('turnover')">{{ t('acc.vatTurnover') }}</button>
                     <button :class="{ on: shop?.vat_mode === 'full' }" @click="setVat('full')">{{ t('acc.vatFull') }}</button>
+                </div>
+                <div v-if="shop?.vat_mode !== 'none'" style="display:flex;gap:8px;margin-top:10px;align-items:center">
+                    <input v-model="vatRateInput" type="number" inputmode="decimal" min="0" max="100" step="0.5" :placeholder="t('acc.vatRateLabel')" style="flex:1;margin:0">
+                    <span style="color:var(--mut);font-size:13px">%</span>
+                    <button class="btn sm" style="width:auto;padding:0 16px" @click="saveVatRate">{{ t('stock.save') }}</button>
                 </div>
             </div>
         </template>

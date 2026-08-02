@@ -1088,7 +1088,7 @@ useKeyboardShortcuts({
                 <h3>{{ shop?.name || 'Zaylotix POS' }}</h3>
                 <div class="rc-sub">
                     📞 {{ shop?.phone }}
-                    <template v-if="shop?.bin_no"><br>BIN: {{ shop.bin_no }}</template>
+                    <template v-if="shop?.bin_no && lastSale.vat > 0"><br>BIN: {{ shop.bin_no }}</template>
                     <br>মেমো — {{ lastSale.invoice_no }}
                 </div>
                 <div v-for="l in lastSale.items" :key="l.id" class="rc-l">

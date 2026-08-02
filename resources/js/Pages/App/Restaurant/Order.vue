@@ -27,7 +27,10 @@ const displayName = computed(() => props.order.table_name || t('restaurant.takea
 // cashier roughly what to expect while still building the order
 const vatPreview = computed(() => {
     if (!shop.value) return 0;
-    if (shop.value.vat_mode === 'full') return Math.round(order.total * 15 / 115 * 100) / 100;
+    if (shop.value.vat_mode === 'full') {
+        const rate = Number(shop.value.vat_rate) || 0;
+        return Math.round(order.total * rate / (100 + rate) * 100) / 100;
+    }
     if (shop.value.vat_mode === 'turnover') return Math.round(order.total * (Number(shop.value.turnover_rate) || 0) / 100 * 100) / 100;
     return 0;
 });

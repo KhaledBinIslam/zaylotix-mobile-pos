@@ -9,18 +9,31 @@ use Illuminate\Support\Facades\Storage;
 
 class SettingController extends Controller
 {
+    /**
+     * `rate` is optional and only applied to whichever field the current
+     * mode uses — switching mode alone (no rate passed) never disturbs the
+     * shop's previously-saved vat_rate/turnover_rate, so re-enabling VAT
+     * later restores the rate they had before turning it off.
+     */
     public function updateVat(Request $request)
     {
         $data = $request->validate([
             'vat_mode' => ['required', 'in:none,turnover,full'],
+            'rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
         ]);
 
         $shop = Tenancy::shop();
-        $shop->update([
-            'vat_mode' => $data['vat_mode'],
-            'vat_rate' => $data['vat_mode'] === 'full' ? 15 : 0,
-            'turnover_rate' => $data['vat_mode'] === 'turnover' ? 3 : 0,
-        ]);
+        $update = ['vat_mode' => $data['vat_mode']];
+
+        if (isset($data['rate'])) {
+            if ($data['vat_mode'] === 'full') {
+                $update['vat_rate'] = $data['rate'];
+            } elseif ($data['vat_mode'] === 'turnover') {
+                $update['turnover_rate'] = $data['rate'];
+            }
+        }
+
+        $shop->update($update);
 
         return back()->with('success', 'VAT settings saved.');
     }

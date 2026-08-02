@@ -466,6 +466,7 @@ onMounted(() => {
             <div class="field">
                 <label>{{ t('logo.binLabel') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
                 <input v-model="binForm.bin_no" :placeholder="t('logo.binPlaceholder')" maxlength="50">
+                <div style="color:var(--dim);font-size:12px;margin-top:6px">{{ t('logo.binHint') }}</div>
                 <div v-if="binForm.errors.bin_no" style="color:var(--rose);font-size:12px;margin-top:6px">{{ binForm.errors.bin_no }}</div>
             </div>
             <button class="btn sm ghost" style="width:100%" :disabled="binForm.processing" @click="saveBinNo">{{ binForm.processing ? '...' : t('stock.save') }}</button>

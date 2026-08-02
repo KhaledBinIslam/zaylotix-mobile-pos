@@ -348,7 +348,10 @@ class PosController extends Controller
 
             $vat = 0;
             if ($shop->vat_mode === 'full') {
-                $vat = round($total * 15 / 115, 2);
+                // shop-configured rate, backed out of the already VAT-inclusive
+                // price — e.g. rate=15 gives total*15/115, same shape for any rate
+                $rate = (float) $shop->vat_rate;
+                $vat = round($total * $rate / (100 + $rate), 2);
             } elseif ($shop->vat_mode === 'turnover') {
                 $vat = round($total * (float) $shop->turnover_rate / 100, 2);
             }
