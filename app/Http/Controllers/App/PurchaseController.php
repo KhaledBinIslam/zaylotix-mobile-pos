@@ -58,6 +58,7 @@ class PurchaseController extends Controller
                 // purchase never needs this, its effects already landed below
                 'pending_details' => $isPending ? [
                     'product_id' => $data['product_id'] ?? null,
+                    'ingredient_id' => $data['ingredient_id'] ?? null,
                     'qty' => $data['qty'] ?? null,
                     'cost' => $data['cost'] ?? null,
                     'batch_no' => $data['batch_no'] ?? null,
@@ -66,6 +67,7 @@ class PurchaseController extends Controller
                     'warranty_expiry' => $data['warranty_expiry'] ?? null,
                 ] : null,
                 'product_id' => $data['product_id'] ?? null,
+                'ingredient_id' => $data['ingredient_id'] ?? null,
                 'qty' => $data['qty'] ?? null,
                 'date' => now()->toDateString(),
             ]);
@@ -107,6 +109,7 @@ class PurchaseController extends Controller
                 'amount' => (float) $locked->amount,
                 'supplier_id' => $locked->supplier_id,
                 'product_id' => $details['product_id'] ?? null,
+                'ingredient_id' => $details['ingredient_id'] ?? null,
                 'qty' => $details['qty'] ?? null,
                 'cost' => $details['cost'] ?? null,
                 'batch_no' => $details['batch_no'] ?? null,
@@ -160,6 +163,15 @@ class PurchaseController extends Controller
             if ($shop?->hasFeature('serial_tracking') && $imeis) {
                 \App\Support\SerialStock::receive($lockedProduct, $imeis, $data['warranty_expiry'] ?? null, $data['cost'] ?? null);
             }
+        } elseif (! empty($data['ingredient_id'])) {
+            // raw-ingredient purchase -- reuses the same supplier/cash/bank/
+            // credit-payable flow above, just a different stock target;
+            // cost is a simple latest-cost overwrite, not a weighted average
+            $lockedIngredient = \App\Models\Ingredient::whereKey($data['ingredient_id'])->lockForUpdate()->first();
+            $lockedIngredient->increment('stock', $data['qty']);
+            if (! empty($data['cost'])) {
+                $lockedIngredient->update(['cost' => $data['cost']]);
+            }
         }
     }
 
@@ -180,8 +192,9 @@ class PurchaseController extends Controller
             // optional — present only when this purchase also received
             // stock, so a purchase can still be money-only (e.g. a utility
             // bill) by leaving these out
-            'product_id' => ['nullable', Rule::exists('products', 'id')->where('shop_id', Tenancy::id())],
-            'qty' => ['nullable', 'numeric', 'min:0.001', 'required_with:product_id'],
+            'product_id' => ['nullable', 'prohibits:ingredient_id', Rule::exists('products', 'id')->where('shop_id', Tenancy::id())],
+            'ingredient_id' => ['nullable', Rule::exists('ingredients', 'id')->where('shop_id', Tenancy::id())],
+            'qty' => ['nullable', 'numeric', 'min:0.001', 'required_with:product_id,ingredient_id'],
             'cost' => ['nullable', 'numeric', 'min:0'],
             'batch_no' => ['nullable', 'string', 'max:100'],
             'expiry_date' => ['nullable', 'date'],

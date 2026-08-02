@@ -318,7 +318,7 @@ onMounted(() => {
             </Link>
         </template>
 
-        <template v-if="(hasPerm('stock_count') && features.includes('stock_count')) || (hasPerm('purchases') && features.includes('purchases')) || (hasPerm('purchases') && features.includes('suppliers')) || (hasPerm('stock') && features.includes('serial_tracking')) || (hasPerm('damages') && features.includes('damages')) || (hasPerm('returns') && features.includes('returns'))">
+        <template v-if="(hasPerm('stock_count') && features.includes('stock_count')) || (hasPerm('purchases') && features.includes('purchases')) || (hasPerm('purchases') && features.includes('suppliers')) || (hasPerm('stock') && features.includes('serial_tracking')) || (hasPerm('damages') && features.includes('damages')) || (hasPerm('returns') && features.includes('returns')) || (hasPerm('stock') && features.includes('ingredient_tracking'))">
             <div class="sechead"><h2>{{ t('more.sectionStock') }}</h2></div>
             <button v-if="hasPerm('stock_count') && features.includes('stock_count')" class="row" style="width:100%;text-align:left" @click="countSheet = true">
                 <div class="ava">🔢</div><div class="mid"><b>{{ t('more.stockCountTitle') }}</b><span>{{ t('more.stockCountSub') }}</span></div><div class="end">›</div>
@@ -341,6 +341,15 @@ onMounted(() => {
             <button v-if="hasPerm('purchases') && features.includes('suppliers')" class="row" style="width:100%;text-align:left" @click="supplierReturnSheet = true">
                 <div class="ava">📦</div><div class="mid"><b>{{ t('more.supplierReturnTitle') }}</b><span>{{ t('more.supplierReturnSub') }}</span></div><div class="end">›</div>
             </button>
+            <Link v-if="hasPerm('stock') && features.includes('ingredient_tracking')" :href="route('app.ingredients.index')" class="row">
+                <div class="ava">🧂</div><div class="mid"><b>{{ t('nav.ingredients') }}</b><span>{{ t('ingredient.subtitle') }}</span></div><div class="end">›</div>
+            </Link>
+            <Link v-if="hasPerm('stock') && features.includes('ingredient_tracking')" :href="route('app.preparations.index')" class="row">
+                <div class="ava">🍳</div><div class="mid"><b>{{ t('nav.preparations') }}</b><span>{{ t('prep.subtitle') }}</span></div><div class="end">›</div>
+            </Link>
+            <Link v-if="hasPerm('stock') && features.includes('ingredient_tracking')" :href="route('app.estimator.index')" class="row">
+                <div class="ava">🧮</div><div class="mid"><b>{{ t('nav.estimator') }}</b><span>{{ t('estimator.subtitle') }}</span></div><div class="end">›</div>
+            </Link>
         </template>
 
         <template v-if="hasPerm('export') && features.includes('export')">

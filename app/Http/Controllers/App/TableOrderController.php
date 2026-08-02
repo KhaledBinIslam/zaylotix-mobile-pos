@@ -96,6 +96,8 @@ class TableOrderController extends Controller
             }
 
             $product->decrement('stock', $data['qty']);
+            // best-effort ingredient consumption for a recipe-linked dish — see IngredientConsumption
+            \App\Support\IngredientConsumption::apply($product, (float) $data['qty']);
 
             // merge into the same product's not-yet-printed line instead of
             // adding a duplicate row — a KOT-printed line is left alone

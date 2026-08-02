@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\Damage;
 use App\Models\Expense;
 use App\Models\Payment;
+use App\Models\PreparationItem;
 use App\Models\Purchase;
 use App\Models\Sale;
 use App\Models\SaleItem;
@@ -273,6 +274,18 @@ class Reports
                     'date' => $r->sale?->date,
                 ])->values(),
         ];
+    }
+
+    /** Ingredient usage over the range, from recorded Preparation batches -- grouped by ingredient since the same one likely feeds several dishes. */
+    public static function consumptionReport(string $from, string $to): array
+    {
+        return PreparationItem::whereDate('created_at', '>=', $from)->whereDate('created_at', '<=', $to)
+            ->get()
+            ->groupBy('ingredient_name')
+            ->map(fn ($group, $name) => ['name' => $name, 'qty' => round((float) $group->sum('qty_consumed'), 3)])
+            ->sortByDesc('qty')
+            ->values()
+            ->all();
     }
 
     /**

@@ -56,6 +56,12 @@ class Product extends Model
         return $this->belongsTo(ProductCategory::class, 'category_id');
     }
 
+    /** The recipe (ingredient + qty_per_unit) this product consumes when sold/prepared — empty for a product with no ingredient tracking set up. */
+    public function recipes()
+    {
+        return $this->hasMany(ProductRecipe::class);
+    }
+
     public function unit()
     {
         return $this->belongsTo(Unit::class);

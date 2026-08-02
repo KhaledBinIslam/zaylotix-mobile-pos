@@ -463,6 +463,10 @@ class PosController extends Controller
                 } else {
                     $line['product']->decrement('stock', $line['base_qty']);
 
+                    // best-effort ingredient consumption for a recipe-linked
+                    // product (e.g. a restaurant dish) — see IngredientConsumption
+                    \App\Support\IngredientConsumption::apply($line['product'], $line['base_qty']);
+
                     // FEFO (soonest-expiry-first) — best-effort bookkeeping
                     // only, never blocks or alters the sale itself; see
                     // BatchStock for why it can't fully cover every sale.

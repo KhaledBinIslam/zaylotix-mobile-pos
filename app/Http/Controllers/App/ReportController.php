@@ -51,6 +51,7 @@ class ReportController extends Controller
             'wastageReport' => $shop?->hasFeature('damages') ? Reports::wastageReport($from, $to) : null,
             'ratingReport' => Reports::ratingReport($from, $to),
             'heatmap' => Reports::heatmap($from, $to),
+            'consumptionReport' => $shop?->hasFeature('ingredient_tracking') ? Reports::consumptionReport($from, $to) : null,
             // one-click "everything" summary — customer due and supplier
             // payable totals alongside the P&L already in $stats, so an
             // owner never has to visit three separate pages to see the

@@ -7,7 +7,7 @@ import { useI18n } from '@/composables/useI18n';
 const props = defineProps({
     from: String, to: String, preset: String, stats: Object, sales: Array, topProducts: Array, bottomProducts: Array,
     expiringSoon: Array, cashierBreakdown: Array, restaurantBreakdown: Object, salesByType: Object, itemWisePurchases: Array,
-    summary: Object, categoryReport: Object, discountReport: Object, wastageReport: Array, ratingReport: Object, heatmap: Object,
+    summary: Object, categoryReport: Object, discountReport: Object, wastageReport: Array, ratingReport: Object, heatmap: Object, consumptionReport: Array,
 });
 const { t } = useI18n();
 
@@ -251,6 +251,16 @@ function heatColor(count) {
                 <div v-for="(row, i) in wastageReport" :key="i" class="row" style="cursor:default" :style="i > 0 ? 'border-top:1px solid var(--line)' : ''">
                     <div class="mid"><b>{{ row.product_name }}</b><span>{{ row.reason }} • {{ row.qty }} {{ t('stock.pieces') }}</span></div>
                     <div class="end"><b style="color:var(--rose)">−{{ money(row.loss) }}</b></div>
+                </div>
+            </div>
+        </template>
+
+        <template v-if="consumptionReport?.length">
+            <div class="sechead"><h2>{{ t('rep.consumptionReport') }}</h2></div>
+            <div class="card" style="padding:0;margin-bottom:14px">
+                <div v-for="(row, i) in consumptionReport" :key="i" class="row" style="cursor:default" :style="i > 0 ? 'border-top:1px solid var(--line)' : ''">
+                    <div class="mid"><b>{{ row.name }}</b></div>
+                    <div class="end"><b>{{ row.qty }}</b></div>
                 </div>
             </div>
         </template>

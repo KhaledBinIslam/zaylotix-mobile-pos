@@ -124,10 +124,11 @@ function goBack() {
 // so support immediately knows which screen the owner is stuck on without
 // them having to explain it themselves
 const SCREEN_LABELS = {
-    home: 'হোম', sell: 'বিক্রি (POS)', restaurant: 'টেবিল', reservations: 'রিজার্ভেশন', kds: 'কিচেন ডিসপ্লে', stock: 'স্টক', due: 'বাকি',
+    home: 'হোম', sell: 'বিক্রি (POS)', restaurant: 'টেবিল', reservations: 'রিজার্ভেশন', kds: 'কিচেন ডিসপ্লে', cds: 'কাস্টমার ডিসপ্লে', stock: 'স্টক', due: 'বাকি',
     sales: 'বিক্রির ইতিহাস', promotions: 'অফার/কুপন', quotations: 'কোটেশন', accounts: 'হিসাব-নিকাশ',
     reports: 'রিপোর্ট', expenses: 'খরচ', purchaseHistory: 'ক্রয়ের ইতিহাস', suppliers: 'সাপ্লায়ার',
     serials: 'IMEI/ওয়ারেন্টি', cashier: 'ক্যাশিয়ার', activity: 'অ্যাক্টিভিটি লগ', more: 'আরও', help: 'সাহায্য', partners: 'পার্টনার হিসাব', employees: 'কর্মচারী ও বেতন',
+    ingredients: 'উপাদান ও রেসিপি', preparations: 'প্রস্তুতকরণ', estimator: 'ইনগ্রেডিয়েন্ট এস্টিমেটর',
 };
 const screenLabel = computed(() => SCREEN_LABELS[props.active] || props.active);
 
@@ -182,6 +183,9 @@ const sidebarGroups = computed(() => [
             { key: 'damage', label: t('nav.damage'), href: moreLink('damage'), icon: '🗑️', on: isMoreLinkActive('damage'), show: hasPerm('damages') && hasFeature('damages') },
             { key: 'return', label: t('nav.return'), href: moreLink('return'), icon: '↩️', on: isMoreLinkActive('return'), show: hasPerm('returns') && hasFeature('returns') },
             { key: 'count', label: t('nav.stockCount'), href: moreLink('count'), icon: '🔢', on: isMoreLinkActive('count'), show: hasPerm('stock_count') && hasFeature('stock_count') },
+            { key: 'ingredients', label: t('nav.ingredients'), href: route('app.ingredients.index'), icon: '🧂', on: props.active === 'ingredients', show: hasPerm('stock') && hasFeature('ingredient_tracking') },
+            { key: 'preparations', label: t('nav.preparations'), href: route('app.preparations.index'), icon: '🍳', on: props.active === 'preparations', show: hasPerm('stock') && hasFeature('ingredient_tracking') },
+            { key: 'estimator', label: t('nav.estimator'), href: route('app.estimator.index'), icon: '🧮', on: props.active === 'estimator', show: hasPerm('stock') && hasFeature('ingredient_tracking') },
         ],
     },
     {

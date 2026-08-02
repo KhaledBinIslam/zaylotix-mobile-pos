@@ -21,7 +21,10 @@ use App\Http\Controllers\App\LoanController;
 use App\Http\Controllers\App\LoanPaymentController;
 use App\Http\Controllers\App\MedicineCatalogController;
 use App\Http\Controllers\App\CdsController;
+use App\Http\Controllers\App\EstimatorController;
+use App\Http\Controllers\App\IngredientController;
 use App\Http\Controllers\App\KdsController;
+use App\Http\Controllers\App\PreparationController;
 use App\Http\Controllers\App\ReservationController;
 use App\Http\Controllers\App\WorkPeriodController;
 use App\Http\Controllers\RatingController;
@@ -211,6 +214,20 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
     Route::middleware('perm:due')->group(function () {
         Route::post('customers/{customer}/payments', [PaymentController::class, 'store'])->name('payments.store');
         Route::post('customers/{customer}/payments/full', [PaymentController::class, 'full'])->name('payments.full');
+    });
+
+    Route::middleware('feature:ingredient_tracking')->group(function () {
+        Route::get('ingredients', [IngredientController::class, 'index'])->name('ingredients.index');
+        Route::post('ingredients', [IngredientController::class, 'store'])->name('ingredients.store');
+        Route::put('ingredients/{ingredient}', [IngredientController::class, 'update'])->name('ingredients.update');
+        Route::delete('ingredients/{ingredient}', [IngredientController::class, 'destroy'])->name('ingredients.destroy');
+        Route::put('products/{product}/recipe', [IngredientController::class, 'saveRecipe'])->name('products.recipe.save');
+
+        Route::get('preparations', [PreparationController::class, 'index'])->name('preparations.index');
+        Route::post('preparations', [PreparationController::class, 'store'])->name('preparations.store');
+
+        Route::get('estimator', [EstimatorController::class, 'index'])->name('estimator.index');
+        Route::post('estimator/calculate', [EstimatorController::class, 'calculate'])->name('estimator.calculate');
     });
 
     Route::middleware(['perm:purchases', 'feature:purchases'])->group(function () {
