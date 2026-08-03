@@ -185,6 +185,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
 
         Route::middleware('feature:product_variants')->group(function () {
             Route::post('products/{product}/variants', [ProductVariantController::class, 'store'])->name('productVariants.store');
+            Route::post('products/{product}/variants/bulk', [ProductVariantController::class, 'bulkStore'])->name('productVariants.bulkStore');
             Route::put('product-variants/{productVariant}', [ProductVariantController::class, 'update'])->name('productVariants.update');
             Route::post('product-variants/{productVariant}/stock-in', [ProductVariantController::class, 'stockIn'])->name('productVariants.stockIn');
             Route::delete('product-variants/{productVariant}', [ProductVariantController::class, 'destroy'])->name('productVariants.destroy');
@@ -265,7 +266,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::post('accounts/loans', [LoanController::class, 'store'])->name('loans.store');
         Route::post('accounts/loans/{loan}/payments', [LoanPaymentController::class, 'store'])->name('loans.payments.store');
 
-        Route::middleware('owner')->group(function () {
+        Route::middleware(['owner', 'feature:partners'])->group(function () {
             Route::get('accounts/partners', [PartnerController::class, 'index'])->name('partners.index');
             Route::post('accounts/partners', [PartnerController::class, 'store'])->name('partners.store');
             Route::post('accounts/partners/{partner}/transactions', [PartnerTransactionController::class, 'store'])->name('partners.transactions.store');

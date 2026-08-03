@@ -54,6 +54,7 @@ class ReportController extends Controller
             'complimentaryReport' => Reports::complimentaryReport($from, $to),
             'heatmap' => Reports::heatmap($from, $to),
             'consumptionReport' => $shop?->hasFeature('ingredient_tracking') ? Reports::consumptionReport($from, $to) : null,
+            'variantInventory' => $shop?->hasFeature('product_variants') ? Reports::variantInventoryBreakdown() : null,
             // combined across every branch of this business -- only present
             // when viewing the main shop itself (never from inside a branch)
             // and it actually has siblings, see Reports::combinedRangeStats()

@@ -166,7 +166,7 @@ function removePackSize(pu) {
 }
 
 // --- variants (size/color) — only relevant with product_variants feature ---
-const variantForm = useForm({ size: '', color: '', barcode: '', stock: '', price: '', cost: '' });
+const variantForm = useForm({ size: '', color: '', barcode: '', stock: '', reorder_point: '', price: '', cost: '' });
 function addVariant() {
     variantForm.post(route('app.productVariants.store', editing.value.id), {
         preserveScroll: true,
@@ -175,6 +175,60 @@ function addVariant() {
 }
 function variantLabel(v) {
     return [v.size, v.color].filter(Boolean).join(', ');
+}
+
+// --- grid entry: type a color list + a size list once, fill a color x size
+// matrix in one go instead of clicking "add variant" per combination ---
+const gridColorsInput = ref('');
+const gridSizesInput = ref('');
+const gridOpen = ref(false);
+const gridStock = ref({}); // { "color|size": qty }
+const gridColors = computed(() => gridColorsInput.value.split(',').map((s) => s.trim()).filter(Boolean));
+const gridSizes = computed(() => gridSizesInput.value.split(',').map((s) => s.trim()).filter(Boolean));
+const gridProcessing = ref(false);
+const gridError = ref('');
+
+function gridCellKey(color, size) {
+    return `${color}|${size}`;
+}
+function openGrid() {
+    gridOpen.value = true;
+    gridStock.value = {};
+    gridError.value = '';
+}
+function submitGrid() {
+    const colors = gridColors.value.length ? gridColors.value : [''];
+    const sizes = gridSizes.value.length ? gridSizes.value : [''];
+    if (colors.length === 1 && colors[0] === '' && sizes.length === 1 && sizes[0] === '') {
+        gridError.value = t('stock.gridNeedsColorOrSize');
+        return;
+    }
+
+    const variants = [];
+    for (const color of colors) {
+        for (const size of sizes) {
+            const qty = gridStock.value[gridCellKey(color, size)];
+            if (qty === undefined || qty === null || qty === '') continue;
+            variants.push({ color: color || null, size: size || null, stock: Number(qty) });
+        }
+    }
+    if (!variants.length) {
+        gridError.value = t('stock.gridNeedsAtLeastOneCell');
+        return;
+    }
+
+    gridProcessing.value = true;
+    router.post(route('app.productVariants.bulkStore', editing.value.id), { variants }, {
+        preserveScroll: true,
+        onSuccess: () => {
+            gridOpen.value = false;
+            gridColorsInput.value = '';
+            gridSizesInput.value = '';
+            gridStock.value = {};
+        },
+        onError: (errors) => { gridError.value = errors.size || ''; },
+        onFinish: () => { gridProcessing.value = false; },
+    });
 }
 function removeVariant(v) {
     if (!confirm(`"${variantLabel(v)}" ${t('stock.removeVariantConfirm')}`)) return;
@@ -492,7 +546,7 @@ useKeyboardShortcuts({
                 <div v-for="v in editing.variants" :key="v.id" class="cart-line" style="align-items:flex-start">
                     <div class="nm">
                         <b>{{ variantLabel(v) }}</b>
-                        <span>{{ v.stock }} {{ t('stock.pieces') }}<template v-if="v.price"> • {{ money(v.price) }}</template></span>
+                        <span>{{ v.stock }} {{ t('stock.pieces') }}<template v-if="v.price"> • {{ money(v.price) }}</template><template v-if="v.barcode"> • 🏷️ {{ v.barcode }}</template><template v-if="v.reorder_point"> • ⚠ {{ v.reorder_point }}</template></span>
                         <div style="display:flex;gap:6px;margin-top:6px">
                             <input v-model="variantStockInQty[v.id]" type="number" :placeholder="t('stock.stockIn')" style="width:90px">
                             <button class="btn sm ghost" @click="stockInVariant(v)">+</button>
@@ -500,13 +554,60 @@ useKeyboardShortcuts({
                     </div>
                     <button class="btn sm rose" @click="removeVariant(v)">✕</button>
                 </div>
-                <div class="f2" style="margin-top:8px">
+                <button v-if="!gridOpen" class="btn sm" style="width:100%;margin-top:10px" @click="openGrid">
+                    {{ t('stock.addVariantGrid') }}
+                </button>
+
+                <div v-if="gridOpen" style="margin-top:10px;padding:10px;border:1px dashed var(--line);border-radius:10px">
+                    <div style="font-size:12px;color:var(--mut);margin-bottom:8px">{{ t('stock.gridHint') }}</div>
+                    <div class="f2">
+                        <input v-model="gridColorsInput" :placeholder="t('stock.gridColorsPlaceholder')">
+                        <input v-model="gridSizesInput" :placeholder="t('stock.gridSizesPlaceholder')">
+                    </div>
+
+                    <div v-if="gridColors.length || gridSizes.length" style="overflow-x:auto;margin-top:10px">
+                        <table style="border-collapse:collapse;width:100%">
+                            <thead>
+                                <tr>
+                                    <th style="text-align:left;font-size:11px;color:var(--dim);padding:4px 6px"></th>
+                                    <th v-for="size in (gridSizes.length ? gridSizes : [''])" :key="'h-' + size" style="font-size:12px;padding:4px 6px;text-align:center">{{ size || t('stock.size') }}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="color in (gridColors.length ? gridColors : [''])" :key="'r-' + color">
+                                    <td style="font-size:12px;padding:4px 6px;white-space:nowrap">{{ color || t('stock.color') }}</td>
+                                    <td v-for="size in (gridSizes.length ? gridSizes : [''])" :key="'c-' + color + size" style="padding:3px">
+                                        <input
+                                            v-model="gridStock[gridCellKey(color, size)]"
+                                            type="number" min="0" placeholder="0"
+                                            style="width:56px;text-align:center;margin:0;padding:6px 4px"
+                                        >
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div v-if="gridError" style="color:var(--rose);font-size:12px;margin-top:8px">{{ gridError }}</div>
+                    <div style="display:flex;gap:8px;margin-top:10px">
+                        <button class="btn sm" style="flex:1" :disabled="gridProcessing" @click="submitGrid">{{ gridProcessing ? '...' : t('stock.gridSubmit') }}</button>
+                        <button class="btn sm ghost" @click="gridOpen = false">{{ t('common.cancel') }}</button>
+                    </div>
+                </div>
+
+                <div class="hr"></div>
+                <div style="font-size:12px;color:var(--dim);margin-bottom:6px">{{ t('stock.addVariantSingle') }}</div>
+                <div class="f2">
                     <input v-model="variantForm.size" :placeholder="t('stock.size')">
                     <input v-model="variantForm.color" :placeholder="t('stock.color')">
                 </div>
                 <div class="f2" style="margin-top:8px">
                     <input v-model="variantForm.stock" type="number" :placeholder="t('stock.startingStock')">
                     <input v-model="variantForm.price" type="number" :placeholder="t('stock.variantPriceOptional')">
+                </div>
+                <div class="f2" style="margin-top:8px">
+                    <input v-model="variantForm.barcode" :placeholder="t('stock.variantBarcodeOptional')">
+                    <input v-model="variantForm.reorder_point" type="number" min="0" :placeholder="t('stock.variantReorderOptional')">
                 </div>
                 <div v-if="variantForm.errors.size" style="color:var(--rose);font-size:12px;margin-top:6px">{{ variantForm.errors.size }}</div>
                 <button class="btn ghost sm" style="width:100%;margin-top:8px" :disabled="variantForm.processing" @click="addVariant">

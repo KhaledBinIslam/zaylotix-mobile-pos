@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\Purchase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\CreatesShops;
@@ -106,5 +107,48 @@ class PurchaseOrderTest extends TestCase
         $this->assertSame(4, collect($results)->filter(fn ($code) => $code === 422)->count());
         $this->assertEquals(80, $product->fresh()->stock); // 50 + 30, exactly once
         $this->assertEquals(700.0, (float) $shop->fresh()->cash_balance); // 1000 - 300, exactly once
+    }
+
+    /**
+     * Regression test: a variant product used to hard-reject every purchase
+     * ("add stock to each variant separately") — now a purchase can name
+     * exactly which variant received stock, same as PosController checkout
+     * decrements a specific variant rather than just the parent product.
+     */
+    public function test_purchase_adds_stock_to_the_named_variant_and_the_parent_together(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
+        $this->grantFeature($shop, 'purchases');
+        $this->grantFeature($shop, 'product_variants');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 200, 'price' => 400, 'stock' => 10]);
+        $variant = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => 'M', 'color' => 'Blue', 'stock' => 10]);
+
+        $response = $this->actingAs($owner, 'web')->post('/app/purchases', [
+            'amount' => 2000, 'method' => 'cash', 'status' => 'received',
+            'product_id' => $product->id, 'product_variant_id' => $variant->id, 'qty' => 10, 'cost' => 220,
+        ]);
+
+        $response->assertRedirect();
+        $this->assertEquals(20, $variant->fresh()->stock); // 10 + 10
+        $this->assertEquals(20, $product->fresh()->stock); // parent sum stays in lockstep
+        $this->assertEquals(220.0, (float) $variant->fresh()->cost); // overwritten, matching ProductVariantController::stockIn
+        $this->assertEquals(-1000.0, (float) $shop->fresh()->cash_balance); // 1000 - 2000 (the purchase's own `amount`, not qty*cost)
+    }
+
+    public function test_purchase_without_a_variant_still_rejects_a_variant_product(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
+        $this->grantFeature($shop, 'purchases');
+        $this->grantFeature($shop, 'product_variants');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 200, 'price' => 400, 'stock' => 10]);
+        ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => 'M', 'stock' => 10]);
+
+        $response = $this->actingAs($owner, 'web')->post('/app/purchases', [
+            'amount' => 2000, 'method' => 'cash', 'status' => 'received',
+            'product_id' => $product->id, 'qty' => 10,
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertEquals(10, $product->fresh()->stock); // untouched
     }
 }

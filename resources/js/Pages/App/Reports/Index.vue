@@ -8,6 +8,7 @@ const props = defineProps({
     from: String, to: String, preset: String, stats: Object, sales: Array, topProducts: Array, bottomProducts: Array,
     expiringSoon: Array, cashierBreakdown: Array, restaurantBreakdown: Object, salesByType: Object, itemWisePurchases: Array,
     summary: Object, categoryReport: Object, discountReport: Object, wastageReport: Array, ratingReport: Object, heatmap: Object, consumptionReport: Array, complimentaryReport: Object, combinedStats: Object,
+    variantInventory: Object,
 });
 const { t } = useI18n();
 
@@ -245,6 +246,22 @@ function heatColor(count) {
                 <div v-for="(row, name) in categoryReport" :key="name" class="row" style="cursor:default">
                     <div class="mid"><b>{{ name }}</b><span>{{ row.qty }} {{ t('rep.unitsSold') }}</span></div>
                     <div class="end"><b>{{ money(row.revenue) }}</b></div>
+                </div>
+            </div>
+        </template>
+
+        <template v-if="variantInventory?.rows?.length">
+            <div class="sechead"><h2>{{ t('rep.variantInventory') }}</h2></div>
+            <div class="card" style="padding:0;margin-bottom:8px">
+                <div v-for="(row, i) in variantInventory.byCategory" :key="row.category" class="row" style="cursor:default" :style="i > 0 ? 'border-top:1px solid var(--line)' : ''">
+                    <div class="mid"><b>{{ row.category }}</b><span>{{ t('rep.variantCount', { n: row.variant_count }) }}</span></div>
+                    <div class="end"><b>{{ row.total_stock }} {{ t('stock.pieces') }}</b></div>
+                </div>
+            </div>
+            <div class="card" style="padding:0;margin-bottom:14px">
+                <div v-for="(row, i) in variantInventory.rows" :key="row.product_id + ':' + row.color + ':' + row.size" class="row" style="cursor:default" :style="i > 0 ? 'border-top:1px solid var(--line)' : ''">
+                    <div class="mid"><b>{{ row.product_name }}</b><span>{{ row.category }} • {{ [row.color, row.size].filter(Boolean).join(', ') }}</span></div>
+                    <div class="end"><b>{{ row.stock }} {{ t('stock.pieces') }}</b></div>
                 </div>
             </div>
         </template>

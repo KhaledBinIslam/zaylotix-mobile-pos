@@ -28,6 +28,7 @@ class ProductVariantController extends Controller
             'color' => ['nullable', 'string', 'max:50'],
             'barcode' => ['nullable', 'string', 'max:64'],
             'stock' => ['required', 'integer', 'min:0'],
+            'reorder_point' => ['nullable', 'integer', 'min:0'],
             'price' => ['nullable', 'numeric', 'min:0'],
             'cost' => ['nullable', 'numeric', 'min:0'],
         ]);
@@ -58,6 +59,7 @@ class ProductVariantController extends Controller
                 'color' => $data['color'] ?? null,
                 'barcode' => $data['barcode'] ?? null,
                 'stock' => $data['stock'],
+                'reorder_point' => $data['reorder_point'] ?? null,
                 'price' => $data['price'] ?? null,
                 'cost' => $data['cost'] ?? null,
             ]);
@@ -70,6 +72,71 @@ class ProductVariantController extends Controller
         return back()->with('success', 'ভ্যারিয়েন্ট যোগ হয়েছে।');
     }
 
+    /**
+     * Fills a whole color x size grid in one submit — a clothing shop with
+     * 4 colors x 5 sizes shouldn't have to click "add variant" 20 times.
+     * Silently skips a cell that's already blank or already an existing
+     * variant instead of rejecting the whole grid over one duplicate, since
+     * an owner filling a grid will often leave some color/size combinations
+     * empty on purpose (a shirt that doesn't come in that size, say).
+     */
+    public function bulkStore(Request $request, Product $product)
+    {
+        $this->authorize('update', $product);
+
+        $data = $request->validate([
+            'variants' => ['required', 'array', 'min:1'],
+            'variants.*.size' => ['nullable', 'string', 'max:50'],
+            'variants.*.color' => ['nullable', 'string', 'max:50'],
+            'variants.*.stock' => ['required', 'integer', 'min:0'],
+        ]);
+
+        if ($product->sold_by_weight) {
+            return back()->withErrors(['size' => "{$product->name} ওজন/লিটার হিসেবে বিক্রি হয় — এতে ভ্যারিয়েন্ট যোগ করা যাবে না।"]);
+        }
+
+        $existingKeys = ProductVariant::where('product_id', $product->id)->get(['size', 'color'])
+            ->map(fn ($v) => ($v->size ?? '').'|'.($v->color ?? ''))->all();
+
+        $toCreate = [];
+        foreach ($data['variants'] as $row) {
+            if (empty($row['size']) && empty($row['color'])) {
+                continue;
+            }
+            $key = ($row['size'] ?? '').'|'.($row['color'] ?? '');
+            if (in_array($key, $existingKeys, true)) {
+                continue;
+            }
+            $existingKeys[] = $key; // guards against a duplicate row within this same grid submit too
+            $toCreate[] = $row;
+        }
+
+        if (! $toCreate) {
+            return back()->withErrors(['size' => 'নতুন কোনো ভ্যারিয়েন্ট পাওয়া যায়নি — সবগুলো খালি অথবা আগে থেকেই আছে।']);
+        }
+
+        $created = DB::transaction(function () use ($product, $toCreate) {
+            $totalStock = 0;
+            foreach ($toCreate as $row) {
+                ProductVariant::create([
+                    'product_id' => $product->id,
+                    'size' => $row['size'] ?? null,
+                    'color' => $row['color'] ?? null,
+                    'stock' => $row['stock'],
+                ]);
+                $totalStock += (int) $row['stock'];
+            }
+
+            Product::whereKey($product->id)->increment('stock', $totalStock);
+
+            Activity::log('product.variant.bulkCreate', "'{$product->name}'-এ গ্রিড থেকে ".count($toCreate).'টা নতুন ভ্যারিয়েন্ট যোগ করা হয়েছে।', $product);
+
+            return count($toCreate);
+        });
+
+        return back()->with('success', "{$created}টা ভ্যারিয়েন্ট যোগ হয়েছে।");
+    }
+
     public function update(Request $request, ProductVariant $productVariant)
     {
         $this->authorize('update', $productVariant->product);
@@ -78,6 +145,7 @@ class ProductVariantController extends Controller
             'size' => ['nullable', 'string', 'max:50'],
             'color' => ['nullable', 'string', 'max:50'],
             'barcode' => ['nullable', 'string', 'max:64'],
+            'reorder_point' => ['nullable', 'integer', 'min:0'],
             'price' => ['nullable', 'numeric', 'min:0'],
             'cost' => ['nullable', 'numeric', 'min:0'],
         ]);

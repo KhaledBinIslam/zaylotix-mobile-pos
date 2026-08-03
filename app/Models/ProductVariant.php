@@ -10,7 +10,7 @@ class ProductVariant extends Model
 {
     use BelongsToTenant, SoftDeletes;
 
-    protected $fillable = ['shop_id', 'product_id', 'size', 'color', 'barcode', 'stock', 'price', 'cost'];
+    protected $fillable = ['shop_id', 'product_id', 'size', 'color', 'barcode', 'stock', 'reorder_point', 'price', 'cost'];
 
     protected function casts(): array
     {

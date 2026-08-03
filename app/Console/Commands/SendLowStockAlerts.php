@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\Shop;
 use App\Notifications\LowStockAlert;
 use App\Support\Tenancy;
@@ -41,6 +42,7 @@ class SendLowStockAlerts extends Command
                     ->where('type', LowStockAlert::class)
                     ->whereDate('created_at', now()->toDateString())
                     ->where('data->product_id', $product->id)
+                    ->whereNull('data->product_variant_id')
                     ->exists();
 
                 if ($alreadySentToday) {
@@ -48,6 +50,34 @@ class SendLowStockAlerts extends Command
                 }
 
                 $owner->notify(new LowStockAlert($product));
+                $sent++;
+            }
+
+            // a specific color/size can run low while the product's own
+            // summed stock still looks fine — checked independently so
+            // "নীল শার্ট M" gets its own alert even when the shirt overall
+            // isn't at/below its own (rarely-set) reorder_point
+            $lowStockVariants = ProductVariant::whereNotNull('reorder_point')
+                ->whereColumn('stock', '<=', 'reorder_point')
+                ->with('product')
+                ->get();
+
+            foreach ($lowStockVariants as $variant) {
+                if (! $variant->product) {
+                    continue;
+                }
+
+                $alreadySentToday = $owner->notifications()
+                    ->where('type', LowStockAlert::class)
+                    ->whereDate('created_at', now()->toDateString())
+                    ->where('data->product_variant_id', $variant->id)
+                    ->exists();
+
+                if ($alreadySentToday) {
+                    continue;
+                }
+
+                $owner->notify(new LowStockAlert($variant->product, $variant));
                 $sent++;
             }
 

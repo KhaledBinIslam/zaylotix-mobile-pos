@@ -557,7 +557,17 @@ class PosController extends Controller
 
     public function barcode(string $barcode)
     {
-        $product = Product::with(['productUnits.unit'])->where('barcode', $barcode)->first();
+        // a variant's own barcode (e.g. printed for "নীল শার্ট M" specifically)
+        // takes priority — it's more specific than the product's own barcode
+        $variant = ProductVariant::with('product.productUnits.unit')->where('barcode', $barcode)->first();
+        if ($variant) {
+            $product = $variant->product;
+            $product->setRelation('variants', $product->variants()->get());
+
+            return response()->json(['found' => true, 'product' => $product, 'variant_id' => $variant->id]);
+        }
+
+        $product = Product::with(['productUnits.unit', 'variants'])->where('barcode', $barcode)->first();
 
         if (! $product) {
             return response()->json(['found' => false], 404);

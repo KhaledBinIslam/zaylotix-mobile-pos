@@ -6,6 +6,7 @@ use App\Models\Damage;
 use App\Models\Expense;
 use App\Models\Payment;
 use App\Models\PreparationItem;
+use App\Models\ProductVariant;
 use App\Models\Purchase;
 use App\Models\Sale;
 use App\Models\SaleItem;
@@ -247,6 +248,42 @@ class Reports
             ])
             ->sortByDesc('revenue')
             ->all();
+    }
+
+    /**
+     * A current stock snapshot (not date-ranged, unlike every report above —
+     * "how much do I have right now", not "how much moved this week"),
+     * broken down by category and by each color/size combination. Lets a
+     * clothing shop answer "কোন category, color, size এ কতগুলো আছে" without
+     * opening every product one at a time.
+     */
+    public static function variantInventoryBreakdown(): array
+    {
+        $rows = ProductVariant::with('product.category')
+            ->get()
+            ->map(fn (ProductVariant $v) => [
+                'product_id' => $v->product_id,
+                'product_name' => $v->product->name ?? '',
+                'category' => $v->product?->category?->name ?: 'অশ্রেণীবদ্ধ',
+                'color' => $v->color,
+                'size' => $v->size,
+                'stock' => $v->stock,
+            ]);
+
+        $byCategory = $rows->groupBy('category')
+            ->map(fn ($group, $category) => [
+                'category' => $category,
+                'total_stock' => (int) $group->sum('stock'),
+                'variant_count' => $group->count(),
+            ])
+            ->sortByDesc('total_stock')
+            ->values()
+            ->all();
+
+        return [
+            'rows' => $rows->sortBy([['category', 'asc'], ['product_name', 'asc']])->values()->all(),
+            'byCategory' => $byCategory,
+        ];
     }
 
     /**

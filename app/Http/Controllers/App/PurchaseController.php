@@ -4,6 +4,7 @@ namespace App\Http\Controllers\App;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\Purchase;
 use App\Models\Shop;
 use App\Models\Supplier;
@@ -58,6 +59,7 @@ class PurchaseController extends Controller
                 // purchase never needs this, its effects already landed below
                 'pending_details' => $isPending ? [
                     'product_id' => $data['product_id'] ?? null,
+                    'product_variant_id' => $data['product_variant_id'] ?? null,
                     'ingredient_id' => $data['ingredient_id'] ?? null,
                     'qty' => $data['qty'] ?? null,
                     'cost' => $data['cost'] ?? null,
@@ -67,6 +69,7 @@ class PurchaseController extends Controller
                     'warranty_expiry' => $data['warranty_expiry'] ?? null,
                 ] : null,
                 'product_id' => $data['product_id'] ?? null,
+                'product_variant_id' => $data['product_variant_id'] ?? null,
                 'ingredient_id' => $data['ingredient_id'] ?? null,
                 'qty' => $data['qty'] ?? null,
                 'date' => now()->toDateString(),
@@ -109,6 +112,7 @@ class PurchaseController extends Controller
                 'amount' => (float) $locked->amount,
                 'supplier_id' => $locked->supplier_id,
                 'product_id' => $details['product_id'] ?? null,
+                'product_variant_id' => $details['product_variant_id'] ?? null,
                 'ingredient_id' => $details['ingredient_id'] ?? null,
                 'qty' => $details['qty'] ?? null,
                 'cost' => $details['cost'] ?? null,
@@ -146,8 +150,35 @@ class PurchaseController extends Controller
         if (! empty($data['product_id'])) {
             $lockedProduct = Product::whereKey($data['product_id'])->lockForUpdate()->first();
 
-            if ($lockedProduct->variants()->exists()) {
-                abort(422, 'এটি ভ্যারিয়েন্ট পণ্য — এই ক্রয়ে পণ্য যোগ না করে শুধু টাকার হিসাব রাখুন, স্টক প্রতিটি ভ্যারিয়েন্টে আলাদাভাবে যোগ করুন।');
+            if ($lockedProduct->variants()->exists() && empty($data['product_variant_id'])) {
+                abort(422, 'এটি ভ্যারিয়েন্ট পণ্য — কোন সাইজ/রং-এ স্টক যোগ হচ্ছে তা বেছে দিন।');
+            }
+
+            if (! empty($data['product_variant_id'])) {
+                // a variant's own stock, unlike the base product, is always a
+                // whole-unit count (no weight-based/batch/serial variant path
+                // exists — see ProductVariantController for the same scope),
+                // and its cost is a plain overwrite, not a weighted average,
+                // matching ProductVariantController::stockIn exactly so a
+                // purchase-linked stock-in and a manual one never disagree
+                $lockedVariant = ProductVariant::whereKey($data['product_variant_id'])
+                    ->where('product_id', $lockedProduct->id)
+                    ->lockForUpdate()->first();
+
+                if (! $lockedVariant) {
+                    abort(422, 'ভ্যারিয়েন্টটি পাওয়া যায়নি।');
+                }
+                if (floor($data['qty']) != $data['qty']) {
+                    abort(422, "{$lockedProduct->name} ({$lockedVariant->label()})-এর পরিমাণ পূর্ণ সংখ্যা হতে হবে।");
+                }
+
+                $lockedVariant->update([
+                    'stock' => $lockedVariant->stock + $data['qty'],
+                    'cost' => $data['cost'] ?? $lockedVariant->cost,
+                ]);
+                Product::whereKey($lockedProduct->id)->increment('stock', $data['qty']);
+
+                return;
             }
 
             if (! $lockedProduct->sold_by_weight && floor($data['qty']) != $data['qty']) {
@@ -193,6 +224,7 @@ class PurchaseController extends Controller
             // stock, so a purchase can still be money-only (e.g. a utility
             // bill) by leaving these out
             'product_id' => ['nullable', 'prohibits:ingredient_id', Rule::exists('products', 'id')->where('shop_id', Tenancy::id())],
+            'product_variant_id' => ['nullable', Rule::exists('product_variants', 'id')->where('shop_id', Tenancy::id())],
             'ingredient_id' => ['nullable', Rule::exists('ingredients', 'id')->where('shop_id', Tenancy::id())],
             'qty' => ['nullable', 'numeric', 'min:0.001', 'required_with:product_id,ingredient_id'],
             'cost' => ['nullable', 'numeric', 'min:0'],

@@ -172,6 +172,16 @@ function stockLevel(p) {
     return stock <= threshold ? 'low' : 'ok';
 }
 
+// same idea as stockLevel(), but per color/size — a shirt can look fine in
+// total while one specific size is about to run out, which the product-level
+// number alone would hide
+function variantStockLevel(v) {
+    const stock = Number(v.stock);
+    if (stock <= 0) return 'out';
+    const threshold = Number(v.reorder_point) > 0 ? Number(v.reorder_point) : 6;
+    return stock <= threshold ? 'low' : 'ok';
+}
+
 const weightSheet = ref(false);
 const weightProduct = ref(null);
 const weightEntryUnit = ref('g'); // 'g'/'kg' or 'ml'/'litre', matches the product's weight_unit
@@ -612,25 +622,56 @@ async function handleBarcode(decodedText, onFeedback) {
         return;
     }
 
-    const product = props.products.find((p) => p.barcode === decodedText.trim());
+    const code = decodedText.trim();
+
+    // a variant's own barcode (e.g. printed for "নীল শার্ট M" specifically) is
+    // more specific than the product's own barcode — check it first so a
+    // variant-labeled sticker always resolves to that exact color/size, never
+    // an ambiguous "which one?" add of the bare product
+    for (const p of props.products) {
+        const v = p.variants?.find((variant) => variant.barcode === code);
+        if (v) {
+            addToCart(p.id, null, { productVariantId: v.id });
+            onFeedback('✅ ' + p.name + ' (' + variantLabel(v) + ')');
+            return;
+        }
+    }
+
+    const product = props.products.find((p) => p.barcode === code);
     if (product) {
         // a weighed product's barcode can't carry a fixed qty — always
         // route it through the weight-entry sheet instead of assuming 1 unit
         if (product.sold_by_weight) { closeScanner(); openWeightEntry(product); return; }
+        // a variant product can't be sold "in general" — its own barcode
+        // field shouldn't normally be set once it has variants, but if it
+        // is, ask for the specific variant's own barcode instead of adding
+        // an invalid line that would only fail later at checkout
+        if (hasProductVariants.value && product.variants?.length) {
+            onFeedback('❌ ' + product.name + ' — ' + t('pos.pickVariant'));
+            return;
+        }
         addToCart(product.id);
         onFeedback('✅ ' + product.name);
     } else {
         // not in the locally loaded list (e.g. added by another device since page load) — ask the server
         try {
-            const res = await fetch(route('app.pos.barcode', decodedText.trim()), {
+            const res = await fetch(route('app.pos.barcode', code), {
                 headers: { Accept: 'application/json' },
             });
             const data = await res.json();
             if (data.found) {
                 props.products.push(data.product);
                 if (data.product.sold_by_weight) { closeScanner(); openWeightEntry(data.product); return; }
-                addToCart(data.product.id);
-                onFeedback('✅ ' + data.product.name);
+                if (data.variant_id) {
+                    const v = data.product.variants?.find((variant) => variant.id === data.variant_id);
+                    addToCart(data.product.id, null, { productVariantId: data.variant_id });
+                    onFeedback('✅ ' + data.product.name + (v ? ' (' + variantLabel(v) + ')' : ''));
+                } else if (hasProductVariants.value && data.product.variants?.length) {
+                    onFeedback('❌ ' + data.product.name + ' — ' + t('pos.pickVariant'));
+                } else {
+                    addToCart(data.product.id);
+                    onFeedback('✅ ' + data.product.name);
+                }
             } else {
                 onFeedback('❌ ' + t('pos.productNotFound') + ' ' + decodedText);
             }
@@ -792,10 +833,10 @@ useKeyboardShortcuts({
                             <button
                                 v-for="v in p.variants" :key="v.id" class="upill"
                                 :disabled="v.stock <= 0"
-                                :style="v.stock <= 0 ? 'opacity:.45' : ''"
+                                :style="v.stock <= 0 ? 'opacity:.45' : (hasLowStockAlerts && variantStockLevel(v) === 'low' ? 'color:var(--gold2);font-weight:700;border-color:var(--gold2)' : '')"
                                 @click="addToCart(p.id, null, { productVariantId: v.id })"
                             >
-                                {{ variantLabel(v) }}<span v-if="Number(v.price) !== Number(p.price)"> {{ money(v.price) }}</span> {{ v.stock > 0 ? `(${v.stock})` : `— ${t('pos.outOfStock')}` }}
+                                {{ variantLabel(v) }}<span v-if="Number(v.price) !== Number(p.price)"> {{ money(v.price) }}</span> {{ v.stock > 0 ? `(${v.stock})${hasLowStockAlerts && variantStockLevel(v) === 'low' ? ' ⚠' : ''}` : `— ${t('pos.outOfStock')}` }}
                             </button>
                         </div>
                     </div>

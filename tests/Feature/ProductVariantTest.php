@@ -191,4 +191,79 @@ class ProductVariantTest extends TestCase
         $response->assertStatus(422);
         $this->assertEquals(5, $variantB->fresh()->stock); // untouched
     }
+
+    public function test_bulk_grid_creates_every_non_empty_cell_and_sums_into_parent_stock(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'product_variants');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 200, 'price' => 400, 'stock' => 0]);
+
+        $response = $this->actingAs($owner, 'web')->post("/app/products/{$product->id}/variants/bulk", [
+            'variants' => [
+                ['color' => 'Blue', 'size' => 'M', 'stock' => 12],
+                ['color' => 'Blue', 'size' => 'L', 'stock' => 8],
+                ['color' => 'Red', 'size' => 'M', 'stock' => 5],
+            ],
+        ]);
+
+        $response->assertRedirect();
+        $this->assertSame(3, ProductVariant::count());
+        $this->assertEquals(25, $product->fresh()->stock);
+    }
+
+    public function test_bulk_grid_skips_cells_that_already_exist_without_erroring_the_whole_submit(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'product_variants');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 200, 'price' => 400, 'stock' => 10]);
+        ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => 'M', 'color' => 'Blue', 'stock' => 10]);
+
+        $response = $this->actingAs($owner, 'web')->post("/app/products/{$product->id}/variants/bulk", [
+            'variants' => [
+                ['color' => 'Blue', 'size' => 'M', 'stock' => 99], // duplicate — skipped
+                ['color' => 'Blue', 'size' => 'L', 'stock' => 8], // new
+            ],
+        ]);
+
+        $response->assertRedirect();
+        $this->assertSame(2, ProductVariant::count()); // one existing + one new, not three
+        $this->assertEquals(18, $product->fresh()->stock); // 10 existing + 8 new only
+    }
+
+    /**
+     * Regression test: PosController::barcode() used to only look up
+     * Product::where('barcode', ...) — a variant's own barcode field
+     * (settable per size/color) was never checked, so scanning a variant
+     * sticker either matched nothing or, worse, matched the parent product
+     * and let it be added with no variant chosen at all.
+     */
+    public function test_barcode_lookup_resolves_a_variants_own_barcode_and_flags_which_variant(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'product_variants');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 200, 'price' => 400, 'stock' => 10]);
+        $variant = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => 'M', 'color' => 'Blue', 'stock' => 10, 'barcode' => 'VAR12345']);
+
+        $response = $this->actingAs($owner, 'web')->getJson('/app/pos/barcode/VAR12345');
+
+        $response->assertOk()->assertJson([
+            'found' => true,
+            'variant_id' => $variant->id,
+        ]);
+        $response->assertJsonPath('product.id', $product->id);
+    }
+
+    public function test_bulk_grid_rejects_a_weighed_product(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'product_variants');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Loose Rice', 'cost' => 50, 'price' => 80, 'stock' => 0, 'sold_by_weight' => true]);
+
+        $response = $this->actingAs($owner, 'web')->post("/app/products/{$product->id}/variants/bulk", [
+            'variants' => [['color' => 'N/A', 'size' => 'N/A', 'stock' => 5]],
+        ]);
+
+        $response->assertSessionHasErrors('size');
+        $this->assertSame(0, ProductVariant::count());
+    }
 }
