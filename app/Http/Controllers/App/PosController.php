@@ -46,7 +46,13 @@ class PosController extends Controller
             $quotation = Quotation::with('items')->where('status', 'open')->find($request->get('quotation'));
         }
 
-        return Inertia::render('App/Pos/Index', [
+        // clothing shops get a category -> product -> color/size flow tuned
+        // for that vertical (see Clothing/Pos.vue's docblock); every other
+        // business type keeps the shared screen unchanged — same props,
+        // same checkout/barcode endpoints either way, only the component differs
+        $component = $shop->businessType?->slug === 'clothing' ? 'App/Clothing/Pos' : 'App/Pos/Index';
+
+        return Inertia::render($component, [
             'products' => $products,
             'categories' => $categories,
             'salesMode' => $shop->sales_mode,
