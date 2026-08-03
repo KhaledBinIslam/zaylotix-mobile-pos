@@ -45,6 +45,19 @@ body {
 #phone { max-width: 430px; margin: 0 auto; min-height: 100vh; position: relative; background: var(--bg); display: flex; flex-direction: column; box-shadow: 0 0 0 1px var(--line); }
 @media (min-width: 480px) { #phone { border-left: 1px solid var(--line); border-right: 1px solid var(--line); } }
 
+/* tablet (portrait iPad/Android tablet and similar, ~700-1023px) — without
+   this, #phone stayed capped at the 430px phone width all the way up to
+   the 1024px desktop-sidebar breakpoint, so a tablet (which many shops run
+   their POS on) saw a narrow column with wasted space on both sides rather
+   than actually using the screen. Still the single-column mobile layout
+   (the desktop sidebar/category-rail split only switches on at 1024px,
+   see AppLayout.vue and Pos/Index.vue's `lg:` classes) — just wider, with
+   a denser product grid to match. */
+@media (min-width: 700px) and (max-width: 1023px) {
+    #phone { max-width: 680px; }
+    .pgrid, .grid2 { grid-template-columns: repeat(3, 1fr); }
+}
+
 /* desktop web view (sidebar layout, see AppLayout.vue) — a real wide page,
    not a phone mockup shrunk into the middle of the screen */
 @media (min-width: 1024px) {
