@@ -13,7 +13,9 @@
 /.zed
 /auth.json
 /node_modules
-/public/build
+# NOT ignoring /public/build (see below) — deliberately committed so
+# shared hosting without Node/npm can deploy with a plain `git pull`,
+# never needing to run a frontend build on the server.
 /public/hot
 /public/storage
 /database/database.sqlite
