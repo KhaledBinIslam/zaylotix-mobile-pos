@@ -12,6 +12,7 @@ use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\ProductUnit;
 use App\Models\Purchase;
+use App\Models\RestaurantTable;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\Shop;
@@ -21,10 +22,22 @@ use App\Support\ShopProvisioner;
 use App\Support\Tenancy;
 use Illuminate\Database\Seeder;
 
+/**
+ * Every demo shop's owner login shares one password, controlled by
+ * DEMO_SHOP_PASSWORD in .env — defaults to '1234' (fine for local dev,
+ * never used unguarded elsewhere) but MUST be overridden to something
+ * strong before this seeder ever runs against a real public deployment,
+ * since these are otherwise guessable, publicly-documented demo phone
+ * numbers.
+ */
 class DemoShopSeeder extends Seeder
 {
+    private string $password;
+
     public function run(): void
     {
+        $this->password = env('DEMO_SHOP_PASSWORD', '1234');
+
         $this->groceryFlagship();
         $this->lightDemo('pharmacy', 'Sasto Pharmacy', '01700000002', 'Dhaka');
         $this->lightDemo('mobile', 'City Mobile Center', '01700000003', 'Dhaka');
@@ -32,6 +45,76 @@ class DemoShopSeeder extends Seeder
         $this->lightDemo('cosmetics', 'Glow Cosmetics', '01700000005', 'Khulna');
         $this->lightDemo('supershop', 'Agora Mart Demo', '01700000006', 'Dhaka');
         $this->lightDemo('general', 'General Store Demo', '01700000007', 'Rajshahi');
+        $this->restaurantDemo();
+    }
+
+    /**
+     * Restaurant needed its own method (not lightDemo) — it's the one
+     * vertical with a dedicated Tables/Order screen instead of the shared
+     * POS, so a demo shop needs at least one table to actually show that
+     * flow, which lightDemo's generic single-product setup doesn't create.
+     */
+    private function restaurantDemo(): void
+    {
+        $type = BusinessType::where('slug', 'restaurant')->first();
+        if (! $type) {
+            return;
+        }
+
+        $shop = ShopProvisioner::provision(
+            shopAttrs: [
+                'business_type_id' => $type->id,
+                'name' => 'নমুনা রেস্টুরেন্ট',
+                'name_en' => 'Demo Restaurant',
+                'phone' => '01700000008',
+                'area' => 'চট্টগ্রাম',
+                'owner_name' => 'Demo Restaurant Owner',
+                'sales_mode' => 'both',
+                'lang' => 'bn',
+                'plan' => 'trial',
+                'status' => 'active',
+                'subscription_start' => now()->toDateString(),
+                'subscription_expiry' => now()->addDays(14)->toDateString(),
+                'cash_balance' => 5000,
+                'bank_balance' => 0,
+                'capital' => 20000,
+            ],
+            ownerName: 'Demo Restaurant Owner',
+            ownerPhone: '01700000008',
+            ownerEmail: null,
+            ownerPassword: $this->password,
+            featureKeys: ['memo_whatsapp', 'memo_print', 'restaurant_tables', 'purchases', 'damages', 'low_stock_alerts', 'accounts', 'expenses', 'reports', 'export', 'vat', 'cashier_management', 'activity_log'],
+        );
+
+        Tenancy::set($shop->id);
+
+        $cat = ProductCategory::where('shop_id', $shop->id)->first();
+        $unit = Unit::where('shop_id', $shop->id)->first();
+
+        $menu = [
+            ['name' => 'চিকেন বিরিয়ানি', 'name_en' => 'Chicken Biryani', 'emoji' => '🍛', 'price' => 220, 'cost' => 140],
+            ['name' => 'বিফ কাবাব', 'name_en' => 'Beef Kabab', 'emoji' => '🍢', 'price' => 180, 'cost' => 110],
+            ['name' => 'কোল্ড ড্রিংকস', 'name_en' => 'Cold Drinks', 'emoji' => '🥤', 'price' => 40, 'cost' => 25],
+        ];
+        foreach ($menu as $m) {
+            Product::create([
+                'shop_id' => $shop->id,
+                'category_id' => $cat?->id,
+                'unit_id' => $unit?->id,
+                'name' => $m['name'],
+                'name_en' => $m['name_en'],
+                'emoji' => $m['emoji'],
+                'cost' => $m['cost'],
+                'price' => $m['price'],
+                'stock' => 0, // restaurant items aren't stock-tracked the way retail products are
+            ]);
+        }
+
+        foreach (['টেবিল ১', 'টেবিল ২', 'টেবিল ৩', 'টেবিল ৪'] as $name) {
+            RestaurantTable::create(['shop_id' => $shop->id, 'name' => $name, 'status' => 'free']);
+        }
+
+        Tenancy::clear();
     }
 
     /** Full-fidelity port of the byapari-app.html demo data (Khaled Enterprise). */
@@ -61,7 +144,7 @@ class DemoShopSeeder extends Seeder
             ownerName: 'Khaled Bin Islam',
             ownerPhone: '01979894356',
             ownerEmail: null,
-            ownerPassword: '1234',
+            ownerPassword: $this->password,
             // flagship demo — every feature switched on so it showcases the
             // whole app; individual shops normally get a curated subset (see
             // lightDemo() below for an example of that tiering)
@@ -221,7 +304,7 @@ class DemoShopSeeder extends Seeder
             ownerName: $shopName.' Owner',
             ownerPhone: $phone,
             ownerEmail: null,
-            ownerPassword: '1234',
+            ownerPassword: $this->password,
             // deliberately different per business type — a pharmacy and a
             // grocery shop don't need the same admin-granted capabilities,
             // and this is meant to demo that tiering, not just switch
