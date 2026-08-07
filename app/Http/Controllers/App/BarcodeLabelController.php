@@ -9,7 +9,7 @@ use Inertia\Inertia;
 
 class BarcodeLabelController extends Controller
 {
-    /** Product picker for printing barcode labels (shop name + regular + discount price) on a barcode printer. */
+    /** Product picker for printing barcode labels (shop name, optionally regular/discount price — see priceMode in BarcodeLabels/Index.vue) on a barcode printer. */
     public function index()
     {
         return Inertia::render('App/BarcodeLabels/Index', [

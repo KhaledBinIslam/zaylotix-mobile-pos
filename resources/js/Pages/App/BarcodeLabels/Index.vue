@@ -12,6 +12,15 @@ const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 const q = ref('');
 const selected = ref({}); // { productId: copies }
 
+// 'both' (regular + discount, struck-through/bold pair — the old always-on
+// behavior), 'single' (just one price — discount price if the product has
+// one, else regular), or 'none' (no price line at all). A print-time
+// choice, not a shop setting, so it's remembered in localStorage rather
+// than sent to the server — same reasoning as any other "how I like to
+// print" preference (label size, etc. already work this way elsewhere).
+const priceMode = ref(localStorage.getItem('zx_barcode_price_mode') || 'both');
+watch(priceMode, (v) => localStorage.setItem('zx_barcode_price_mode', v));
+
 function toggle(p) {
     if (selected.value[p.id]) delete selected.value[p.id];
     else selected.value[p.id] = 1;
@@ -80,6 +89,15 @@ function closePrint() {
 
         <input v-model="q" :placeholder="t('bc.searchPlaceholder')" style="margin-bottom:12px">
 
+        <div class="field" style="margin-bottom:14px">
+            <label>{{ t('bc.priceModeLabel') }}</label>
+            <div class="seg">
+                <button :class="{ on: priceMode === 'both' }" @click="priceMode = 'both'">{{ t('bc.priceModeBoth') }}</button>
+                <button :class="{ on: priceMode === 'single' }" @click="priceMode = 'single'">{{ t('bc.priceModeSingle') }}</button>
+                <button :class="{ on: priceMode === 'none' }" @click="priceMode = 'none'">{{ t('bc.priceModeNone') }}</button>
+            </div>
+        </div>
+
         <div v-for="p in filtered()" :key="p.id" class="row" @click="toggle(p)" :class="{ incart: selected[p.id] }" :style="selected[p.id] ? 'border-color:var(--gold);background:var(--goldSoft)' : ''">
             <div class="ava">{{ p.emoji }}</div>
             <div class="mid">
@@ -114,12 +132,12 @@ function closePrint() {
                         </div>
                         <div class="label-name">{{ p.name }}</div>
                         <svg :id="'barcode-svg-' + i"></svg>
-                        <div class="label-price">
-                            <template v-if="p.discount_price">
+                        <div v-if="priceMode !== 'none'" class="label-price">
+                            <template v-if="priceMode === 'both' && p.discount_price">
                                 <span class="label-price-reg">নিয়মিত ৳{{ Math.round(p.price) }}</span>
                                 <b class="label-price-disc">ছাড় ৳{{ Math.round(p.discount_price) }}</b>
                             </template>
-                            <b v-else class="label-price-disc">৳{{ Math.round(p.price) }}</b>
+                            <b v-else class="label-price-disc">৳{{ Math.round(p.discount_price || p.price) }}</b>
                         </div>
                     </div>
                 </div>
@@ -133,13 +151,18 @@ function closePrint() {
 .label-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; padding: 12px; }
 .label-card { border: 1px dashed #999; border-radius: 6px; padding: 6px; text-align: center; overflow: hidden; }
 .label-head { display: flex; align-items: center; justify-content: center; gap: 3px; }
-.label-logo { width: 10px; height: 10px; object-fit: contain; flex: 0 0 auto; }
-.label-shop { font-size: 8px; font-weight: 700; color: #444; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.label-name { font-size: 10px; font-weight: 700; margin-bottom: 2px; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.label-price { font-size: 13px; color: #000; margin-top: 2px; display: flex; flex-direction: column; align-items: center; gap: 1px; }
-.label-price-reg { font-size: 9px; color: #888; text-decoration: line-through; }
-.label-price-disc { font-size: 13px; }
-.label-card svg { display: block; margin: 2px auto; }
+.label-logo { width: 9px; height: 9px; object-fit: contain; flex: 0 0 auto; }
+.label-shop { font-size: 7px; font-weight: 700; color: #444; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.label-name { font-size: 9px; font-weight: 700; margin-bottom: 1px; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* the price line used to sit right at (sometimes past) the fixed 25mm
+   label's bottom edge — with .label-card's overflow:hidden that meant the
+   price could get silently clipped off print, invisible with no error.
+   Tightened every line above it (logo/name/gaps) so there's always real
+   room left for whichever price line priceMode ends up rendering. */
+.label-price { font-size: 12px; color: #000; margin-top: 1px; display: flex; flex-direction: column; align-items: center; gap: 0; line-height: 1.15; }
+.label-price-reg { font-size: 8px; color: #888; text-decoration: line-through; }
+.label-price-disc { font-size: 12px; }
+.label-card svg { display: block; margin: 1px auto; }
 
 /*
  * The real bug (found from a real "21 sheets of paper, all blank" print

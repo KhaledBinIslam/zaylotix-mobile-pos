@@ -898,6 +898,10 @@ export const translations = {
     'bc.noProducts': { bn: 'কোনো পণ্য নেই', en: 'No products' },
     'bc.print': { bn: '🖨️ প্রিন্ট করুন', en: '🖨️ Print' },
     'bc.close': { bn: 'বন্ধ করুন', en: 'Close' },
+    'bc.priceModeLabel': { bn: 'লেবেলে দাম দেখাবে?', en: 'Show price on label?' },
+    'bc.priceModeBoth': { bn: 'নিয়মিত + ছাড়', en: 'Regular + discount' },
+    'bc.priceModeSingle': { bn: 'শুধু একটি দাম', en: 'Single price' },
+    'bc.priceModeNone': { bn: 'দাম নেই', en: 'No price' },
 
     // ---- cash/bank ledger ----
     'cl.title': { bn: 'ক্যাশ/ব্যাংক লেনদেন', en: 'Cash/Bank Ledger' },
