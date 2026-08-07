@@ -32,7 +32,7 @@ function toggleActive(t) {
         </div>
 
         <form v-if="showNew" @submit.prevent="submit" class="bg-white border rounded-xl p-5 mb-6 space-y-3 max-w-lg">
-            <div class="grid grid-cols-3 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                     <input v-model="form.slug" placeholder="slug (e.g. bakery)" class="rounded-lg border-gray-300 text-sm w-full">
                     <div v-if="form.errors.slug" class="text-rose-600 text-xs mt-1">{{ form.errors.slug }}</div>

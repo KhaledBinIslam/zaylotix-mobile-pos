@@ -63,7 +63,7 @@ function sendNotification() {
             </div>
         </div>
 
-        <div class="grid grid-cols-3 gap-4 mb-6">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             <div class="bg-white border rounded-xl p-4"><div class="text-xs text-gray-500">Products</div><div class="text-xl font-bold mt-1">{{ productCount }}</div></div>
             <div class="bg-white border rounded-xl p-4"><div class="text-xs text-gray-500">Customers</div><div class="text-xl font-bold mt-1">{{ customerCount }}</div></div>
             <div class="bg-white border rounded-xl p-4"><div class="text-xs text-gray-500">Total due</div><div class="text-xl font-bold mt-1 text-rose-600">{{ money(totalDue) }}</div></div>
@@ -91,7 +91,7 @@ function sendNotification() {
             <div v-if="!recentSales.length" class="text-sm text-gray-400">No sales yet.</div>
         </div>
 
-        <div class="grid grid-cols-2 gap-6 mb-6">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
             <div class="bg-white border rounded-xl p-5">
                 <div class="font-bold mb-3">Products ({{ products.length }})</div>
                 <div class="max-h-80 overflow-y-auto">

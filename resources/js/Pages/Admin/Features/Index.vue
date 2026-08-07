@@ -40,7 +40,7 @@ function savePrice(f, value) {
         </div>
 
         <form v-if="showNew" @submit.prevent="submit" class="bg-white border rounded-xl p-5 mb-6 space-y-3 max-w-2xl">
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                     <input v-model="form.key" placeholder="key (e.g. loyalty_points)" class="rounded-lg border-gray-300 text-sm w-full">
                     <div v-if="form.errors.key" class="text-rose-600 text-xs mt-1">{{ form.errors.key }}</div>

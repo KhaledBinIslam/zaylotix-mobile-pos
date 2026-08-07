@@ -52,7 +52,7 @@ function destroy(g) {
         </div>
 
         <form v-if="showNew" @submit.prevent="submit" class="bg-white border rounded-xl p-5 mb-6 space-y-3 max-w-2xl">
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div v-if="!editingId">
                     <label class="text-xs font-medium text-gray-500">screen_key (matches the Vue page, e.g. "pos")</label>
                     <input v-model="form.screen_key" class="rounded-lg border-gray-300 text-sm w-full mt-1 font-mono">
@@ -63,7 +63,7 @@ function destroy(g) {
                     <input v-model="form.label" class="rounded-lg border-gray-300 text-sm w-full mt-1">
                 </div>
             </div>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                     <label class="text-xs font-medium text-gray-500">Text (বাংলা)</label>
                     <textarea v-model="form.text_bn" rows="3" class="rounded-lg border-gray-300 text-sm w-full mt-1"></textarea>

@@ -54,7 +54,7 @@ function destroy(f) {
         </div>
 
         <form v-if="showNew" @submit.prevent="submit" class="bg-white border rounded-xl p-5 mb-6 space-y-3 max-w-2xl">
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                     <label class="text-xs font-medium text-gray-500">Question (বাংলা)</label>
                     <input v-model="form.question_bn" class="rounded-lg border-gray-300 text-sm w-full mt-1">
@@ -65,7 +65,7 @@ function destroy(f) {
                     <input v-model="form.question_en" class="rounded-lg border-gray-300 text-sm w-full mt-1">
                 </div>
             </div>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                     <label class="text-xs font-medium text-gray-500">Answer (বাংলা)</label>
                     <textarea v-model="form.answer_bn" rows="3" class="rounded-lg border-gray-300 text-sm w-full mt-1"></textarea>

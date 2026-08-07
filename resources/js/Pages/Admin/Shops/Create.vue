@@ -77,7 +77,7 @@ const featuresByCategory = (list) => {
         </div>
 
         <form @submit.prevent="submit" class="bg-white border rounded-xl p-6 max-w-2xl space-y-4">
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                     <label class="text-sm font-medium text-gray-600">Shop name (Bangla)</label>
                     <input v-model="form.name" class="mt-1 w-full rounded-lg border-gray-300">
@@ -89,7 +89,7 @@ const featuresByCategory = (list) => {
                 </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                     <label class="text-sm font-medium text-gray-600">Phone (also login)</label>
                     <input v-model="form.phone" class="mt-1 w-full rounded-lg border-gray-300">
@@ -106,7 +106,7 @@ const featuresByCategory = (list) => {
                 <input v-model="form.owner_name" class="mt-1 w-full rounded-lg border-gray-300">
             </div>
 
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                     <label class="text-sm font-medium text-gray-600">Business type</label>
                     <select v-model="form.business_type_id" class="mt-1 w-full rounded-lg border-gray-300">
@@ -125,7 +125,7 @@ const featuresByCategory = (list) => {
                 </div>
             </div>
 
-            <div class="grid grid-cols-3 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                     <label class="text-sm font-medium text-gray-600">Plan</label>
                     <select v-model="form.plan" class="mt-1 w-full rounded-lg border-gray-300">
@@ -145,7 +145,7 @@ const featuresByCategory = (list) => {
                 </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                     <label class="text-sm font-medium text-gray-600">
                         Monthly fee (৳)
@@ -164,7 +164,7 @@ const featuresByCategory = (list) => {
                 </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                     <label class="text-sm font-medium text-gray-600">Language</label>
                     <select v-model="form.lang" class="mt-1 w-full rounded-lg border-gray-300">
@@ -187,7 +187,7 @@ const featuresByCategory = (list) => {
                 <div class="border rounded-lg p-4 space-y-3">
                     <div v-for="(list, cat) in featuresByCategory(features)" :key="cat">
                         <div class="text-xs font-bold uppercase text-gray-400 mb-1.5">{{ cat }}</div>
-                        <div class="grid grid-cols-2 gap-2">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             <label v-for="f in list" :key="f.id" class="flex items-start gap-2 text-sm p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
                                 <input type="checkbox" :value="f.key" v-model="form.features" class="mt-0.5">
                                 <span>

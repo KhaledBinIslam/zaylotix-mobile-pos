@@ -12,7 +12,7 @@ const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
     <AdminLayout active="analytics">
         <h1 class="text-2xl font-bold mb-6">Platform Analytics</h1>
 
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             <div class="bg-white border rounded-xl p-4 shadow-sm">
                 <div class="text-xs text-gray-500">Sales today</div>
                 <div class="text-2xl font-extrabold mt-1 text-emerald-600">{{ money(stats.salesToday) }}</div>
@@ -32,7 +32,7 @@ const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
             </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-4 mb-8">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
             <div class="bg-white border rounded-xl p-4 shadow-sm">
                 <div class="text-xs text-gray-500">Shops active today (made ≥1 sale)</div>
                 <div class="text-2xl font-extrabold mt-1">{{ stats.activeShopsToday }} <span class="text-sm font-normal text-gray-400">/ {{ stats.totalShops }}</span></div>
