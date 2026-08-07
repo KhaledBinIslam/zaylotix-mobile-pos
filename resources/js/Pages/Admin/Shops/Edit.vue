@@ -28,6 +28,16 @@ const form = useForm({
     features: [...props.shopFeatureKeys],
 });
 
+// Shop::isActive() (what the shop-list's Active/Inactive pill and every
+// login/subscription check actually reads) requires BOTH status='active'
+// AND a future subscription_expiry -- selecting Active with an already-
+// past expiry date saves fine but keeps showing Inactive with nothing
+// explaining why, unless this exact combination is called out. The
+// backend auto-extends it by a month in that case (ShopController::update),
+// this is just making that visible instead of silent.
+const expiryIsPast = computed(() => form.subscription_expiry && new Date(form.subscription_expiry) < new Date(new Date().toDateString()));
+const willAutoExtend = computed(() => form.status === 'active' && expiryIsPast.value);
+
 // reference only here (unlike Create.vue, this never auto-overwrites
 // monthly_fee — an existing shop's price is already a deliberate, possibly
 // negotiated number, not something a checkbox should silently change)
@@ -120,7 +130,11 @@ const recommendedFeatureKeys = () => {
 
             <div class="grid grid-cols-2 gap-4">
                 <div><label class="text-sm font-medium text-gray-600">Subscription start</label><input v-model="form.subscription_start" type="date" class="mt-1 w-full rounded-lg border-gray-300"></div>
-                <div><label class="text-sm font-medium text-gray-600">Subscription expiry</label><input v-model="form.subscription_expiry" type="date" class="mt-1 w-full rounded-lg border-gray-300"></div>
+                <div>
+                    <label class="text-sm font-medium text-gray-600">Subscription expiry</label>
+                    <input v-model="form.subscription_expiry" type="date" class="mt-1 w-full rounded-lg border-gray-300">
+                    <div v-if="willAutoExtend" class="text-xs text-amber-600 mt-1">⚠ এই তারিখ পার হয়ে গেছে — Active অবস্থায় সেভ করলে ১ মাস বাড়িয়ে দেওয়া হবে, নইলে দোকান তালিকায় Inactive-ই দেখাবে।</div>
+                </div>
             </div>
 
             <div>

@@ -112,6 +112,17 @@ class ShopController extends Controller
         $featureKeys = $data['features'] ?? [];
         unset($data['features']);
 
+        // same "Active should actually mean active" fix as toggleStatus()
+        // — picking Active in this form's dropdown without also moving the
+        // expiry date saves fine but the shop keeps showing Inactive,
+        // since Shop::isActive() checks both
+        if (($data['status'] ?? $shop->status) === 'active') {
+            $expiry = $data['subscription_expiry'] ?? $shop->subscription_expiry;
+            if (! $expiry || \Illuminate\Support\Carbon::parse($expiry)->isPast()) {
+                $data['subscription_expiry'] = now()->addMonth()->toDateString();
+            }
+        }
+
         $shop->update($data);
 
         $ids = Feature::whereIn('key', $featureKeys)->pluck('id');
@@ -175,7 +186,21 @@ class ShopController extends Controller
 
     public function toggleStatus(Shop $shop)
     {
-        $shop->update(['status' => $shop->status === 'active' ? 'inactive' : 'active']);
+        $newStatus = $shop->status === 'active' ? 'inactive' : 'active';
+        $update = ['status' => $newStatus];
+
+        // Shop::isActive() (what the list's Active/Inactive pill and every
+        // login/subscription check actually read) requires BOTH status
+        // and a future subscription_expiry — a shop whose trial/plan
+        // already ran out otherwise keeps showing Inactive right after
+        // clicking "Activate", with nothing explaining why the button
+        // appeared to do nothing. Push expiry forward too whenever
+        // activating would otherwise still leave it expired.
+        if ($newStatus === 'active' && (! $shop->subscription_expiry || $shop->subscription_expiry->isPast())) {
+            $update['subscription_expiry'] = now()->addMonth()->toDateString();
+        }
+
+        $shop->update($update);
 
         AdminActivity::log('shop.toggleStatus', "Shop '{$shop->name}' is now {$shop->status}.", $shop);
 
