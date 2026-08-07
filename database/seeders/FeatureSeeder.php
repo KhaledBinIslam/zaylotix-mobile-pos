@@ -55,7 +55,7 @@ class FeatureSeeder extends Seeder
             ['key' => 'export', 'label_bn' => 'ডাটা এক্সপোর্ট', 'label_en' => 'Data export (Excel/CSV)', 'category' => 'reports', 'description' => 'Download sales, stock, due, expense, and P&L data as spreadsheet files.'],
 
             // staff — who else can use the shop's account
-            ['key' => 'cashier_management', 'label_bn' => 'ক্যাশিয়ার যোগ করার সুবিধা', 'label_en' => 'Add staff accounts', 'category' => 'staff', 'description' => 'Let the shop owner add any number of staff accounts, each with its own owner-chosen access checklist.'],
+            ['key' => 'cashier_management', 'label_bn' => 'ক্যাশিয়ার যোগ করার সুবিধা', 'label_en' => 'Add staff accounts', 'category' => 'staff', 'description' => 'Let the shop owner add staff accounts (up to the shop\'s staff_limit — see Shop edit), each with its own owner-chosen access checklist.'],
             ['key' => 'activity_log', 'label_bn' => 'অ্যাক্টিভিটি লগ', 'label_en' => 'Staff activity log', 'category' => 'staff', 'description' => 'An audit trail of who did what — void sales, stock-ins, purchases, payments, staff changes.'],
         ];
 

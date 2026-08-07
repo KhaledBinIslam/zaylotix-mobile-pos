@@ -23,7 +23,7 @@ const form = useForm({
     name: props.shop.name, name_en: props.shop.name_en, phone: props.shop.phone,
     area: props.shop.area, owner_name: props.shop.owner_name,
     business_type_id: props.shop.business_type_id, sales_mode: props.shop.sales_mode,
-    plan: props.shop.plan, monthly_fee: props.shop.monthly_fee, status: props.shop.status, lang: props.shop.lang,
+    plan: props.shop.plan, monthly_fee: props.shop.monthly_fee, staff_limit: props.shop.staff_limit, status: props.shop.status, lang: props.shop.lang,
     subscription_start: props.shop.subscription_start, subscription_expiry: props.shop.subscription_expiry,
     features: [...props.shopFeatureKeys],
 });
@@ -137,13 +137,23 @@ const recommendedFeatureKeys = () => {
                 </div>
             </div>
 
-            <div>
-                <label class="text-sm font-medium text-gray-600">
-                    Monthly fee (৳)
-                    <span class="text-xs font-normal text-violet-600">— ticked features currently add up to ৳{{ suggestedFee }}</span>
-                </label>
-                <input v-model.number="form.monthly_fee" type="number" min="0" class="mt-1 w-full rounded-lg border-gray-300">
-                <div v-if="form.errors.monthly_fee" class="text-rose-600 text-xs mt-1">{{ form.errors.monthly_fee }}</div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="text-sm font-medium text-gray-600">
+                        Monthly fee (৳)
+                        <span class="text-xs font-normal text-violet-600">— ticked features currently add up to ৳{{ suggestedFee }}</span>
+                    </label>
+                    <input v-model.number="form.monthly_fee" type="number" min="0" class="mt-1 w-full rounded-lg border-gray-300">
+                    <div v-if="form.errors.monthly_fee" class="text-rose-600 text-xs mt-1">{{ form.errors.monthly_fee }}</div>
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-gray-600">
+                        Staff/cashier limit
+                        <span class="text-xs font-normal text-gray-400">— blank = Business default (2)</span>
+                    </label>
+                    <input v-model.number="form.staff_limit" type="number" min="0" placeholder="2" class="mt-1 w-full rounded-lg border-gray-300">
+                    <div v-if="form.errors.staff_limit" class="text-rose-600 text-xs mt-1">{{ form.errors.staff_limit }}</div>
+                </div>
             </div>
 
             <div>

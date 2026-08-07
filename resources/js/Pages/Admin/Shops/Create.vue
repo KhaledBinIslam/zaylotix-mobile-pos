@@ -19,6 +19,7 @@ const form = useForm({
     owner_password: '1234',
     features: [],
     monthly_fee: null,
+    staff_limit: null,
 });
 
 // sum of every ticked feature's own price — a starting point for what this
@@ -144,13 +145,23 @@ const featuresByCategory = (list) => {
                 </div>
             </div>
 
-            <div>
-                <label class="text-sm font-medium text-gray-600">
-                    Monthly fee (৳)
-                    <span class="text-xs font-normal text-violet-600">— suggested from ticked features below: ৳{{ suggestedFee }}</span>
-                </label>
-                <input v-model.number="form.monthly_fee" type="number" min="0" class="mt-1 w-full rounded-lg border-gray-300" @input="feeManuallyEdited = true">
-                <div v-if="form.errors.monthly_fee" class="text-rose-600 text-xs mt-1">{{ form.errors.monthly_fee }}</div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="text-sm font-medium text-gray-600">
+                        Monthly fee (৳)
+                        <span class="text-xs font-normal text-violet-600">— suggested from ticked features below: ৳{{ suggestedFee }}</span>
+                    </label>
+                    <input v-model.number="form.monthly_fee" type="number" min="0" class="mt-1 w-full rounded-lg border-gray-300" @input="feeManuallyEdited = true">
+                    <div v-if="form.errors.monthly_fee" class="text-rose-600 text-xs mt-1">{{ form.errors.monthly_fee }}</div>
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-gray-600">
+                        Staff/cashier limit
+                        <span class="text-xs font-normal text-gray-400">— blank = Business default (2), Ultimate typically 10</span>
+                    </label>
+                    <input v-model.number="form.staff_limit" type="number" min="0" placeholder="2" class="mt-1 w-full rounded-lg border-gray-300">
+                    <div v-if="form.errors.staff_limit" class="text-rose-600 text-xs mt-1">{{ form.errors.staff_limit }}</div>
+                </div>
             </div>
 
             <div class="grid grid-cols-2 gap-4">

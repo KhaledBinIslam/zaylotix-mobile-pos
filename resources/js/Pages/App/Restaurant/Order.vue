@@ -161,15 +161,19 @@ const discount = ref(0);
 const customerPhone = ref('');
 const customerName = ref('');
 const billBaseTotal = computed(() => (splitMode.value ? splitSubtotal.value : props.order.total));
+// complimentary forces the server to charge nothing (discount = subtotal,
+// see TableOrderController::bill()) — the displayed total must reflect that
+// the instant "🎁 Complimentary" is picked, not just after the bill is sent
+const effectiveDiscount = computed(() => (payMode.value === 'complimentary' ? billBaseTotal.value : (discount.value || 0)));
 // mirrors TableOrderController::bill()'s own math — additive on top of the
 // discounted subtotal, unlike the VAT preview above which is backed out of
 // an already-inclusive price and never added to what's actually charged
 const serviceCharge = computed(() => {
     const rate = shop.value?.service_charge_rate;
     if (rate === null || rate === undefined) return 0;
-    return Math.round(Math.max(0, billBaseTotal.value - (discount.value || 0)) * Number(rate) / 100 * 100) / 100;
+    return Math.round(Math.max(0, billBaseTotal.value - effectiveDiscount.value) * Number(rate) / 100 * 100) / 100;
 });
-const billTotal = computed(() => Math.max(0, billBaseTotal.value - (discount.value || 0)) + serviceCharge.value);
+const billTotal = computed(() => Math.max(0, billBaseTotal.value - effectiveDiscount.value) + serviceCharge.value);
 const billForm = useForm({});
 function openBillSheet() {
     if (splitMode.value && !selectedItemIds.value.length) return;
@@ -427,6 +431,7 @@ onBeforeUnmount(() => clearInterval(pollTimer));
                 <input v-model.number="discount" type="number" placeholder="0" min="0">
             </div>
             <div class="card" style="margin-bottom:14px">
+                <div v-if="effectiveDiscount > 0" style="display:flex;justify-content:space-between;font-size:13px;color:var(--mut);padding-bottom:6px"><span>{{ t('pos.overallDiscount') }}</span><span>− {{ money(effectiveDiscount) }}</span></div>
                 <div v-if="serviceCharge > 0" style="display:flex;justify-content:space-between;font-size:13px;color:var(--mut);padding-bottom:6px"><span>{{ t('pos.serviceCharge') }}</span><span>+ {{ money(serviceCharge) }}</span></div>
                 <div style="display:flex;justify-content:space-between;font-size:19px;font-weight:800"><span>{{ t('pos.grandTotal') }}</span><b style="color:var(--gold)">{{ money(billTotal) }}</b></div>
             </div>

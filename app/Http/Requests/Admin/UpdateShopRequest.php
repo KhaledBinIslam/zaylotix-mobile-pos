@@ -26,6 +26,9 @@ class UpdateShopRequest extends FormRequest
             'sales_mode' => ['required', 'in:scan,manual,both'],
             'plan' => ['required', 'in:trial,monthly,yearly'],
             'monthly_fee' => ['nullable', 'numeric', 'min:0'],
+            // null = fall back to StaffController::DEFAULT_STAFF_CAP (Business default) —
+            // set explicitly to raise/lower a specific shop's cashier cap regardless of package
+            'staff_limit' => ['nullable', 'integer', 'min:0'],
             'status' => ['required', 'in:active,inactive'],
             'subscription_start' => ['required', 'date'],
             'subscription_expiry' => ['required', 'date', 'after_or_equal:subscription_start'],

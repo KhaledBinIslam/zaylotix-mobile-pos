@@ -72,6 +72,7 @@ class ShopController extends Controller
                 'lang' => $data['lang'],
                 'plan' => $data['plan'],
                 'monthly_fee' => $data['monthly_fee'] ?? null,
+                'staff_limit' => $data['staff_limit'] ?? null,
                 'status' => 'active',
                 'subscription_start' => $data['subscription_start'],
                 'subscription_expiry' => $data['subscription_expiry'],

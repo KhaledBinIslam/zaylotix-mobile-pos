@@ -8,12 +8,11 @@ use Tests\Concerns\CreatesShops;
 use Tests\TestCase;
 
 /**
- * The owner-to-cashier permission layer: a shop owner can add any number of
- * cashiers (the earlier one-per-shop cap was lifted so a supershop can put
- * more than one person on the register) and decide which app sections each
- * can reach. This sits inside (and is independent of) the admin-to-shop
- * `feature` layer — a cashier without a grant gets a real 403 on the
- * route, not just a hidden button.
+ * The owner-to-cashier permission layer: a shop owner can add cashiers (up
+ * to the shop's staff_limit — see StaffController::DEFAULT_STAFF_CAP) and
+ * decide which app sections each can reach. This sits inside (and is
+ * independent of) the admin-to-shop `feature` layer — a cashier without a
+ * grant gets a real 403 on the route, not just a hidden button.
  */
 class StaffPermissionTest extends TestCase
 {
@@ -114,6 +113,36 @@ class StaffPermissionTest extends TestCase
         ]);
 
         $response->assertForbidden();
+    }
+
+    public function test_creating_a_cashier_beyond_the_default_cap_is_blocked(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(); // staff_limit null -> DEFAULT_STAFF_CAP (2)
+        $this->grantFeature($shop, 'cashier_management');
+        User::create(['shop_id' => $shop->id, 'name' => 'A', 'phone' => '01900011111', 'password' => 'secret1', 'role' => 'staff', 'permissions' => [], 'lang' => 'bn']);
+        User::create(['shop_id' => $shop->id, 'name' => 'B', 'phone' => '01900022222', 'password' => 'secret1', 'role' => 'staff', 'permissions' => [], 'lang' => 'bn']);
+
+        $response = $this->actingAs($owner, 'web')->post('/app/staff', [
+            'name' => 'Third', 'phone' => '01900033333', 'password' => 'secret1', 'permissions' => ['pos'],
+        ]);
+
+        $response->assertSessionHasErrors();
+        $this->assertSame(2, User::where('shop_id', $shop->id)->where('role', 'staff')->count());
+    }
+
+    public function test_admin_raised_staff_limit_allows_more_cashiers_than_the_default(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['staff_limit' => 10]);
+        $this->grantFeature($shop, 'cashier_management');
+        User::create(['shop_id' => $shop->id, 'name' => 'A', 'phone' => '01900044444', 'password' => 'secret1', 'role' => 'staff', 'permissions' => [], 'lang' => 'bn']);
+        User::create(['shop_id' => $shop->id, 'name' => 'B', 'phone' => '01900055555', 'password' => 'secret1', 'role' => 'staff', 'permissions' => [], 'lang' => 'bn']);
+
+        $response = $this->actingAs($owner, 'web')->post('/app/staff', [
+            'name' => 'Third', 'phone' => '01900066666', 'password' => 'secret1', 'permissions' => ['pos'],
+        ]);
+
+        $response->assertRedirect();
+        $this->assertSame(3, User::where('shop_id', $shop->id)->where('role', 'staff')->count());
     }
 
     public function test_owner_cannot_edit_another_shops_cashier(): void

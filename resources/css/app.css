@@ -158,6 +158,12 @@ body {
 
 #scrim { position: fixed; inset: 0; background: rgba(4, 6, 20, .6); z-index: 50; }
 #sheet { position: fixed; left: 50%; transform: translateX(-50%); bottom: 0; z-index: 60; width: 100%; max-width: 430px; background: var(--bg); border-radius: 24px 24px 0 0; border: 1px solid var(--line2); border-bottom: 0; padding: 8px 18px calc(40px + env(safe-area-inset-bottom)); max-height: 90vh; overflow-y: auto; }
+/* on a tablet/desktop-wide viewport, a checkout/cart sheet stuck at the
+   phone's 430px width forces a lot of scrolling for what's otherwise a
+   normal-length form — widen it in step with #phone's own tablet/desktop
+   breakpoints (still a bottom sheet, not a redesign, just more breathing room) */
+@media (min-width: 700px) { #sheet { max-width: 520px; } }
+@media (min-width: 1024px) { #sheet { max-width: 580px; } }
 .grab { width: 44px; height: 5px; border-radius: 99px; background: var(--line2); margin: 8px auto 14px; }
 
 /* notification bell dropdown — small panel anchored near the bell, not the

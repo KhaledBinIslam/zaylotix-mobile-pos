@@ -422,7 +422,7 @@ export const translations = {
     'more.langSwitch.bn': { bn: 'বাংলা', en: 'বাংলা' },
     'more.langSwitch.en': { bn: 'English', en: 'English' },
     'cashier.sheetTitle': { bn: '👤 ক্যাশিয়ার', en: '👤 Cashier' },
-    'cashier.sheetSub': { bn: 'দোকানে একজন ক্যাশিয়ার যোগ করুন — তাকে কোন কোন কাজে অ্যাক্সেস দিবেন বেছে নিন', en: "Add one cashier for the shop — choose which sections they can access" },
+    'cashier.sheetSub': { bn: 'দোকানের ক্যাশিয়ার অ্যাকাউন্ট — তাকে কোন কোন কাজে অ্যাক্সেস দিবেন বেছে নিন', en: 'Shop cashier accounts — choose which sections each one can access' },
     'cashier.name': { bn: 'নাম', en: 'Name' },
     'cashier.phone': { bn: 'মোবাইল (লগইন আইডি)', en: 'Mobile (login ID)' },
     'cashier.password': { bn: 'পাসওয়ার্ড', en: 'Password' },
@@ -435,6 +435,7 @@ export const translations = {
     'cashier.accessCount': { bn: 'টি বিভাগে অ্যাক্সেস', en: 'sections granted' },
     'cashier.noCashiers': { bn: 'কোনো ক্যাশিয়ার নেই — নতুন যোগ করুন', en: 'No cashiers yet — add one' },
     'cashier.removeConfirm': { bn: '-কে মুছে ফেলতে চান?', en: '— remove this cashier?' },
+    'cashier.limitReached': { bn: 'আপনার প্যাকেজে সর্বোচ্চ {n} জন ক্যাশিয়ার যোগ করা যাবে। বেশি দরকার হলে অ্যাডমিনের সাথে যোগাযোগ করুন।', en: 'Your package allows up to {n} cashiers. Contact admin if you need more.' },
     'logo.sheetTitle': { bn: '🖼️ দোকানের লোগো', en: '🖼️ Shop Logo' },
     'logo.sheetSub': { bn: 'মেমো ও বারকোড লেবেলে দেখানো হবে (JPG/PNG, ১MB পর্যন্ত)', en: 'Shown on memos and barcode labels (JPG/PNG, up to 1MB)' },
     'logo.uploading': { bn: 'আপলোড হচ্ছে...', en: 'Uploading...' },
@@ -586,6 +587,7 @@ export const translations = {
     'pos.added': { bn: 'যোগ হয়েছে', en: 'added' },
     'pos.checkoutError': { bn: 'বিল করতে সমস্যা হয়েছে', en: 'Something went wrong at checkout' },
     'pos.networkError': { bn: 'নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন', en: 'Network error — please try again' },
+    'pos.changeVariant': { bn: 'পরিবর্তন করুন', en: 'change' },
     'pos.savedOffline': { bn: '📴 নেট নেই — বিক্রিটি সংরক্ষিত হয়েছে, নেট আসলে অটো পাঠানো হবে', en: "📴 Offline — sale saved, will auto-send once you're back online" },
 
     // ---- offline mode ----

@@ -257,15 +257,20 @@ function lineTotal(l) {
 }
 
 const subtotal = computed(() => cart.value.reduce((s, l) => s + lineTotal(l), 0));
+// complimentary forces the server to charge nothing (discount = subtotal,
+// see PosController::performCheckout) — the displayed total must reflect
+// that the instant "🎁 Complimentary" is picked, not just after the receipt
+// comes back, or the sheet keeps showing a price that's never actually charged
+const effectiveDiscount = computed(() => (payMode.value === 'complimentary' ? subtotal.value : (discount.value || 0)));
 // mirrors the server's own PosController::checkout() math exactly — service
 // charge is additive on top of the discounted subtotal, unlike VAT (which is
 // backed out of an already-inclusive price and shown separately, never added)
 const serviceCharge = computed(() => {
     const rate = shop.value?.service_charge_rate;
     if (rate === null || rate === undefined) return 0;
-    return Math.round(Math.max(0, subtotal.value - (discount.value || 0)) * Number(rate) / 100 * 100) / 100;
+    return Math.round(Math.max(0, subtotal.value - effectiveDiscount.value) * Number(rate) / 100 * 100) / 100;
 });
-const total = computed(() => Math.max(0, subtotal.value - (discount.value || 0)) + serviceCharge.value);
+const total = computed(() => Math.max(0, subtotal.value - effectiveDiscount.value) + serviceCharge.value);
 
 // Split mode: cashier types how much came in via each method; whatever's
 // left of the total is shown live as due (server enforces the same math —
@@ -1051,7 +1056,7 @@ useKeyboardShortcuts({
                 <div class="sticky-footer">
                     <div class="card" style="margin-bottom:10px">
                         <div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--mut);font-size:13.5px"><span>{{ t('pos.subtotal') }}</span><b>{{ money(subtotal) }}</b></div>
-                        <div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--mut);font-size:13.5px"><span>{{ t('pos.overallDiscount') }}</span><b>− {{ money(discount || 0) }}</b></div>
+                        <div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--mut);font-size:13.5px"><span>{{ t('pos.overallDiscount') }}</span><b>− {{ money(effectiveDiscount) }}</b></div>
                         <div v-if="serviceCharge > 0" style="display:flex;justify-content:space-between;padding:3px 0;color:var(--mut);font-size:13.5px"><span>{{ t('pos.serviceCharge') }}</span><b>+ {{ money(serviceCharge) }}</b></div>
                     </div>
 

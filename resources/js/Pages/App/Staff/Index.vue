@@ -5,14 +5,17 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import { useI18n } from '@/composables/useI18n';
 
-const props = defineProps({ cashiers: Array, staffPermissions: Object });
+const props = defineProps({ cashiers: Array, staffPermissions: Object, cashierCount: Number, cashierLimit: Number });
 const { t, lang } = useI18n();
+
+const atCap = computed(() => props.cashierCount >= props.cashierLimit);
 
 const sheet = ref(false);
 const editing = ref(null);
 const form = useForm({ name: '', phone: '', password: '', permissions: [] });
 
 function openNew() {
+    if (atCap.value) return;
     editing.value = null;
     form.reset();
     form.clearErrors();
@@ -51,9 +54,12 @@ const staffPermsByCategory = computed(() => {
     <Head :title="t('nav.cashier')" />
     <AppLayout active="cashier">
         <div class="pgttl">{{ t('nav.cashier') }}</div>
-        <div class="pgsub">{{ t('cashier.sheetSub') }}</div>
+        <div class="pgsub">{{ t('cashier.sheetSub') }} · {{ cashierCount }}/{{ cashierLimit }}</div>
 
-        <button class="btn ghost" style="margin-bottom:16px" @click="openNew">{{ t('more.addCashier') }}</button>
+        <button class="btn ghost" style="margin-bottom:16px" :disabled="atCap" :style="atCap ? 'opacity:.5' : ''" @click="openNew">{{ t('more.addCashier') }}</button>
+        <div v-if="atCap" class="card" style="margin-bottom:16px;background:var(--goldSoft);border-color:var(--gold2);font-size:13px;color:var(--gold2);font-weight:600">
+            {{ t('cashier.limitReached', { n: cashierLimit }) }}
+        </div>
 
         <div v-for="c in cashiers" :key="c.id" class="row" @click="openEdit(c)">
             <div class="ava">👤</div>

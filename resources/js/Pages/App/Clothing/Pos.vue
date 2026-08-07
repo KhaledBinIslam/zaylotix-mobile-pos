@@ -65,8 +65,13 @@ function productOf(id) {
 function variantOf(product, productVariantId) {
     return productVariantId ? product.variants?.find((v) => v.id === productVariantId) : null;
 }
+// matches ProductVariant::label() and the shared Pos/Index.vue exactly —
+// this is what the receipt actually prints (server-computed, stored on the
+// sale item), so the cart/picker here must show the same order/format or
+// a customer could see one label while shopping and a different one on
+// the printed memo
 function variantLabel(v) {
-    return [v.color, v.size].filter(Boolean).join(' / ');
+    return [v.size, v.color].filter(Boolean).join(', ');
 }
 function stockLevel(stock, reorderPoint) {
     const s = Number(stock);
@@ -78,17 +83,58 @@ function stockLevel(stock, reorderPoint) {
 /* ---------------- variant picker sheet ---------------- */
 const variantSheetOpen = ref(false);
 const variantSheetProduct = ref(null);
-function openVariantPicker(product) {
+// set only when the picker was opened from an existing cart line's "change"
+// tap rather than from the product grid — pickVariant() then updates that
+// line in place instead of adding a new one, so a wrong color/size grabbed
+// in a hurry doesn't need a remove-and-re-add round trip
+const editingCartLine = ref(null);
+
+function openVariantPicker(product, lineToEdit = null) {
     if (hasProductVariants.value && product.variants?.length) {
         variantSheetProduct.value = product;
+        editingCartLine.value = lineToEdit;
         variantSheetOpen.value = true;
         return;
     }
     addToCart(product.id, null);
 }
 function pickVariant(v) {
-    addToCart(variantSheetProduct.value.id, v.id);
+    const product = variantSheetProduct.value;
+    if (editingCartLine.value) {
+        changeCartLineVariant(editingCartLine.value, product.id, v.id);
+    } else {
+        addToCart(product.id, v.id);
+    }
     variantSheetOpen.value = false;
+    editingCartLine.value = null;
+}
+
+/** Moves an existing cart line to a different color/size, capping qty to whatever the new variant can actually cover and merging into a matching line if one already exists. */
+function changeCartLineVariant(line, productId, newVariantId) {
+    if (newVariantId === line.product_variant_id) return;
+    const product = productOf(productId);
+    const newVariant = variantOf(product, newVariantId);
+    if (!newVariant) return;
+
+    // stock already claimed by OTHER cart lines for the target variant —
+    // this line's own qty is moving away from its old variant, not adding on top
+    const claimedByOthers = cart.value.reduce((s, l) => s + (l !== line && l.product_variant_id === newVariantId ? l.qty : 0), 0);
+    const available = newVariant.stock - claimedByOthers;
+    if (available <= 0) {
+        toast('❌ ' + t('pos.notEnoughStock') + ' ' + product.name + ' (' + variantLabel(newVariant) + ')');
+        return;
+    }
+    const qtyToMove = Math.min(line.qty, available);
+
+    const existingLine = cart.value.find((l) => l !== line && l.product_variant_id === newVariantId);
+    if (existingLine) {
+        existingLine.qty += qtyToMove;
+        cart.value = cart.value.filter((l) => l !== line);
+    } else {
+        line.product_variant_id = newVariantId;
+        line.qty = qtyToMove;
+    }
+    toast('✅ ' + product.name + ' (' + variantLabel(newVariant) + ')');
 }
 
 function addToCart(productId, productVariantId) {
@@ -148,12 +194,18 @@ function removeLine(l) {
 
 const cartCount = computed(() => cart.value.reduce((s, l) => s + l.qty, 0));
 const subtotal = computed(() => cart.value.reduce((s, l) => s + lineTotal(l), 0));
+// complimentary forces the server to charge nothing (discount = subtotal,
+// see PosController::performCheckout) — the displayed total must reflect
+// that the instant the owner picks "🎁 Complimentary", not just after the
+// receipt comes back, or the sheet keeps showing a price that's never
+// actually charged
+const effectiveDiscount = computed(() => (payMode.value === 'complimentary' ? subtotal.value : (discount.value || 0)));
 const serviceCharge = computed(() => {
     const rate = shop.value?.service_charge_rate;
     if (rate === null || rate === undefined) return 0;
-    return Math.round(Math.max(0, subtotal.value - (discount.value || 0)) * Number(rate) / 100 * 100) / 100;
+    return Math.round(Math.max(0, subtotal.value - effectiveDiscount.value) * Number(rate) / 100 * 100) / 100;
 });
-const total = computed(() => Math.max(0, subtotal.value - (discount.value || 0)) + serviceCharge.value);
+const total = computed(() => Math.max(0, subtotal.value - effectiveDiscount.value) + serviceCharge.value);
 
 /* ---------------- checkout ---------------- */
 const discount = ref(0);
@@ -223,7 +275,16 @@ async function submitCheckout() {
         receiptOpen.value = true;
         router.reload({ only: ['products'] });
     } catch (e) {
-        errorMsg.value = t('pos.networkError');
+        // fetch() itself only ever throws a TypeError for a genuine
+        // connectivity failure (DNS/refused/offline) — anything else here
+        // (a JSON parse failure on a non-JSON response, a bug in the code
+        // above) is NOT actually a network problem, and mislabeling it as
+        // one hides the real cause. Logging the real error means the next
+        // report of this message comes with an actual reason attached.
+        console.error('Checkout failed:', e);
+        errorMsg.value = e instanceof TypeError
+            ? t('pos.networkError')
+            : `${t('pos.checkoutError')} (${e?.message || e})`;
     } finally {
         submitting.value = false;
     }
@@ -468,7 +529,11 @@ function sendMemoWA() {
             <div v-for="l in cart" :key="l.product_id + ':' + (l.product_variant_id || 'base')" class="cart-line" style="align-items:flex-start">
                 <div class="nm">
                     <b>{{ lineProduct(l)?.name }}</b>
-                    <span v-if="lineVariant(l)">{{ variantLabel(lineVariant(l)) }}</span>
+                    <button
+                        v-if="lineVariant(l)" type="button"
+                        style="border:none;background:none;padding:0;color:var(--sky);font-size:12.5px;font-weight:650;text-decoration:underline;text-underline-offset:2px"
+                        @click="openVariantPicker(lineProduct(l), l)"
+                    >{{ variantLabel(lineVariant(l)) }} · {{ t('pos.changeVariant') }}</button>
                     <div style="display:flex;align-items:center;gap:10px;margin-top:6px">
                         <button class="btn sm ghost" style="width:32px;padding:0" @click="decrementLine(l)">−</button>
                         <b>{{ l.qty }}</b>
@@ -546,6 +611,7 @@ function sendMemoWA() {
 
                 <div style="border-top:1px solid var(--line);margin-top:10px;padding-top:10px">
                     <div style="display:flex;justify-content:space-between;padding:2px 0"><span>{{ t('pos.subtotalLabel') }}</span><b>{{ money(subtotal) }}</b></div>
+                    <div v-if="effectiveDiscount > 0" style="display:flex;justify-content:space-between;padding:2px 0"><span>{{ t('pos.overallDiscount') }}</span><b>− {{ money(effectiveDiscount) }}</b></div>
                     <div v-if="serviceCharge > 0" style="display:flex;justify-content:space-between;padding:2px 0"><span>{{ t('pos.serviceCharge') }}</span><b>+ {{ money(serviceCharge) }}</b></div>
                     <div style="display:flex;justify-content:space-between;padding:6px 0 0;font-weight:800;font-size:16px"><span>{{ t('pos.totalLabel') }}</span><b>{{ money(total) }}</b></div>
                 </div>

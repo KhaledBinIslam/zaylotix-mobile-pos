@@ -14,7 +14,7 @@ class Shop extends Model
     // happens via ShopPolicy (owner can only see their own; admin sees all).
     protected $fillable = [
         'parent_shop_id', 'business_type_id', 'name', 'name_en', 'phone', 'kitchen_whatsapp', 'payment_timing', 'kitchen_print_order', 'area', 'owner_name', 'logo_path', 'receipt_footer', 'bin_no',
-        'sales_mode', 'hardware_scanner_enabled', 'lang', 'plan', 'monthly_fee', 'status',
+        'sales_mode', 'hardware_scanner_enabled', 'lang', 'plan', 'monthly_fee', 'staff_limit', 'status',
         'subscription_start', 'subscription_expiry',
         'cash_balance', 'bank_balance', 'capital',
         'vat_mode', 'vat_rate', 'turnover_rate', 'invoice_counter', 'service_charge_rate',
