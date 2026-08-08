@@ -154,6 +154,18 @@ function openEdit(p) {
 
 // --- pack sizes (box/strip/...) — only relevant with unit_conversion feature ---
 const packForm = useForm({ unit_id: '', new_unit_name: '', factor: '', price: '' });
+// live "so this means..." readout while typing factor/price — the numbers
+// alone (a bare "10" in a "how many pieces" box) don't make it obvious this
+// is defining a whole second sellable option at POS, priced independently
+// of the per-piece price above; this spells out both directions so a shop
+// owner setting up e.g. Sergel (1 box = 10 strips = 100 tablets) can see
+// they got the factor right before saving, not after a wrong sale.
+const packSizePreview = computed(() => {
+    const factor = Number(packForm.factor);
+    const price = Number(packForm.price);
+    if (!factor || factor < 2 || !price) return null;
+    return { perPiece: price / factor };
+});
 function addPackSize() {
     packForm.post(route('app.productUnits.store', editing.value.id), {
         preserveScroll: true,
@@ -514,13 +526,21 @@ useKeyboardShortcuts({
                 {{ form.processing ? '...' : t('stock.save') }}
             </button>
 
+            <div v-if="!editing && hasUnitConversion" class="field" style="background:var(--panel2);border-radius:10px;padding:10px 12px;font-size:12.5px;color:var(--mut)">
+                💡 {{ t('stock.packSizesAfterSaveHint') }}
+            </div>
+
             <div v-if="editing && hasUnitConversion" class="hr"></div>
             <div v-if="editing && hasUnitConversion" class="field">
                 <label>{{ t('stock.packSizes') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.packSizesHint') }}</span></label>
+                <div style="font-size:12px;color:var(--mut);margin-bottom:8px;line-height:1.5">{{ t('stock.packSizesExample') }}</div>
+
+                <div v-if="!editing.product_units?.length" style="font-size:12px;color:var(--dim);margin-bottom:8px">{{ t('stock.noPackSizesYet') }}</div>
                 <div v-for="pu in editing.product_units" :key="pu.id" class="cart-line">
-                    <div class="nm"><b>{{ pu.unit?.name }}</b><span>{{ pu.factor }}× = {{ money(pu.price) }}</span></div>
+                    <div class="nm"><b>{{ pu.unit?.name }}</b><span>1 {{ pu.unit?.name }} = {{ pu.factor }} {{ t('stock.pieces') }} · {{ money(pu.price) }} <template v-if="pu.factor">(≈ {{ money(pu.price / pu.factor) }}/{{ t('stock.pieces') }})</template></span></div>
                     <button class="btn sm rose" @click="removePackSize(pu)">✕</button>
                 </div>
+
                 <div class="f2" style="margin-top:8px">
                     <select v-model="packForm.unit_id">
                         <option :value="''">{{ t('stock.selectUnit') }}</option>
@@ -529,8 +549,11 @@ useKeyboardShortcuts({
                     <input v-model="packForm.new_unit_name" :placeholder="t('stock.orNewUnit')">
                 </div>
                 <div class="f2" style="margin-top:8px">
-                    <input v-model="packForm.factor" type="number" :placeholder="t('stock.howManyPieces')">
-                    <input v-model="packForm.price" type="number" :placeholder="t('stock.price')">
+                    <input v-model="packForm.factor" type="number" min="2" :placeholder="t('stock.howManyPieces')">
+                    <input v-model="packForm.price" type="number" :placeholder="t('stock.wholePackPrice')">
+                </div>
+                <div v-if="packSizePreview" style="font-size:12px;color:var(--green);margin-top:6px;font-weight:600">
+                    ✓ {{ t('stock.packSizePreview', { perPiece: money(packSizePreview.perPiece) }) }}
                 </div>
                 <div v-if="packForm.errors.unit_id || packForm.errors.factor || packForm.errors.price" style="color:var(--rose);font-size:12px;margin-top:6px">
                     {{ packForm.errors.unit_id || packForm.errors.factor || packForm.errors.price }}
@@ -624,8 +647,11 @@ useKeyboardShortcuts({
                 <b>{{ stockInProduct.emoji }} {{ stockInProduct.name }}</b>
                 <div style="color:var(--mut);font-size:12px;margin-top:4px">{{ t('stock.currentStock') }} {{ formatQty(stockInProduct, stockInProduct.stock) }} {{ unitLabel(stockInProduct) }}</div>
             </div>
+            <div v-if="stockInProduct?.product_units?.length" class="field" style="background:var(--panel2);border-radius:10px;padding:8px 10px;font-size:12px;color:var(--mut)">
+                {{ t('stock.stockInPacksHint', { pieces: unitLabel(stockInProduct) }) }}
+            </div>
             <div class="f2">
-                <div class="field"><label>{{ t('stock.howManyArrived') }}{{ stockInProduct?.sold_by_weight ? ` (${unitLabel(stockInProduct)})` : '' }}</label><input v-model="stockInQty" type="number" :step="stockInProduct?.sold_by_weight ? 0.001 : 1"></div>
+                <div class="field"><label>{{ t('stock.howManyArrived') }} ({{ unitLabel(stockInProduct) }})</label><input v-model="stockInQty" type="number" :step="stockInProduct?.sold_by_weight ? 0.001 : 1"></div>
                 <div class="field"><label>{{ t('stock.costOptional') }}</label><input v-model="stockInCost" type="number" step="0.01"></div>
             </div>
             <div v-if="hasBatchTracking" class="f2">
