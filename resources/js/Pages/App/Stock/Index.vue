@@ -1,6 +1,6 @@
 <script setup>
 import { Head, useForm, router, usePage } from '@inertiajs/vue3';
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import Pagination from '@/Components/Pagination.vue';
@@ -166,10 +166,31 @@ const packSizePreview = computed(() => {
     if (!factor || factor < 2 || !price) return null;
     return { perPiece: price / factor };
 });
+
+// "1 box = how many pieces" is what actually gets stored (ProductUnit.factor
+// is always base-pieces, never nested — see PosController), but a pharmacy
+// owner naturally thinks "1 box = 10 strips", not "= 100 tablets", and would
+// otherwise have to do that multiplication in their head before typing a
+// number in. This lets them pick an already-added pack size (e.g. স্ট্রিপ)
+// and say how many of THAT make up the new one — the piece count still
+// lands in packForm.factor exactly as before (still visible, still
+// editable), just computed for them instead of by them.
+const packBasedOnId = ref('');
+const packBasedOnCount = ref('');
+const packBasedOnUnit = computed(() => editing.value?.product_units?.find((pu) => pu.id === Number(packBasedOnId.value)) || null);
+watch([packBasedOnId, packBasedOnCount], () => {
+    if (packBasedOnUnit.value && Number(packBasedOnCount.value) > 0) {
+        packForm.factor = Number(packBasedOnCount.value) * packBasedOnUnit.value.factor;
+    }
+});
 function addPackSize() {
     packForm.post(route('app.productUnits.store', editing.value.id), {
         preserveScroll: true,
-        onSuccess: () => packForm.reset(),
+        onSuccess: () => {
+            packForm.reset();
+            packBasedOnId.value = '';
+            packBasedOnCount.value = '';
+        },
     });
 }
 function removePackSize(pu) {
@@ -547,6 +568,21 @@ useKeyboardShortcuts({
                         <option v-for="u in units" :key="u.id" :value="u.id">{{ u.name }}</option>
                     </select>
                     <input v-model="packForm.new_unit_name" :placeholder="t('stock.orNewUnit')">
+                </div>
+                <!-- "1 box = how many pieces" is what's stored, but a shop
+                     owner thinks in terms of an already-added pack ("1 box =
+                     10 strips"), not the total piece count — pick one here
+                     and the piece count on the right fills in for you,
+                     still visible/editable, never hidden math -->
+                <div v-if="editing.product_units?.length" class="f2" style="margin-top:8px">
+                    <select v-model="packBasedOnId">
+                        <option :value="''">{{ t('stock.orBasedOnPack') }}</option>
+                        <option v-for="pu in editing.product_units" :key="pu.id" :value="pu.id">{{ pu.unit?.name }}</option>
+                    </select>
+                    <input v-model="packBasedOnCount" type="number" min="1" :placeholder="t('stock.howMany')" :disabled="!packBasedOnId">
+                </div>
+                <div v-if="packBasedOnUnit && packBasedOnCount" style="font-size:12px;color:var(--sky);margin-top:4px">
+                    {{ t('stock.packBasedOnPreview', { count: packBasedOnCount, basedOn: packBasedOnUnit.unit?.name, pieces: Number(packBasedOnCount) * packBasedOnUnit.factor }) }}
                 </div>
                 <div class="f2" style="margin-top:8px">
                     <input v-model="packForm.factor" type="number" min="2" :placeholder="t('stock.howManyPieces')">

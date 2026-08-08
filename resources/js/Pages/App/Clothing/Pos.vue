@@ -476,6 +476,18 @@ function sendMemoWA() {
 <template>
     <Head :title="t('nav.sell')" />
     <AppLayout active="sell">
+        <!-- cart bar pinned to the TOP of the page (not the bottom) — Khaled
+             was explicit this should stay in view/up front rather than
+             sitting at the bottom where it can get missed while scrolling a
+             long product grid; sticky so it stays visible while scrolling,
+             not just present on first load -->
+        <div v-if="cartCount" style="position:sticky;top:0;z-index:10;margin:-2px -2px 12px;padding:2px">
+            <button type="button" class="btn" style="box-shadow:0 6px 18px rgba(242,106,27,.4)" @click="cartOpen = true">
+                <span style="display:flex;align-items:center;gap:8px"><span class="cartcount">{{ cartCount }}</span> {{ t('pos.viewCart') }}</span>
+                <span style="margin-left:auto;font-weight:850">{{ money(subtotal) }}</span>
+            </button>
+        </div>
+
         <div class="lg:flex lg:gap-6 lg:items-start">
             <aside class="hidden lg:block lg:order-1 lg:w-52 lg:shrink-0 lg:sticky lg:top-6">
                 <button class="rest-rail-btn" :class="{ on: cat === 'all' }" @click="cat = 'all'">{{ t('pos.allProducts') }}</button>
@@ -510,19 +522,6 @@ function sendMemoWA() {
                 </div>
                 <div v-else class="empty"><div class="big">👕</div>{{ t('pos.noProducts') }}</div>
             </div>
-        </div>
-
-        <!-- sticky cart bar — a big, hard-to-miss button (matches the shared
-             Pos/Index.vue's .posbar bill button) rather than a plain text
-             row, and capped to the content column's width on desktop so it
-             doesn't stretch edge-to-edge with a huge empty gap between the
-             total and the button (what the small original version did) -->
-        <div v-if="cartCount" style="height:78px"></div>
-        <div v-if="cartCount" class="posbar" style="max-width:1180px;margin:0 auto;padding-left:18px;padding-right:18px">
-            <button class="btn" style="box-shadow:0 6px 18px rgba(242,106,27,.4)" @click="cartOpen = true">
-                <span style="display:flex;align-items:center;gap:8px"><span class="cartcount">{{ cartCount }}</span> {{ t('pos.viewCart') }}</span>
-                <span style="margin-left:auto;font-weight:850">{{ money(subtotal) }}</span>
-            </button>
         </div>
 
         <!-- variant picker: color chips, size chips per selected color -->
