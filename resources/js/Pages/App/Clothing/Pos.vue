@@ -91,6 +91,13 @@ const editingCartLine = ref(null);
 
 function openVariantPicker(product, lineToEdit = null) {
     if (hasProductVariants.value && product.variants?.length) {
+        // both this and the cart are separate <Sheet> instances (each its
+        // own Teleport to <body> reusing the same #sheet id/z-index) — with
+        // the cart left open, this one would mount stacked BEHIND it and
+        // "change" would look like it does nothing. Closing the cart first
+        // (and reopening it after a pick, see pickVariant()) keeps exactly
+        // one sheet on screen at a time, same as every other flow here.
+        if (lineToEdit) cartOpen.value = false;
         variantSheetProduct.value = product;
         editingCartLine.value = lineToEdit;
         variantSheetOpen.value = true;
@@ -106,8 +113,19 @@ function pickVariant(v) {
         addToCart(product.id, v.id);
     }
     variantSheetOpen.value = false;
-    editingCartLine.value = null;
 }
+
+// covers BOTH exits from the picker: picking a variant (pickVariant() above
+// already flipped this to false) and dismissing it via the scrim/backdrop
+// tap, which closes the Sheet directly through v-model without ever calling
+// pickVariant() — either way, if we closed the cart to show this picker,
+// re-show it now rather than leaving the cashier looking at an empty page.
+watch(variantSheetOpen, (open) => {
+    if (!open && editingCartLine.value) {
+        cartOpen.value = true;
+        editingCartLine.value = null;
+    }
+});
 
 /** Moves an existing cart line to a different color/size, capping qty to whatever the new variant can actually cover and merging into a matching line if one already exists. */
 function changeCartLineVariant(line, productId, newVariantId) {
@@ -494,13 +512,17 @@ function sendMemoWA() {
             </div>
         </div>
 
-        <!-- sticky cart bar -->
-        <div v-if="cartCount" class="sticky-footer" style="display:flex;gap:10px;align-items:center;cursor:pointer" @click="cartOpen = true">
-            <div style="flex:1">
-                <div style="font-size:12px;color:var(--mut)">{{ t('pos.itemsInCart', { n: cartCount }) }}</div>
-                <div style="font-weight:800;font-size:18px">{{ money(subtotal) }}</div>
-            </div>
-            <button class="btn" style="width:auto;padding:0 22px">{{ t('pos.viewCart') }} →</button>
+        <!-- sticky cart bar — a big, hard-to-miss button (matches the shared
+             Pos/Index.vue's .posbar bill button) rather than a plain text
+             row, and capped to the content column's width on desktop so it
+             doesn't stretch edge-to-edge with a huge empty gap between the
+             total and the button (what the small original version did) -->
+        <div v-if="cartCount" style="height:78px"></div>
+        <div v-if="cartCount" class="posbar" style="max-width:1180px;margin:0 auto;padding-left:18px;padding-right:18px">
+            <button class="btn" style="box-shadow:0 6px 18px rgba(242,106,27,.4)" @click="cartOpen = true">
+                <span style="display:flex;align-items:center;gap:8px"><span class="cartcount">{{ cartCount }}</span> {{ t('pos.viewCart') }}</span>
+                <span style="margin-left:auto;font-weight:850">{{ money(subtotal) }}</span>
+            </button>
         </div>
 
         <!-- variant picker: color chips, size chips per selected color -->
