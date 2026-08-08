@@ -374,6 +374,19 @@ class DemoShopSeeder extends Seeder
                     'price' => 18, // whole-strip price
                 ]);
             }
+            // a product can carry more than one ProductUnit (hasMany, not a
+            // single pack size) — this demonstrates the full box -> strip ->
+            // tablet hierarchy Khaled specifically asked to see demoed
+            // (e.g. Sergel: 1 box = 10 strips = 100 tablets), all factors
+            // expressed directly in base (tablet) units so there's no
+            // compounding rounding between levels
+            ProductUnit::create([
+                'shop_id' => $shop->id,
+                'product_id' => $medicine->id,
+                'unit_id' => Unit::create(['shop_id' => $shop->id, 'name' => 'বক্স', 'name_en' => 'Box', 'code' => null])->id,
+                'factor' => 100, // 1 box = 10 strips x 10 tablets
+                'price' => 170, // whole-box price
+            ]);
         }
 
         Customer::create(['shop_id' => $shop->id, 'name' => 'Demo Customer', 'phone' => '01800000000', 'due' => 200, 'total_spent' => 1500, 'visits' => 3]);
