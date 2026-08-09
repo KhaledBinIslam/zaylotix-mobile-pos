@@ -118,9 +118,13 @@ return [
         'label_bn' => 'ওষুধের দোকান',
         'label_en' => 'Pharmacy',
         'fields' => ['expiry', 'batch'],
-        // regulated, perishable stock — full tracking + VAT + accountability
+        // regulated, perishable stock — full tracking + VAT + accountability.
+        // unit_conversion was missing here despite pharmacy being the
+        // canonical box->strip->piece use case (grocery/supershop both
+        // already had it) — without it, the whole pack-size section on the
+        // product edit screen simply never rendered for a pharmacy shop.
         'features' => [
-            'memo_print', 'memo_whatsapp', 'barcode_printing', 'purchases', 'suppliers', 'damages', 'returns',
+            'memo_print', 'memo_whatsapp', 'barcode_printing', 'unit_conversion', 'purchases', 'suppliers', 'damages', 'returns',
             'stock_count', 'low_stock_alerts', 'batch_tracking', 'prescription_records', 'wholesale_pricing', 'accounts', 'partners', 'expenses', 'reports', 'export', 'vat',
             'cashier_management', 'activity_log',
         ],

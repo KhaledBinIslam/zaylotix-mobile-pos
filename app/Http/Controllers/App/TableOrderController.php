@@ -524,6 +524,13 @@ class TableOrderController extends Controller
             return $sale;
         });
 
-        return redirect()->route('app.sales.show', $sale->id)->with('success', 'বিল সম্পন্ন হয়েছে।');
+        // ?autoprint=1 — Sales/Show.vue fires window.print() on load only
+        // when this exact param is present, so a table order that was just
+        // billed prints its combined KOT+memo copy without the cashier
+        // having to notice and tap a separate print button on the next
+        // page (Khaled's report: "customer receipt isn't printing"). Never
+        // set on a plain visit/refresh of that same URL, so it can't
+        // re-trigger a surprise reprint later.
+        return redirect()->route('app.sales.show', ['sale' => $sale->id, 'autoprint' => 1])->with('success', 'বিল সম্পন্ন হয়েছে।');
     }
 }

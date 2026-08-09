@@ -91,6 +91,20 @@ onMounted(async () => {
             await QRCode.toCanvas(qrEl, ratingUrl.value, { width: 90, margin: 1 });
         } catch (e) { /* non-critical — receipt still works without it */ }
     }
+
+    // best-effort auto-print — see TableOrderController::bill()'s comment
+    // on ?autoprint=1. Billing is a real server round trip (the invoice
+    // number/exact total don't exist until it responds), so there's no way
+    // to fire window.print() synchronously inside the original "Bill করুন"
+    // click the way KOT printing does; some browsers still honor a
+    // print() call this soon after a user-initiated form submit landed a
+    // new page, some don't. Either way the manual "প্রিন্ট" button below
+    // stays as the guaranteed fallback — this never removes it, only saves
+    // a tap when it works.
+    if (new URLSearchParams(window.location.search).get('autoprint') === '1') {
+        history.replaceState(null, '', window.location.pathname);
+        setTimeout(() => window.print(), 300);
+    }
 });
 const ratingUrl = computed(() => window.location.origin + route('rate.show', props.sale.id));
 </script>
