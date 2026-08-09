@@ -611,6 +611,8 @@ export const translations = {
     'pos.deleteHeldConfirm': { bn: 'এই হোল্ড করা বিলটি মুছে ফেলবেন?', en: 'Delete this held cart?' },
     'pos.prescriptionCheckLabel': { bn: 'প্রেসক্রিপশন যাচাই — নোট লিখুন', en: 'Prescription check — write a note' },
     'pos.prescriptionNotePlaceholder': { bn: 'ডাক্তার, ওষুধ, ডোজ ইত্যাদি', en: 'Doctor, medicine, dosage, etc.' },
+    'pos.prescriptionConfirmLabel': { bn: '✅ আমি প্রেসক্রিপশন যাচাই করেছি', en: '✅ I have verified the prescription' },
+    'pos.prescriptionConfirmRequired': { bn: 'বিক্রি করার আগে প্রেসক্রিপশন যাচাই নিশ্চিত করুন', en: 'Confirm the prescription check before selling' },
     'pos.grandTotal': { bn: 'সর্বমোট', en: 'Grand Total' },
     'pos.processing': { bn: '⏳ প্রসেসিং...', en: '⏳ Processing...' },
     'pos.checkoutButton': { bn: '✅ বিল করুন •', en: '✅ Checkout •' },

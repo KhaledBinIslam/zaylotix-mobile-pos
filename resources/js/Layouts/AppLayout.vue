@@ -168,18 +168,18 @@ const sidebarGroups = computed(() => [
     {
         label: t('nav.category.sales'),
         items: [
-            // for a restaurant-type shop, the plain product-only checkout
-            // below has zero concept of a table/takeaway/delivery channel or
-            // KOT — it's the wrong screen entirely (this is exactly the bug
-            // Khaled reported: the desktop sidebar's "বিক্রি (POS)" link was
-            // hardcoded to route('app.pos') regardless of business type,
-            // while the mobile bottom nav's single "sell" tab already
-            // correctly swapped to the restaurant Tables screen instead —
-            // hidden here now so the desktop sidebar matches that same,
-            // already-correct mobile behavior: "🍽️ রেস্টুরেন্ট" below is the
-            // one and only sell entry point once that feature is on).
-            { key: 'sell', label: t('nav.sellFull'), href: route('app.pos'), icon: '🛒', on: props.active === 'sell', show: hasPerm('pos') && !hasFeature('restaurant_tables') },
-            { key: 'restaurant', label: t('nav.restaurant'), href: route('app.restaurant.tables.index'), icon: '🍽️', on: props.active === 'restaurant', show: hasPerm('pos') && hasFeature('restaurant_tables') },
+            // ALWAYS visible, first, for every business type — Khaled's
+            // explicit correction after an earlier fix hid this item
+            // entirely for a restaurant shop (it used to be hardcoded to
+            // route('app.pos'), the wrong screen for that vertical, so a
+            // prior pass hid it rather than fix the destination). Reusing
+            // mobileSellHref/mobileSellActive — the exact same smart
+            // routing the mobile bottom nav's single "sell" tab already
+            // uses — fixes the actual bug (right destination per business
+            // type) without ever hiding the button itself. The separate
+            // "টেবিল" item that used to sit here as the restaurant-only
+            // stand-in is gone — this one link now covers it.
+            { key: 'sell', label: t('nav.sellFull'), href: mobileSellHref.value, icon: '🛒', on: mobileSellActive.value, show: hasPerm('pos') },
             { key: 'reservations', label: t('nav.reservations'), href: route('app.reservations.index'), icon: '📅', on: props.active === 'reservations', show: hasPerm('pos') && hasFeature('restaurant_tables') },
             { key: 'kds', label: t('nav.kds'), href: route('app.kds.index'), icon: '🍳', on: props.active === 'kds', show: hasPerm('pos') && hasFeature('restaurant_tables') },
             { key: 'cds', label: t('nav.cds'), href: route('app.cds.index'), icon: '🖥️', on: props.active === 'cds', show: hasPerm('pos') && hasFeature('restaurant_tables') },

@@ -65,10 +65,13 @@ const submitting = ref(false);
 const errorMsg = ref('');
 const heldSheet = ref(false);
 const prescriptionNote = ref('');
-// true the instant a drug-control-flagged product is in the cart — the
-// cashier isn't blocked from checking out (no digital way to verify a real
-// prescription), just reminded and given a place to note what was checked
+// true the instant a drug-control-flagged product is in the cart. There's
+// still no digital way to verify a REAL prescription exists, but per
+// Khaled's explicit request this is no longer purely passive (a field a
+// cashier could just never notice) — checkout is actually blocked until
+// they tick prescriptionConfirmed below, an explicit "yes I checked" gate.
 const cartNeedsPrescription = computed(() => hasPrescriptionRecords.value && cart.value.some((l) => productOf(l.product_id)?.requires_prescription));
+const prescriptionConfirmed = ref(false);
 
 const filtered = computed(() => props.products.filter((p) =>
     (!q.value
@@ -350,6 +353,7 @@ function resetCartAfterCheckout() {
     splitAmounts.value = { cash: '', bkash: '', nagad: '' };
     saleType.value = 'retail';
     prescriptionNote.value = '';
+    prescriptionConfirmed.value = false;
     cartOpen.value = false;
 }
 
@@ -357,6 +361,14 @@ function resetCartAfterCheckout() {
 // directly to get the sale/receipt payload back without a full page visit.
 async function submitCheckout() {
     if (!cart.value.length || submitting.value) return;
+    // active gate, not just an advisory field — see cartNeedsPrescription's
+    // comment. The checkout button is already disabled for this same
+    // reason (see the template), this is the defense-in-depth copy for any
+    // other way submitCheckout() could fire (e.g. a keyboard Enter).
+    if (cartNeedsPrescription.value && !prescriptionConfirmed.value) {
+        errorMsg.value = t('pos.prescriptionConfirmRequired');
+        return;
+    }
     submitting.value = true;
     errorMsg.value = '';
     const payload = buildCheckoutPayload();
@@ -838,6 +850,11 @@ useKeyboardShortcuts({
                             <div v-else class="em">{{ p.emoji }}</div>
                             <div class="pn">{{ p.name }} <span v-if="p.requires_prescription" style="color:var(--rose)">℞</span></div>
                             <div v-if="p.generic_name" class="pgeneric">{{ p.generic_name }}</div>
+                            <!-- rack/shelf location — already collected at stock-in and already
+                                 shown on the Stock page, but never made it to the actual selling
+                                 screen; a cashier hunting for a specific medicine on a shelf full
+                                 of them is exactly what this is for -->
+                            <div v-if="p.shelf_location" class="pgeneric">📍 {{ p.shelf_location }}</div>
                             <div class="pp">{{ money(p.price) }} <span style="color:var(--dim);font-weight:500">/ {{ p.unit?.name || t('pos.unit') }}</span></div>
                             <div class="ps">
                                 <span v-if="stockLevel(p) === 'out'" style="color:var(--rose)">{{ t('pos.outOfStock') }}</span>
@@ -968,6 +985,9 @@ useKeyboardShortcuts({
                                     {{ money(lineRaw(l) / l.qty) }} × {{ isWeighedLine(l) ? formatWeightQty(productOf(l.product_id), l.qty) : l.qty }} = {{ money(lineTotal(l)) }}
                                     <span v-if="l.discount > 0" style="color:var(--rose)"> (−{{ money(l.discount) }} {{ t('pos.itemDiscountApplied') }})</span>
                                 </span>
+                                <!-- expiry follows the item all the way into the cart too, not just
+                                     the product grid — same "⏳ Expires: ..." wording throughout -->
+                                <span v-if="hasBatchTracking && productOf(l.product_id)?.nearest_batch?.expiry_date" style="color:var(--rose);font-weight:600">⏳ {{ t('stock.expiresOn') }} {{ productOf(l.product_id).nearest_batch.expiry_date.slice(0, 10) }}</span>
                             </div>
                             <template v-if="isWeighedLine(l)">
                                 <button class="btn sm ghost" style="width:auto;padding:6px 12px" @click="openWeightEntry(productOf(l.product_id))">✎ {{ t('common.edit') }}</button>
@@ -1094,9 +1114,15 @@ useKeyboardShortcuts({
                     <input v-model="couponCode" style="text-transform:uppercase" :placeholder="t('pos.couponCodePlaceholder')">
                 </div>
 
-                <div v-if="cartNeedsPrescription" class="field">
-                    <label style="color:var(--rose)">℞ {{ t('pos.prescriptionCheckLabel') }}</label>
-                    <textarea v-model="prescriptionNote" rows="2" :placeholder="t('pos.prescriptionNotePlaceholder')"></textarea>
+                <div v-if="cartNeedsPrescription" class="card" style="margin-bottom:14px;background:var(--roseSoft);border-color:var(--rose)">
+                    <label style="color:var(--rose);font-weight:700">℞ {{ t('pos.prescriptionCheckLabel') }}</label>
+                    <textarea v-model="prescriptionNote" rows="2" :placeholder="t('pos.prescriptionNotePlaceholder')" style="margin-top:8px"></textarea>
+                    <!-- explicit confirm, not just an advisory note — checkout is
+                         actually blocked until this is ticked (see submitCheckout) -->
+                    <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;font-weight:700;color:var(--rose);cursor:pointer">
+                        <input type="checkbox" v-model="prescriptionConfirmed">
+                        {{ t('pos.prescriptionConfirmLabel') }}
+                    </label>
                 </div>
 
                 <div v-if="errorMsg" class="card" style="background:var(--roseSoft);color:var(--rose);margin-bottom:14px;font-size:13px">{{ errorMsg }}</div>
@@ -1123,7 +1149,7 @@ useKeyboardShortcuts({
                         <b>{{ money(total) }}</b>
                     </div>
 
-                    <button class="btn" :disabled="submitting" @click="submitCheckout">
+                    <button class="btn" :disabled="submitting || (cartNeedsPrescription && !prescriptionConfirmed)" @click="submitCheckout">
                         {{ submitting ? t('pos.processing') : `${t('pos.checkoutButton')} ${money(total)}` }}
                     </button>
                     <button class="btn ghost" style="margin-top:10px" :disabled="submitting" @click="holdCart">
