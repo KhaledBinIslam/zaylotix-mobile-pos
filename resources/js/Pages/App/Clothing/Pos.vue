@@ -472,7 +472,10 @@ watch(lastSale, async (sale) => {
     const QRCode = (await import('qrcode')).default;
     const qrEl = document.getElementById('clothing-receipt-rating-qr');
     if (qrEl) {
-        try { await QRCode.toCanvas(qrEl, window.location.origin + route('rate.show', sale.id), { width: 90, margin: 1 }); } catch (e) { /* non-critical */ }
+        // sale.rating_url is server-signed (see Sale::ratingUrl()) — never
+        // rebuild this from route('rate.show', sale.id) client-side, that
+        // would produce an unsigned link the `signed` middleware rejects
+        try { await QRCode.toCanvas(qrEl, sale.rating_url, { width: 90, margin: 1 }); } catch (e) { /* non-critical */ }
     }
 }, { flush: 'post' });
 

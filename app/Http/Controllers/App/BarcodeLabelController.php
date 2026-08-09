@@ -5,6 +5,7 @@ namespace App\Http\Controllers\App;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Support\Tenancy;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 
 class BarcodeLabelController extends Controller
@@ -13,7 +14,8 @@ class BarcodeLabelController extends Controller
     public function index()
     {
         return Inertia::render('App/BarcodeLabels/Index', [
-            'shop' => Tenancy::shop(),
+            // never the raw model, see Shop::toArrayForUser()
+            'shop' => Tenancy::shop()?->toArrayForUser(Auth::guard('web')->user()),
             // explicit column list — `barcode_labels` can be granted to a
             // cashier independently of `stock`, and an unscoped get() would
             // ship every column (including cost/margin) to that client

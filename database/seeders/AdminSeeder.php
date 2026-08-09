@@ -3,13 +3,14 @@
 namespace Database\Seeders;
 
 use App\Models\Admin;
+use App\Support\SeedGuard;
 use Illuminate\Database\Seeder;
 
 /**
  * Password controlled by ADMIN_SEED_PASSWORD in .env — defaults to
- * 'password' (fine for local dev) but MUST be overridden to something
- * strong before this ever runs against a real public deployment, since
- * this account has super_admin access to every shop.
+ * 'password' for local dev (see SeedGuard), but refuses to run at all in
+ * production if that var is missing, blank, or still a well-known weak
+ * value, since this account has super_admin access to every shop.
  */
 class AdminSeeder extends Seeder
 {
@@ -17,7 +18,7 @@ class AdminSeeder extends Seeder
     {
         Admin::updateOrCreate(
             ['email' => 'admin@zaylotix.com'],
-            ['name' => 'Khaled Bin Islam', 'password' => env('ADMIN_SEED_PASSWORD', 'password'), 'role' => 'super_admin']
+            ['name' => 'Khaled Bin Islam', 'password' => SeedGuard::password('ADMIN_SEED_PASSWORD', 'password'), 'role' => 'super_admin']
         );
     }
 }

@@ -112,6 +112,29 @@ class Shop extends Model
             : $this->features()->pluck('key');
     }
 
+    /**
+     * Security-audit fix: every place that hands this model straight to
+     * Inertia::render() (HomeController, MoreController, BarcodeLabelController,
+     * OnboardingController, HandleInertiaRequests' shared prop, the mobile
+     * API's Api\HomeController/AuthController) was shipping cash_balance/
+     * bank_balance/capital/monthly_fee to ANY logged-in shop user, even a
+     * cashier the owner never granted the `accounts` permission to —
+     * readable straight out of the page's own JSON via devtools/view-source,
+     * even though the Accounts page itself was correctly blocked server-
+     * side. AccountsController builds its own explicit response (its
+     * `cash`/`bank`/`capital` keys), so this never touches that page.
+     */
+    public function toArrayForUser(?User $user): array
+    {
+        $data = $this->toArray();
+
+        if (! $user || ! $user->hasPermission('accounts')) {
+            unset($data['cash_balance'], $data['bank_balance'], $data['capital'], $data['monthly_fee']);
+        }
+
+        return $data;
+    }
+
     public function isActive(): bool
     {
         if ($this->status !== 'active') {

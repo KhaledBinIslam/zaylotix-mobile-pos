@@ -52,7 +52,8 @@ class AuthController extends Controller
         RateLimiter::clear($key);
         $token = $user->createToken($data['device_name'])->plainTextToken;
 
-        return response()->json(['token' => $token, 'user' => $user, 'shop' => $user->shop]);
+        // never the raw shop model, see Shop::toArrayForUser()
+        return response()->json(['token' => $token, 'user' => $user, 'shop' => $user->shop?->toArrayForUser($user)]);
     }
 
     public function logout(Request $request)
@@ -64,6 +65,9 @@ class AuthController extends Controller
 
     public function me(Request $request)
     {
-        return response()->json(['user' => $request->user(), 'shop' => $request->user()->shop]);
+        $user = $request->user();
+
+        // never the raw shop model, see Shop::toArrayForUser()
+        return response()->json(['user' => $user, 'shop' => $user->shop?->toArrayForUser($user)]);
     }
 }

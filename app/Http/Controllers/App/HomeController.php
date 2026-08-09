@@ -55,7 +55,9 @@ class HomeController extends Controller
         }
 
         return Inertia::render('App/Home', [
-            'shop' => $shop,
+            // shop is reachable by any staff regardless of permission grants
+            // — never the raw model, see Shop::toArrayForUser()
+            'shop' => $shop?->toArrayForUser(Auth::guard('web')->user()),
             'todaySale' => (float) $todaySales->sum('total'),
             'todayProfit' => (float) $todaySales->sum('profit'),
             'billsToday' => $todaySales->count(),

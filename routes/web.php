@@ -95,8 +95,19 @@ Route::middleware('guest')->group(function () {
 
 // Public — no auth. A customer scanning the QR code printed on their paper
 // receipt has no Zaylotix account, so this must be reachable without login.
-Route::get('rate/{sale}', [RatingController::class, 'show'])->name('rate.show');
-Route::post('rate/{sale}', [RatingController::class, 'store'])->name('rate.store');
+//
+// Security-audit fix: {sale} is a plain sequential id — without `signed`,
+// anyone could enumerate every sale on the platform (another shop's totals/
+// invoice numbers) and post a rating for a sale they never made. The link
+// is only ever handed out already-signed (see Sale::ratingUrl(), used by
+// the QR code and Public/Rate.vue's own form submit), so a real customer's
+// flow is completely unaffected — only a guessed/hand-typed {sale} id with
+// no matching signature gets rejected. `throttle` is a second layer against
+// a leaked/reused link being hammered.
+Route::middleware(['signed', 'throttle:20,1'])->group(function () {
+    Route::get('rate/{sale}', [RatingController::class, 'show'])->name('rate.show');
+    Route::post('rate/{sale}', [RatingController::class, 'store'])->name('rate.store');
+});
 
 Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(function () {
     Route::post('logout', [LoginController::class, 'destroy'])->name('logout');

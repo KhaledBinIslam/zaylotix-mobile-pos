@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\Supplier;
 use App\Support\Tenancy;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 
 class MoreController extends Controller
@@ -25,7 +26,9 @@ class MoreController extends Controller
         }
 
         return Inertia::render('App/More', [
-            'shop' => $shop,
+            // More is reachable by any staff regardless of permission
+            // grants — never the raw model, see Shop::toArrayForUser()
+            'shop' => $shop?->toArrayForUser(Auth::guard('web')->user()),
             // feeds the Purchase/Damage/Return/Stock-count pickers — none of
             // those flows support variant products (their stock is a live
             // sum of variants, managed from the Stock page instead), so

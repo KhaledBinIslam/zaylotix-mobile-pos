@@ -33,7 +33,7 @@ class HandleInertiaRequests extends Middleware
                 'user' => $shopUser,
                 'admin' => $admin,
             ],
-            'shop' => fn () => $shopUser ? Tenancy::shop() : null,
+            'shop' => fn () => $shopUser ? Tenancy::shop()?->toArrayForUser($shopUser) : null,
             // owner-only -- the branch switcher in AppLayout's header. Null
             // for a shop with no branches (every shop today, unchanged) or
             // for a staff account (always fixed to one branch, never sees

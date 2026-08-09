@@ -114,7 +114,10 @@ onMounted(async () => {
     }
 });
 const justBilled = ref(false);
-const ratingUrl = computed(() => window.location.origin + route('rate.show', props.sale.id));
+// props.sale.rating_url is server-signed (see Sale::ratingUrl()) — never
+// rebuild this from route('rate.show', sale.id) client-side, that would
+// produce an unsigned link the `signed` middleware rejects
+const ratingUrl = computed(() => props.sale.rating_url);
 </script>
 
 <template>

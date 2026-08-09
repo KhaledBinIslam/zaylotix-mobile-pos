@@ -4,10 +4,13 @@ namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\URL;
 
 class Sale extends Model
 {
     use BelongsToTenant;
+
+    protected $appends = ['rating_url'];
 
     protected $fillable = [
         'shop_id', 'customer_id', 'table_order_id', 'user_id', 'invoice_no', 'date', 'time',
@@ -51,6 +54,24 @@ class Sale extends Model
     public function isVoided(): bool
     {
         return $this->voided_at !== null;
+    }
+
+    /**
+     * Security-audit fix: the public /rate/{sale} page used to be reached
+     * via a plain sequential id (route('rate.show', sale.id), built entirely
+     * client-side) — anyone could enumerate every sale on the platform by
+     * counting, reading another shop's totals/invoice numbers and posting a
+     * rating for a sale they never made. Signing it here (server-side only,
+     * needs APP_KEY) means the QR code/link only ever works for the exact
+     * sale it was generated for; RatingController rejects anything else via
+     * the `signed` middleware. No expiry — a customer scanning a paper
+     * receipt weeks later must still work.
+     */
+    protected function ratingUrl(): \Illuminate\Database\Eloquent\Casts\Attribute
+    {
+        return \Illuminate\Database\Eloquent\Casts\Attribute::make(
+            get: fn () => URL::signedRoute('rate.show', ['sale' => $this->id]),
+        );
     }
 
     public function shop()

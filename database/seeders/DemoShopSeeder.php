@@ -18,17 +18,17 @@ use App\Models\SaleItem;
 use App\Models\Shop;
 use App\Models\Unit;
 use App\Models\User;
+use App\Support\SeedGuard;
 use App\Support\ShopProvisioner;
 use App\Support\Tenancy;
 use Illuminate\Database\Seeder;
 
 /**
  * Every demo shop's owner login shares one password, controlled by
- * DEMO_SHOP_PASSWORD in .env — defaults to '1234' (fine for local dev,
- * never used unguarded elsewhere) but MUST be overridden to something
- * strong before this seeder ever runs against a real public deployment,
- * since these are otherwise guessable, publicly-documented demo phone
- * numbers.
+ * DEMO_SHOP_PASSWORD in .env — defaults to '1234' for local dev (see
+ * SeedGuard), but refuses to run at all in production if that var is
+ * missing, blank, or still a well-known weak value, since these are
+ * otherwise guessable, publicly-documented demo phone numbers.
  */
 class DemoShopSeeder extends Seeder
 {
@@ -36,7 +36,7 @@ class DemoShopSeeder extends Seeder
 
     public function run(): void
     {
-        $this->password = env('DEMO_SHOP_PASSWORD', '1234');
+        $this->password = SeedGuard::password('DEMO_SHOP_PASSWORD', '1234');
 
         $this->groceryFlagship();
         $this->lightDemo('pharmacy', 'Sasto Pharmacy', '01700000002', 'Dhaka');

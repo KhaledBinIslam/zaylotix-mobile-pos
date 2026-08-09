@@ -26,7 +26,12 @@ function pick(n) {
 
 function submit() {
     if (!form.stars) return;
-    form.post(route('rate.store', props.sale.id), {
+    // Posts back to the exact URL this page was opened with (path + the
+    // signature/expires query string Sale::ratingUrl() generated) rather
+    // than route('rate.store', ...), which would build a plain unsigned
+    // /rate/{id} and get rejected by the `signed` middleware — see
+    // routes/web.php's comment on this route group.
+    form.post(window.location.pathname + window.location.search, {
         preserveScroll: true,
         onSuccess: () => { submitted.value = true; },
     });
