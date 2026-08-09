@@ -647,6 +647,7 @@ export const translations = {
 
     // ---- offline mode ----
     'offline.banner': { bn: 'নেট সংযোগ নেই — বিক্রি করলে ফোনেই সংরক্ষণ হবে। দ্রুত ইন্টারনেট চালু করুন, যাতে ডেটা নিরাপদে সার্ভারে ব্যাকআপ হয়ে যায়।', en: "No internet — sales made now are saved on this phone. Turn your internet back on soon so this data safely backs up to the server." },
+    'offline.lastSyncedAt': { bn: ' শেষ আপডেট: {time}', en: ' Last updated: {time}' },
     'offline.pendingCount': { bn: '{n} টি বিক্রি পাঠানো হচ্ছে...', en: 'Sending {n} queued sale(s)...' },
     'offline.failedCount': { bn: '{n} টি বিক্রি সিঙ্ক ব্যর্থ হয়েছে — দেখতে চাপুন', en: '{n} sale(s) failed to sync — tap to review' },
     'offline.failedTitle': { bn: 'সিঙ্ক ব্যর্থ হওয়া বিক্রি', en: 'Sales that failed to sync' },

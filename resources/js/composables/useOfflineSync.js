@@ -2,6 +2,19 @@ import { ref, computed } from 'vue';
 import { enqueueSale, removeFromQueue, markFailed, retryEntry, pendingCount, failedCount } from '@/support/offlineQueue';
 import { kvGet, kvSet, KEYS } from '@/support/offlineDb';
 
+// "শেষ কখন data update হয়েছে" — a shop owner running for a couple of hours
+// offline needs to know how stale the prices/stock they're looking at are,
+// not just a bare "no internet" banner. Persisted (not just an in-memory
+// ref) so it survives the tab being closed and reopened while still
+// offline — the whole point of this timestamp is to answer "as of when"
+// across exactly that gap.
+const lastOnlineAt = ref(null);
+let lastOnlineLoaded = false;
+async function touchLastOnlineAt() {
+    lastOnlineAt.value = Date.now();
+    await kvSet(KEYS.LAST_ONLINE_AT, lastOnlineAt.value);
+}
+
 // Module-level (not inside the exported function) so every component that
 // calls useOfflineSync() shares the exact same reactive queue/online state
 // — Inertia navigates between pages without a full reload, so a fresh
@@ -77,6 +90,7 @@ function bindListeners() {
     listenersBound = true;
     window.addEventListener('online', () => {
         isOnline.value = true;
+        touchLastOnlineAt();
         trySync();
     });
     window.addEventListener('offline', () => {
@@ -86,8 +100,20 @@ function bindListeners() {
 
 export function useOfflineSync() {
     bindListeners();
+    if (!lastOnlineLoaded) {
+        lastOnlineLoaded = true;
+        kvGet(KEYS.LAST_ONLINE_AT, null).then((v) => {
+            // don't clobber a timestamp touchLastOnlineAt() may have already
+            // set this session (e.g. the 'online' listener firing before
+            // this async load resolves)
+            if (lastOnlineAt.value === null) lastOnlineAt.value = v;
+        });
+    }
     ensureLoaded().then(() => {
-        if (isOnline.value) trySync();
+        if (isOnline.value) {
+            touchLastOnlineAt();
+            trySync();
+        }
     });
 
     async function queueSale(payload) {
@@ -112,6 +138,7 @@ export function useOfflineSync() {
         isOnline,
         syncing,
         queue,
+        lastOnlineAt,
         pendingCount: computed(() => pendingCount(queue.value)),
         failedCount: computed(() => failedCount(queue.value)),
         queueSale,

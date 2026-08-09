@@ -14,6 +14,13 @@ const props = defineProps({ active: { type: String, default: 'home' } });
 const page = usePage();
 const offlineSync = useOfflineSync();
 const failedSheet = ref(false);
+// "as of when" for the offline banner — a shop owner looking at possibly
+// hours-old stock/prices while offline needs to know how stale it is, not
+// just a bare "no internet" message
+const lastOnlineText = computed(() => {
+    if (!offlineSync.lastOnlineAt.value) return null;
+    return new Date(offlineSync.lastOnlineAt.value).toLocaleTimeString(lang.value === 'bn' ? 'bn-BD' : 'en-US', { hour: '2-digit', minute: '2-digit' });
+});
 const impersonating = computed(() => page.props.impersonating);
 function stopImpersonating() {
     router.post(route('admin.impersonate.stop'));
@@ -344,6 +351,7 @@ const sidebarGroups = computed(() => [
                     </button>
                     <div v-if="!offlineSync.isOnline.value" class="expiry-banner urgent">
                         📴 {{ t('offline.banner') }}
+                        <span v-if="lastOnlineText">{{ t('offline.lastSyncedAt', { time: lastOnlineText }) }}</span>
                     </div>
                     <button v-if="offlineSync.pendingCount.value || offlineSync.failedCount.value" class="expiry-banner" style="width:100%;text-align:left;cursor:pointer" @click="offlineSync.failedCount.value ? (failedSheet = true) : offlineSync.trySync()">
                         <template v-if="offlineSync.failedCount.value">⚠️ {{ t('offline.failedCount', { n: offlineSync.failedCount.value }) }}</template>

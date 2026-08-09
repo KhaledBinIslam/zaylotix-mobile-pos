@@ -128,6 +128,18 @@ class TableOrderController extends Controller
             }
         });
 
+        // Order.vue's postItem() (see useOfflineActionQueue) sends
+        // Accept: application/json for BOTH the live click path and the
+        // queued-sync replay — same reasoning as bill()'s wantsJson()
+        // branch: an explicit 200 is a reliable success signal, instead of
+        // relying on fetch() silently following back()'s redirect to a
+        // full HTML page and treating whatever it lands on as "ok". A
+        // plain browser/Inertia request is unaffected — still gets the
+        // redirect exactly as before.
+        if ($request->wantsJson()) {
+            return response()->json(['ok' => true]);
+        }
+
         return back()->with('success', 'যোগ হয়েছে।');
     }
 
@@ -523,6 +535,18 @@ class TableOrderController extends Controller
 
             return $sale;
         });
+
+        // Order.vue's submitBill() calls this via a raw fetch (Accept:
+        // application/json), not a normal Inertia visit — needed so it can
+        // tell a genuine connectivity failure apart from a real rejection
+        // and queue it offline (see useOfflineActionQueue), the same
+        // reasoning PosController::checkout() already has a JSON response
+        // for. A plain browser/Inertia request (no such Accept header)
+        // keeps getting the redirect exactly as before — nothing about the
+        // normal online path changes.
+        if ($request->wantsJson()) {
+            return response()->json(['sale_id' => $sale->id]);
+        }
 
         // ?autoprint=1 — Sales/Show.vue reads this to know the cashier
         // just landed here straight from billing (not a later revisit) and

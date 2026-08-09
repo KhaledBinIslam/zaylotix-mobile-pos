@@ -10,6 +10,8 @@ const STORE = 'kv';
 export const KEYS = {
     SALE_QUEUE: 'sale-queue',
     PRODUCT_CACHE: 'product-cache',
+    LAST_ONLINE_AT: 'last-online-at',
+    ACTION_QUEUE: 'action-queue',
 };
 
 function openDb() {

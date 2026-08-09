@@ -6,6 +6,7 @@ import Sheet from '@/Components/Sheet.vue';
 import { useI18n } from '@/composables/useI18n';
 import { useToast } from '@/composables/useToast';
 import { useHardwareScanner } from '@/composables/useHardwareScanner';
+import { useOfflineActionQueue } from '@/composables/useOfflineActionQueue';
 
 const props = defineProps({
     order: Object, products: Array, categories: Array,
@@ -17,6 +18,14 @@ const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 
 const page = usePage();
 const shop = computed(() => page.props.shop);
+// order.total (the server-computed field) only refreshes on a real reload —
+// recomputing it here from order.items instead means (a) it's usable in
+// <script setup> code, where props aren't auto-unwrapped as bare names the
+// way they are inside <template>, and (b) an item added while offline (see
+// postItem()'s optimistic push to props.order.items) shows up in the
+// subtotal/VAT-preview immediately instead of looking stale until sync.
+const liveOrderTotal = computed(() => props.order.items
+    .reduce((s, it) => s + it.price * it.qty - Math.min(it.discount || 0, it.price * it.qty), 0));
 // complimentary (free/staff-meal) bills give away real inventory for free —
 // owner-only, same reasoning as Pos/Index.vue
 const isOwner = computed(() => page.props.auth?.user?.role === 'owner');
@@ -37,9 +46,9 @@ const vatPreview = computed(() => {
     if (!shop.value) return 0;
     if (shop.value.vat_mode === 'full') {
         const rate = Number(shop.value.vat_rate) || 0;
-        return Math.round(order.total * rate / (100 + rate) * 100) / 100;
+        return Math.round(liveOrderTotal.value * rate / (100 + rate) * 100) / 100;
     }
-    if (shop.value.vat_mode === 'turnover') return Math.round(order.total * (Number(shop.value.turnover_rate) || 0) / 100 * 100) / 100;
+    if (shop.value.vat_mode === 'turnover') return Math.round(liveOrderTotal.value * (Number(shop.value.turnover_rate) || 0) / 100 * 100) / 100;
     return 0;
 });
 
@@ -64,6 +73,15 @@ const filtered = computed(() => props.products.filter((p) =>
 // TableOrderController::addItem() flatly rejects a variant product, so a
 // scanned one is just reported back rather than posted and rejected. ---
 const { toast } = useToast();
+// scope, deliberately: only addItem/incItem (building the order) and
+// submitBill (completing the sale) are queued offline below — the two
+// money/stock-critical actions Khaled explicitly asked for. Lower-stakes
+// mutations (decrement/remove/toggleServed/updateMeta) stay Inertia-based,
+// best-effort with the global network-failure toast (app.js) as feedback;
+// queueing every mutation type here would be a much larger, riskier scope
+// than this pass covers, and none of them risk silently losing money/stock
+// the way a dropped add-item or bill would.
+const offlineActions = useOfflineActionQueue();
 const canScan = computed(() => shop.value?.sales_mode === 'scan' || shop.value?.sales_mode === 'both');
 const scannerOpen = ref(false);
 const scanHint = ref('');
@@ -183,12 +201,62 @@ function assignTable() {
         .patch(route('app.restaurant.orders.assignTable', props.order.id), { preserveScroll: true });
 }
 
+function csrfToken() {
+    return document.querySelector('meta[name="csrf-token"]')?.content || '';
+}
+
+/**
+ * Raw fetch instead of router.post — needed so a genuine connectivity
+ * failure can be told apart from a real server rejection and queued
+ * offline (see useOfflineActionQueue), the same distinction Pos/Index.vue's
+ * buildCheckoutPayload/submitCheckout already draws. A queued add-item
+ * optimistically appends to props.order.items client-side (with a
+ * temporary negative id, since the server doesn't have this row yet) so
+ * the cashier keeps seeing what they rang up instead of the screen
+ * reverting to "not added" — replaced by the server's real state once
+ * this order's queue actually syncs and the page reloads.
+ */
+async function postItem(productId, qty) {
+    const url = route('app.restaurant.orders.items.store', props.order.id);
+    const body = { product_id: productId, qty };
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken(), Accept: 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (res.ok) {
+            router.reload({ only: ['order'], preserveScroll: true, preserveState: true });
+        } else {
+            const data = await res.json().catch(() => ({}));
+            toast('❌ ' + (data.message || t('pos.checkoutError')));
+        }
+    } catch (e) {
+        if (!navigator.onLine || e instanceof TypeError) {
+            await offlineActions.queueAction(url, 'POST', body);
+            const product = props.products.find((p) => p.id === productId);
+            const existing = props.order.items.find((it) => it.product_id === productId && !it.kot_printed_at && !it.sale_id);
+            if (existing) {
+                existing.qty += qty;
+            } else if (product) {
+                props.order.items.push({
+                    id: -Date.now(), product_id: productId, product_name: product.name,
+                    qty, price: product.price, cost: product.cost, discount: 0,
+                    kot_printed_at: null, served_at: null, sale_id: null,
+                });
+            }
+            toast(t('pos.savedOffline'));
+        } else {
+            toast('❌ ' + t('pos.networkError'));
+        }
+    }
+}
 function addItem(p) {
     if (p.stock <= 0) return;
-    router.post(route('app.restaurant.orders.items.store', props.order.id), { product_id: p.id, qty: 1 }, { preserveScroll: true });
+    postItem(p.id, 1);
 }
 function incItem(item) {
-    router.post(route('app.restaurant.orders.items.store', props.order.id), { product_id: item.product_id, qty: 1 }, { preserveScroll: true });
+    postItem(item.product_id, 1);
 }
 function decItem(item) {
     router.patch(route('app.restaurant.orderItems.decrement', item.id), {}, { preserveScroll: true });
@@ -295,7 +363,7 @@ const payMode = ref('cash');
 const discount = ref(0);
 const customerPhone = ref('');
 const customerName = ref('');
-const billBaseTotal = computed(() => (splitMode.value ? splitSubtotal.value : props.order.total));
+const billBaseTotal = computed(() => (splitMode.value ? splitSubtotal.value : liveOrderTotal.value));
 // complimentary forces the server to charge nothing (discount = subtotal,
 // see TableOrderController::bill()) — the displayed total must reflect that
 // the instant "🎁 Complimentary" is picked, not just after the bill is sent
@@ -309,13 +377,33 @@ const serviceCharge = computed(() => {
     return Math.round(Math.max(0, billBaseTotal.value - effectiveDiscount.value) * Number(rate) / 100 * 100) / 100;
 });
 const billTotal = computed(() => Math.max(0, billBaseTotal.value - effectiveDiscount.value) + serviceCharge.value);
-const billForm = useForm({});
+const billSubmitting = ref(false);
 function openBillSheet() {
     if (splitMode.value && !selectedItemIds.value.length) return;
     billSheet.value = true;
 }
-function submitBill() {
-    billForm.transform(() => ({
+/**
+ * Raw fetch, same reasoning as postItem() above — needed to tell a real
+ * connectivity failure apart from a genuine rejection and queue it. Unlike
+ * addItem (which optimistically shows the item was added), a queued bill
+ * can't optimistically redirect to a printable receipt — there's no Sale
+ * row, no invoice number, until this actually reaches the server. The
+ * order just stays open/visible here; once this device is back online and
+ * the queue syncs, TableOrderController::bill() runs for real (same
+ * locking/re-validation as an online bill), and the cashier can print from
+ * the sale it creates then, same as any other completed order.
+ *
+ * The Accept:application/json header below makes bill() take its
+ * wantsJson() branch and return {sale_id} directly instead of a redirect —
+ * so on success we can navigate straight to the receipt via Inertia,
+ * exactly like the normal online path ends up at, rather than reloading
+ * this now-empty order page.
+ */
+async function submitBill() {
+    if (billSubmitting.value) return;
+    billSubmitting.value = true;
+    const url = route('app.restaurant.orders.bill', props.order.id);
+    const body = {
         discount: discount.value || 0,
         complimentary: payMode.value === 'complimentary',
         // a discount that fully covers the total legitimately zeroes it —
@@ -325,9 +413,38 @@ function submitBill() {
         customer_phone: customerPhone.value,
         customer_name: customerName.value,
         item_ids: splitMode.value ? selectedItemIds.value : undefined,
-    })).post(route('app.restaurant.orders.bill', props.order.id), {
-        onSuccess: () => { splitMode.value = false; selectedItemIds.value = []; },
-    });
+    };
+
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken(), Accept: 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (res.ok) {
+            const data = await res.json().catch(() => ({}));
+            splitMode.value = false;
+            selectedItemIds.value = [];
+            if (data.sale_id) {
+                router.visit(route('app.sales.show', { sale: data.sale_id, autoprint: 1 }));
+            } else {
+                router.visit(url.replace('/bill', '')); // shouldn't happen — fall back to reloading this order
+            }
+        } else {
+            const data = await res.json().catch(() => ({}));
+            toast('❌ ' + (data.message || t('pos.checkoutError')));
+        }
+    } catch (e) {
+        if (!navigator.onLine || e instanceof TypeError) {
+            await offlineActions.queueAction(url, 'POST', body);
+            billSheet.value = false;
+            toast(t('pos.savedOffline'));
+        } else {
+            toast('❌ ' + t('pos.networkError'));
+        }
+    } finally {
+        billSubmitting.value = false;
+    }
 }
 
 // --- table transfer / merge ---
@@ -372,7 +489,7 @@ onBeforeUnmount(() => {
         <div style="display:flex;align-items:start;justify-content:space-between;gap:10px">
             <div>
                 <div class="pgttl">{{ displayName }}</div>
-                <div class="pgsub">{{ t('restaurant.orderTitle') }} • {{ money(order.total) }}</div>
+                <div class="pgsub">{{ t('restaurant.orderTitle') }} • {{ money(liveOrderTotal) }}</div>
             </div>
             <button class="btn ghost sm" style="width:auto;padding:8px 14px;flex:0 0 auto" @click="moreSheet = true">⋯ {{ t('common.more') }}</button>
         </div>
@@ -486,7 +603,7 @@ onBeforeUnmount(() => {
                      the same way on mobile, tablet and desktop -->
                 <div class="sticky-footer">
                     <div v-if="order.items.length" class="card" style="margin-bottom:8px;padding:10px 14px">
-                        <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--mut);padding:2px 0"><span>{{ t('pos.subtotal') }}</span><span>{{ money(order.total) }}</span></div>
+                        <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--mut);padding:2px 0"><span>{{ t('pos.subtotal') }}</span><span>{{ money(liveOrderTotal) }}</span></div>
                         <div v-if="vatPreview > 0" style="display:flex;justify-content:space-between;font-size:13px;color:var(--mut);padding:2px 0"><span>{{ t('restaurant.vatEstimate') }}</span><span>{{ money(vatPreview) }}</span></div>
                     </div>
 
