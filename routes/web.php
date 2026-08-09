@@ -34,6 +34,7 @@ use App\Http\Controllers\App\NotificationController;
 use App\Http\Controllers\App\OnboardingController;
 use App\Http\Controllers\App\PaymentController;
 use App\Http\Controllers\App\PaymentGatewayController;
+use App\Http\Controllers\App\StockTransferController;
 use App\Http\Controllers\App\SubscriptionRenewalController;
 use App\Http\Controllers\App\WhatsappBulkController;
 use App\Http\Controllers\App\WhatsappCredentialController;
@@ -110,6 +111,8 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
     Route::post('notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.readAll');
     Route::post('branches/{branch}/switch', [BranchController::class, 'switch'])->name('branches.switch');
     Route::post('branches/sync-catalog', [BranchController::class, 'syncCatalog'])->name('branches.syncCatalog');
+    Route::get('stock-transfers', [StockTransferController::class, 'index'])->name('stockTransfers.index');
+    Route::post('stock-transfers', [StockTransferController::class, 'store'])->name('stockTransfers.store');
 
     Route::middleware('perm:pos')->group(function () {
         Route::get('pos', [PosController::class, 'index'])->name('pos');

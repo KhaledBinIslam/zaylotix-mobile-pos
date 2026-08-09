@@ -103,7 +103,7 @@ class ShopController extends Controller
             'shopFeatureKeys' => $shop->featureKeys(),
             // only a main shop (parent_shop_id null) can have branches of
             // its own -- a branch's edit page just never shows this section
-            'branches' => $shop->parent_shop_id ? null : $shop->branches()->get(['id', 'name', 'area', 'status', 'created_at']),
+            'branches' => $shop->parent_shop_id ? null : $shop->branches()->get(['id', 'name', 'area', 'status', 'is_warehouse', 'created_at']),
         ]);
     }
 
@@ -156,6 +156,7 @@ class ShopController extends Controller
             'monthly_fee' => ['nullable', 'numeric', 'min:0'],
             'subscription_start' => ['required', 'date'],
             'subscription_expiry' => ['required', 'date'],
+            'is_warehouse' => ['nullable', 'boolean'],
         ]);
 
         $branch = DB::transaction(function () use ($data, $shop) {

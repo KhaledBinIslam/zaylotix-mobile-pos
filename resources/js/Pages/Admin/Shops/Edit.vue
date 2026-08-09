@@ -12,7 +12,7 @@ const props = defineProps({ shop: Object, businessTypes: Array, features: Array,
 // any other shop -- no separate billing mechanism needed.
 const branchForm = useForm({
     name: '', area: '', phone: '', plan: 'monthly', monthly_fee: '',
-    subscription_start: new Date().toISOString().slice(0, 10), subscription_expiry: '',
+    subscription_start: new Date().toISOString().slice(0, 10), subscription_expiry: '', is_warehouse: false,
 });
 function createBranch() {
     branchForm.post(route('admin.shops.branches.store', props.shop.id), {
@@ -211,7 +211,7 @@ const recommendedFeatureKeys = () => {
             <h2 class="text-lg font-bold mb-3">Branches</h2>
             <div v-for="b in branches" :key="b.id" class="flex items-center justify-between py-2 border-b last:border-0">
                 <div>
-                    <div class="font-medium">🏬 {{ b.name }}</div>
+                    <div class="font-medium">{{ b.is_warehouse ? '🏭' : '🏬' }} {{ b.name }}</div>
                     <div class="text-xs text-gray-400">{{ b.area }} • {{ b.status }} • created {{ b.created_at }}</div>
                 </div>
                 <Link :href="route('admin.shops.edit', b.id)" class="text-violet-600 text-sm">Edit →</Link>
@@ -235,6 +235,7 @@ const recommendedFeatureKeys = () => {
                     <div><label class="text-xs text-gray-500">Subscription expiry</label><input v-model="branchForm.subscription_expiry" type="date" class="w-full rounded-lg border-gray-300 text-sm">
                         <div v-if="branchForm.errors.subscription_expiry" class="text-rose-600 text-xs mt-1">{{ branchForm.errors.subscription_expiry }}</div>
                     </div>
+                    <label class="flex items-center gap-2 text-sm text-gray-600"><input type="checkbox" v-model="branchForm.is_warehouse" class="rounded"> 🏭 This is a warehouse (stock-only, not for POS sales)</label>
                 </div>
                 <button class="px-4 py-2 rounded-lg [background:#7C3AED] text-white text-sm font-bold" :disabled="branchForm.processing">
                     {{ branchForm.processing ? 'Creating...' : 'Create branch' }}

@@ -312,7 +312,7 @@ onMounted(() => {
         <div class="pgttl">{{ t('more.title') }}</div>
         <div class="pgsub">{{ shop?.name }} • {{ shop?.phone }}</div>
 
-        <template v-if="hasPerm('sales_history') || (hasPerm('barcode_labels') && features.includes('barcode_printing')) || (hasPerm('pos') && features.includes('restaurant_tables')) || (hasPerm('promotions') && features.includes('promotions')) || (hasPerm('pos') && features.includes('quotations')) || hasPerm('pos') || isMainShopWithBranches">
+        <template v-if="hasPerm('sales_history') || (hasPerm('barcode_labels') && features.includes('barcode_printing')) || (hasPerm('pos') && features.includes('restaurant_tables')) || (hasPerm('promotions') && features.includes('promotions')) || (hasPerm('pos') && features.includes('quotations')) || hasPerm('pos') || isMainShopWithBranches || (isOwner && branches)">
             <div class="sechead"><h2>{{ t('more.sectionSales') }}</h2></div>
             <Link v-if="hasPerm('pos') && features.includes('restaurant_tables')" :href="route('app.restaurant.tables.index')" class="row">
                 <div class="ava">🍽️</div><div class="mid"><b>{{ t('nav.restaurant') }}</b><span>{{ t('restaurant.tablesSubtitle') }}</span></div><div class="end">›</div>
@@ -332,6 +332,9 @@ onMounted(() => {
             <button v-if="isMainShopWithBranches" class="row" style="width:100%;text-align:left;border:none;background:none;cursor:pointer" @click="syncBranchCatalog">
                 <div class="ava">🔄</div><div class="mid"><b>{{ t('branch.syncButton') }}</b><span>{{ t('branch.syncButtonSub') }}</span></div><div class="end">›</div>
             </button>
+            <Link v-if="isOwner && branches" :href="route('app.stockTransfers.index')" class="row">
+                <div class="ava">🚚</div><div class="mid"><b>{{ t('more.stockTransfer') }}</b><span>{{ t('more.stockTransferSub') }}</span></div><div class="end">›</div>
+            </Link>
             <button v-if="isOwner" class="row" style="width:100%;text-align:left;border:none;background:none;cursor:pointer" @click="openRenewalSheet">
                 <div class="ava">💳</div><div class="mid"><b>{{ t('renewal.menuTitle') }}</b><span>{{ t('renewal.menuSub') }}</span></div><div class="end">›</div>
             </button>
