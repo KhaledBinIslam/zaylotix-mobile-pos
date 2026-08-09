@@ -112,6 +112,7 @@ const ratingUrl = computed(() => window.location.origin + route('rate.show', pro
         <div v-if="tableOrder" id="printable-kot-recap" :style="kotRecapStyle">
             <h3>{{ t('restaurant.kotTitle') }}</h3>
             <div class="rc-sub">
+                {{ t('restaurant.orderNo', { id: tableOrder.id }) }}<br>
                 {{ tableOrder.table?.name }}
                 <template v-if="tableOrder.order_source === 'delivery'"><br>🛵 {{ t('restaurant.sourceDelivery') }} — {{ tableOrder.delivery_platform }}</template>
                 <template v-else-if="tableOrder.order_source === 'takeaway'"><br>🥡 {{ t('restaurant.sourceTakeaway') }}</template>
@@ -130,7 +131,7 @@ const ratingUrl = computed(() => window.location.origin + route('rate.show', pro
                 <template v-if="shop?.bin_no && sale.vat > 0"><br>BIN: {{ shop.bin_no }}</template>
                 <br>মেমো — {{ sale.invoice_no }} • {{ sale.date }} {{ sale.time }}
                 <template v-if="tableOrder">
-                    <br>{{ tableOrder.order_source === 'delivery' ? t('restaurant.sourceDelivery') : tableOrder.order_source === 'takeaway' ? t('restaurant.sourceTakeaway') : t('restaurant.sourceDineIn') }}{{ tableOrder.table?.name ? ' — ' + tableOrder.table.name : '' }}
+                    <br>{{ t('restaurant.orderNo', { id: tableOrder.id }) }} • {{ tableOrder.order_source === 'delivery' ? t('restaurant.sourceDelivery') : tableOrder.order_source === 'takeaway' ? t('restaurant.sourceTakeaway') : t('restaurant.sourceDineIn') }}{{ tableOrder.table?.name ? ' — ' + tableOrder.table.name : '' }}
                     <template v-if="tableOrder.waiter_name"> • {{ tableOrder.waiter_name }}</template>
                 </template>
             </div>

@@ -580,6 +580,7 @@ onBeforeUnmount(() => {
             <div id="printable-kot">
                 <h3>{{ t('restaurant.kotTitle') }}</h3>
                 <div class="rc-sub">
+                    {{ t('restaurant.orderNo', { id: order.id }) }}<br>
                     {{ displayName }} • {{ new Date().toLocaleString() }}
                     <template v-if="metaForm.order_source === 'delivery'"><br>🛵 {{ t('restaurant.sourceDelivery') }} — {{ metaForm.delivery_platform }}</template>
                     <template v-else-if="metaForm.order_source === 'takeaway'"><br>🥡 {{ t('restaurant.sourceTakeaway') }}</template>
