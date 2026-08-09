@@ -225,7 +225,10 @@ function submitBill() {
     billForm.transform(() => ({
         discount: discount.value || 0,
         complimentary: payMode.value === 'complimentary',
-        payments: (payMode.value === 'credit' || payMode.value === 'complimentary') ? [] : [{ method: payMode.value, amount: billTotal.value }],
+        // a discount that fully covers the total legitimately zeroes it —
+        // see Pos/Index.vue's buildPayments() for why a real tender must
+        // not be sent when there's nothing left to actually collect
+        payments: (payMode.value === 'credit' || payMode.value === 'complimentary' || billTotal.value <= 0) ? [] : [{ method: payMode.value, amount: billTotal.value }],
         customer_phone: customerPhone.value,
         customer_name: customerName.value,
         item_ids: splitMode.value ? selectedItemIds.value : undefined,

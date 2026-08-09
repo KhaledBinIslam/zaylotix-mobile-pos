@@ -168,7 +168,17 @@ const sidebarGroups = computed(() => [
     {
         label: t('nav.category.sales'),
         items: [
-            { key: 'sell', label: t('nav.sellFull'), href: route('app.pos'), icon: '🛒', on: props.active === 'sell', show: hasPerm('pos') },
+            // for a restaurant-type shop, the plain product-only checkout
+            // below has zero concept of a table/takeaway/delivery channel or
+            // KOT — it's the wrong screen entirely (this is exactly the bug
+            // Khaled reported: the desktop sidebar's "বিক্রি (POS)" link was
+            // hardcoded to route('app.pos') regardless of business type,
+            // while the mobile bottom nav's single "sell" tab already
+            // correctly swapped to the restaurant Tables screen instead —
+            // hidden here now so the desktop sidebar matches that same,
+            // already-correct mobile behavior: "🍽️ রেস্টুরেন্ট" below is the
+            // one and only sell entry point once that feature is on).
+            { key: 'sell', label: t('nav.sellFull'), href: route('app.pos'), icon: '🛒', on: props.active === 'sell', show: hasPerm('pos') && !hasFeature('restaurant_tables') },
             { key: 'restaurant', label: t('nav.restaurant'), href: route('app.restaurant.tables.index'), icon: '🍽️', on: props.active === 'restaurant', show: hasPerm('pos') && hasFeature('restaurant_tables') },
             { key: 'reservations', label: t('nav.reservations'), href: route('app.reservations.index'), icon: '📅', on: props.active === 'reservations', show: hasPerm('pos') && hasFeature('restaurant_tables') },
             { key: 'kds', label: t('nav.kds'), href: route('app.kds.index'), icon: '🍳', on: props.active === 'kds', show: hasPerm('pos') && hasFeature('restaurant_tables') },

@@ -285,6 +285,13 @@ function buildPayments() {
             .map((m) => ({ method: m, amount: Number(splitAmounts.value[m]) }));
     }
     if (payMode.value === 'credit' || payMode.value === 'complimentary') return [];
+    // a discount that fully covers the subtotal legitimately zeroes the
+    // total (e.g. a 100%-off promo, or a typo'd discount) — there's nothing
+    // left to actually tender, so this must not send a {amount: 0} payment
+    // line: the server rejects that (CheckoutRequest requires min:0.01),
+    // surfacing as a raw, untranslated validation message instead of the
+    // sale just completing the way a complimentary one does.
+    if (total.value <= 0) return [];
     return [{ method: payMode.value, amount: total.value }];
 }
 

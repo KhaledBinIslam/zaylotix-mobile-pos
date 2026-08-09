@@ -244,6 +244,10 @@ function buildPayments() {
             .map((m) => ({ method: m, amount: Number(splitAmounts.value[m]) }));
     }
     if (payMode.value === 'credit' || payMode.value === 'complimentary') return [];
+    // a discount that fully covers the subtotal legitimately zeroes the
+    // total — see Pos/Index.vue's buildPayments() for why this must not
+    // send a {amount: 0} payment line (server rejects it, min:0.01)
+    if (total.value <= 0) return [];
     return [{ method: payMode.value, amount: total.value }];
 }
 

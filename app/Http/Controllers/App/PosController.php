@@ -31,6 +31,17 @@ class PosController extends Controller
     {
         $shop = Tenancy::shop();
 
+        // a restaurant-type shop's real "sell" screen is the Tables/order
+        // flow (table + takeaway/delivery channel + KOT) — this plain
+        // product-only checkout has none of that and is the wrong screen
+        // for that business type. The sidebar/mobile-nav links already
+        // route around this normally; this is a server-side backstop for
+        // any other way here (a bookmark, a stale link, browser back) so a
+        // restaurant shop can never actually land on it.
+        if ($shop->hasFeature('restaurant_tables')) {
+            return redirect()->route('app.restaurant.tables.index');
+        }
+
         $products = Product::with(['category', 'unit', 'productUnits.unit', 'variants'])
             ->orderByDesc('id')
             ->get();

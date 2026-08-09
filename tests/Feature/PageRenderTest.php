@@ -25,12 +25,26 @@ class PageRenderTest extends TestCase
         }
 
         foreach ([
-            '/app/home', '/app/pos', '/app/stock', '/app/customers', '/app/expenses',
+            '/app/home', '/app/stock', '/app/customers', '/app/expenses',
             '/app/accounts', '/app/reports', '/app/more', '/app/sales', '/app/barcode-labels',
             '/app/activity', '/app/suppliers', '/app/serials', '/app/restaurant/tables',
         ] as $url) {
             $this->actingAs($owner, 'web')->get($url)->assertOk();
         }
+
+        // /app/pos is the plain product-only checkout — wrong screen for a
+        // restaurant_tables shop (no table/channel/KOT concept at all), so
+        // PosController::index() redirects it to the Tables screen instead
+        // of rendering; covered separately here rather than in the assertOk
+        // loop above (see the next test for the non-restaurant case).
+        $this->actingAs($owner, 'web')->get('/app/pos')->assertRedirect(route('app.restaurant.tables.index'));
+    }
+
+    public function test_pos_page_renders_normally_for_a_non_restaurant_shop(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+
+        $this->actingAs($owner, 'web')->get('/app/pos')->assertOk();
     }
 
     public function test_every_admin_page_renders(): void
