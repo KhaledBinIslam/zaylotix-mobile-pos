@@ -19,9 +19,15 @@ const shop = computed(() => page.props.shop);
 // owner-only, same reasoning as Pos/Index.vue
 const isOwner = computed(() => page.props.auth?.user?.role === 'owner');
 // a takeaway/parcel order has no restaurant_table_id at all (see
-// RestaurantTableController::openTakeaway), so table_name is null — this is
-// the one place that fallback label is needed everywhere the name is shown
-const displayName = computed(() => props.order.table_name || t('restaurant.takeawayLabel'));
+// RestaurantTableController::openTakeaway), so table_name is null — same for
+// a food-first dine-in order that hasn't been seated yet (see openOrder()),
+// which needs its own distinct fallback rather than being mislabeled "takeaway"
+const displayName = computed(() => {
+    if (props.order.table_name) return props.order.table_name;
+    if (props.order.order_source === 'delivery') return t('restaurant.sourceDelivery');
+    if (props.order.order_source === 'takeaway') return t('restaurant.takeawayLabel');
+    return t('restaurant.newOrder');
+});
 // preview only, mirrors TableOrderController::bill()'s exact formula — the
 // server remains authoritative at billing time, this just shows the
 // cashier roughly what to expect while still building the order
@@ -72,6 +78,18 @@ function saveMeta() {
     metaForm.patch(route('app.restaurant.orders.meta', props.order.id), { preserveScroll: true });
 }
 
+// food-first flow: a dine-in order started via "New Order" has no table
+// yet (props.order.table_id is null) — this seats it once the cashier is
+// ready, from right here on the order screen, instead of requiring the
+// table to be picked before any food could be added
+const tableToAssign = ref('');
+const assignTableForm = useForm({});
+function assignTable() {
+    if (!tableToAssign.value) return;
+    assignTableForm.transform(() => ({ restaurant_table_id: tableToAssign.value }))
+        .patch(route('app.restaurant.orders.assignTable', props.order.id), { preserveScroll: true });
+}
+
 function addItem(p) {
     if (p.stock <= 0) return;
     router.post(route('app.restaurant.orders.items.store', props.order.id), { product_id: p.id, qty: 1 }, { preserveScroll: true });
@@ -92,10 +110,22 @@ function saveItemDiscount(item) {
 }
 
 function printKot() {
-    router.post(route('app.restaurant.orders.kot', props.order.id), {}, {
-        preserveScroll: true,
-        onSuccess: () => setTimeout(() => window.print(), 200),
-    });
+    // saves whatever's typed in the note/order-type fields even if the
+    // cashier never tapped the separate "Save" button below — the printed
+    // ticket itself already reads live from metaForm (see #printable-kot),
+    // this just makes sure the server/report data doesn't stay stale too
+    if (metaChanged.value) saveMeta();
+
+    // window.print() must fire synchronously, inside this click handler —
+    // the previous version waited on the network POST to finish and then a
+    // setTimeout before calling it, which loses the "direct user gesture"
+    // window print() needs on most mobile browsers and silently does
+    // nothing. This was the actual cause of "KOT print hocchena". The
+    // ticket's content (items/note/order type) is all already on this page,
+    // so there's nothing worth waiting on the server for.
+    window.print();
+
+    router.post(route('app.restaurant.orders.kot', props.order.id), {}, { preserveScroll: true });
 }
 
 // one-click combo: sends whatever hasn't reached the kitchen yet (same
@@ -122,19 +152,26 @@ const payFirst = computed(() => shop.value?.payment_timing === 'pay_first');
 
 const kitchenWaNumber = computed(() => shop.value?.kitchen_whatsapp || '');
 function sendKotWA() {
+    if (metaChanged.value) saveMeta();
+
     const num = '88' + kitchenWaNumber.value.replace(/\D/g, '').replace(/^88/, '');
     const lines = props.order.items.map((it) => `${it.product_name}  ×${it.qty}`).join('\n');
-    const sourceLine = props.order.order_source === 'delivery'
-        ? `\n🛵 ${t('restaurant.sourceDelivery')} — ${props.order.delivery_platform || ''}`
-        : props.order.order_source === 'takeaway' ? `\n🥡 ${t('restaurant.sourceTakeaway')}` : '';
-    const noteLine = props.order.kitchen_note ? `\n📝 ${props.order.kitchen_note}` : '';
+    // reads the live form values, not the (possibly still-unsaved) server
+    // props — same reasoning as printKot(), so an unsaved note/order-type
+    // edit still makes it into the message sent right now
+    const sourceLine = metaForm.order_source === 'delivery'
+        ? `\n🛵 ${t('restaurant.sourceDelivery')} — ${metaForm.delivery_platform || ''}`
+        : metaForm.order_source === 'takeaway' ? `\n🥡 ${t('restaurant.sourceTakeaway')}` : '';
+    const noteLine = metaForm.kitchen_note ? `\n📝 ${metaForm.kitchen_note}` : '';
     const text = `*${t('restaurant.kotTitle')}*\n${'─'.repeat(16)}\n${displayName.value}${sourceLine}\n${'─'.repeat(16)}\n${lines}${noteLine}`;
+    // opened synchronously, in direct response to the click — like
+    // window.print() in printKot(), waiting on a network round-trip first
+    // risks the browser treating this as an unrequested popup and blocking it
+    window.open('https://wa.me/' + num + '?text=' + encodeURIComponent(text), '_blank');
+
     // mark as sent to kitchen too, same as the print button — WhatsApp is
     // just an alternate delivery channel for the same "sent to kitchen" event
-    router.post(route('app.restaurant.orders.kot', props.order.id), {}, {
-        preserveScroll: true,
-        onSuccess: () => window.open('https://wa.me/' + num + '?text=' + encodeURIComponent(text), '_blank'),
-    });
+    router.post(route('app.restaurant.orders.kot', props.order.id), {}, { preserveScroll: true });
 }
 
 const cancelOrder = () => {
@@ -335,6 +372,21 @@ onBeforeUnmount(() => clearInterval(pollTimer));
                      once per order, not needed at a glance every time like the
                      cart/bill actions above are, so they sit below those, not above -->
                 <div class="card" style="margin-bottom:14px">
+                    <!-- food-first: this order has no table yet — shown right above the
+                         order-type picker so seating happens as part of the same "now that
+                         the cart is built, decide table/takeaway/delivery" step -->
+                    <div v-if="!order.table_id && metaForm.order_source === 'dine_in' && freeTables.length" class="card" style="margin-bottom:10px;background:var(--goldSoft);border-color:var(--gold2)">
+                        <div style="font-size:12.5px;font-weight:700;color:var(--gold2);margin-bottom:8px">🪑 {{ t('restaurant.assignTableHint') }}</div>
+                        <div style="display:flex;gap:8px">
+                            <select v-model="tableToAssign" style="flex:1;margin:0">
+                                <option value="">{{ t('damage.selectPlaceholder') }}</option>
+                                <option v-for="tb in freeTables" :key="tb.id" :value="tb.id">{{ tb.name }}</option>
+                            </select>
+                            <button class="btn sm" style="width:auto;padding:0 16px" :disabled="!tableToAssign || assignTableForm.processing" @click="assignTable">{{ assignTableForm.processing ? '...' : t('restaurant.seatTable') }}</button>
+                        </div>
+                    </div>
+                    <div v-else-if="!order.table_id && metaForm.order_source === 'dine_in'" style="font-size:12px;color:var(--dim);margin-bottom:10px">⚠️ {{ t('restaurant.tableNotAssigned') }}</div>
+
                     <div class="field" style="margin-bottom:8px">
                         <label>{{ t('restaurant.orderSource') }}</label>
                         <div class="seg">
@@ -397,17 +449,21 @@ onBeforeUnmount(() => clearInterval(pollTimer));
 
         <!-- KOT print view — kitchen ticket, no prices -->
         <Teleport to="body">
+            <!-- bound to metaForm (the live textboxes), not the order prop —
+                 a note/order-type edit that hasn't been explicitly saved yet
+                 must still show up here, since printKot() prints instantly,
+                 synchronously, before any save round-trip can complete -->
             <div id="printable-kot">
                 <h3>{{ t('restaurant.kotTitle') }}</h3>
                 <div class="rc-sub">
                     {{ displayName }} • {{ new Date().toLocaleString() }}
-                    <template v-if="order.order_source === 'delivery'"><br>🛵 {{ t('restaurant.sourceDelivery') }} — {{ order.delivery_platform }}</template>
-                    <template v-else-if="order.order_source === 'takeaway'"><br>🥡 {{ t('restaurant.sourceTakeaway') }}</template>
+                    <template v-if="metaForm.order_source === 'delivery'"><br>🛵 {{ t('restaurant.sourceDelivery') }} — {{ metaForm.delivery_platform }}</template>
+                    <template v-else-if="metaForm.order_source === 'takeaway'"><br>🥡 {{ t('restaurant.sourceTakeaway') }}</template>
                 </div>
                 <div v-for="it in order.items" :key="it.id" class="rc-l">
                     <span>{{ it.product_name }}</span><b>×{{ it.qty }}</b>
                 </div>
-                <div v-if="order.kitchen_note" class="rc-note">📝 {{ order.kitchen_note }}</div>
+                <div v-if="metaForm.kitchen_note" class="rc-note">📝 {{ metaForm.kitchen_note }}</div>
             </div>
         </Teleport>
 

@@ -156,6 +156,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
             Route::delete('restaurant/tables/{restaurantTable}', [RestaurantTableController::class, 'destroy'])->name('restaurant.tables.destroy');
             Route::post('restaurant/tables/{restaurantTable}/open', [RestaurantTableController::class, 'open'])->name('restaurant.tables.open');
             Route::post('restaurant/takeaway', [RestaurantTableController::class, 'openTakeaway'])->name('restaurant.takeaway.open');
+            Route::post('restaurant/new-order', [RestaurantTableController::class, 'openOrder'])->name('restaurant.order.open');
             Route::post('restaurant/tables/{restaurantTable}/transfer', [RestaurantTableController::class, 'transfer'])->name('restaurant.tables.transfer');
             Route::post('restaurant/tables/{restaurantTable}/merge', [RestaurantTableController::class, 'merge'])->name('restaurant.tables.merge');
 
@@ -166,6 +167,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
             Route::patch('restaurant/order-items/{tableOrderItem}/discount', [TableOrderController::class, 'updateItemDiscount'])->name('restaurant.orderItems.discount');
             Route::post('restaurant/order-items/{tableOrderItem}/toggle-served', [TableOrderController::class, 'toggleServed'])->name('restaurant.orderItems.toggleServed');
             Route::patch('restaurant/orders/{tableOrder}/meta', [TableOrderController::class, 'updateMeta'])->name('restaurant.orders.meta');
+            Route::patch('restaurant/orders/{tableOrder}/table', [TableOrderController::class, 'assignTable'])->name('restaurant.orders.assignTable');
             Route::post('restaurant/orders/{tableOrder}/kot', [TableOrderController::class, 'printKot'])->name('restaurant.orders.kot');
             Route::post('restaurant/orders/{tableOrder}/bill', [TableOrderController::class, 'bill'])->name('restaurant.orders.bill');
             Route::post('restaurant/orders/{tableOrder}/cancel', [TableOrderController::class, 'cancel'])->name('restaurant.orders.cancel');

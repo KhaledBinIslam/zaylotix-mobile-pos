@@ -156,6 +156,41 @@ class TableOrderController extends Controller
         return back()->with('success', 'সংরক্ষণ করা হয়েছে।');
     }
 
+    /**
+     * Seats a still-tableless dine-in order (started via the food-first
+     * "New Order" flow) onto a specific table once the cashier is ready —
+     * the reverse-order counterpart to RestaurantTableController::open()
+     * picking a table first. Locked the same way open()/transfer() lock
+     * their target table, so two tableless orders can never both land on
+     * the same free table at once.
+     */
+    public function assignTable(Request $request, TableOrder $tableOrder)
+    {
+        $data = $request->validate([
+            'restaurant_table_id' => ['required', 'exists:restaurant_tables,id'],
+        ]);
+
+        DB::transaction(function () use ($tableOrder, $data) {
+            $lockedOrder = TableOrder::whereKey($tableOrder->id)->lockForUpdate()->first();
+            if ($lockedOrder->status !== 'open') {
+                abort(422, 'এই অর্ডারটি আর খোলা নেই।');
+            }
+            if ($lockedOrder->restaurant_table_id) {
+                abort(422, 'এই অর্ডারে ইতিমধ্যে একটি টেবিল যুক্ত আছে।');
+            }
+
+            $table = \App\Models\RestaurantTable::whereKey($data['restaurant_table_id'])->lockForUpdate()->first();
+            if (! $table || $table->status !== 'free') {
+                abort(422, 'এই টেবিলটি খালি নেই।');
+            }
+
+            $lockedOrder->update(['restaurant_table_id' => $table->id]);
+            $table->update(['status' => 'occupied']);
+        });
+
+        return back()->with('success', 'টেবিল যুক্ত হয়েছে।');
+    }
+
     /** One-tap "−" on the order screen's qty stepper — removes the whole line once qty hits 0. */
     public function decrementItem(TableOrderItem $tableOrderItem)
     {

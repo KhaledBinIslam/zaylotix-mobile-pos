@@ -50,6 +50,12 @@ function goToOrder(tbl) {
 function startTakeaway() {
     router.post(route('app.restaurant.takeaway.open'));
 }
+// food-first flow, per Khaled's explicit request: lands straight on the menu
+// with no table AND no channel decided yet — both are picked afterward, from
+// the order screen itself, once the cart is actually built
+function startNewOrder() {
+    router.post(route('app.restaurant.order.open'));
+}
 function removeTable(tbl) {
     if (!confirm(`"${tbl.name}" ${t('restaurant.removeTableConfirm')}`)) return;
     router.delete(route('app.restaurant.tables.destroy', tbl.id));
@@ -80,19 +86,32 @@ onBeforeUnmount(() => clearInterval(pollTimer));
             <button v-if="isOwner" class="btn ghost sm" style="width:auto;padding:8px 14px;flex:0 0 auto" @click="settingsSheet = true">⚙️ {{ t('common.settings') }}</button>
         </div>
 
-        <!-- takeaway/parcel has nothing to do with a physical table, so this
-             starts one directly instead of being buried behind picking a table -->
-        <button class="btn" style="margin-bottom:14px;background:var(--gold)" @click="startTakeaway">
+        <!-- food-first, per Khaled's explicit request: build the cart first,
+             pick a table / takeaway / delivery afterward from the order
+             screen itself — this is now the primary, most prominent action
+             on this page instead of tapping a table being the only way in -->
+        <button class="btn" style="margin-bottom:8px;background:var(--gold)" @click="startNewOrder">
+            🍽️ {{ t('restaurant.newOrder') }}
+        </button>
+        <!-- kept as a one-tap shortcut for a customer who's clearly not
+             sitting down at all — skips even the order-type step -->
+        <button class="btn ghost sm" style="margin-bottom:14px" @click="startTakeaway">
             🥡 {{ t('restaurant.newTakeaway') }}
         </button>
 
         <div v-if="takeawayOrders.length" style="margin-bottom:14px">
             <div class="sechead"><h2>{{ t('restaurant.activeTakeaway') }}</h2></div>
             <div v-for="o in takeawayOrders" :key="o.id" class="row" @click="router.visit(route('app.restaurant.orders.show', o.id))">
-                <div class="ava">🥡</div>
+                <div class="ava">{{ o.order_source === 'delivery' ? '🛵' : o.order_source === 'takeaway' ? '🥡' : '🍽️' }}</div>
                 <div class="mid">
-                    <b>{{ o.order_source === 'delivery' ? t('restaurant.sourceDelivery') : t('restaurant.sourceTakeaway') }} #{{ o.id }}</b>
+                    <b>
+                        <template v-if="o.order_source === 'delivery'">{{ t('restaurant.sourceDelivery') }}</template>
+                        <template v-else-if="o.order_source === 'takeaway'">{{ t('restaurant.sourceTakeaway') }}</template>
+                        <template v-else>{{ t('restaurant.newOrder') }}</template>
+                        #{{ o.id }}
+                    </b>
                     <span>{{ o.item_count }} {{ t('restaurant.items') }} • {{ o.opened_at }}</span>
+                    <span v-if="o.order_source === 'dine_in'" style="color:var(--gold2)">⚠️ {{ t('restaurant.tableNotAssigned') }}</span>
                 </div>
                 <div class="end"><b>{{ money(o.total) }}</b></div>
             </div>

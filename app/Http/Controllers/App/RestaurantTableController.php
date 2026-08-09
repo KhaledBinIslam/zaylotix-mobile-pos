@@ -74,6 +74,28 @@ class RestaurantTableController extends Controller
         return redirect()->route('app.restaurant.orders.show', $order->id);
     }
 
+    /**
+     * Food-first flow, per Khaled's explicit request ("age food select kore
+     * — table naki gateway seta pore select korbe"): starts a brand-new
+     * order with neither a table nor a fixed channel chosen yet, straight
+     * onto the menu screen. order_source defaults to dine_in purely as a
+     * DB default — it's never shown/asked at this point, only decided
+     * later on the order screen (see TableOrderController::updateMeta /
+     * assignTable), same idea as openTakeaway() but without committing to
+     * a channel upfront either.
+     */
+    public function openOrder()
+    {
+        $order = TableOrder::create([
+            'restaurant_table_id' => null,
+            'status' => 'open',
+            'order_source' => 'dine_in',
+            'opened_at' => now(),
+        ]);
+
+        return redirect()->route('app.restaurant.orders.show', $order->id);
+    }
+
     public function store(Request $request)
     {
         $data = $request->validate(['name' => ['required', 'string', 'max:50']]);
