@@ -85,6 +85,11 @@ function decItem(item) {
 function removeItem(item) {
     router.delete(route('app.restaurant.orderItems.destroy', item.id), { preserveScroll: true });
 }
+// per-item discount, saved on blur (not every keystroke) — stacks with the
+// whole-bill discount at bill() time, same as the shared POS's per-line discount
+function saveItemDiscount(item) {
+    router.patch(route('app.restaurant.orderItems.discount', item.id), { discount: item.discount || 0 }, { preserveScroll: true });
+}
 
 function printKot() {
     router.post(route('app.restaurant.orders.kot', props.order.id), {}, {
@@ -152,7 +157,7 @@ function toggleItemSelected(itemId) {
 }
 const splitSubtotal = computed(() => props.order.items
     .filter((it) => selectedItemIds.value.includes(it.id))
-    .reduce((s, it) => s + it.price * it.qty, 0));
+    .reduce((s, it) => s + it.price * it.qty - Math.min(it.discount || 0, it.price * it.qty), 0));
 
 // --- billing sheet ---
 const billSheet = ref(false);
@@ -257,7 +262,7 @@ onBeforeUnmount(() => clearInterval(pollTimer));
                                 <input v-if="splitMode" type="checkbox" style="width:auto;margin-right:2px" :checked="selectedItemIds.includes(it.id)" @change="toggleItemSelected(it.id)">
                                 <div class="nm">
                                     <b>{{ it.product_name }}</b>
-                                    <span>{{ money(it.price) }} {{ t('restaurant.each') }} = {{ money(it.qty * it.price) }}</span>
+                                    <span>{{ money(it.price) }} {{ t('restaurant.each') }} = {{ money(it.qty * it.price) }}<span v-if="it.discount > 0" style="color:var(--rose)"> (−{{ money(it.discount) }} {{ t('pos.itemDiscountApplied') }})</span></span>
                                     <span v-if="it.kot_printed_at" style="color:var(--green)">✓ {{ t('restaurant.sentToKitchen') }}</span>
                                 </div>
                                 <template v-if="!splitMode">
@@ -265,6 +270,10 @@ onBeforeUnmount(() => clearInterval(pollTimer));
                                     <span class="qn">{{ it.qty }}</span>
                                     <button class="qbtn" @click="incItem(it)">＋</button>
                                 </template>
+                            </div>
+                            <div v-if="!splitMode" class="cart-line-discount">
+                                <span>{{ t('pos.itemDiscount') }}</span>
+                                <input v-model.number="it.discount" type="number" inputmode="numeric" placeholder="0" min="0" @blur="saveItemDiscount(it)">
                             </div>
                             <button v-if="!splitMode" class="btn sm ghost" style="width:100%" @click="toggleServed(it)">✅ {{ t('restaurant.markServed') }}</button>
                         </div>

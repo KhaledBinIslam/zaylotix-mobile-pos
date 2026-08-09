@@ -547,23 +547,31 @@ function sendMemoWA() {
         <Sheet v-model="cartOpen" :title="t('pos.cart')">
             <div v-if="!cart.length" class="empty"><div class="big">🧺</div>{{ t('pos.cartEmpty') }}</div>
 
-            <div v-for="l in cart" :key="l.product_id + ':' + (l.product_variant_id || 'base')" class="cart-line" style="align-items:flex-start">
-                <div class="nm">
-                    <b>{{ lineProduct(l)?.name }}</b>
-                    <button
-                        v-if="lineVariant(l)" type="button"
-                        style="border:none;background:none;padding:0;color:var(--sky);font-size:12.5px;font-weight:650;text-decoration:underline;text-underline-offset:2px"
-                        @click="openVariantPicker(lineProduct(l), l)"
-                    >{{ variantLabel(lineVariant(l)) }} · {{ t('pos.changeVariant') }}</button>
-                    <div style="display:flex;align-items:center;gap:10px;margin-top:6px">
-                        <button class="btn sm ghost" style="width:32px;padding:0" @click="decrementLine(l)">−</button>
-                        <b>{{ l.qty }}</b>
-                        <button class="btn sm ghost" style="width:32px;padding:0" @click="incrementLine(l)">+</button>
+            <div v-for="l in cart" :key="l.product_id + ':' + (l.product_variant_id || 'base')" style="border-bottom:1px solid var(--line);padding:11px 0">
+                <div class="cart-line" style="border:none;padding:0;align-items:flex-start">
+                    <div class="nm">
+                        <b>{{ lineProduct(l)?.name }}</b>
+                        <button
+                            v-if="lineVariant(l)" type="button"
+                            style="border:none;background:none;padding:0;color:var(--sky);font-size:12.5px;font-weight:650;text-decoration:underline;text-underline-offset:2px"
+                            @click="openVariantPicker(lineProduct(l), l)"
+                        >{{ variantLabel(lineVariant(l)) }} · {{ t('pos.changeVariant') }}</button>
+                        <div style="display:flex;align-items:center;gap:10px;margin-top:6px">
+                            <button class="btn sm ghost" style="width:32px;padding:0" @click="decrementLine(l)">−</button>
+                            <b>{{ l.qty }}</b>
+                            <button class="btn sm ghost" style="width:32px;padding:0" @click="incrementLine(l)">+</button>
+                        </div>
+                    </div>
+                    <div style="text-align:right">
+                        <b>{{ money(lineTotal(l)) }}</b>
+                        <div><button class="btn sm rose" style="margin-top:6px" @click="removeLine(l)">✕</button></div>
                     </div>
                 </div>
-                <div style="text-align:right">
-                    <b>{{ money(lineTotal(l)) }}</b>
-                    <div><button class="btn sm rose" style="margin-top:6px" @click="removeLine(l)">✕</button></div>
+                <!-- per-item discount, stacks on top of the overall discount
+                     field below — same pattern as the shared Pos/Index.vue -->
+                <div class="cart-line-discount">
+                    <span>{{ t('pos.itemDiscount') }}</span>
+                    <input v-model.number="l.discount" type="number" inputmode="numeric" placeholder="0" min="0">
                 </div>
             </div>
 

@@ -9,12 +9,13 @@ class TableOrderItem extends Model
 {
     use BelongsToTenant;
 
-    protected $fillable = ['shop_id', 'table_order_id', 'product_id', 'product_name', 'qty', 'price', 'cost', 'sale_id', 'kot_printed_at', 'cooked_at', 'served_at'];
+    protected $fillable = ['shop_id', 'table_order_id', 'product_id', 'product_name', 'qty', 'price', 'discount', 'cost', 'sale_id', 'kot_printed_at', 'cooked_at', 'served_at'];
 
     protected function casts(): array
     {
         return [
             'price' => 'decimal:2',
+            'discount' => 'decimal:2',
             'cost' => 'decimal:2',
             'kot_printed_at' => 'datetime',
             'cooked_at' => 'datetime',

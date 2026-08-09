@@ -158,6 +158,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
             Route::post('restaurant/orders/{tableOrder}/items', [TableOrderController::class, 'addItem'])->name('restaurant.orders.items.store');
             Route::delete('restaurant/order-items/{tableOrderItem}', [TableOrderController::class, 'removeItem'])->name('restaurant.orderItems.destroy');
             Route::patch('restaurant/order-items/{tableOrderItem}/decrement', [TableOrderController::class, 'decrementItem'])->name('restaurant.orderItems.decrement');
+            Route::patch('restaurant/order-items/{tableOrderItem}/discount', [TableOrderController::class, 'updateItemDiscount'])->name('restaurant.orderItems.discount');
             Route::post('restaurant/order-items/{tableOrderItem}/toggle-served', [TableOrderController::class, 'toggleServed'])->name('restaurant.orderItems.toggleServed');
             Route::patch('restaurant/orders/{tableOrder}/meta', [TableOrderController::class, 'updateMeta'])->name('restaurant.orders.meta');
             Route::post('restaurant/orders/{tableOrder}/kot', [TableOrderController::class, 'printKot'])->name('restaurant.orders.kot');

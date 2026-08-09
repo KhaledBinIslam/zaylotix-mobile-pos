@@ -179,6 +179,30 @@ class TableOrderController extends Controller
         return back()->with('success', 'কমানো হয়েছে।');
     }
 
+    /** Sets a flat taka discount on one line — stacks with the whole-bill discount at bill() time, same as PosController's per-line discount. */
+    public function updateItemDiscount(Request $request, TableOrderItem $tableOrderItem)
+    {
+        $data = $request->validate([
+            'discount' => ['required', 'numeric', 'min:0'],
+        ]);
+
+        DB::transaction(function () use ($tableOrderItem, $data) {
+            $lockedOrder = TableOrder::whereKey($tableOrderItem->table_order_id)->lockForUpdate()->first();
+            if ($lockedOrder->status !== 'open') {
+                abort(422, 'এই অর্ডারটি আর খোলা নেই।');
+            }
+            if ($tableOrderItem->sale_id) {
+                abort(422, 'এই লাইনটি ইতিমধ্যে বিল করা হয়ে গেছে।');
+            }
+
+            // never trust the client's arithmetic — clamp to this line's own total
+            $lockedItem = TableOrderItem::whereKey($tableOrderItem->id)->lockForUpdate()->first();
+            $lockedItem->update(['discount' => min((float) $data['discount'], (float) $lockedItem->price * $lockedItem->qty)]);
+        });
+
+        return back()->with('success', 'ছাড় সংরক্ষণ হয়েছে।');
+    }
+
     public function removeItem(TableOrderItem $tableOrderItem)
     {
         DB::transaction(function () use ($tableOrderItem) {
@@ -311,8 +335,12 @@ class TableOrderController extends Controller
                 abort(422, 'এই টেবিলে কোনো আইটেম যোগ করা হয়নি।');
             }
 
-            $subtotal = (float) $items->sum(fn (TableOrderItem $i) => $i->price * $i->qty);
-            $profit = (float) $items->sum(fn (TableOrderItem $i) => ($i->price - $i->cost) * $i->qty);
+            // per-item discount (set via updateItemDiscount()) is clamped to
+            // that line's own total here, not just trusted from the DB —
+            // same "never trust a stored number past its own bound"
+            // discipline PosController uses for its per-line discount
+            $subtotal = (float) $items->sum(fn (TableOrderItem $i) => $i->price * $i->qty - min((float) $i->discount, $i->price * $i->qty));
+            $profit = (float) $items->sum(fn (TableOrderItem $i) => ($i->price - $i->cost) * $i->qty - min((float) $i->discount, $i->price * $i->qty));
 
             // free/staff-meal bill — see PosController::performCheckout's
             // matching comment; forcing discount = subtotal lands $total on
@@ -403,7 +431,7 @@ class TableOrderController extends Controller
                     'unit_factor' => 1,
                     'qty' => $item->qty,
                     'price' => $item->price,
-                    'discount' => 0,
+                    'discount' => min((float) $item->discount, $item->price * $item->qty),
                     'cost' => $item->cost,
                     // no batch_allocations — table orders don't participate
                     // in FEFO batch tracking (out of scope for this vertical)

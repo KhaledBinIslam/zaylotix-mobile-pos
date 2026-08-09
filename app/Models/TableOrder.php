@@ -50,6 +50,6 @@ class TableOrder extends Model
      */
     public function total(): float
     {
-        return (float) $this->items->sum(fn (TableOrderItem $i) => $i->price * $i->qty);
+        return (float) $this->items->sum(fn (TableOrderItem $i) => $i->price * $i->qty - min((float) $i->discount, $i->price * $i->qty));
     }
 }
