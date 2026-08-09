@@ -113,11 +113,14 @@ onBeforeUnmount(() => clearInterval(pollTimer));
             <div v-for="o in takeawayOrders" :key="o.id" class="row" @click="router.visit(route('app.restaurant.orders.show', o.id))">
                 <div class="ava">{{ o.order_source === 'delivery' ? '🛵' : o.order_source === 'takeaway' ? '🥡' : '🍽️' }}</div>
                 <div class="mid">
+                    <!-- no order #id shown — an internal row number means nothing to a
+                         cashier and is one more thing to misread/mix up; the item count
+                         + time already tells two open orders apart at a glance, and
+                         tapping goes straight into the right one either way -->
                     <b>
                         <template v-if="o.order_source === 'delivery'">{{ t('restaurant.sourceDelivery') }}</template>
                         <template v-else-if="o.order_source === 'takeaway'">{{ t('restaurant.sourceTakeaway') }}</template>
                         <template v-else>{{ t('restaurant.newOrder') }}</template>
-                        #{{ o.id }}
                     </b>
                     <span>{{ o.item_count }} {{ t('restaurant.items') }} • {{ o.opened_at }}</span>
                     <span v-if="o.order_source === 'dine_in'" style="color:var(--gold2)">⚠️ {{ t('restaurant.tableNotAssigned') }}</span>
