@@ -237,6 +237,27 @@ function productOf(id) {
     return props.products.find((p) => p.id === id);
 }
 
+/** In-stock IMEIs for a product, minus whichever ones other cart lines have
+    already picked — so two lines of the same model can never both point at
+    the same physical unit before checkout even runs the server-side check. */
+function availableImeis(l) {
+    const p = productOf(l.product_id);
+    const taken = new Set(cart.value.filter((line) => line !== l && line.product_id === l.product_id && line.imei).map((line) => line.imei));
+    return (p?.serials || []).filter((s) => s.imei === l.imei || !taken.has(s.imei));
+}
+
+/** Warranty tracking already existed in the data model (ProductSerial.warranty_expiry) but was never
+    surfaced anywhere in POS — a cashier had no way to tell a customer "this one still has 6 months left"
+    at the counter. Shown once the typed/picked IMEI matches a tracked unit. */
+function imeiWarranty(l) {
+    if (!l.imei) return null;
+    const p = productOf(l.product_id);
+    const serial = (p?.serials || []).find((s) => s.imei === l.imei);
+    // the model's `date` cast serializes to a full ISO datetime — only the
+    // date part is meaningful here
+    return serial?.warranty_expiry?.slice(0, 10) || null;
+}
+
 /** raw line total before this line's own discount is taken off — mirrors PosController::performCheckout's own price resolution exactly, including the wholesale-price-on-the-base-line-only rule, so what the cashier sees here always matches what the server actually charges */
 function lineRaw(l) {
     const p = productOf(l.product_id);
@@ -952,9 +973,24 @@ useKeyboardShortcuts({
                             <span>{{ t('pos.itemDiscount') }}</span>
                             <input v-model.number="l.discount" type="number" inputmode="numeric" placeholder="0" min="0">
                         </div>
-                        <div v-if="hasSerialTracking && !l.product_variant_id && !l.product_unit_id" class="cart-line-discount">
-                            <span>{{ t('pos.imei') }}</span>
-                            <input v-model="l.imei" :placeholder="t('pos.imeiOptional')">
+                        <div v-if="hasSerialTracking && !l.product_variant_id && !l.product_unit_id" class="cart-line-discount" style="align-items:flex-start">
+                            <span style="padding-top:10px">{{ t('pos.imei') }}</span>
+                            <div style="flex:1;max-width:220px">
+                                <!-- datalist, not a plain <select> — a cashier can still scan/type an
+                                     IMEI that isn't in the tracked list (units received without serial
+                                     tracking on, or a typo'd stock entry) exactly like before; when
+                                     units ARE tracked, the same field now also suggests them instead of
+                                     requiring a 15-digit number typed from memory or the box -->
+                                <input
+                                    v-model="l.imei" :list="'imei-list-' + l.product_id + ':' + (l.product_unit_id || l.product_variant_id || 'base')"
+                                    :placeholder="availableImeis(l).length ? t('pos.imeiPickPlaceholder') : t('pos.imeiOptional')"
+                                >
+                                <datalist :id="'imei-list-' + l.product_id + ':' + (l.product_unit_id || l.product_variant_id || 'base')">
+                                    <option v-for="s in availableImeis(l)" :key="s.id" :value="s.imei" />
+                                </datalist>
+                                <div v-if="imeiWarranty(l)" style="font-size:11px;color:var(--green);margin-top:3px">🛡️ {{ t('pos.imeiWarrantyUntil', { date: imeiWarranty(l) }) }}</div>
+                                <div v-else-if="availableImeis(l).length" style="font-size:11px;color:var(--dim);margin-top:3px">{{ t('pos.imeiInStockCount', { n: availableImeis(l).length }) }}</div>
+                            </div>
                         </div>
                     </div>
                 </div>

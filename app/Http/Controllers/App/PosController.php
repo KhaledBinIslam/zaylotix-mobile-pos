@@ -42,7 +42,17 @@ class PosController extends Controller
             return redirect()->route('app.restaurant.tables.index');
         }
 
-        $products = Product::with(['category', 'unit', 'productUnits.unit', 'variants'])
+        $relations = ['category', 'unit', 'productUnits.unit', 'variants'];
+        // in-stock IMEIs, only for a shop that actually tracks them — a
+        // cashier picking from a list of real in-stock units beats typing a
+        // 15-digit number from memory/the box, which is exactly what the
+        // old plain free-text field forced. Omitted entirely (relation
+        // simply absent from the payload) for every other business type.
+        if ($shop->hasFeature('serial_tracking')) {
+            $relations['serials'] = fn ($q) => $q->available()->select('id', 'product_id', 'imei', 'warranty_expiry');
+        }
+
+        $products = Product::with($relations)
             ->orderByDesc('id')
             ->get();
 
