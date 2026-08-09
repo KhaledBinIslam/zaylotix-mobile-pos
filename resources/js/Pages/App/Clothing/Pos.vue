@@ -526,6 +526,40 @@ function sendMemoWA() {
                 </div>
                 <div v-else class="empty"><div class="big">👕</div>{{ t('pos.noProducts') }}</div>
             </div>
+
+            <!-- order panel — desktop only, a live read view of the cart with the
+                 full editable Sheet one tap away for payment/discount/customer
+                 details. Mirrors Pos/Index.vue's own desktop cart panel — this
+                 shared screen was missing one entirely (checkout only ever
+                 reachable via the top sticky bar's Sheet), the one concrete
+                 desktop/web gap the vertical-by-vertical POS audit found here. -->
+            <aside class="hidden lg:block lg:order-3 lg:w-80 lg:shrink-0 lg:sticky lg:top-6">
+                <b style="font-size:15px;display:block;margin-bottom:10px">{{ t('pos.cartTitle') }}</b>
+                <div class="card" style="padding:0;margin-bottom:14px">
+                    <template v-if="cart.length">
+                        <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;padding:8px 12px;font-size:10.5px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.03em;border-bottom:1px solid var(--line)">
+                            <span>{{ t('pos.item') }}</span><span>{{ t('pos.qty') }}</span><span style="text-align:right">{{ t('pos.lineTotal') }}</span>
+                        </div>
+                        <div v-for="l in cart" :key="l.product_id + ':' + (l.product_variant_id || 'base')" style="display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--line);font-size:12.5px">
+                            <span style="min-width:0">
+                                <b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ lineProduct(l)?.name }}</b>
+                                <span v-if="lineVariant(l)" style="color:var(--mut);font-size:11px">{{ variantLabel(lineVariant(l)) }}</span>
+                            </span>
+                            <span style="display:flex;align-items:center;gap:4px">
+                                <button class="qbtn" style="width:22px;height:22px;font-size:13px" @click="decrementLine(l)">−</button>
+                                <span class="qn" style="min-width:16px;font-size:12px">{{ l.qty }}</span>
+                                <button class="qbtn" style="width:22px;height:22px;font-size:13px" @click="incrementLine(l)">＋</button>
+                            </span>
+                            <b style="text-align:right">{{ money(lineTotal(l)) }}</b>
+                        </div>
+                    </template>
+                    <div v-else class="empty" style="padding:24px 0"><div class="big">🛒</div>{{ t('pos.cartEmpty') }}</div>
+                </div>
+                <div v-if="cart.length" class="card" style="margin-bottom:14px">
+                    <div style="display:flex;justify-content:space-between;font-size:18px;font-weight:800"><span>{{ t('pos.subtotal') }}</span><b style="color:var(--gold)">{{ money(subtotal) }}</b></div>
+                </div>
+                <button class="btn" :disabled="!cart.length" @click="cartOpen = true">{{ t('pos.billButton') }}</button>
+            </aside>
         </div>
 
         <!-- variant picker: color chips, size chips per selected color -->
