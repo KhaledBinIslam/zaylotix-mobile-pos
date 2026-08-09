@@ -51,6 +51,14 @@ class PosController extends Controller
         if ($shop->hasFeature('serial_tracking')) {
             $relations['serials'] = fn ($q) => $q->available()->select('id', 'product_id', 'imei', 'warranty_expiry');
         }
+        // soonest-expiring batch still in stock — same relation Stock/Index
+        // already uses (ProductController::index), just surfaced here too
+        // so a pharmacy cashier can see/warn about it without leaving POS.
+        // FEFO already picks the actual batch automatically at checkout
+        // (BatchStock::deduct); this is purely visibility.
+        if ($shop->hasFeature('batch_tracking')) {
+            $relations[] = 'nearestBatch';
+        }
 
         $products = Product::with($relations)
             ->orderByDesc('id')

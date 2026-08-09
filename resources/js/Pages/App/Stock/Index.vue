@@ -409,7 +409,11 @@ useKeyboardShortcuts({
                 <b>{{ p.name }} <span v-if="p.requires_prescription" title="Rx" style="color:var(--rose)">℞</span></b>
                 <span>{{ p.category?.emoji }} {{ p.category?.name }} • {{ money(p.price) }}{{ p.sold_by_weight ? '/' + unitLabel(p) : '' }}</span>
                 <span v-if="p.generic_name || p.company" style="color:var(--mut)">💊 {{ p.generic_name }}<template v-if="p.company"> • 🏭 {{ p.company }}</template><template v-if="p.shelf_location"> • 📍 {{ p.shelf_location }}</template></span>
-                <span v-if="p.nearest_batch" style="color:var(--rose);font-weight:600">⏳ {{ t('stock.expiresOn') }} {{ p.nearest_batch.expiry_date }}</span>
+                <!-- a batch can be tracked by batch_no alone with no expiry_date at
+                     all (see ProductBatch::receive's own comment) — nearest_batch can
+                     legitimately be non-null with a null expiry_date in that case, so
+                     this checks the date specifically, not just the batch's presence -->
+                <span v-if="p.nearest_batch?.expiry_date" style="color:var(--rose);font-weight:600">⏳ {{ t('stock.expiresOn') }} {{ p.nearest_batch.expiry_date.slice(0, 10) }}</span>
             </div>
             <div class="end">
                 <span class="pill" :class="badge(p).cls">{{ badge(p).text }}</span>

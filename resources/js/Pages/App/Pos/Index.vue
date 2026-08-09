@@ -30,6 +30,7 @@ const hasUnitConversion = computed(() => features.value.includes('unit_conversio
 const hasSerialTracking = computed(() => features.value.includes('serial_tracking'));
 const hasProductVariants = computed(() => features.value.includes('product_variants'));
 const hasPrescriptionRecords = computed(() => features.value.includes('prescription_records'));
+const hasBatchTracking = computed(() => features.value.includes('batch_tracking'));
 const hasLowStockAlerts = computed(() => features.value.includes('low_stock_alerts'));
 const hasPromotions = computed(() => features.value.includes('promotions'));
 const hasLoyaltyPoints = computed(() => features.value.includes('loyalty_points'));
@@ -843,6 +844,11 @@ useKeyboardShortcuts({
                                 <span v-else-if="hasLowStockAlerts && stockLevel(p) === 'low'" style="color:var(--gold2);font-weight:700">⚠ {{ t('pos.inStock', { n: p.stock }) }} {{ t('pos.lowStock') }}</span>
                                 <span v-else>{{ t('pos.inStock', { n: p.stock }) }}</span>
                             </div>
+                            <!-- FEFO already picks the soonest-expiring batch automatically at
+                                 checkout — this is purely visibility, same wording/color Stock/
+                                 Index.vue already uses, so a cashier can warn a customer or reach
+                                 for a different brand without leaving this screen -->
+                            <div v-if="hasBatchTracking && p.nearest_batch?.expiry_date" class="ps" style="color:var(--rose);font-weight:600">⏳ {{ t('stock.expiresOn') }} {{ p.nearest_batch.expiry_date.slice(0, 10) }}</div>
                         </button>
                         <div v-else class="pcard-main" style="cursor:default">
                             <img v-if="p.photo_url" :src="p.photo_url" class="pimg" :alt="p.name">
