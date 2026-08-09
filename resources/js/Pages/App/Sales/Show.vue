@@ -1,10 +1,12 @@
 <script setup>
 import { Head, router, usePage } from '@inertiajs/vue3';
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useI18n } from '@/composables/useI18n';
+import { useToast } from '@/composables/useToast';
 
 const props = defineProps({ sale: Object });
+const { toast } = useToast();
 
 const page = usePage();
 const shop = computed(() => page.props.shop);
@@ -92,20 +94,26 @@ onMounted(async () => {
         } catch (e) { /* non-critical — receipt still works without it */ }
     }
 
-    // best-effort auto-print — see TableOrderController::bill()'s comment
-    // on ?autoprint=1. Billing is a real server round trip (the invoice
-    // number/exact total don't exist until it responds), so there's no way
-    // to fire window.print() synchronously inside the original "Bill করুন"
-    // click the way KOT printing does; some browsers still honor a
-    // print() call this soon after a user-initiated form submit landed a
-    // new page, some don't. Either way the manual "প্রিন্ট" button below
-    // stays as the guaranteed fallback — this never removes it, only saves
-    // a tap when it works.
+    // ?autoprint=1 — see TableOrderController::bill()'s comment. An earlier
+    // version of this actually called window.print() automatically here,
+    // via a fixed setTimeout delay, but that produced a BLANK printed page
+    // on real testing (reported live) instead of just "not printing" —
+    // billing is a real server round trip landing on a brand-new page load,
+    // not a direct click, and window.print() fired that way can capture
+    // the page before the print stylesheet/layout has actually settled,
+    // with no reliable way to know when it's "safe" from here. Rather than
+    // keep guessing at a timing fix for something inherently unreliable,
+    // this now just makes the ALREADY-WORKING manual print button
+    // impossible to miss instead — a toast pointing at it, real user
+    // click, same synchronous-on-click pattern every other working print
+    // button in this app already uses (printKot, printMemo).
     if (new URLSearchParams(window.location.search).get('autoprint') === '1') {
         history.replaceState(null, '', window.location.pathname);
-        setTimeout(() => window.print(), 300);
+        justBilled.value = true;
+        toast('✅ ' + t('sales.justBilledPrintHint'));
     }
 });
+const justBilled = ref(false);
 const ratingUrl = computed(() => window.location.origin + route('rate.show', props.sale.id));
 </script>
 
@@ -176,9 +184,15 @@ const ratingUrl = computed(() => window.location.origin + route('rate.show', pro
         </div>
         </div>
 
+        <!-- shown right after billing (?autoprint=1) — a real click here is
+             the reliable way to print (see the onMounted comment above);
+             this + the toast are how that gets impossible to miss instead -->
+        <div v-if="justBilled" class="no-print card" style="margin-top:16px;background:var(--goldSoft);border-color:var(--gold2);text-align:center;font-weight:700;color:var(--gold2)">
+            ✅ {{ t('sales.justBilledPrintHint') }}
+        </div>
         <div class="no-print btnrow" style="margin-top:16px">
             <button v-if="features.includes('memo_whatsapp')" class="btn wa" style="flex:1" @click="sendMemoWA">📤 WhatsApp</button>
-            <button v-if="features.includes('memo_print')" class="btn ghost" style="flex:1" @click="printMemo">{{ t('pos.print') }}{{ tableOrder ? ' (' + t('restaurant.kotTitle') + ' + ' + t('sales.memoLabel') + ')' : '' }}</button>
+            <button v-if="features.includes('memo_print')" :class="justBilled ? 'btn' : 'btn ghost'" style="flex:1" @click="printMemo">🖨️ {{ t('pos.print') }}{{ tableOrder ? ' (' + t('restaurant.kotTitle') + ' + ' + t('sales.memoLabel') + ')' : '' }}</button>
         </div>
         <button v-if="tableOrder && kitchenWaNumber" class="no-print btn wa" style="margin-top:10px" @click="sendKotWA">📤 {{ t('restaurant.kotWa') }}</button>
 

@@ -832,6 +832,7 @@ export const translations = {
     'sales.notFound': { bn: 'কোনো বিল পাওয়া যায়নি', en: 'No invoices found' },
     'sales.seller': { bn: 'বিক্রেতা:', en: 'Sold by:' },
     'sales.memoLabel': { bn: 'কাস্টমার মেমো', en: 'Customer memo' },
+    'sales.justBilledPrintHint': { bn: 'বিল সম্পন্ন হয়েছে — নিচের প্রিন্ট বাটনে চাপুন', en: 'Bill completed — tap Print below' },
     'sales.rateHint': { bn: 'সেবা রেট করুন', en: 'Rate our service' },
     'sales.paymentMethod': { bn: 'পেমেন্ট মাধ্যম', en: 'Payment method' },
     'sales.subtotal': { bn: 'সাবটোটাল', en: 'Subtotal' },

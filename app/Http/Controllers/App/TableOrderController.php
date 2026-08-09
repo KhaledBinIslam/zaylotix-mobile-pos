@@ -524,13 +524,15 @@ class TableOrderController extends Controller
             return $sale;
         });
 
-        // ?autoprint=1 — Sales/Show.vue fires window.print() on load only
-        // when this exact param is present, so a table order that was just
-        // billed prints its combined KOT+memo copy without the cashier
-        // having to notice and tap a separate print button on the next
-        // page (Khaled's report: "customer receipt isn't printing"). Never
-        // set on a plain visit/refresh of that same URL, so it can't
-        // re-trigger a surprise reprint later.
+        // ?autoprint=1 — Sales/Show.vue reads this to know the cashier
+        // just landed here straight from billing (not a later revisit) and
+        // makes the print button impossible to miss (toast + banner + full-
+        // weight styling) rather than calling window.print() automatically:
+        // an earlier version did call it automatically here, but a delayed
+        // print() after a full page navigation (not a direct click) turned
+        // out to print a genuinely blank page on real testing — seeing the
+        // param does its own history.replaceState() so a plain refresh of
+        // that same URL never re-shows the hint.
         return redirect()->route('app.sales.show', ['sale' => $sale->id, 'autoprint' => 1])->with('success', 'বিল সম্পন্ন হয়েছে।');
     }
 }
