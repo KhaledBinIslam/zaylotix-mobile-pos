@@ -4,9 +4,11 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import { useI18n } from '@/composables/useI18n';
+import { useToast } from '@/composables/useToast';
 
 const props = defineProps({ tables: Array, takeawayOrders: { type: Array, default: () => [] } });
 const { t } = useI18n();
+const { toast } = useToast();
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 
 const page = usePage();
@@ -39,8 +41,15 @@ function addTable() {
 // single sheet now, reached with one small tap instead of always-on clutter
 const settingsSheet = ref(false);
 
-function openTable(tbl) {
-    router.post(route('app.restaurant.tables.open', tbl.id));
+// tapping a FREE table used to immediately create an order bound to it —
+// the exact "table picked before food" flow Khaled explicitly asked to
+// remove (not just supplement with a new button). A free table card is now
+// purely a status display; the only way into a new order is "New Order"/
+// "Takeaway" above, food first, table picked afterward from the order
+// screen (see TableOrderController::assignTable). This nudge is here so a
+// tap on a free table doesn't feel like it silently did nothing.
+function freeTableTapped() {
+    toast('🍽️ ' + t('restaurant.useNewOrderHint'));
 }
 function goToOrder(tbl) {
     if (tbl.open_order_id) router.visit(route('app.restaurant.orders.show', tbl.open_order_id));
@@ -134,7 +143,7 @@ onBeforeUnmount(() => clearInterval(pollTimer));
             <div
                 v-for="tb in tables" :key="tb.id" class="pcard"
                 :class="{ occupied: tb.status === 'occupied' }"
-                @click="tb.status === 'occupied' ? goToOrder(tb) : openTable(tb)"
+                @click="tb.status === 'occupied' ? goToOrder(tb) : freeTableTapped()"
             >
                 <button class="pcard-main" style="cursor:pointer">
                     <div class="em">{{ tb.status === 'occupied' ? '🍽️' : '🪑' }}</div>

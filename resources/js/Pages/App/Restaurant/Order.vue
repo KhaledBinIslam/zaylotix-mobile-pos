@@ -331,6 +331,56 @@ onBeforeUnmount(() => clearInterval(pollTimer));
                     <div v-else class="empty" style="padding:20px 0"><div class="big">🍽️</div>{{ t('restaurant.noItemsYet') }}</div>
                 </div>
 
+                <!-- order type / table / kitchen note / waiter — moved above the
+                     KOT-print/bill buttons per Khaled's explicit request: below
+                     them, a cashier could print/bill without ever scrolling down
+                     far enough to notice the note field was even there. Now it's
+                     the natural next thing after building the cart, before the
+                     print/bill actions. Every field here auto-saves itself (on
+                     click for the order-type segment, on blur for text fields) —
+                     no separate "Save" button to remember to tap anymore. -->
+                <div class="card" style="margin-bottom:14px">
+                    <!-- food-first: this order has no table yet — shown right above the
+                         order-type picker so seating happens as part of the same "now that
+                         the cart is built, decide table/takeaway/delivery" step -->
+                    <div v-if="!order.table_id && metaForm.order_source === 'dine_in' && freeTables.length" class="card" style="margin-bottom:10px;background:var(--goldSoft);border-color:var(--gold2)">
+                        <div style="font-size:12.5px;font-weight:700;color:var(--gold2);margin-bottom:8px">🪑 {{ t('restaurant.assignTableHint') }}</div>
+                        <div style="display:flex;gap:8px">
+                            <select v-model="tableToAssign" style="flex:1;margin:0">
+                                <option value="">{{ t('damage.selectPlaceholder') }}</option>
+                                <option v-for="tb in freeTables" :key="tb.id" :value="tb.id">{{ tb.name }}</option>
+                            </select>
+                            <button class="btn sm" style="width:auto;padding:0 16px" :disabled="!tableToAssign || assignTableForm.processing" @click="assignTable">{{ assignTableForm.processing ? '...' : t('restaurant.seatTable') }}</button>
+                        </div>
+                    </div>
+                    <div v-else-if="!order.table_id && metaForm.order_source === 'dine_in'" style="font-size:12px;color:var(--dim);margin-bottom:10px">⚠️ {{ t('restaurant.tableNotAssigned') }}</div>
+
+                    <div class="field" style="margin-bottom:8px">
+                        <label>{{ t('restaurant.orderSource') }}</label>
+                        <div class="seg">
+                            <button :class="{ on: metaForm.order_source === 'dine_in' }" @click="metaForm.order_source = 'dine_in'; saveMeta()">{{ t('restaurant.sourceDineIn') }}</button>
+                            <button :class="{ on: metaForm.order_source === 'takeaway' }" @click="metaForm.order_source = 'takeaway'; saveMeta()">{{ t('restaurant.sourceTakeaway') }}</button>
+                            <button :class="{ on: metaForm.order_source === 'delivery' }" @click="metaForm.order_source = 'delivery'; saveMeta()">{{ t('restaurant.sourceDelivery') }}</button>
+                        </div>
+                    </div>
+                    <div v-if="metaForm.order_source === 'delivery'" class="field" style="margin-bottom:8px">
+                        <label>{{ t('restaurant.deliveryPlatform') }}</label>
+                        <select v-model="metaForm.delivery_platform" @change="saveMeta">
+                            <option value="">{{ t('damage.selectPlaceholder') }}</option>
+                            <option v-for="p in DELIVERY_PLATFORMS" :key="p" :value="p">{{ p }}</option>
+                        </select>
+                        <input v-if="metaForm.delivery_platform === 'অন্য কিছু'" v-model="metaForm.delivery_platform" :placeholder="t('restaurant.deliveryPlatformCustom')" style="margin-top:6px" @blur="saveMeta">
+                    </div>
+                    <div class="field" style="margin-bottom:8px">
+                        <label>{{ t('restaurant.kitchenNote') }} <span style="color:var(--dim);font-weight:400">{{ t('restaurant.kitchenNoteHint') }}</span></label>
+                        <textarea v-model="metaForm.kitchen_note" rows="2" :placeholder="t('restaurant.kitchenNotePlaceholder')" @blur="saveMeta"></textarea>
+                    </div>
+                    <div class="field">
+                        <label>{{ t('restaurant.waiterName') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
+                        <input v-model="metaForm.waiter_name" :placeholder="t('restaurant.waiterNamePlaceholder')" @blur="saveMeta">
+                    </div>
+                </div>
+
                 <!-- sticky footer — subtotal + total + bill/kitchen actions stay on
                      screen while the cart above scrolls, so the total and the
                      buttons a cashier needs most are never scrolled out of view,
@@ -366,52 +416,6 @@ onBeforeUnmount(() => clearInterval(pollTimer));
                     <button v-if="kitchenWaNumber" class="btn wa" :disabled="!order.items.length || (splitMode && !selectedItemIds.length)" @click="billAndSendKotWA">
                         📤 {{ t('restaurant.billAndKotWa') }}
                     </button>
-                </div>
-
-                <!-- secondary details — order type, kitchen note, waiter — set
-                     once per order, not needed at a glance every time like the
-                     cart/bill actions above are, so they sit below those, not above -->
-                <div class="card" style="margin-bottom:14px">
-                    <!-- food-first: this order has no table yet — shown right above the
-                         order-type picker so seating happens as part of the same "now that
-                         the cart is built, decide table/takeaway/delivery" step -->
-                    <div v-if="!order.table_id && metaForm.order_source === 'dine_in' && freeTables.length" class="card" style="margin-bottom:10px;background:var(--goldSoft);border-color:var(--gold2)">
-                        <div style="font-size:12.5px;font-weight:700;color:var(--gold2);margin-bottom:8px">🪑 {{ t('restaurant.assignTableHint') }}</div>
-                        <div style="display:flex;gap:8px">
-                            <select v-model="tableToAssign" style="flex:1;margin:0">
-                                <option value="">{{ t('damage.selectPlaceholder') }}</option>
-                                <option v-for="tb in freeTables" :key="tb.id" :value="tb.id">{{ tb.name }}</option>
-                            </select>
-                            <button class="btn sm" style="width:auto;padding:0 16px" :disabled="!tableToAssign || assignTableForm.processing" @click="assignTable">{{ assignTableForm.processing ? '...' : t('restaurant.seatTable') }}</button>
-                        </div>
-                    </div>
-                    <div v-else-if="!order.table_id && metaForm.order_source === 'dine_in'" style="font-size:12px;color:var(--dim);margin-bottom:10px">⚠️ {{ t('restaurant.tableNotAssigned') }}</div>
-
-                    <div class="field" style="margin-bottom:8px">
-                        <label>{{ t('restaurant.orderSource') }}</label>
-                        <div class="seg">
-                            <button :class="{ on: metaForm.order_source === 'dine_in' }" @click="metaForm.order_source = 'dine_in'">{{ t('restaurant.sourceDineIn') }}</button>
-                            <button :class="{ on: metaForm.order_source === 'takeaway' }" @click="metaForm.order_source = 'takeaway'">{{ t('restaurant.sourceTakeaway') }}</button>
-                            <button :class="{ on: metaForm.order_source === 'delivery' }" @click="metaForm.order_source = 'delivery'">{{ t('restaurant.sourceDelivery') }}</button>
-                        </div>
-                    </div>
-                    <div v-if="metaForm.order_source === 'delivery'" class="field" style="margin-bottom:8px">
-                        <label>{{ t('restaurant.deliveryPlatform') }}</label>
-                        <select v-model="metaForm.delivery_platform">
-                            <option value="">{{ t('damage.selectPlaceholder') }}</option>
-                            <option v-for="p in DELIVERY_PLATFORMS" :key="p" :value="p">{{ p }}</option>
-                        </select>
-                        <input v-if="metaForm.delivery_platform === 'অন্য কিছু'" v-model="metaForm.delivery_platform" :placeholder="t('restaurant.deliveryPlatformCustom')" style="margin-top:6px">
-                    </div>
-                    <div class="field" style="margin-bottom:8px">
-                        <label>{{ t('restaurant.kitchenNote') }} <span style="color:var(--dim);font-weight:400">{{ t('restaurant.kitchenNoteHint') }}</span></label>
-                        <textarea v-model="metaForm.kitchen_note" rows="2" :placeholder="t('restaurant.kitchenNotePlaceholder')"></textarea>
-                    </div>
-                    <div class="field" style="margin-bottom:8px">
-                        <label>{{ t('restaurant.waiterName') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
-                        <input v-model="metaForm.waiter_name" :placeholder="t('restaurant.waiterNamePlaceholder')">
-                    </div>
-                    <button v-if="metaChanged" class="btn sm ghost" style="width:100%" :disabled="metaForm.processing" @click="saveMeta">{{ metaForm.processing ? '...' : t('stock.save') }}</button>
                 </div>
             </div>
 
