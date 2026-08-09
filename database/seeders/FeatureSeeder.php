@@ -37,6 +37,10 @@ class FeatureSeeder extends Seeder
             ['key' => 'promotions', 'label_bn' => 'অফার/কুপন (BOGO, কম্বো, কুপন কোড)', 'label_en' => 'Promotions/coupons (BOGO, combo, coupon codes)', 'category' => 'billing', 'description' => 'Buy-X-get-Y (or combo) auto-discounts and coupon codes applied at checkout.'],
             ['key' => 'loyalty_points', 'label_bn' => 'লয়্যালটি পয়েন্ট', 'label_en' => 'Loyalty points', 'category' => 'billing', 'description' => 'Customers earn points on purchases and redeem them for a discount later — the owner sets both rates.'],
             ['key' => 'quotations', 'label_bn' => 'কোটেশন/মূল্য তালিকা', 'label_en' => 'Quotations', 'category' => 'billing', 'description' => 'Give a customer a written price quote before they buy, then convert it straight into a sale when they\'re ready.'],
+            // opt-in only, like hr_payroll — a shop connects its OWN Meta
+            // WhatsApp Business account (see WhatsappCredentialController),
+            // this just gates whether the bulk-send screen is reachable at all
+            ['key' => 'whatsapp_bulk', 'label_bn' => 'বাল্ক WhatsApp মেসেজ', 'label_en' => 'Bulk WhatsApp messaging', 'category' => 'billing', 'description' => 'Connect the shop\'s own WhatsApp Business account and send a message to many customers at once (template or free text).'],
 
             // accounts — money the shop is tracking
             ['key' => 'accounts', 'label_bn' => 'হিসাব-নিকাশ', 'label_en' => 'Accounts & balance sheet', 'category' => 'accounts', 'description' => 'Assets, liabilities, capital and net worth in one view.'],

@@ -182,6 +182,41 @@ function disconnectGateway(provider) {
     });
 }
 
+// --- WhatsApp Business (bring-your-own Meta Cloud API key) — owner only,
+// lazy-loaded the same way the payment gateway sheet above is. Only one
+// possible connection (not a per-provider tab list like gateways), since
+// there's only one WhatsApp Cloud API. ---
+const waSheet = ref(false);
+const waConfigured = ref(null);
+const waForm = useForm({ phone_number_id: '', access_token: '', waba_id: '' });
+const waTestForm = useForm({ phone: '' });
+function openWaSheet() {
+    waSheet.value = true;
+    fetch(route('app.whatsappCredential.index'), { headers: { Accept: 'application/json' } })
+        .then((r) => r.json())
+        .then((data) => { waConfigured.value = data.configured; });
+}
+function saveWa() {
+    waForm.post(route('app.whatsappCredential.store'), {
+        preserveScroll: true,
+        onSuccess: () => { waForm.reset(); openWaSheet(); },
+    });
+}
+function testWa() {
+    waTestForm.post(route('app.whatsappCredential.test'), { preserveScroll: true });
+}
+function toggleWaActive(isActive) {
+    router.patch(route('app.whatsappCredential.toggle'), { is_active: isActive }, {
+        preserveScroll: true, onSuccess: () => openWaSheet(),
+    });
+}
+function disconnectWa() {
+    if (!confirm('WhatsApp Business সংযোগ বিচ্ছিন্ন করবেন?')) return;
+    router.delete(route('app.whatsappCredential.destroy'), {
+        preserveScroll: true, onSuccess: () => openWaSheet(),
+    });
+}
+
 // --- purchase (stock-in from supplier) ---
 const purchaseSheet = ref(false);
 const purchaseAlsoStock = ref(false);
@@ -340,6 +375,14 @@ onMounted(() => {
             <div class="ava">💳</div>
             <div class="mid"><b>{{ t('more.paymentGateway') }}</b><span>{{ t('more.paymentGatewaySub') }}</span></div><div class="end">›</div>
         </button>
+        <button v-if="isOwner" class="row" style="width:100%;text-align:left" @click="openWaSheet">
+            <div class="ava">💬</div>
+            <div class="mid"><b>{{ t('more.whatsappBusiness') }}</b><span>{{ t('more.whatsappBusinessSub') }}</span></div><div class="end">›</div>
+        </button>
+        <Link v-if="isOwner && features.includes('whatsapp_bulk')" :href="route('app.whatsappBulk.index')" class="row" style="width:100%;text-align:left">
+            <div class="ava">📢</div>
+            <div class="mid"><b>{{ t('more.whatsappBulk') }}</b><span>{{ t('more.whatsappBulkSub') }}</span></div><div class="end">›</div>
+        </Link>
         <div v-if="hasPerm('settings')" class="row" style="cursor:default">
             <div class="ava">🔌</div>
             <div class="mid"><b>{{ t('more.hardwareScanner') }}</b><span>{{ t('more.hardwareScannerSub') }}</span></div>
@@ -508,6 +551,47 @@ onMounted(() => {
             <div style="font-size:11px;color:var(--dim);margin-bottom:12px">{{ t('more.gatewaySecretHint') }}</div>
             <button class="btn" :disabled="gatewayForm.processing" @click="saveGateway">{{ gatewayForm.processing ? '...' : t('stock.save') }}</button>
             <button class="btn ghost" style="margin-top:10px" @click="gatewaySheet = false">{{ t('common.cancel') }}</button>
+        </Sheet>
+
+        <!-- WhatsApp Business (bring-your-own Meta Cloud API key) -->
+        <Sheet v-model="waSheet" :title="t('more.whatsappBusiness')" :subtitle="t('more.whatsappBusinessSub')">
+            <div v-if="waConfigured" class="card" style="margin-bottom:14px">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <div>
+                        <b>✅ {{ t('more.gatewayConnected') }}</b>
+                        <div style="color:var(--mut);font-size:12px;margin-top:2px">{{ waConfigured.masked_summary }}</div>
+                    </div>
+                    <div class="seg" style="margin:0">
+                        <button :class="{ on: waConfigured.is_active }" @click="toggleWaActive(true)">{{ t('more.on') }}</button>
+                        <button :class="{ on: !waConfigured.is_active }" @click="toggleWaActive(false)">{{ t('more.off') }}</button>
+                    </div>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:10px">
+                    <input v-model="waTestForm.phone" inputmode="tel" :placeholder="t('more.whatsappTestPhonePlaceholder')" style="flex:1">
+                    <button class="btn sm ghost" style="width:auto;padding:0 16px" :disabled="waTestForm.processing || !waTestForm.phone" @click="testWa">{{ t('more.whatsappTestSend') }}</button>
+                </div>
+                <div v-if="waTestForm.errors.phone" style="color:var(--rose);font-size:12px;margin-top:6px">{{ waTestForm.errors.phone }}</div>
+                <button class="btn sm ghost" style="width:100%;margin-top:10px;color:var(--rose);border-color:var(--rose)" @click="disconnectWa">{{ t('more.gatewayDisconnect') }}</button>
+            </div>
+            <div v-else style="font-size:12.5px;color:var(--dim);margin-bottom:12px">{{ t('more.whatsappNotConnectedHint') }}</div>
+
+            <div class="field">
+                <label>Phone Number ID</label>
+                <input v-model="waForm.phone_number_id">
+                <div v-if="waForm.errors.phone_number_id" style="color:var(--rose);font-size:12px;margin-top:6px">{{ waForm.errors.phone_number_id }}</div>
+            </div>
+            <div class="field">
+                <label>Access Token</label>
+                <input v-model="waForm.access_token" type="password">
+                <div v-if="waForm.errors.access_token" style="color:var(--rose);font-size:12px;margin-top:6px">{{ waForm.errors.access_token }}</div>
+            </div>
+            <div class="field">
+                <label>WABA ID <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
+                <input v-model="waForm.waba_id">
+            </div>
+            <div style="font-size:11px;color:var(--dim);margin-bottom:12px">{{ t('more.whatsappSecretHint') }}</div>
+            <button class="btn" :disabled="waForm.processing" @click="saveWa">{{ waForm.processing ? '...' : t('stock.save') }}</button>
+            <button class="btn ghost" style="margin-top:10px" @click="waSheet = false">{{ t('common.cancel') }}</button>
         </Sheet>
 
         <!-- purchase -->

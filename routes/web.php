@@ -35,6 +35,8 @@ use App\Http\Controllers\App\OnboardingController;
 use App\Http\Controllers\App\PaymentController;
 use App\Http\Controllers\App\PaymentGatewayController;
 use App\Http\Controllers\App\SubscriptionRenewalController;
+use App\Http\Controllers\App\WhatsappBulkController;
+use App\Http\Controllers\App\WhatsappCredentialController;
 use App\Http\Controllers\App\PartnerController;
 use App\Http\Controllers\App\PartnerTransactionController;
 use App\Http\Controllers\App\PosController;
@@ -351,6 +353,20 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::get('subscription-renewal', [SubscriptionRenewalController::class, 'index'])->name('subscriptionRenewal.index');
         Route::post('subscription-renewal/{provider}/initiate', [SubscriptionRenewalController::class, 'initiate'])->name('subscriptionRenewal.initiate');
         Route::get('subscription-renewal/status/{reference}', [SubscriptionRenewalController::class, 'status'])->name('subscriptionRenewal.status');
+
+        // WhatsApp Business (Meta Cloud API) — same "owner-only, bring your
+        // own key" shape as payment gateways above; connecting/reading the
+        // access token is owner-only regardless of feature grant
+        Route::get('whatsapp-business', [WhatsappCredentialController::class, 'index'])->name('whatsappCredential.index');
+        Route::post('whatsapp-business', [WhatsappCredentialController::class, 'store'])->name('whatsappCredential.store');
+        Route::post('whatsapp-business/test', [WhatsappCredentialController::class, 'test'])->name('whatsappCredential.test');
+        Route::patch('whatsapp-business/toggle', [WhatsappCredentialController::class, 'toggle'])->name('whatsappCredential.toggle');
+        Route::delete('whatsapp-business', [WhatsappCredentialController::class, 'destroy'])->name('whatsappCredential.destroy');
+    });
+
+    Route::middleware(['owner', 'feature:whatsapp_bulk'])->group(function () {
+        Route::get('whatsapp-bulk', [WhatsappBulkController::class, 'index'])->name('whatsappBulk.index');
+        Route::post('whatsapp-bulk/send', [WhatsappBulkController::class, 'send'])->name('whatsappBulk.send');
     });
 
     Route::middleware(['perm:promotions', 'feature:promotions'])->group(function () {
