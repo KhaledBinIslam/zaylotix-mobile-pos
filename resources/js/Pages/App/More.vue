@@ -440,6 +440,9 @@ onMounted(() => {
 
         <template v-if="(hasPerm('stock_count') && features.includes('stock_count')) || (hasPerm('purchases') && features.includes('purchases')) || (hasPerm('purchases') && features.includes('suppliers')) || (hasPerm('stock') && features.includes('serial_tracking')) || (hasPerm('damages') && features.includes('damages')) || (hasPerm('returns') && features.includes('returns')) || (hasPerm('stock') && features.includes('ingredient_tracking'))">
             <div class="sechead"><h2>{{ t('more.sectionStock') }}</h2></div>
+            <Link v-if="hasPerm('stock')" :href="route('app.units.index')" class="row">
+                <div class="ava">📏</div><div class="mid"><b>{{ t('unit.title') }}</b><span>{{ t('unit.subtitle') }}</span></div><div class="end">›</div>
+            </Link>
             <button v-if="hasPerm('stock_count') && features.includes('stock_count')" class="row" style="width:100%;text-align:left" @click="countSheet = true">
                 <div class="ava">🔢</div><div class="mid"><b>{{ t('more.stockCountTitle') }}</b><span>{{ t('more.stockCountSub') }}</span></div><div class="end">›</div>
             </button>

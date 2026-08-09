@@ -1,5 +1,5 @@
 <script setup>
-import { Head, useForm, router, usePage } from '@inertiajs/vue3';
+import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
@@ -374,6 +374,14 @@ useKeyboardShortcuts({
             <button class="btn ghost" style="flex:1" @click="openNew">{{ t('stock.addProduct') }}</button>
             <button class="btn ghost" style="flex:1" @click="importSheet = true">{{ t('stock.importCsv') }}</button>
         </div>
+
+        <!-- was previously only reachable as a side-effect of editing a
+             specific product's unit dropdown ("or type a new unit") — a
+             direct, standalone link here too, right where a shop owner is
+             already thinking about their inventory setup -->
+        <Link :href="route('app.units.index')" class="row" style="margin-bottom:12px">
+            <div class="ava">📏</div><div class="mid"><b>{{ t('unit.title') }}</b><span>{{ t('unit.subtitle') }}</span></div><div class="end">›</div>
+        </Link>
 
         <div style="display:flex;gap:8px;margin-bottom:12px">
             <input ref="searchInput" v-model="q" :placeholder="t('stock.searchPlaceholder')" style="flex:1" @keyup.enter="applyFilter">

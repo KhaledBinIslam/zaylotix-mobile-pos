@@ -47,6 +47,7 @@ use App\Http\Controllers\App\ProductController;
 use App\Http\Controllers\App\ProductImportController;
 use App\Http\Controllers\App\ProductUnitController;
 use App\Http\Controllers\App\ProductVariantController;
+use App\Http\Controllers\App\UnitController;
 use App\Http\Controllers\App\PromotionController;
 use App\Http\Controllers\App\PurchaseController;
 use App\Http\Controllers\App\QuotationController;
@@ -185,6 +186,14 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::post('products/import', [ProductImportController::class, 'store'])->name('products.import.store');
 
         Route::get('medicine-catalog/search', [MedicineCatalogController::class, 'search'])->name('medicineCatalog.search');
+
+        // standalone unit management — not gated by unit_conversion, since
+        // a product's own base unit (pc/kg/etc.) is set regardless of
+        // whether pack-size conversion is on
+        Route::get('units', [UnitController::class, 'index'])->name('units.index');
+        Route::post('units', [UnitController::class, 'store'])->name('units.store');
+        Route::put('units/{unit}', [UnitController::class, 'update'])->name('units.update');
+        Route::delete('units/{unit}', [UnitController::class, 'destroy'])->name('units.destroy');
 
         Route::middleware('feature:unit_conversion')->group(function () {
             Route::post('products/{product}/units', [ProductUnitController::class, 'store'])->name('productUnits.store');

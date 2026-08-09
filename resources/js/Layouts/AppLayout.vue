@@ -132,7 +132,7 @@ function goBack() {
 // so support immediately knows which screen the owner is stuck on without
 // them having to explain it themselves
 const SCREEN_LABELS = {
-    home: 'হোম', sell: 'বিক্রি (POS)', restaurant: 'টেবিল', reservations: 'রিজার্ভেশন', kds: 'কিচেন ডিসপ্লে', cds: 'কাস্টমার ডিসপ্লে', stock: 'স্টক', due: 'বাকি',
+    home: 'হোম', sell: 'বিক্রি (POS)', restaurant: 'টেবিল', reservations: 'রিজার্ভেশন', kds: 'কিচেন ডিসপ্লে', cds: 'কাস্টমার ডিসপ্লে', stock: 'স্টক', units: 'ইউনিট ব্যবস্থাপনা', due: 'বাকি',
     sales: 'বিক্রির ইতিহাস', promotions: 'অফার/কুপন', quotations: 'কোটেশন', accounts: 'হিসাব-নিকাশ',
     reports: 'রিপোর্ট', expenses: 'খরচ', purchaseHistory: 'ক্রয়ের ইতিহাস', suppliers: 'সাপ্লায়ার',
     serials: 'IMEI/ওয়ারেন্টি', cashier: 'ক্যাশিয়ার', activity: 'অ্যাক্টিভিটি লগ', more: 'আরও', help: 'সাহায্য', partners: 'পার্টনার হিসাব', employees: 'কর্মচারী ও বেতন',
@@ -193,6 +193,7 @@ const sidebarGroups = computed(() => [
         label: t('nav.category.inventory'),
         items: [
             { key: 'stock', label: t('nav.stockFull'), href: route('app.stock'), icon: '📦', on: props.active === 'stock', show: hasPerm('stock') },
+            { key: 'units', label: t('nav.units'), href: route('app.units.index'), icon: '📏', on: props.active === 'units', show: hasPerm('stock') },
             { key: 'barcode', label: t('nav.barcode'), href: route('app.barcodeLabels.index'), icon: '🏷️', on: props.active === 'more' && page.url.startsWith('/app/barcode-labels'), show: hasPerm('barcode_labels') && hasFeature('barcode_printing') },
             { key: 'purchase', label: t('nav.purchase'), href: moreLink('purchase'), icon: '🚚', on: isMoreLinkActive('purchase'), show: hasPerm('purchases') && hasFeature('purchases') },
             { key: 'purchaseHistory', label: t('nav.purchaseHistory'), href: route('app.purchases.index'), icon: '📜', on: props.active === 'purchaseHistory', show: hasPerm('purchases') && hasFeature('purchases') },
