@@ -4,6 +4,8 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import { useI18n } from '@/composables/useI18n';
+import { useToast } from '@/composables/useToast';
+import { useHardwareScanner } from '@/composables/useHardwareScanner';
 
 const props = defineProps({
     order: Object, products: Array, categories: Array,
@@ -51,6 +53,97 @@ const filtered = computed(() => props.products.filter((p) =>
     ) &&
     (cat.value === 'all' || p.category_id === cat.value)
 ));
+
+// --- barcode scan (camera + hardware) — this screen had NEITHER before,
+// the one concrete gap the vertical-by-vertical POS audit found for
+// Restaurant: a shop that also stocks bottled drinks/snacks alongside
+// cooked food had no way to scan them onto a table order, only tap the
+// grid. Same mechanism Pos/Index.vue and Clothing/Pos.vue already use
+// (html5-qrcode + a hardware keyboard-wedge listener), simplified here
+// since a table order has no weight/pack-size/variant lines to route to —
+// TableOrderController::addItem() flatly rejects a variant product, so a
+// scanned one is just reported back rather than posted and rejected. ---
+const { toast } = useToast();
+const canScan = computed(() => shop.value?.sales_mode === 'scan' || shop.value?.sales_mode === 'both');
+const scannerOpen = ref(false);
+const scanHint = ref('');
+let html5Qrcode = null;
+let lastScanCode = '';
+let lastScanAt = 0;
+
+async function openScanner() {
+    if (!canScan.value) {
+        toast('❌ ' + t('pos.scannerDisabled'));
+        return;
+    }
+    scannerOpen.value = true;
+    scanHint.value = t('pos.scanHintDefault');
+
+    try {
+        const { Html5Qrcode } = await import('html5-qrcode');
+        html5Qrcode = new Html5Qrcode('reader', { verbose: false });
+        await html5Qrcode.start(
+            { facingMode: 'environment' },
+            { fps: 12, qrbox: { width: 260, height: 200 } },
+            (decodedText) => handleBarcode(decodedText, (msg) => (scanHint.value = msg)),
+            () => {},
+        );
+    } catch (e) {
+        toast('❌ ' + t('pos.cameraNotFound'));
+        closeScanner();
+    }
+}
+
+async function closeScanner() {
+    scannerOpen.value = false;
+    if (html5Qrcode) {
+        try {
+            await html5Qrcode.stop();
+            html5Qrcode.clear();
+        } catch (e) { /* already stopped */ }
+        html5Qrcode = null;
+    }
+}
+
+async function handleBarcode(decodedText, onFeedback) {
+    const now = Date.now();
+    if (decodedText === lastScanCode && now - lastScanAt < 1500) return; // debounce repeat frames
+    lastScanCode = decodedText;
+    lastScanAt = now;
+
+    if (navigator.vibrate) navigator.vibrate(40);
+
+    const code = decodedText.trim();
+    const product = props.products.find((p) => p.barcode === code);
+
+    if (product) {
+        if (product.variants_count > 0) {
+            onFeedback('❌ ' + product.name + ' — ' + t('restaurant.scanVariantNotSupported'));
+            return;
+        }
+        addItem(product);
+        onFeedback('✅ ' + product.name);
+    } else {
+        // not in the locally loaded list (added by another device since page load) — ask the server
+        try {
+            const res = await fetch(route('app.pos.barcode', code), { headers: { Accept: 'application/json' } });
+            const data = await res.json();
+            if (data.found && !data.product.variants?.length) {
+                addItem(data.product);
+                onFeedback('✅ ' + data.product.name);
+            } else if (data.found) {
+                onFeedback('❌ ' + data.product.name + ' — ' + t('restaurant.scanVariantNotSupported'));
+            } else {
+                onFeedback('❌ ' + t('pos.productNotFound') + ' ' + decodedText);
+            }
+        } catch (e) {
+            onFeedback('❌ ' + t('pos.productNotFound') + ' ' + decodedText);
+        }
+    }
+}
+
+const hardwareScannerEnabled = computed(() => shop.value?.hardware_scanner_enabled ?? true);
+useHardwareScanner((code) => handleBarcode(code, (msg) => toast(msg)), hardwareScannerEnabled);
 
 // --- pending vs served (separate from kot_printed_at — a kitchen can be
 // mid-prep on something already sent but not yet brought to the table) ---
@@ -263,11 +356,14 @@ const moreSheet = ref(false);
 let pollTimer = null;
 onMounted(() => {
     pollTimer = setInterval(() => {
-        if (billSheet.value) return;
+        if (billSheet.value || scannerOpen.value) return;
         router.reload({ only: ['order'], preserveScroll: true, preserveState: true });
     }, 8000);
 });
-onBeforeUnmount(() => clearInterval(pollTimer));
+onBeforeUnmount(() => {
+    clearInterval(pollTimer);
+    if (html5Qrcode) html5Qrcode.stop().catch(() => {});
+});
 </script>
 
 <template>
@@ -430,7 +526,10 @@ onBeforeUnmount(() => clearInterval(pollTimer));
 
             <!-- menu -->
             <div class="lg:order-2 lg:flex-1 lg:min-w-0">
-                <input v-model="q" :placeholder="t('pos.searchPlaceholder')" style="margin-bottom:12px">
+                <div style="display:flex;gap:8px;margin-bottom:12px">
+                    <input v-model="q" :placeholder="t('pos.searchPlaceholder')" style="flex:1">
+                    <button v-if="canScan" class="btn ghost" style="width:auto;padding:0 16px" :title="t('pos.scanTitle')" @click="openScanner">📷</button>
+                </div>
                 <div class="tabbar lg:hidden">
                     <button :class="{ on: cat === 'all' }" @click="cat = 'all'">{{ t('pos.allProducts') }}</button>
                     <button v-for="c in categories" :key="c.id" :class="{ on: cat === c.id }" @click="cat = c.id">{{ c.emoji }} {{ c.name }}</button>
@@ -453,6 +552,24 @@ onBeforeUnmount(() => clearInterval(pollTimer));
                 <div v-else class="empty"><div class="big">🔍</div>{{ t('pos.notFound') }}</div>
             </div>
         </div>
+
+        <!-- barcode scanner overlay -->
+        <Teleport to="body">
+            <div v-if="scannerOpen" id="scanwrap">
+                <div class="scan-top">
+                    <button class="scan-x" @click="closeScanner">✕</button>
+                    <div style="color:#fff;font-weight:700">{{ t('pos.scanProductTitle') }}</div>
+                </div>
+                <div id="reader"></div>
+                <div class="scan-frame"></div>
+                <div class="scan-hint">{{ scanHint }}</div>
+                <div class="scan-manual">
+                    <button class="btn ghost" style="background:rgba(0,0,0,.55);color:#fff;border-color:rgba(255,255,255,.25)" @click="closeScanner">
+                        {{ t('pos.addFromList') }}
+                    </button>
+                </div>
+            </div>
+        </Teleport>
 
         <!-- KOT print view — kitchen ticket, no prices -->
         <Teleport to="body">

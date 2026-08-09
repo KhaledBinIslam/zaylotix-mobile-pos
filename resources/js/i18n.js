@@ -46,6 +46,7 @@ export const translations = {
     'restaurant.assignTableHint': { bn: 'ডাইন-ইন অর্ডার — কোন টেবিলে বসেছেন বাছাই করুন', en: 'Dine-in order — choose which table this is' },
     'restaurant.seatTable': { bn: 'বসিয়ে দিন', en: 'Seat table' },
     'restaurant.useNewOrderHint': { bn: 'আগে "নতুন অর্ডার" চাপুন, খাবার যোগ করুন — টেবিল পরে বাছাই করবেন', en: 'Tap "New Order" first, add food — pick the table afterward' },
+    'restaurant.scanVariantNotSupported': { bn: 'ভ্যারিয়েন্ট পণ্য — টেবিল অর্ডারে তালিকা থেকে যোগ করুন', en: 'Variant product — add it from the list instead' },
     'branch.syncButton': { bn: 'শাখায় ক্যাটালগ সিঙ্ক করুন', en: 'Sync catalog to branches' },
     'branch.syncButtonSub': { bn: 'নতুন/পরিবর্তিত পণ্য সব শাখায় পাঠান (স্টক প্রভাবিত হবে না)', en: "Push new/updated products to every branch (stock isn't affected)" },
     'branch.syncConfirm': { bn: 'সব শাখায় বর্তমান পণ্য/ক্যাটাগরি/ইউনিট সিঙ্ক করতে চান?', en: 'Sync current products/categories/units to every branch?' },

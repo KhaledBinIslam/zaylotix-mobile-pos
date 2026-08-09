@@ -54,7 +54,11 @@ class TableOrderController extends Controller
                 'waiter_name' => $tableOrder->waiter_name,
                 'bill_count' => $tableOrder->sales()->count(),
             ],
-            'products' => Product::with('category')->orderByDesc('id')->get(),
+            // variants_count feeds the barcode-scan handler's own pre-check
+            // (Order.vue) — addItem() below already rejects a variant
+            // product outright, this just lets a scan say so immediately
+            // instead of posting and waiting on that same server rejection
+            'products' => Product::with('category')->withCount('variants')->orderByDesc('id')->get(),
             'categories' => ProductCategory::orderBy('name')->get(),
             // for the "merge" picker — another occupied table whose order
             // can be folded into this one
