@@ -2,6 +2,7 @@
 import { Head, useForm, Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import { matchPackage } from '@/composables/usePackageMatch';
 
 const props = defineProps({ shop: Object, businessTypes: Array, features: Array, shopFeatureKeys: Array, branches: { type: Array, default: null } });
 
@@ -44,6 +45,12 @@ const willAutoExtend = computed(() => form.status === 'active' && expiryIsPast.v
 const suggestedFee = computed(() =>
     props.features.filter((f) => form.features.includes(f.key)).reduce((sum, f) => sum + Number(f.monthly_price || 0), 0)
 );
+
+// live "which of our 3 published packages does this ticked set look like"
+// readout, per Khaled's own pricing flyer — so admin doesn't have to
+// eyeball-compare the checklist against a screenshot every time
+const featureLabel = (key) => props.features.find((f) => f.key === key)?.label_bn || key;
+const packageMatch = computed(() => matchPackage(form.features));
 
 function submit() {
     form.put(route('admin.shops.update', props.shop.id));
@@ -158,6 +165,23 @@ const recommendedFeatureKeys = () => {
 
             <div>
                 <label class="text-sm font-medium text-gray-600 block mb-2">Features enabled for this shop</label>
+
+                <!-- live "which published package does this match" readout —
+                     compares the ticked set against Starter/Business/Ultimate's
+                     core feature lists (see usePackageMatch.js), so admin
+                     doesn't have to eyeball-compare against the pricing flyer -->
+                <div class="rounded-lg p-3 mb-3 text-sm" :class="packageMatch.tier ? 'bg-violet-50 text-violet-800' : 'bg-amber-50 text-amber-800'">
+                    <template v-if="packageMatch.tier">
+                        <b>এই ফিচার সেট মিলছে: {{ packageMatch.label }} প্যাকেজের সাথে</b>
+                        <div v-if="packageMatch.extras.length" class="text-xs mt-1">+ প্যাকেজের বাইরে অতিরিক্ত: {{ packageMatch.extras.map(featureLabel).join(', ') }}</div>
+                        <div v-if="packageMatch.nextLabel" class="text-xs mt-1 text-violet-600">{{ packageMatch.nextLabel }}-এ upgrade করতে আরও লাগবে: {{ packageMatch.missingForNext.map(featureLabel).join(', ') }}</div>
+                    </template>
+                    <template v-else>
+                        <b>কোনো প্যাকেজের সাথেই পুরোপুরি মেলে না</b>
+                        <div class="text-xs mt-1">Starter-এ পৌঁছাতে দরকার: {{ packageMatch.missingForStarter.map(featureLabel).join(', ') }}</div>
+                    </template>
+                </div>
+
                 <div class="border rounded-lg p-4 space-y-3">
                     <div v-for="(list, cat) in featuresByCategory(features)" :key="cat">
                         <div class="text-xs font-bold uppercase text-gray-400 mb-1.5">{{ cat }}</div>

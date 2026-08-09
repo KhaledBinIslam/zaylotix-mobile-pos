@@ -2,6 +2,7 @@
 import { Head, useForm, Link } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import { matchPackage } from '@/composables/usePackageMatch';
 
 const props = defineProps({ businessTypes: Array, features: Array });
 
@@ -33,6 +34,10 @@ const suggestedFee = computed(() =>
 // overwriting what they entered
 const feeManuallyEdited = ref(false);
 watch(suggestedFee, (v) => { if (!feeManuallyEdited.value) form.monthly_fee = v; });
+
+// live "which published package does this match" readout, same as Edit.vue
+const featureLabel = (key) => props.features.find((f) => f.key === key)?.label_bn || key;
+const packageMatch = computed(() => matchPackage(form.features));
 
 // switching plan re-suggests the expiry date (admin can still hand-edit it
 // afterward) — e.g. picking Trial always proposes "7 days from today"
@@ -184,6 +189,19 @@ const featuresByCategory = (list) => {
                     Features enabled for this shop
                     <span v-if="form.business_type_id" class="text-xs font-normal text-violet-600">— pre-checked from the business type, adjust freely below</span>
                 </label>
+
+                <div class="rounded-lg p-3 mb-3 text-sm" :class="packageMatch.tier ? 'bg-violet-50 text-violet-800' : 'bg-amber-50 text-amber-800'">
+                    <template v-if="packageMatch.tier">
+                        <b>এই ফিচার সেট মিলছে: {{ packageMatch.label }} প্যাকেজের সাথে</b>
+                        <div v-if="packageMatch.extras.length" class="text-xs mt-1">+ প্যাকেজের বাইরে অতিরিক্ত: {{ packageMatch.extras.map(featureLabel).join(', ') }}</div>
+                        <div v-if="packageMatch.nextLabel" class="text-xs mt-1 text-violet-600">{{ packageMatch.nextLabel }}-এ upgrade করতে আরও লাগবে: {{ packageMatch.missingForNext.map(featureLabel).join(', ') }}</div>
+                    </template>
+                    <template v-else>
+                        <b>কোনো প্যাকেজের সাথেই পুরোপুরি মেলে না</b>
+                        <div class="text-xs mt-1">Starter-এ পৌঁছাতে দরকার: {{ packageMatch.missingForStarter.map(featureLabel).join(', ') }}</div>
+                    </template>
+                </div>
+
                 <div class="border rounded-lg p-4 space-y-3">
                     <div v-for="(list, cat) in featuresByCategory(features)" :key="cat">
                         <div class="text-xs font-bold uppercase text-gray-400 mb-1.5">{{ cat }}</div>
