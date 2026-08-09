@@ -7,6 +7,7 @@ import HowToHint from '@/Components/HowToHint.vue';
 import { useToast } from '@/composables/useToast';
 import { useI18n } from '@/composables/useI18n';
 import { useHardwareScanner } from '@/composables/useHardwareScanner';
+import { useOfflineSync } from '@/composables/useOfflineSync';
 
 /**
  * A dedicated, clothing-specific POS — category tabs -> product grid ->
@@ -37,6 +38,7 @@ const hasProductVariants = computed(() => features.value.includes('product_varia
 const hasLowStockAlerts = computed(() => features.value.includes('low_stock_alerts'));
 const { toast } = useToast();
 const { t } = useI18n();
+const offlineSync = useOfflineSync();
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 
 const canScan = computed(() => props.salesMode === 'scan' || props.salesMode === 'both');
@@ -272,18 +274,20 @@ async function submitCheckout() {
     submitting.value = true;
     errorMsg.value = '';
 
+    const payload = {
+        items: cart.value.map((l) => ({ product_id: l.product_id, product_variant_id: l.product_variant_id, qty: l.qty, discount: l.discount || 0 })),
+        discount: discount.value || 0,
+        complimentary: payMode.value === 'complimentary',
+        payments: buildPayments(),
+        customer_phone: customerPhone.value,
+        customer_name: customerName.value,
+    };
+
     try {
         const res = await fetch(route('app.pos.checkout'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken(), Accept: 'application/json' },
-            body: JSON.stringify({
-                items: cart.value.map((l) => ({ product_id: l.product_id, product_variant_id: l.product_variant_id, qty: l.qty, discount: l.discount || 0 })),
-                discount: discount.value || 0,
-                complimentary: payMode.value === 'complimentary',
-                payments: buildPayments(),
-                customer_phone: customerPhone.value,
-                customer_name: customerName.value,
-            }),
+            body: JSON.stringify(payload),
         });
         const data = await res.json();
 
@@ -297,16 +301,23 @@ async function submitCheckout() {
         receiptOpen.value = true;
         router.reload({ only: ['products'] });
     } catch (e) {
-        // fetch() itself only ever throws a TypeError for a genuine
-        // connectivity failure (DNS/refused/offline) — anything else here
-        // (a JSON parse failure on a non-JSON response, a bug in the code
-        // above) is NOT actually a network problem, and mislabeling it as
-        // one hides the real cause. Logging the real error means the next
-        // report of this message comes with an actual reason attached.
-        console.error('Checkout failed:', e);
-        errorMsg.value = e instanceof TypeError
-            ? t('pos.networkError')
-            : `${t('pos.checkoutError')} (${e?.message || e})`;
+        // A real connectivity failure never loses the sale — it's queued
+        // locally and replayed automatically once the connection returns
+        // (see useOfflineSync), exactly like Pos/Index.vue already does;
+        // this screen was missing that safety net entirely before, only
+        // showing an error and leaving the cart to be lost if the cashier
+        // navigated away or closed the tab while still offline. Anything
+        // that ISN'T a genuine connectivity failure (a JSON parse issue, a
+        // bug above) still surfaces as a real error instead of being
+        // silently swallowed into an offline queue it doesn't belong in.
+        if (!navigator.onLine || e instanceof TypeError) {
+            await offlineSync.queueSale(payload);
+            resetCartAfterCheckout();
+            toast(t('pos.savedOffline'));
+        } else {
+            console.error('Checkout failed:', e);
+            errorMsg.value = `${t('pos.checkoutError')} (${e?.message || e})`;
+        }
     } finally {
         submitting.value = false;
     }
