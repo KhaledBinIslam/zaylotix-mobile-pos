@@ -331,7 +331,15 @@ body {
    with an inline width:auto, but the fix belongs here at the source) */
 input:not([type="checkbox"]):not([type="radio"]), select, textarea { font: inherit; background: #fff; border: 1.5px solid var(--line); color: var(--tx); border-radius: 12px; padding: 13px 14px; outline: none; width: 100%; }
 input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:focus { border-color: var(--gold); }
-input[type="checkbox"], input[type="radio"] { width: auto; accent-color: var(--gold); }
+/* explicit, EQUAL width+height — not width:auto. @tailwindcss/forms (used on
+   every Admin page) sets appearance:none + height:1rem on every checkbox/
+   radio; width:auto left height alone at 1rem while width collapsed to a
+   sliver-thin replaced-element default (no visual box left to click), which
+   is exactly the "checkbox not showing, can't select/unselect" bug reported
+   on the shop feature-checklist screen. A fixed square fixes both the
+   earlier overlap bug (still excluded from the text-field rule above) and
+   this one, everywhere checkboxes are used, Admin or App. */
+input[type="checkbox"], input[type="radio"] { width: 18px; height: 18px; accent-color: var(--gold); }
 ::placeholder { color: var(--dim); }
 
 #toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 100px; z-index: 90; background: var(--ink); border: 1px solid var(--ink); color: #fff; padding: 12px 18px; border-radius: 14px; font-size: 13.5px; font-weight: 600; box-shadow: 0 8px 24px rgba(18, 38, 28, .28); max-width: 90%; text-align: center; }

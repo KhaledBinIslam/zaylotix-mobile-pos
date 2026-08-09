@@ -174,11 +174,10 @@ const recommendedFeatureKeys = () => {
                     <template v-if="packageMatch.tier">
                         <b>এই ফিচার সেট মিলছে: {{ packageMatch.label }} প্যাকেজের সাথে</b>
                         <div v-if="packageMatch.extras.length" class="text-xs mt-1">+ প্যাকেজের বাইরে অতিরিক্ত: {{ packageMatch.extras.map(featureLabel).join(', ') }}</div>
-                        <div v-if="packageMatch.nextLabel" class="text-xs mt-1 text-violet-600">{{ packageMatch.nextLabel }}-এ upgrade করতে আরও লাগবে: {{ packageMatch.missingForNext.map(featureLabel).join(', ') }}</div>
+                        <div v-if="packageMatch.nextLabel" class="text-xs mt-1 text-violet-600">এর মধ্যে যেকোনো <u>একটা</u> ফিচার বাছাই করলেই {{ packageMatch.nextLabel }}-এ চলে যাবে: {{ packageMatch.missingForNext.map(featureLabel).join(', ') }}</div>
                     </template>
                     <template v-else>
-                        <b>কোনো প্যাকেজের সাথেই পুরোপুরি মেলে না</b>
-                        <div class="text-xs mt-1">Starter-এ পৌঁছাতে দরকার: {{ packageMatch.missingForStarter.map(featureLabel).join(', ') }}</div>
+                        <b>এখনো কোনো ফিচার বাছাই করা হয়নি</b>
                     </template>
                 </div>
 
