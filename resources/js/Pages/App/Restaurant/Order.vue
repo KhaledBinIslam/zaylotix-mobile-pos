@@ -593,7 +593,9 @@ onBeforeUnmount(() => {
         </Teleport>
 
         <!-- billing sheet -->
-        <Sheet v-model="billSheet" :title="t('restaurant.billSheetTitle')">
+        <Sheet v-model="billSheet" :title="t('restaurant.billSheetTitle')" wide>
+            <div class="checkout-cols">
+            <div>
             <div class="field">
                 <label>{{ t('pos.mobileLabel') }} <span style="color:var(--dim);font-weight:400">{{ t('pos.mobileHint') }}</span></label>
                 <input v-model="customerPhone" inputmode="tel" placeholder="01XXXXXXXXX">
@@ -620,6 +622,8 @@ onBeforeUnmount(() => {
                 <label>{{ t('pos.overallDiscount') }}</label>
                 <input v-model.number="discount" type="number" placeholder="0" min="0">
             </div>
+            </div>
+            <div>
             <div class="card" style="margin-bottom:14px">
                 <div v-if="effectiveDiscount > 0" style="display:flex;justify-content:space-between;font-size:13px;color:var(--mut);padding-bottom:6px"><span>{{ t('pos.overallDiscount') }}</span><span>− {{ money(effectiveDiscount) }}</span></div>
                 <div v-if="serviceCharge > 0" style="display:flex;justify-content:space-between;font-size:13px;color:var(--mut);padding-bottom:6px"><span>{{ t('pos.serviceCharge') }}</span><span>+ {{ money(serviceCharge) }}</span></div>
@@ -628,6 +632,8 @@ onBeforeUnmount(() => {
             <button class="btn" :disabled="billForm.processing" @click="submitBill">
                 {{ billForm.processing ? t('pos.processing') : t('restaurant.billNow') }}
             </button>
+            </div>
+            </div>
         </Sheet>
 
         <!-- table move/merge + cancel — rare actions, reachable in one tap from

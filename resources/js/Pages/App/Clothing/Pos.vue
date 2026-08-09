@@ -581,10 +581,13 @@ function sendMemoWA() {
             </template>
         </Sheet>
 
-        <!-- cart / checkout sheet -->
-        <Sheet v-model="cartOpen" :title="t('pos.cart')">
+        <!-- cart / checkout sheet — wide on tablet/desktop, same treatment as
+             the shared Pos/Index.vue checkout -->
+        <Sheet v-model="cartOpen" :title="t('pos.cart')" wide>
             <div v-if="!cart.length" class="empty"><div class="big">🧺</div>{{ t('pos.cartEmpty') }}</div>
 
+            <div v-if="cart.length" class="checkout-cols">
+            <div>
             <div v-for="l in cart" :key="l.product_id + ':' + (l.product_variant_id || 'base')" style="border-bottom:1px solid var(--line);padding:11px 0">
                 <div class="cart-line" style="border:none;padding:0;align-items:flex-start">
                     <div class="nm">
@@ -613,7 +616,6 @@ function sendMemoWA() {
                 </div>
             </div>
 
-            <template v-if="cart.length">
                 <div class="field">
                     <label>{{ t('pos.mobileLabel') }} <span style="color:var(--dim);font-weight:400">{{ t('pos.mobileHint') }}</span></label>
                     <input v-model="customerPhone" inputmode="tel" placeholder="01XXXXXXXXX">
@@ -675,7 +677,9 @@ function sendMemoWA() {
                     <label>{{ t('pos.overallDiscount') }}</label>
                     <input v-model.number="discount" type="number" inputmode="numeric" placeholder="0" min="0">
                 </div>
+            </div>
 
+            <div>
                 <div style="border-top:1px solid var(--line);margin-top:10px;padding-top:10px">
                     <div style="display:flex;justify-content:space-between;padding:2px 0"><span>{{ t('pos.subtotalLabel') }}</span><b>{{ money(subtotal) }}</b></div>
                     <div v-if="effectiveDiscount > 0" style="display:flex;justify-content:space-between;padding:2px 0"><span>{{ t('pos.overallDiscount') }}</span><b>− {{ money(effectiveDiscount) }}</b></div>
@@ -688,7 +692,8 @@ function sendMemoWA() {
                 <button class="btn" style="margin-top:14px" :disabled="submitting || (splitMode && splitRemainder > 0 && !customerPhone.trim())" @click="submitCheckout">
                     {{ submitting ? t('pos.processing') : `${t('pos.checkoutButton')} ${money(total)}` }}
                 </button>
-            </template>
+            </div>
+            </div>
         </Sheet>
 
         <!-- barcode scanner -->

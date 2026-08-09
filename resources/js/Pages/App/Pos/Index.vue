@@ -946,11 +946,14 @@ useKeyboardShortcuts({
             </div>
         </Teleport>
 
-        <!-- cart / checkout sheet -->
-        <Sheet v-model="cartOpen">
+        <!-- cart / checkout sheet — wide on tablet/desktop (Khaled's explicit
+             spec: a real side-by-side modal there, not the phone-shaped
+             bottom drawer stretched wider), unchanged bottom sheet on mobile -->
+        <Sheet v-model="cartOpen" wide>
             <div class="shttl">{{ t('pos.cartTitle') }} <span class="pill gold" style="vertical-align:middle">{{ t('pos.cartItemsCount', { n: cartCount }) }}</span></div>
 
-            <div v-if="cart.length">
+            <div v-if="cart.length" class="checkout-cols">
+            <div>
                 <div style="margin:6px 0 8px">
                     <div v-for="l in cart" :key="l.product_id + ':' + (l.product_unit_id || l.product_variant_id || 'base')" style="border-bottom:1px solid var(--line);padding:11px 0">
                         <div class="cart-line" style="border:none;padding:0">
@@ -1097,11 +1100,13 @@ useKeyboardShortcuts({
                 </div>
 
                 <div v-if="errorMsg" class="card" style="background:var(--roseSoft);color:var(--rose);margin-bottom:14px;font-size:13px">{{ errorMsg }}</div>
+            </div>
 
-                <!-- subtotal/total + checkout stay pinned to the bottom of this
-                     sheet as it scrolls past customer/payment/discount fields —
-                     the number and button a cashier needs most are never
-                     scrolled out of view -->
+                <!-- subtotal/total + checkout — pinned to the bottom on mobile as
+                     the sheet scrolls past the fields to its left/above (still
+                     .sticky-footer there); a plain static right-hand column on
+                     tablet/desktop (.checkout-cols overrides position:static),
+                     always visible either way without extra scrolling -->
                 <div class="sticky-footer">
                     <div class="card" style="margin-bottom:10px">
                         <div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--mut);font-size:13.5px"><span>{{ t('pos.subtotal') }}</span><b>{{ money(subtotal) }}</b></div>

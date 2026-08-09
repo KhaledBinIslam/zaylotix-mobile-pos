@@ -166,6 +166,34 @@ body {
 @media (min-width: 1024px) { #sheet { max-width: 580px; } }
 .grab { width: 44px; height: 5px; border-radius: 99px; background: var(--line2); margin: 8px auto 14px; }
 
+/* checkout's actual redesign, not just a wider bottom-drawer (see the note
+   above this block, now addressed) — Khaled's explicit spec: on a
+   tablet/desktop-width screen, checkout is a real centered modal wide
+   enough for its content to lay out side by side with no internal scroll,
+   not a phone-shaped strip stuck bottom-anchored on a big screen. Mobile
+   width is untouched — #sheet.wide behaves exactly like a plain #sheet
+   below 700px, since a bottom sheet IS the right pattern there. */
+@media (min-width: 700px) {
+    #sheet.wide {
+        left: 50%; top: 50%; bottom: auto; transform: translate(-50%, -50%);
+        width: 92vw; max-width: 880px; max-height: 86vh;
+        border-radius: 22px; border-bottom: 1px solid var(--line2);
+        padding: 22px 26px calc(22px + env(safe-area-inset-bottom));
+        box-shadow: 0 24px 64px rgba(18, 38, 28, .28);
+    }
+    #sheet.wide .grab { display: none; }
+}
+
+/* the wide sheet's own content — cart/fields on the left, the sticky
+   subtotal/total/buttons block on the right, side by side instead of
+   stacked, matching the "one view, no internal scrollbar" desktop spec.
+   Same 700px breakpoint as #sheet.wide itself, deliberately not a Tailwind
+   lg:/md: utility, so the two can never fall out of step with each other. */
+@media (min-width: 700px) {
+    .checkout-cols { display: grid; grid-template-columns: 1fr 320px; gap: 22px; align-items: start; }
+    .checkout-cols .sticky-footer { position: static; }
+}
+
 /* notification bell dropdown — small panel anchored near the bell, not the
    big bottom Sheet used for forms; positioned near the mobile top bar's
    bell by default, and re-anchored near the sidebar's bell on desktop
