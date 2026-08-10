@@ -251,8 +251,18 @@ async function postItem(productId, qty) {
         }
     }
 }
+/**
+ * Bug fix: this used to silently do nothing at all when p.stock <= 0 —
+ * meaning a click on ANY menu item seeded/left at its default stock of 0
+ * (see DemoShopSeeder's restaurantDemo(), and any product an owner adds
+ * without bothering to set a stock number) added nothing to the order and
+ * gave zero feedback, while a product that happened to have real stock
+ * worked fine. TableOrderController::addItem() already validates stock and
+ * returns a real, visible error via postItem()'s toast when it's actually
+ * insufficient — that's the right place for this check, not a silent
+ * client-side no-op with no error shown.
+ */
 function addItem(p) {
-    if (p.stock <= 0) return;
     postItem(p.id, 1);
 }
 function incItem(item) {
