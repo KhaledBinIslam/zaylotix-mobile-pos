@@ -11,6 +11,12 @@ export const translations = {
     'nav.sellFull': { bn: 'বিক্রি (POS)', en: 'Sell (POS)' },
     'nav.stock': { bn: 'স্টক', en: 'Stock' },
     'nav.stockFull': { bn: 'স্টক ও পণ্য', en: 'Stock & Products' },
+    // restaurant-only variants — "পণ্য" (product) isn't how a menu item
+    // reads to a restaurant owner; a business type check (isRestaurant in
+    // AppLayout.vue/Stock/Index.vue) picks these instead, every other
+    // vertical's copy is untouched
+    'nav.stockRestaurant': { bn: 'মেনু', en: 'Menu' },
+    'nav.stockFullRestaurant': { bn: 'খাবার ও মেনু', en: 'Food & Menu' },
     'nav.units': { bn: 'ইউনিট ব্যবস্থাপনা', en: 'Unit management' },
     'nav.due': { bn: 'বাকি', en: 'Due' },
     'nav.dueFull': { bn: 'বাকির খাতা', en: 'Due Ledger' },
@@ -667,6 +673,24 @@ export const translations = {
     // ---- stock ----
     'stock.subtitle': { bn: 'পণ্য যোগ করুন, স্টক দেখুন •', en: 'Add products, view stock •' },
     'stock.addProduct': { bn: '＋ পণ্য যোগ', en: '＋ Add Product' },
+    // restaurant-only variants of the above (and a handful more scattered
+    // through this section, each next to its own original) — a menu item
+    // isn't a "পণ্য" (product) to a restaurant owner the way it is on
+    // every other business type's identical Stock page; isRestaurant in
+    // Stock/Index.vue picks these, nothing else on this page changes
+    'stock.subtitleRestaurant': { bn: 'খাবার যোগ করুন, মেনু দেখুন •', en: 'Add food, view your menu •' },
+    'stock.addProductRestaurant': { bn: '＋ খাবার যোগ', en: '＋ Add Food' },
+    'stock.searchPlaceholderRestaurant': { bn: '🔍 খাবার খুঁজুন...', en: '🔍 Search food...' },
+    'stock.productNameRestaurant': { bn: 'খাবারের নাম', en: 'Food name' },
+    'stock.newTitleRestaurant': { bn: '🍽️ নতুন খাবার', en: '🍽️ New Food Item' },
+    'stock.editTitleRestaurant': { bn: '✏️ খাবার এডিট', en: '✏️ Edit Food Item' },
+    'stock.noProductsRestaurant': { bn: 'কোনো খাবার নেই', en: 'No food items yet' },
+    'stock.totalProductsRestaurant': { bn: 'মোট আইটেম', en: 'Total Items' },
+    'stock.deleteProductRestaurant': { bn: '🗑️ খাবার মুছুন', en: '🗑️ Delete food item' },
+    'stock.itemsCountWordRestaurant': { bn: 'আইটেম', en: 'items' },
+    'stock.importCsvSubRestaurant': { bn: 'এক্সেল/CSV ফাইল থেকে একসাথে অনেক খাবার আইটেম যোগ বা হালনাগাদ করুন', en: 'Add or update many food items at once from an Excel/CSV file' },
+    'stock.photoRestaurant': { bn: 'খাবারের ছবি', en: 'Food photo' },
+    'stock.shortcutsHintRestaurant': { bn: '⌨️ শর্টকাট: F2 = খুঁজুন, F9 = নতুন খাবার, Esc = বন্ধ করুন', en: '⌨️ Shortcuts: F2 = search, F9 = new food item, Esc = close' },
     'stock.importCsv': { bn: '📥 CSV ইম্পোর্ট', en: '📥 CSV Import' },
     'stock.importCsvSub': { bn: 'এক্সেল/CSV ফাইল থেকে একসাথে অনেক পণ্য যোগ বা হালনাগাদ করুন', en: 'Add or update many products at once from an Excel/CSV file' },
     'stock.downloadTemplate': { bn: '⬇️ নমুনা টেমপ্লেট ডাউনলোড', en: '⬇️ Download sample template' },

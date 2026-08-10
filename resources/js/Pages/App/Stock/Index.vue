@@ -383,22 +383,22 @@ useKeyboardShortcuts({
 </script>
 
 <template>
-    <Head :title="t('nav.stock')" />
+    <Head :title="isRestaurant ? t('nav.stockRestaurant') : t('nav.stock')" />
     <AppLayout active="stock">
-        <div class="pgttl">{{ t('nav.stockFull') }}</div>
-        <div class="pgsub">{{ t('stock.subtitle') }} {{ totalProducts }} {{ t('home.products') }}</div>
+        <div class="pgttl">{{ isRestaurant ? t('nav.stockFullRestaurant') : t('nav.stockFull') }}</div>
+        <div class="pgsub">{{ isRestaurant ? t('stock.subtitleRestaurant') : t('stock.subtitle') }} {{ totalProducts }} {{ isRestaurant ? t('stock.itemsCountWordRestaurant') : t('home.products') }}</div>
         <HowToHint screen-key="stock" />
-        <div class="hidden lg:block" style="font-size:11.5px;color:var(--dim);margin-bottom:10px">{{ t('stock.shortcutsHint') }}</div>
+        <div class="hidden lg:block" style="font-size:11.5px;color:var(--dim);margin-bottom:10px">{{ isRestaurant ? t('stock.shortcutsHintRestaurant') : t('stock.shortcutsHint') }}</div>
 
         <div class="grid2" style="margin-bottom:14px">
-            <div class="stat sky"><div class="k">{{ t('stock.totalProducts') }}</div><div class="v">{{ totalProducts }}</div></div>
+            <div class="stat sky"><div class="k">{{ isRestaurant ? t('stock.totalProductsRestaurant') : t('stock.totalProducts') }}</div><div class="v">{{ totalProducts }}</div></div>
             <div class="stat gold"><div class="k">{{ t('stock.lowStockCount') }}</div><div class="v">{{ lowStockCount }}</div></div>
             <div class="stat rose"><div class="k">{{ t('stock.outOfStockCount') }}</div><div class="v">{{ outOfStockCount }}</div></div>
             <div v-if="hasBatchTracking" class="stat mint"><div class="k">{{ t('stock.expiringSoonCount') }}</div><div class="v">{{ expiringSoonCount }}</div></div>
         </div>
 
         <div class="btnrow" style="margin-bottom:12px">
-            <button class="btn ghost" style="flex:1" @click="openNew">{{ t('stock.addProduct') }}</button>
+            <button class="btn ghost" style="flex:1" @click="openNew">{{ isRestaurant ? t('stock.addProductRestaurant') : t('stock.addProduct') }}</button>
             <button class="btn ghost" style="flex:1" @click="importSheet = true">{{ t('stock.importCsv') }}</button>
         </div>
 
@@ -411,7 +411,7 @@ useKeyboardShortcuts({
         </Link>
 
         <div style="display:flex;gap:8px;margin-bottom:12px">
-            <input ref="searchInput" v-model="q" :placeholder="t('stock.searchPlaceholder')" style="flex:1" @keyup.enter="applyFilter">
+            <input ref="searchInput" v-model="q" :placeholder="isRestaurant ? t('stock.searchPlaceholderRestaurant') : t('stock.searchPlaceholder')" style="flex:1" @keyup.enter="applyFilter">
             <button class="btn sm" style="width:auto;padding:0 16px" @click="applyFilter">{{ t('sales.searchButton') }}</button>
         </div>
 
@@ -458,10 +458,10 @@ useKeyboardShortcuts({
                 <button v-else-if="!p.variants?.length && p.stock_mode !== 'untracked'" class="btn sm ghost" style="margin-top:6px" @click.stop="openStockIn(p)">{{ t('stock.stockIn') }}</button>
             </div>
         </div>
-        <div v-if="!filtered.length" class="empty"><div class="big">📦</div>{{ t('stock.noProducts') }}</div>
+        <div v-if="!filtered.length" class="empty"><div class="big">📦</div>{{ isRestaurant ? t('stock.noProductsRestaurant') : t('stock.noProducts') }}</div>
         <Pagination :links="products.links" />
 
-        <Sheet v-model="productSheet" :title="editing ? t('stock.editTitle') : t('stock.newTitle')">
+        <Sheet v-model="productSheet" :title="editing ? (isRestaurant ? t('stock.editTitleRestaurant') : t('stock.editTitle')) : (isRestaurant ? t('stock.newTitleRestaurant') : t('stock.newTitle'))">
             <div v-if="!editing && hasBatchTracking" class="field">
                 <label>{{ t('stock.medicineCatalogSearch') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
                 <input v-model="medicineQuery" :placeholder="t('stock.medicineCatalogPlaceholder')" @input="searchMedicineCatalog">
@@ -475,7 +475,7 @@ useKeyboardShortcuts({
                 </div>
             </div>
             <div class="field">
-                <label>{{ t('stock.productName') }}</label>
+                <label>{{ isRestaurant ? t('stock.productNameRestaurant') : t('stock.productName') }}</label>
                 <input v-model="form.name">
                 <div v-if="form.errors.name" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.name }}</div>
             </div>
@@ -501,7 +501,7 @@ useKeyboardShortcuts({
                 {{ t('stock.requiresPrescription') }}
             </label>
             <div class="field">
-                <label>{{ t('stock.photo') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.photoHint') }}</span></label>
+                <label>{{ isRestaurant ? t('stock.photoRestaurant') : t('stock.photo') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.photoHint') }}</span></label>
                 <div style="display:flex;align-items:center;gap:12px">
                     <div class="ava" style="width:56px;height:56px;overflow:hidden;padding:0;flex:0 0 auto">
                         <img v-if="newPhotoPreview || (editing?.photo_url && !form.remove_photo)" :src="newPhotoPreview || editing.photo_url" style="width:100%;height:100%;object-fit:cover">
@@ -740,7 +740,7 @@ useKeyboardShortcuts({
                 </button>
             </div>
 
-            <button v-if="editing" class="btn rose" style="margin-top:10px" @click="deleteProduct">{{ t('stock.deleteProduct') }}</button>
+            <button v-if="editing" class="btn rose" style="margin-top:10px" @click="deleteProduct">{{ isRestaurant ? t('stock.deleteProductRestaurant') : t('stock.deleteProduct') }}</button>
             <button class="btn ghost" style="margin-top:10px" @click="productSheet = false">{{ t('common.cancel') }}</button>
         </Sheet>
 
@@ -774,7 +774,7 @@ useKeyboardShortcuts({
             <button class="btn ghost" style="margin-top:10px" @click="stockInSheet = false">{{ t('common.cancel') }}</button>
         </Sheet>
 
-        <Sheet v-model="importSheet" :title="t('stock.importCsv')" :subtitle="t('stock.importCsvSub')">
+        <Sheet v-model="importSheet" :title="t('stock.importCsv')" :subtitle="isRestaurant ? t('stock.importCsvSubRestaurant') : t('stock.importCsvSub')">
             <a :href="route('app.products.import.template')" class="btn ghost sm" style="margin-bottom:14px;display:inline-block">{{ t('stock.downloadTemplate') }}</a>
             <div class="field">
                 <label>{{ t('stock.chooseFile') }}</label>

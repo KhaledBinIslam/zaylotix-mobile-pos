@@ -39,6 +39,9 @@ const user = computed(() => page.props.auth?.user);
 const isOwner = computed(() => user.value?.role === 'owner');
 const hasPerm = (key) => isOwner.value || (user.value?.permissions || []).includes(key);
 const hasFeature = (key) => (page.props.features || []).includes(key);
+// same signal Stock/Index.vue uses to swap "পণ্য" (product) for "খাবার/মেনু"
+// (food/menu) wording on the Stock nav links — see that file's own comment
+const isRestaurant = computed(() => hasFeature('restaurant_tables'));
 const { toast } = useToast();
 const { t, lang } = useI18n();
 
@@ -199,7 +202,7 @@ const sidebarGroups = computed(() => [
     {
         label: t('nav.category.inventory'),
         items: [
-            { key: 'stock', label: t('nav.stockFull'), href: route('app.stock'), icon: '📦', on: props.active === 'stock', show: hasPerm('stock') },
+            { key: 'stock', label: isRestaurant.value ? t('nav.stockFullRestaurant') : t('nav.stockFull'), href: route('app.stock'), icon: '📦', on: props.active === 'stock', show: hasPerm('stock') },
             { key: 'units', label: t('nav.units'), href: route('app.units.index'), icon: '📏', on: props.active === 'units', show: hasPerm('stock') },
             { key: 'barcode', label: t('nav.barcode'), href: route('app.barcodeLabels.index'), icon: '🏷️', on: props.active === 'more' && page.url.startsWith('/app/barcode-labels'), show: hasPerm('barcode_labels') && hasFeature('barcode_printing') },
             { key: 'purchase', label: t('nav.purchase'), href: moreLink('purchase'), icon: '🚚', on: isMoreLinkActive('purchase'), show: hasPerm('purchases') && hasFeature('purchases') },
@@ -377,7 +380,7 @@ const sidebarGroups = computed(() => [
                     </Link>
                     <Link v-if="hasPerm('stock')" :href="route('app.stock')" class="tab" :class="{ on: active === 'stock' }">
                         <svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4z" /><path d="M3 7v10l9 4 9-4V7" /><path d="M12 11v10" /></svg>
-                        <span>{{ t('nav.stock') }}</span>
+                        <span>{{ isRestaurant ? t('nav.stockRestaurant') : t('nav.stock') }}</span>
                     </Link>
                     <Link v-if="hasPerm('pos')" :href="mobileSellHref" class="tab sell" :class="{ on: mobileSellActive }">
                         <span class="fab"><svg viewBox="0 0 24 24"><path d="M4 7V5a1 1 0 0 1 1-1h2M4 17v2a1 1 0 0 0 1 1h2M20 7V5a1 1 0 0 0-1-1h-2M20 17v2a1 1 0 0 1-1 1h-2M4 12h16" /></svg></span>
