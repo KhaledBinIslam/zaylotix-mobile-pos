@@ -318,16 +318,26 @@ function printKot() {
 // instead of pressing two separate buttons in sequence
 function billAndPrintKot() {
     if (splitMode.value && !selectedItemIds.value.length) return;
-    printKot();
+    // bill sheet opens FIRST, deliberately — window.print() inside
+    // printKot() blocks script execution on most desktop browsers until the
+    // print dialog is dismissed (and on some mobile browsers with no print
+    // handler configured, it can silently never return at all), so a
+    // billSheet.value = true placed AFTER it either waits on the cashier
+    // closing that dialog or never runs — exactly the reported "KOT+Bill
+    // একসাথে দিলে bill screen আসছে না" bug. Nothing about what actually
+    // gets printed changes: #printable-kot's own @media print rule already
+    // hides the rest of the page (including this sheet) regardless of
+    // what's open on screen.
     billSheet.value = true;
+    printKot();
 }
 
 // same one-click idea, but sends the kitchen ticket over WhatsApp instead of
 // printing it — for a kitchen that reads orders off a phone, not a printer
 function billAndSendKotWA() {
     if (splitMode.value && !selectedItemIds.value.length) return;
-    sendKotWA();
     billSheet.value = true;
+    sendKotWA();
 }
 
 // UI-only preference (see the migration's comment) — reorders/relabels the
@@ -775,8 +785,8 @@ onBeforeUnmount(() => {
                 <div v-if="serviceCharge > 0" style="display:flex;justify-content:space-between;font-size:13px;color:var(--mut);padding-bottom:6px"><span>{{ t('pos.serviceCharge') }}</span><span>+ {{ money(serviceCharge) }}</span></div>
                 <div style="display:flex;justify-content:space-between;font-size:19px;font-weight:800"><span>{{ t('pos.grandTotal') }}</span><b style="color:var(--gold)">{{ money(billTotal) }}</b></div>
             </div>
-            <button class="btn" :disabled="billForm.processing" @click="submitBill">
-                {{ billForm.processing ? t('pos.processing') : t('restaurant.billNow') }}
+            <button class="btn" :disabled="billSubmitting" @click="submitBill">
+                {{ billSubmitting ? t('pos.processing') : t('restaurant.billNow') }}
             </button>
             </div>
             </div>
