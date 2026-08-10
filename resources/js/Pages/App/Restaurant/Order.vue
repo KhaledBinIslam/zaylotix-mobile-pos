@@ -217,9 +217,18 @@ function csrfToken() {
  * this order's queue actually syncs and the page reloads.
  */
 async function postItem(productId, qty) {
-    const url = route('app.restaurant.orders.items.store', props.order.id);
-    const body = { product_id: productId, qty };
+    // url/body construction moved INSIDE the try block, deliberately — this
+    // used to sit above it, so anything unexpected in route() (e.g. Ziggy
+    // throwing if props.order.id were ever momentarily unset) would reject
+    // this async function with nothing awaiting or catching it: a silent,
+    // invisible failure indistinguishable from the click not registering at
+    // all, with no toast, no console-visible symptom a cashier would ever
+    // notice — exactly the class of bug the stock<=0 guard turned out to be
+    // earlier. Now every path through this function ends in a toast.
+    let url, body;
     try {
+        url = route('app.restaurant.orders.items.store', props.order.id);
+        body = { product_id: productId, qty };
         const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken(), Accept: 'application/json' },
@@ -232,7 +241,11 @@ async function postItem(productId, qty) {
             toast('❌ ' + (data.message || t('pos.checkoutError')));
         }
     } catch (e) {
-        if (!navigator.onLine || e instanceof TypeError) {
+        if (!url) {
+            // failed before the request was even built (route() threw, or
+            // similar) — not a connectivity issue, don't queue it offline
+            toast('❌ ' + t('pos.checkoutError'));
+        } else if (!navigator.onLine || e instanceof TypeError) {
             await offlineActions.queueAction(url, 'POST', body);
             const product = props.products.find((p) => p.id === productId);
             const existing = props.order.items.find((it) => it.product_id === productId && !it.kot_printed_at && !it.sale_id);

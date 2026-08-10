@@ -23,6 +23,21 @@ router.on('exception', () => {
     toast('📴 নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন');
 });
 
+// Broader safety net than the Inertia-specific one above — any raw-fetch
+// screen (POS/Clothing/Restaurant checkout, addItem, etc.) that throws
+// somewhere unexpected, outside what its own try/catch anticipated, used to
+// fail as a silent unhandled promise rejection: visible only in devtools,
+// completely invisible to a cashier who just sees their tap do nothing.
+// This is exactly the failure mode a real bug turned out to be (Restaurant
+// Order.vue's postItem() building its request URL outside its own try
+// block) — fixed there specifically, but this catches the same CLASS of
+// bug anywhere else in the app too, present or future.
+window.addEventListener('unhandledrejection', (event) => {
+    console.error('Unhandled promise rejection:', event.reason);
+    const { toast } = useToast();
+    toast('⚠️ কিছু একটা ভুল হয়েছে — আবার চেষ্টা করুন। সমস্যা থাকলে পেজ রিলোড করুন।');
+});
+
 createInertiaApp({
     title: (title) => `${title} - ${appName}`,
     resolve: (name) =>
