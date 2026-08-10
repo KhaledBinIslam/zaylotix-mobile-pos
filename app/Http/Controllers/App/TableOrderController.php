@@ -21,10 +21,12 @@ use Inertia\Inertia;
 
 /**
  * A restaurant's order-then-bill flow, distinct from PosController's instant
- * checkout: items get added to an open tab over time (stock leaves as each
- * is ordered, not deferred to billing), and only bill() creates the real
- * Sale/SaleItem rows — from that point on it's a completely ordinary sale,
- * voidable and reportable with no special-casing anywhere else in the app.
+ * checkout: items get added to an open tab over time (a 'tracked'-mode
+ * product's stock leaves as each is ordered, not deferred to billing — see
+ * Product::STOCK_MODE_* for the two cooked-food modes that don't decrement
+ * anything at all), and only bill() creates the real Sale/SaleItem rows —
+ * from that point on it's a completely ordinary sale, voidable and
+ * reportable with no special-casing anywhere else in the app.
  *
  * Every mutating action re-locks and re-checks the order's status *inside*
  * the transaction (not just before it) — a plain pre-check would leave a
@@ -95,12 +97,21 @@ class TableOrderController extends Controller
             if ($product->variants_count > 0) {
                 abort(422, "{$product->name} ভ্যারিয়েন্ট পণ্য — টেবিল অর্ডারে যোগ করা যাবে না।");
             }
-            if ($product->stock < $data['qty']) {
-                abort(422, "পর্যাপ্ত স্টক নেই: {$product->name} (আছে {$product->stock})।");
+            // 'untracked' (a cooked dish, no stock number means anything —
+            // see Product::STOCK_MODE_*) always passes; 'toggle' is a plain
+            // available/sold-out switch, never decremented by a sale; only
+            // 'tracked' (packaged goods, or a dish the owner deliberately
+            // caps) checks/decrements a real count, exactly as before
+            if ($product->isStockTracked()) {
+                if ($product->stock < $data['qty']) {
+                    abort(422, "পর্যাপ্ত স্টক নেই: {$product->name} (আছে {$product->stock})।");
+                }
+                $product->decrement('stock', $data['qty']);
+            } elseif ($product->stock_mode === Product::STOCK_MODE_TOGGLE && ! $product->isMarkedAvailable()) {
+                abort(422, "{$product->name} আজ শেষ (sold out)।");
             }
-
-            $product->decrement('stock', $data['qty']);
-            // best-effort ingredient consumption for a recipe-linked dish — see IngredientConsumption
+            // best-effort ingredient consumption for a recipe-linked dish —
+            // independent of stock_mode, see IngredientConsumption
             \App\Support\IngredientConsumption::apply($product, (float) $data['qty']);
 
             // merge into the same product's not-yet-printed line instead of
@@ -217,7 +228,14 @@ class TableOrderController extends Controller
             }
 
             if ($tableOrderItem->product_id) {
-                Product::whereKey($tableOrderItem->product_id)->lockForUpdate()->increment('stock', 1);
+                // mirrors addItem()'s decrement guard — an 'untracked'/
+                // 'toggle' item's stock was never taken in the first
+                // place, so giving it back here would be wrong (drift the
+                // number away from what the owner actually set)
+                $lockedProduct = Product::whereKey($tableOrderItem->product_id)->lockForUpdate()->first();
+                if ($lockedProduct?->isStockTracked()) {
+                    $lockedProduct->increment('stock', 1);
+                }
             }
 
             if ($tableOrderItem->qty <= 1) {
@@ -263,7 +281,11 @@ class TableOrderController extends Controller
             }
 
             if ($tableOrderItem->product_id) {
-                Product::whereKey($tableOrderItem->product_id)->lockForUpdate()->increment('stock', $tableOrderItem->qty);
+                // see decrementItem()'s matching comment
+                $lockedProduct = Product::whereKey($tableOrderItem->product_id)->lockForUpdate()->first();
+                if ($lockedProduct?->isStockTracked()) {
+                    $lockedProduct->increment('stock', $tableOrderItem->qty);
+                }
             }
             $tableOrderItem->delete();
         });
@@ -316,7 +338,11 @@ class TableOrderController extends Controller
             $openItems = TableOrderItem::where('table_order_id', $lockedOrder->id)->whereNull('sale_id')->get();
             foreach ($openItems as $item) {
                 if ($item->product_id) {
-                    Product::whereKey($item->product_id)->lockForUpdate()->increment('stock', $item->qty);
+                    // see decrementItem()'s matching comment
+                    $lockedProduct = Product::whereKey($item->product_id)->lockForUpdate()->first();
+                    if ($lockedProduct?->isStockTracked()) {
+                        $lockedProduct->increment('stock', $item->qty);
+                    }
                 }
             }
             $lockedOrder->update(['status' => 'cancelled']);

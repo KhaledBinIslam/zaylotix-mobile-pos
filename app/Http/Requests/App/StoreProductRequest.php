@@ -40,10 +40,24 @@ class StoreProductRequest extends FormRequest
             'price' => ['required', 'numeric', 'min:0'],
             'wholesale_price' => ['nullable', 'numeric', 'min:0'],
             'discount_price' => ['nullable', 'numeric', 'min:0', 'lt:price'],
+            // 'untracked'/'toggle' only make sense for a restaurant's own
+            // cooked-food products (see Stock/Index.vue's isRestaurant
+            // gate) — accepted from anyone since it's harmless either way,
+            // an out-of-vertical shop's form simply never sends it
+            'stock_mode' => ['nullable', 'in:tracked,untracked,toggle'],
             // a weighed product's stock is a real decimal (e.g. 12.5 kg on
             // the shelf); a regular piece-counted product still requires a
-            // whole number — see the `numeric`-vs-`integer` split
-            'stock' => ['required', 'numeric', 'min:0', ...($this->boolean('sold_by_weight') ? [] : ['integer'])],
+            // whole number — see the `numeric`-vs-`integer` split.
+            // Required only in 'tracked' mode (the default, unaffected for
+            // every existing product/vertical) — 'untracked'/'toggle' don't
+            // take a real count from the form at all (see
+            // ProductController::resolveStock()).
+            'stock' => [
+                Rule::requiredIf(fn () => $this->input('stock_mode', 'tracked') === 'tracked'),
+                'nullable', 'numeric', 'min:0', ...($this->boolean('sold_by_weight') ? [] : ['integer']),
+            ],
+            // 'toggle' mode's own simple switch — see resolveStock()
+            'available' => ['nullable', 'boolean'],
             'expiry_date' => ['nullable', 'date'],
             'batch_no' => ['nullable', 'string', 'max:100'],
             'size' => ['nullable', 'string', 'max:50'],

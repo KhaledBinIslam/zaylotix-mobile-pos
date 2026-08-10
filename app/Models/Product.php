@@ -15,9 +15,16 @@ class Product extends Model
     protected $fillable = [
         'shop_id', 'category_id', 'unit_id', 'name', 'name_en', 'generic_name', 'company', 'shelf_location', 'requires_prescription', 'emoji', 'photo_path', 'barcode',
         'sold_by_weight', 'weight_unit',
-        'cost', 'price', 'wholesale_price', 'discount_price', 'stock', 'expiry_date', 'batch_no', 'size', 'color', 'imei',
+        'cost', 'price', 'wholesale_price', 'discount_price', 'stock', 'stock_mode', 'expiry_date', 'batch_no', 'size', 'color', 'imei',
         'reorder_point',
     ];
+
+    /** 'toggle' mode's stock column doesn't hold a real count — 1 means available, 0 means marked sold out today (see the add_stock_mode_to_products_table migration and TableOrderController). */
+    public const STOCK_MODE_TRACKED = 'tracked';
+
+    public const STOCK_MODE_UNTRACKED = 'untracked';
+
+    public const STOCK_MODE_TOGGLE = 'toggle';
 
     protected $appends = ['photo_url'];
 
@@ -44,6 +51,18 @@ class Product extends Model
     protected function photoUrl(): Attribute
     {
         return Attribute::get(fn () => $this->photo_path ? Storage::disk('public')->url($this->photo_path) : null);
+    }
+
+    /** False for 'untracked' (always sellable) and 'toggle' (a plain switch, not a count) — only 'tracked' products have a stock number that means anything. */
+    public function isStockTracked(): bool
+    {
+        return $this->stock_mode === self::STOCK_MODE_TRACKED;
+    }
+
+    /** Only meaningful for 'toggle' mode — see the migration's comment on why stock doubles as this flag there. */
+    public function isMarkedAvailable(): bool
+    {
+        return (float) $this->stock > 0;
     }
 
     public function shop()

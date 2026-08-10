@@ -51,12 +51,17 @@ class ProductController extends Controller
         // computed against the WHOLE catalog, independent of the current
         // page/search/filter — these are dashboard-style totals, not a
         // summary of whatever 30 rows happen to be showing right now
-        $lowStockCount = Product::where('sold_by_weight', false)->whereBetween('stock', [0.01, 6])->count()
-            + Product::where('sold_by_weight', true)->whereBetween('stock', [0.01, 1])->count();
+        // 'untracked'/'toggle' restaurant items (see Product::STOCK_MODE_*)
+        // are excluded from both tiles below — badge()'s own per-row
+        // display already special-cases them on the frontend, but these
+        // dashboard totals need the same exclusion or every always-available
+        // dish would inflate "out of stock" by sitting at stock=0 forever
+        $lowStockCount = Product::where('stock_mode', 'tracked')->where('sold_by_weight', false)->whereBetween('stock', [0.01, 6])->count()
+            + Product::where('stock_mode', 'tracked')->where('sold_by_weight', true)->whereBetween('stock', [0.01, 1])->count();
         $stats = [
             'total' => Product::count(),
             'low_stock' => $lowStockCount,
-            'out_of_stock' => Product::where('stock', '<=', 0)->count(),
+            'out_of_stock' => Product::where('stock_mode', 'tracked')->where('stock', '<=', 0)->count(),
             'expiring_soon' => Tenancy::shop()?->hasFeature('batch_tracking')
                 ? ProductBatch::available()->whereNotNull('expiry_date')->whereDate('expiry_date', '<=', now()->addDays(60))->distinct('product_id')->count('product_id')
                 : 0,
@@ -126,13 +131,13 @@ class ProductController extends Controller
             'price' => $data['price'],
             'wholesale_price' => $data['wholesale_price'] ?? null,
             'discount_price' => $data['discount_price'] ?? null,
-            'stock' => $data['stock'],
             'expiry_date' => $data['expiry_date'] ?? null,
             'batch_no' => $data['batch_no'] ?? null,
             'size' => $data['size'] ?? null,
             'color' => $data['color'] ?? null,
             'imei' => $data['imei'] ?? null,
             'reorder_point' => $data['reorder_point'] ?? null,
+            ...$this->resolveStock($data),
         ]);
 
         return back()->with('success', "{$product->name} added.");
@@ -192,13 +197,13 @@ class ProductController extends Controller
             'price' => $data['price'],
             'wholesale_price' => $data['wholesale_price'] ?? null,
             'discount_price' => $data['discount_price'] ?? null,
-            'stock' => $data['stock'],
             'expiry_date' => $data['expiry_date'] ?? null,
             'batch_no' => $data['batch_no'] ?? null,
             'size' => $data['size'] ?? null,
             'color' => $data['color'] ?? null,
             'imei' => $data['imei'] ?? null,
             'reorder_point' => $data['reorder_point'] ?? null,
+            ...$this->resolveStock($data),
         ];
 
         // for a variant product, `stock` is a live-maintained sum of
@@ -228,6 +233,43 @@ class ProductController extends Controller
         $product->delete(); // soft delete — keeps historical sale_items intact
 
         return back()->with('success', 'Product removed.');
+    }
+
+    /**
+     * Translates the product form's stock_mode into what actually gets
+     * stored. 'tracked' behaves exactly as before (a real, admin-typed
+     * count) — 'untracked'/'toggle' are restaurant-only concepts (see
+     * Stock/Index.vue's isRestaurant gate) with nothing numeric to save:
+     * 'untracked' stock is never read by anything, 'toggle' stores a plain
+     * 1/0 available flag in the same column (see Product::isMarkedAvailable()).
+     */
+    private function resolveStock(array $data): array
+    {
+        $mode = $data['stock_mode'] ?? Product::STOCK_MODE_TRACKED;
+
+        return [
+            'stock_mode' => $mode,
+            'stock' => match ($mode) {
+                Product::STOCK_MODE_TOGGLE => ($data['available'] ?? true) ? 1 : 0,
+                Product::STOCK_MODE_UNTRACKED => 0,
+                default => $data['stock'],
+            },
+        ];
+    }
+
+    /** The quick "আজ আছে / আজ শেষ" switch on the Stock list — only meaningful for a 'toggle'-mode product. */
+    public function updateAvailability(Request $request, Product $product)
+    {
+        $this->authorize('update', $product);
+
+        if ($product->stock_mode !== Product::STOCK_MODE_TOGGLE) {
+            abort(422, 'এই পণ্যটি "আছে/শেষ" মোডে নেই।');
+        }
+
+        $data = $request->validate(['available' => ['required', 'boolean']]);
+        $product->update(['stock' => $data['available'] ? 1 : 0]);
+
+        return back()->with('success', $data['available'] ? "{$product->name} আবার চালু করা হয়েছে।" : "{$product->name} আজকের জন্য শেষ করা হয়েছে।");
     }
 
     /** Pick a product, add received qty ("stock in"). */

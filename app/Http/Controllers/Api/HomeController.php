@@ -23,7 +23,8 @@ class HomeController extends Controller
             'todayProfit' => (float) $todaySales->sum('profit'),
             'billsToday' => $todaySales->count(),
             'totalDue' => (float) Customer::sum('due'),
-            'lowStockCount' => Product::where('stock', '<=', 6)->count(),
+            // 'untracked'/'toggle' restaurant items have no reorder concept — see App\HomeController's matching comment
+            'lowStockCount' => Product::where('stock_mode', 'tracked')->where('stock', '<=', 6)->count(),
             'recentSales' => Sale::with('customer')->latest('id')->limit(10)->get(),
         ]);
     }

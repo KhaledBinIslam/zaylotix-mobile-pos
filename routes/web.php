@@ -192,6 +192,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::put('products/{product}', [ProductController::class, 'update'])->name('products.update');
         Route::delete('products/{product}', [ProductController::class, 'destroy'])->name('products.destroy');
         Route::post('products/{product}/stock-in', [ProductController::class, 'stockIn'])->name('products.stockIn');
+        Route::patch('products/{product}/availability', [ProductController::class, 'updateAvailability'])->name('products.availability');
 
         Route::get('products/import/template', [ProductImportController::class, 'template'])->name('products.import.template');
         Route::post('products/import', [ProductImportController::class, 'store'])->name('products.import.store');

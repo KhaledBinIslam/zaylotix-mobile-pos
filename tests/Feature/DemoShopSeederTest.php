@@ -17,12 +17,13 @@ use Tests\TestCase;
  * shop's products (and the restaurant's tables, and Khaled Enterprise's
  * sample sales) were found deleted directly against the dev database —
  * not by this seeder, but re-running it is how they got restored, which
- * only worked because it's idempotent. Also locks in the two real product
- * bugs found alongside that: restaurant menu items seeded with stock=0
- * made every "add to order" click silently do nothing (see Order.vue's
- * addItem()), and Fashion Point never had the `product_variants` feature
- * granted, so its color/size picker could never appear regardless of what
- * products existed.
+ * only worked because it's idempotent. Also locks in the real product
+ * bugs found alongside that: a restaurant menu item's stock now has to
+ * make sense under whichever Product::STOCK_MODE_* it's in (a plain
+ * stock>0 check doesn't — 0 is exactly right for an 'untracked' dish),
+ * and Fashion Point never had the `product_variants` feature granted, so
+ * its color/size picker could never appear regardless of what products
+ * existed.
  */
 class DemoShopSeederTest extends TestCase
 {
@@ -48,17 +49,27 @@ class DemoShopSeederTest extends TestCase
         }
     }
 
-    public function test_restaurant_menu_items_have_real_sellable_stock(): void
+    /** Showcases all 3 stock modes — see restaurantDemo()'s own comment on why one mode for every dish would be wrong. */
+    public function test_restaurant_menu_items_are_all_sellable_under_their_own_stock_mode(): void
     {
         $this->seed(DemoShopSeeder::class);
 
         $shop = Shop::withoutGlobalScopes()->where('phone', '01700000008')->first();
-        $items = Product::withoutGlobalScopes()->where('shop_id', $shop->id)->get();
+        $items = Product::withoutGlobalScopes()->where('shop_id', $shop->id)->get()->keyBy('name');
 
-        $this->assertGreaterThan(0, $items->count());
-        foreach ($items as $item) {
-            $this->assertGreaterThan(0, (float) $item->stock, "{$item->name} must have real stock — 0 makes every order-screen click silently fail (see Order.vue's addItem())");
-        }
+        $this->assertCount(3, $items);
+
+        $biryani = $items['চিকেন বিরিয়ানি'];
+        $this->assertSame('untracked', $biryani->stock_mode);
+        $this->assertFalse($biryani->isStockTracked());
+
+        $kabab = $items['বিফ কাবাব'];
+        $this->assertSame('toggle', $kabab->stock_mode);
+        $this->assertTrue($kabab->isMarkedAvailable(), 'demo should start with it switched on, not accidentally sold out');
+
+        $drinks = $items['কোল্ড ড্রিংকস'];
+        $this->assertSame('tracked', $drinks->stock_mode);
+        $this->assertGreaterThan(0, (float) $drinks->stock, 'a packaged good in tracked mode needs a real starting count');
 
         $tables = RestaurantTable::withoutGlobalScopes()->where('shop_id', $shop->id)->count();
         $this->assertSame(4, $tables);

@@ -23,6 +23,11 @@ const hasSerialTracking = computed(() => features.value.includes('serial_trackin
 const hasPrescriptionRecords = computed(() => features.value.includes('prescription_records'));
 const hasWeightBasedSelling = computed(() => features.value.includes('weight_based_selling'));
 const hasWholesalePricing = computed(() => features.value.includes('wholesale_pricing'));
+// gates the stock-mode picker below — a cooked dish's "stock" doesn't mean
+// a count the way it does for every other vertical (see Product::STOCK_MODE_*
+// and TableOrderController), so only a restaurant shop's form offers it;
+// every other business type's stock field stays exactly as it always was
+const isRestaurant = computed(() => features.value.includes('restaurant_tables'));
 const { t } = useI18n();
 
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
@@ -73,6 +78,12 @@ function formatQty(p, val) {
     return p.sold_by_weight ? (Math.round(n * 1000) / 1000) : Math.round(n);
 }
 function badge(p) {
+    if (p.stock_mode === 'untracked') return { cls: 'mut', text: t('pos.alwaysAvailable') };
+    if (p.stock_mode === 'toggle') {
+        return Number(p.stock) > 0
+            ? { cls: 'mut', text: t('pos.availableToday') }
+            : { cls: 'rose', text: t('pos.soldOutToday') };
+    }
     const stock = Number(p.stock);
     if (stock <= 0) return { cls: 'rose', text: t('stock.outOfStock') };
     if (stock <= lowThreshold(p)) return { cls: 'gold', text: `${t('stock.lowStock')} ${formatQty(p, stock)} ${unitLabel(p)}` };
@@ -91,6 +102,9 @@ const form = useForm({
     name: '', name_en: '', generic_name: '', company: '', shelf_location: '', requires_prescription: false, emoji: '📦', photo: null, remove_photo: false, category_id: '', new_category_name: '',
     unit_id: '', new_unit_name: '', barcode: '', cost: '', price: '', wholesale_price: '', discount_price: '', stock: '',
     reorder_point: '', sold_by_weight: false, weight_unit: 'kg',
+    // restaurant-only (see isRestaurant) — 'tracked' everywhere else,
+    // unchanged from before this field existed
+    stock_mode: 'tracked', available: true,
 });
 
 // live preview of a newly-picked photo, before it's actually uploaded —
@@ -133,6 +147,12 @@ function pickMedicine(m) {
 function openNew() {
     editing.value = null;
     form.reset();
+    // 'untracked' (always available) is the sane restaurant default — a
+    // cooked dish with a blank/zero stock used to make every "add to
+    // order" click silently fail (see Order.vue's addItem() and
+    // DemoShopSeeder's restaurantDemo()); every other vertical keeps the
+    // 'tracked' default form.reset() already restores above
+    form.stock_mode = isRestaurant.value ? 'untracked' : 'tracked';
     newPhotoPreview.value = null;
     medicineQuery.value = '';
     medicineResults.value = [];
@@ -145,11 +165,18 @@ function openEdit(p) {
     form.category_id = p.category_id; form.unit_id = p.unit_id; form.barcode = p.barcode;
     form.cost = p.cost; form.price = p.price; form.wholesale_price = p.wholesale_price; form.discount_price = p.discount_price; form.stock = p.stock;
     form.reorder_point = p.reorder_point;
+    form.stock_mode = p.stock_mode || 'tracked';
+    form.available = Number(p.stock) > 0; // only meaningful when stock_mode is 'toggle' — see Product::isMarkedAvailable()
     form.sold_by_weight = !!p.sold_by_weight; form.weight_unit = p.weight_unit || 'kg';
     form.photo = null; form.remove_photo = false;
     newPhotoPreview.value = null;
     form.new_category_name = ''; form.new_unit_name = '';
     productSheet.value = true;
+}
+
+/** The quick pill on the product list — only ever shown for a 'toggle'-mode product, no need to open the edit sheet just to flip it. */
+function toggleAvailability(p) {
+    router.patch(route('app.products.availability', p.id), { available: !(Number(p.stock) > 0) }, { preserveScroll: true });
 }
 
 // --- pack sizes (box/strip/...) — only relevant with unit_conversion feature ---
@@ -425,7 +452,10 @@ useKeyboardShortcuts({
             </div>
             <div class="end">
                 <span class="pill" :class="badge(p).cls">{{ badge(p).text }}</span>
-                <button v-if="!p.variants?.length" class="btn sm ghost" style="margin-top:6px" @click.stop="openStockIn(p)">{{ t('stock.stockIn') }}</button>
+                <button v-if="p.stock_mode === 'toggle'" class="btn sm ghost" style="margin-top:6px" @click.stop="toggleAvailability(p)">
+                    {{ Number(p.stock) > 0 ? t('stock.markSoldOut') : t('stock.markAvailable') }}
+                </button>
+                <button v-else-if="!p.variants?.length && p.stock_mode !== 'untracked'" class="btn sm ghost" style="margin-top:6px" @click.stop="openStockIn(p)">{{ t('stock.stockIn') }}</button>
             </div>
         </div>
         <div v-if="!filtered.length" class="empty"><div class="big">📦</div>{{ t('stock.noProducts') }}</div>
@@ -532,16 +562,40 @@ useKeyboardShortcuts({
                 <input v-model="form.wholesale_price" type="number" step="0.01">
                 <div v-if="form.errors.wholesale_price" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.wholesale_price }}</div>
             </div>
-            <div class="f2">
-                <div class="field" v-if="!editingHasVariants">
-                    <label>{{ t('stock.stock') }}{{ form.sold_by_weight ? ` (${form.weight_unit === 'litre' ? t('stock.unitLitre') : t('stock.unitKg')})` : '' }}</label>
-                    <input v-model="form.stock" type="number" :step="form.sold_by_weight ? 0.001 : 1">
-                    <div v-if="form.errors.stock" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.stock }}</div>
+            <!-- restaurant-only: a cooked dish's "stock" isn't a count anyone
+                 can know ahead of time (a pot's yield varies), so this picks
+                 which of the 3 ways this product's availability actually works
+                 — packaged goods (coke, ice cream) still just pick "সংখ্যা গুনব"
+                 and get the exact same numeric field every other vertical has -->
+            <div v-if="isRestaurant && !editingHasVariants" class="field">
+                <label>{{ t('stock.stockMode') }}</label>
+                <div class="seg" style="margin-top:4px">
+                    <button type="button" :class="{ on: form.stock_mode === 'untracked' }" @click="form.stock_mode = 'untracked'">{{ t('stock.stockModeUntracked') }}</button>
+                    <button type="button" :class="{ on: form.stock_mode === 'toggle' }" @click="form.stock_mode = 'toggle'">{{ t('stock.stockModeToggle') }}</button>
+                    <button type="button" :class="{ on: form.stock_mode === 'tracked' }" @click="form.stock_mode = 'tracked'">{{ t('stock.stockModeTracked') }}</button>
                 </div>
-                <div class="field" v-else>
+                <div style="color:var(--dim);font-size:12px;margin-top:4px">
+                    {{ form.stock_mode === 'untracked' ? t('stock.stockModeUntrackedHint') : form.stock_mode === 'toggle' ? t('stock.stockModeToggleHint') : t('stock.stockModeTrackedHint') }}
+                </div>
+            </div>
+
+            <div class="f2">
+                <div class="field" v-if="editingHasVariants">
                     <label>{{ t('stock.stock') }}</label>
                     <input :value="`${editing.stock} ${t('stock.pieces')}`" disabled>
                     <div style="color:var(--mut);font-size:12px;margin-top:6px">{{ t('stock.variantStockHint') }}</div>
+                </div>
+                <div class="field" v-else-if="isRestaurant && form.stock_mode === 'toggle'">
+                    <label>{{ t('stock.stockModeToggle') }}</label>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px">
+                        <input v-model="form.available" type="checkbox" style="width:auto">
+                        {{ form.available ? t('pos.availableToday') : t('pos.soldOutToday') }}
+                    </label>
+                </div>
+                <div class="field" v-else-if="!(isRestaurant && form.stock_mode === 'untracked')">
+                    <label>{{ t('stock.stock') }}{{ form.sold_by_weight ? ` (${form.weight_unit === 'litre' ? t('stock.unitLitre') : t('stock.unitKg')})` : '' }}</label>
+                    <input v-model="form.stock" type="number" :step="form.sold_by_weight ? 0.001 : 1">
+                    <div v-if="form.errors.stock" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.stock }}</div>
                 </div>
                 <div class="field"><label>{{ t('stock.barcode') }}</label><input v-model="form.barcode"></div>
             </div>
@@ -550,7 +604,7 @@ useKeyboardShortcuts({
                 <input v-model="form.discount_price" type="number">
                 <div v-if="form.errors.discount_price" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.discount_price }}</div>
             </div>
-            <div v-if="hasLowStockAlerts" class="field">
+            <div v-if="hasLowStockAlerts && !(isRestaurant && form.stock_mode !== 'tracked')" class="field">
                 <label>{{ t('stock.reorderPoint') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.reorderPointHint') }}</span></label>
                 <input v-model="form.reorder_point" type="number" min="0">
                 <div v-if="form.errors.reorder_point" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.reorder_point }}</div>

@@ -664,13 +664,19 @@ onBeforeUnmount(() => {
 
                 <div v-if="filtered.length" class="pgrid rest-grid">
                     <div v-for="p in filtered" :key="p.id" class="pcard">
-                        <button class="pcard-main" @click="addItem(p)">
+                        <!-- 'toggle' sold-out is the one case actually disabled here (a real,
+                             owner-set "not today" state) — 'untracked'/'tracked' always stay
+                             clickable and let the server give the real answer, same reasoning
+                             as postItem()'s error toast; this is not the old silent-no-op bug -->
+                        <button class="pcard-main" @click="addItem(p)" :disabled="p.stock_mode === 'toggle' && p.stock <= 0">
                             <img v-if="p.photo_url" :src="p.photo_url" class="pimg" :alt="p.name">
                             <div v-else class="em">{{ p.emoji }}</div>
                             <div class="pn">{{ p.name }}</div>
                             <div class="pp">{{ money(p.price) }}</div>
                             <div class="ps">
-                                <span v-if="p.stock > 0">{{ t('pos.inStock', { n: p.stock }) }}</span>
+                                <span v-if="p.stock_mode === 'untracked'" style="color:var(--mut)">{{ t('pos.alwaysAvailable') }}</span>
+                                <span v-else-if="p.stock_mode === 'toggle'" :style="{ color: p.stock > 0 ? 'var(--mut)' : 'var(--rose)' }">{{ p.stock > 0 ? t('pos.availableToday') : t('pos.soldOutToday') }}</span>
+                                <span v-else-if="p.stock > 0">{{ t('pos.inStock', { n: p.stock }) }}</span>
                                 <span v-else style="color:var(--rose)">{{ t('pos.outOfStock') }}</span>
                             </div>
                         </button>

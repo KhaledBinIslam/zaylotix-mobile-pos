@@ -113,10 +113,16 @@ class DemoShopSeeder extends Seeder
         $cat = ProductCategory::where('shop_id', $shop->id)->first();
         $unit = Unit::where('shop_id', $shop->id)->first();
 
+        // Showcases all 3 of Product::STOCK_MODE_* — a real restaurant menu
+        // is a mix, not one mode for everything: biryani is cooked to order
+        // (no meaningful count), kabab is the kind of dish an owner might
+        // just flip to "sold out" once the tray's empty, and bottled/canned
+        // drinks are exactly the packaged-goods case a real piece count
+        // still makes sense for.
         $menu = [
-            ['name' => 'চিকেন বিরিয়ানি', 'name_en' => 'Chicken Biryani', 'emoji' => '🍛', 'price' => 220, 'cost' => 140],
-            ['name' => 'বিফ কাবাব', 'name_en' => 'Beef Kabab', 'emoji' => '🍢', 'price' => 180, 'cost' => 110],
-            ['name' => 'কোল্ড ড্রিংকস', 'name_en' => 'Cold Drinks', 'emoji' => '🥤', 'price' => 40, 'cost' => 25],
+            ['name' => 'চিকেন বিরিয়ানি', 'name_en' => 'Chicken Biryani', 'emoji' => '🍛', 'price' => 220, 'cost' => 140, 'stock_mode' => Product::STOCK_MODE_UNTRACKED, 'stock' => 0],
+            ['name' => 'বিফ কাবাব', 'name_en' => 'Beef Kabab', 'emoji' => '🍢', 'price' => 180, 'cost' => 110, 'stock_mode' => Product::STOCK_MODE_TOGGLE, 'stock' => 1],
+            ['name' => 'কোল্ড ড্রিংকস', 'name_en' => 'Cold Drinks', 'emoji' => '🥤', 'price' => 40, 'cost' => 25, 'stock_mode' => Product::STOCK_MODE_TRACKED, 'stock' => 48],
         ];
         foreach ($menu as $m) {
             Product::firstOrCreate(
@@ -128,15 +134,8 @@ class DemoShopSeeder extends Seeder
                     'emoji' => $m['emoji'],
                     'cost' => $m['cost'],
                     'price' => $m['price'],
-                    // TableOrderController::addItem() decrements stock
-                    // exactly like retail (see its class docblock) — 0
-                    // here isn't "unlimited", it's "sold out", so the demo
-                    // needs a real number or the whole ordering flow looks
-                    // broken out of the box (this was the actual bug:
-                    // Order.vue's addItem() used to silently no-op on
-                    // stock<=0 instead of showing the server's real
-                    // "insufficient stock" error).
-                    'stock' => 50,
+                    'stock_mode' => $m['stock_mode'],
+                    'stock' => $m['stock'],
                 ]
             );
         }

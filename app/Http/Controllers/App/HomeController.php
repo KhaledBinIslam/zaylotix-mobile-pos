@@ -31,8 +31,13 @@ class HomeController extends Controller
         $todaySales = Sale::whereDate('date', $today)->get();
         $weekSales = Sale::whereDate('date', '>=', $weekAgo)->get();
         $monthSales = Sale::whereDate('date', '>=', $monthAgo)->get();
-        $lowStock = Product::where('stock', '>', 0)->where('stock', '<=', 6)->count();
-        $outOfStock = Product::where('stock', 0)->count();
+        // 'untracked'/'toggle' restaurant items (see Product::STOCK_MODE_*)
+        // have no reorder concept — a cooked dish's stock isn't a count to
+        // run low on, and a "sold out today" toggle isn't a purchasing
+        // alert, so only 'tracked' products (every product, on every
+        // non-restaurant shop) count here
+        $lowStock = Product::where('stock_mode', 'tracked')->where('stock', '>', 0)->where('stock', '<=', 6)->count();
+        $outOfStock = Product::where('stock_mode', 'tracked')->where('stock', 0)->count();
 
         $recentSales = Sale::with('customer')->latest('id')->limit(4)->get();
         $topDue = Customer::where('due', '>', 0)->orderByDesc('due')->limit(3)->get();

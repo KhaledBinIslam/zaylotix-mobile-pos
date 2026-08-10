@@ -20,7 +20,12 @@ class CdsController extends Controller
     public function index()
     {
         return Inertia::render('App/Cds/Index', [
-            'products' => Product::where('stock', '>', 0)->orderBy('name')->get(['id', 'name', 'emoji', 'photo_path', 'price', 'category_id']),
+            // 'untracked' (see Product::STOCK_MODE_*) always shows — a
+            // plain stock>0 filter would silently hide every always-
+            // available cooked dish from the customer-facing menu, since
+            // its stock sits at 0 by design, not because it's unavailable
+            'products' => Product::where(fn ($q) => $q->where('stock_mode', 'untracked')->orWhere('stock', '>', 0))
+                ->orderBy('name')->get(['id', 'name', 'emoji', 'photo_path', 'price', 'category_id', 'stock_mode']),
             'categories' => ProductCategory::orderBy('name')->get(['id', 'name', 'emoji']),
             'todaysOrders' => TableOrder::where('status', 'open')
                 ->whereDate('opened_at', now()->toDateString())
