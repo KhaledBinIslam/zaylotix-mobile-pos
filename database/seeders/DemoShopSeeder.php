@@ -173,8 +173,17 @@ class DemoShopSeeder extends Seeder
             'vat_mode' => 'none',
             // flagship demo — every feature switched on so it showcases the
             // whole app; individual shops normally get a curated subset (see
-            // lightDemo() below for an example of that tiering)
-        ], 'Khaled Bin Islam', Feature::pluck('key')->all());
+            // lightDemo() below for an example of that tiering).
+            // restaurant_tables excluded deliberately: unlike every other
+            // feature here (purely additive capability), it also controls
+            // which entire "Sell" screen/flow this shop routes to (see
+            // Shop::isRestaurant()) — granting it to a non-restaurant shop
+            // caused exactly this account (grocery) to land on the Table
+            // order screen instead of the normal POS, breaking "add to cart"
+            // for it entirely. Routing itself no longer trusts this flag
+            // alone, but a grocery shop still shouldn't carry a restaurant-
+            // only feature it can never meaningfully use.
+        ], 'Khaled Bin Islam', Feature::where('key', '!=', 'restaurant_tables')->pluck('key')->all());
 
         // ShopProvisioner::provision() clears the tenant context before returning
         // (it's not authenticated as anyone) — every tenant-scoped read below
@@ -350,7 +359,9 @@ class DemoShopSeeder extends Seeder
                 'pharmacy' => ['memo_whatsapp', 'memo_print', 'unit_conversion', 'purchases', 'damages', 'stock_count', 'accounts', 'expenses', 'reports', 'vat', 'cashier_management'], // strip -> tablet breakdown, strict expiry/stock discipline
                 'mobile' => ['memo_whatsapp', 'memo_print', 'barcode_printing', 'purchases', 'returns', 'accounts', 'expenses', 'reports', 'cashier_management'], // IMEI/barcode scanning, warranty returns
                 'clothing' => ['memo_whatsapp', 'memo_print', 'product_variants', 'purchases', 'returns', 'accounts', 'expenses', 'reports', 'cashier_management'], // color/size variant picker
-                'supershop' => Feature::pluck('key')->all(), // biggest format, needs the full toolkit
+                // biggest format, needs the full toolkit — restaurant_tables
+                // excluded, see the matching comment in groceryFlagship() above
+                'supershop' => Feature::where('key', '!=', 'restaurant_tables')->pluck('key')->all(),
                 default => ['memo_whatsapp', 'memo_print', 'purchases', 'returns', 'accounts', 'expenses', 'reports', 'cashier_management'],
             }
         );

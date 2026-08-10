@@ -40,8 +40,15 @@ const isOwner = computed(() => user.value?.role === 'owner');
 const hasPerm = (key) => isOwner.value || (user.value?.permissions || []).includes(key);
 const hasFeature = (key) => (page.props.features || []).includes(key);
 // same signal Stock/Index.vue uses to swap "পণ্য" (product) for "খাবার/মেনু"
-// (food/menu) wording on the Stock nav links — see that file's own comment
-const isRestaurant = computed(() => hasFeature('restaurant_tables'));
+// (food/menu) wording on the Stock nav links — see that file's own comment.
+// Deliberately the shop's actual business type (shop.business_type_slug,
+// see Shop::isRestaurant()), NOT the restaurant_tables feature flag — a
+// flag can be granted to a non-restaurant shop (e.g. the flagship demo,
+// seeded with every feature to showcase the platform) without making it a
+// restaurant. Using the flag here previously routed such a shop's "Sell"
+// button to the Tables screen instead of the normal POS, breaking add-to-
+// cart entirely for that shop's whole business type.
+const isRestaurant = computed(() => shop.value?.business_type_slug === 'restaurant');
 const { toast } = useToast();
 const { t, lang } = useI18n();
 
@@ -169,7 +176,7 @@ function isMoreLinkActive(openKey) {
 // desktop sidebar, which lists Sell and Tables as two separate links) — for
 // a shop with table service turned on, that one button has to go straight to
 // the table/kitchen flow, or a phone-only cashier would never reach it at all.
-const mobileSellHref = computed(() => hasFeature('restaurant_tables') ? route('app.restaurant.tables.index') : route('app.pos'));
+const mobileSellHref = computed(() => isRestaurant.value ? route('app.restaurant.tables.index') : route('app.pos'));
 const mobileSellActive = computed(() => props.active === 'sell' || props.active === 'restaurant');
 
 // Grouped nav for the desktop sidebar — richer than the 5-icon mobile
@@ -190,9 +197,9 @@ const sidebarGroups = computed(() => [
             // "টেবিল" item that used to sit here as the restaurant-only
             // stand-in is gone — this one link now covers it.
             { key: 'sell', label: t('nav.sellFull'), href: mobileSellHref.value, icon: '🛒', on: mobileSellActive.value, show: hasPerm('pos') },
-            { key: 'reservations', label: t('nav.reservations'), href: route('app.reservations.index'), icon: '📅', on: props.active === 'reservations', show: hasPerm('pos') && hasFeature('restaurant_tables') },
-            { key: 'kds', label: t('nav.kds'), href: route('app.kds.index'), icon: '🍳', on: props.active === 'kds', show: hasPerm('pos') && hasFeature('restaurant_tables') },
-            { key: 'cds', label: t('nav.cds'), href: route('app.cds.index'), icon: '🖥️', on: props.active === 'cds', show: hasPerm('pos') && hasFeature('restaurant_tables') },
+            { key: 'reservations', label: t('nav.reservations'), href: route('app.reservations.index'), icon: '📅', on: props.active === 'reservations', show: hasPerm('pos') && isRestaurant.value && hasFeature('restaurant_tables') },
+            { key: 'kds', label: t('nav.kds'), href: route('app.kds.index'), icon: '🍳', on: props.active === 'kds', show: hasPerm('pos') && isRestaurant.value && hasFeature('restaurant_tables') },
+            { key: 'cds', label: t('nav.cds'), href: route('app.cds.index'), icon: '🖥️', on: props.active === 'cds', show: hasPerm('pos') && isRestaurant.value && hasFeature('restaurant_tables') },
             { key: 'sales', label: t('nav.salesHistory'), href: route('app.sales'), icon: '🧮', on: props.active === 'sales', show: hasPerm('sales_history') },
             { key: 'due', label: t('nav.dueFull'), href: route('app.customers'), icon: '🧾', on: props.active === 'due', show: hasPerm('customers') },
             { key: 'promotions', label: t('nav.promotions'), href: route('app.promotions.index'), icon: '🎁', on: props.active === 'promotions', show: hasPerm('promotions') && hasFeature('promotions') },

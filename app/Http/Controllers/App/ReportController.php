@@ -44,7 +44,7 @@ class ReportController extends Controller
                     ->limit(50)
                     ->get(['id', 'product_id', 'batch_no', 'expiry_date', 'qty'])
                 : null,
-            'restaurantBreakdown' => $shop?->hasFeature('restaurant_tables') ? Reports::restaurantBreakdown($from, $to) : null,
+            'restaurantBreakdown' => $shop?->isRestaurant() ? Reports::restaurantBreakdown($from, $to) : null,
             'salesByType' => $shop?->hasFeature('wholesale_pricing') ? Reports::salesByType($from, $to) : null,
             'itemWisePurchases' => $shop?->hasFeature('purchases') ? Reports::itemWisePurchases($from, $to) : null,
             'categoryReport' => Reports::categoryReport($from, $to),

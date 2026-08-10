@@ -21,7 +21,7 @@ class Shop extends Model
         'loyalty_earn_rate', 'loyalty_point_value', 'onboarded_at',
     ];
 
-    protected $appends = ['logo_url'];
+    protected $appends = ['logo_url', 'business_type_slug'];
 
     protected function casts(): array
     {
@@ -160,6 +160,31 @@ class Shop extends Model
     protected function logoUrl(): Attribute
     {
         return Attribute::get(fn () => $this->logo_path ? Storage::disk('public')->url($this->logo_path) : null);
+    }
+
+    /**
+     * Root-cause fix (recurring "POS won't add to cart" bug): this shop's
+     * actual vertical (e.g. 'restaurant', 'clothing', 'grocery'), independent
+     * of which *features* happen to be granted to it. Before this existed,
+     * several places (server routing in PosController/RestaurantTableController,
+     * and AppLayout.vue/Stock/Index.vue/Accounts/Index.vue/More.vue on the
+     * frontend) used hasFeature('restaurant_tables') as a stand-in for "is
+     * this a restaurant" — which breaks the moment a shop has that feature
+     * granted without actually being a restaurant (e.g. the flagship demo
+     * shop, seeded with every feature that exists to showcase the platform).
+     * Every "which screen/flow" decision must check THIS, not a feature flag
+     * — feature flags stay purely additive-capability, never identity.
+     * Appended so it's always present on the shared `shop` Inertia prop.
+     */
+    protected function businessTypeSlug(): Attribute
+    {
+        return Attribute::get(fn () => $this->businessType?->slug);
+    }
+
+    /** See businessTypeSlug() docblock — the one check every restaurant-only routing decision (server or client) should use. */
+    public function isRestaurant(): bool
+    {
+        return $this->business_type_slug === 'restaurant';
     }
 
     // Invoice numbers are assigned inside PosController::checkout using an

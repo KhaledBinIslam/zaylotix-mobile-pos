@@ -26,8 +26,11 @@ const hasWholesalePricing = computed(() => features.value.includes('wholesale_pr
 // gates the stock-mode picker below — a cooked dish's "stock" doesn't mean
 // a count the way it does for every other vertical (see Product::STOCK_MODE_*
 // and TableOrderController), so only a restaurant shop's form offers it;
-// every other business type's stock field stays exactly as it always was
-const isRestaurant = computed(() => features.value.includes('restaurant_tables'));
+// every other business type's stock field stays exactly as it always was.
+// Deliberately the shop's actual business type, NOT the restaurant_tables
+// feature flag — see AppLayout.vue's isRestaurant for why the flag alone is
+// wrong (it can be granted to a non-restaurant shop, e.g. the flagship demo).
+const isRestaurant = computed(() => page.props.shop?.business_type_slug === 'restaurant');
 const { t } = useI18n();
 
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');

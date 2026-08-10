@@ -87,7 +87,7 @@ function saveServiceCharge() {
             </div>
         </template>
 
-        <template v-if="features.includes('restaurant_tables')">
+        <template v-if="shop?.business_type_slug === 'restaurant' && features.includes('restaurant_tables')">
             <div class="sechead"><h2>{{ t('acc.serviceChargeSection') }}</h2></div>
             <div class="card">
                 <div style="font-size:12.5px;color:var(--mut);margin-bottom:10px">{{ t('acc.serviceChargeHint') }}</div>

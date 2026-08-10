@@ -38,7 +38,15 @@ class PosController extends Controller
         // route around this normally; this is a server-side backstop for
         // any other way here (a bookmark, a stale link, browser back) so a
         // restaurant shop can never actually land on it.
-        if ($shop->hasFeature('restaurant_tables')) {
+        //
+        // Deliberately checks the shop's actual business type, NOT the
+        // restaurant_tables feature flag — a flag can be granted to a
+        // non-restaurant shop (e.g. the flagship demo, seeded with every
+        // feature to showcase the platform) without making it a restaurant,
+        // and that mismatch previously sent a grocery shop's cashier here
+        // instead of the normal product checkout, breaking "add to cart"
+        // entirely for that account. See Shop::isRestaurant().
+        if ($shop->isRestaurant()) {
             return redirect()->route('app.restaurant.tables.index');
         }
 

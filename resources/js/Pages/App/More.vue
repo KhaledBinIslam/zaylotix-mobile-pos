@@ -12,6 +12,11 @@ const features = computed(() => page.props.features || []);
 const user = computed(() => page.props.auth?.user);
 const isOwner = computed(() => user.value?.role === 'owner');
 const hasPerm = (key) => isOwner.value || (user.value?.permissions || []).includes(key);
+// Deliberately the shop's actual business type, NOT just the
+// restaurant_tables feature flag — see AppLayout.vue's isRestaurant for why
+// the flag alone is wrong (it can be granted to a non-restaurant shop, e.g.
+// the flagship demo, without making that shop an actual restaurant).
+const isRestaurant = computed(() => props.shop?.business_type_slug === 'restaurant' && features.value.includes('restaurant_tables'));
 const { t, lang } = useI18n();
 
 // language is stored server-side per-user, plus mirrored to localStorage so
@@ -312,18 +317,18 @@ onMounted(() => {
         <div class="pgttl">{{ t('more.title') }}</div>
         <div class="pgsub">{{ shop?.name }} • {{ shop?.phone }}</div>
 
-        <template v-if="hasPerm('sales_history') || (hasPerm('barcode_labels') && features.includes('barcode_printing')) || (hasPerm('pos') && features.includes('restaurant_tables')) || (hasPerm('promotions') && features.includes('promotions')) || (hasPerm('pos') && features.includes('quotations')) || hasPerm('pos') || isMainShopWithBranches || (isOwner && branches)">
+        <template v-if="hasPerm('sales_history') || (hasPerm('barcode_labels') && features.includes('barcode_printing')) || (hasPerm('pos') && isRestaurant) || (hasPerm('promotions') && features.includes('promotions')) || (hasPerm('pos') && features.includes('quotations')) || hasPerm('pos') || isMainShopWithBranches || (isOwner && branches)">
             <div class="sechead"><h2>{{ t('more.sectionSales') }}</h2></div>
-            <Link v-if="hasPerm('pos') && features.includes('restaurant_tables')" :href="route('app.restaurant.tables.index')" class="row">
+            <Link v-if="hasPerm('pos') && isRestaurant" :href="route('app.restaurant.tables.index')" class="row">
                 <div class="ava">🍽️</div><div class="mid"><b>{{ t('nav.restaurant') }}</b><span>{{ t('restaurant.tablesSubtitle') }}</span></div><div class="end">›</div>
             </Link>
-            <Link v-if="hasPerm('pos') && features.includes('restaurant_tables')" :href="route('app.reservations.index')" class="row">
+            <Link v-if="hasPerm('pos') && isRestaurant" :href="route('app.reservations.index')" class="row">
                 <div class="ava">📅</div><div class="mid"><b>{{ t('nav.reservations') }}</b><span>{{ t('reservation.subtitle') }}</span></div><div class="end">›</div>
             </Link>
-            <Link v-if="hasPerm('pos') && features.includes('restaurant_tables')" :href="route('app.kds.index')" class="row">
+            <Link v-if="hasPerm('pos') && isRestaurant" :href="route('app.kds.index')" class="row">
                 <div class="ava">🍳</div><div class="mid"><b>{{ t('nav.kds') }}</b><span>{{ t('kds.subtitle') }}</span></div><div class="end">›</div>
             </Link>
-            <Link v-if="hasPerm('pos') && features.includes('restaurant_tables')" :href="route('app.cds.index')" class="row">
+            <Link v-if="hasPerm('pos') && isRestaurant" :href="route('app.cds.index')" class="row">
                 <div class="ava">🖥️</div><div class="mid"><b>{{ t('nav.cds') }}</b><span>{{ t('cds.subtitle') }}</span></div><div class="end">›</div>
             </Link>
             <button v-if="hasPerm('pos') && !activeWorkPeriod" class="row" style="width:100%;text-align:left;border:none;background:none;cursor:pointer" @click="workPeriodSheet = true">

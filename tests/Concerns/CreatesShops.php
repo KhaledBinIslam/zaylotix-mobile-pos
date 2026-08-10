@@ -2,6 +2,7 @@
 
 namespace Tests\Concerns;
 
+use App\Models\BusinessType;
 use App\Models\Feature;
 use App\Models\Shop;
 use App\Models\User;
@@ -14,6 +15,22 @@ trait CreatesShops
             'label_bn' => $key, 'label_en' => $key, 'category' => 'general',
         ]);
         $shop->features()->syncWithoutDetaching([$feature->id]);
+
+        // restaurant_tables carries special "which screen" routing semantics
+        // (see Shop::isRestaurant()) that PosController/RestaurantTableController
+        // decide on the shop's actual business type, not this flag — in real
+        // usage it's only ever granted alongside business_type=restaurant, so
+        // a test shop granted this feature needs to genuinely be one too, or
+        // it'd exercise a combination ("restaurant feature, non-restaurant
+        // shop") that can no longer happen outside a seeding bug.
+        if ($key === 'restaurant_tables' && $shop->businessType?->slug !== 'restaurant') {
+            $businessType = BusinessType::firstOrCreate(
+                ['slug' => 'restaurant'],
+                ['label_bn' => 'রেস্টুরেন্ট', 'label_en' => 'Restaurant', 'is_active' => true]
+            );
+            $shop->forceFill(['business_type_id' => $businessType->id])->save();
+            $shop->unsetRelation('businessType');
+        }
     }
 
     protected function createShopWithOwner(array $shopAttrs = [], array $userAttrs = []): array

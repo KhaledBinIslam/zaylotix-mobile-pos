@@ -16,6 +16,16 @@ class RestaurantTableController extends Controller
 {
     public function index()
     {
+        // symmetric backstop to PosController::index()'s restaurant redirect
+        // (see Shop::isRestaurant() docblock) — a non-restaurant shop that
+        // somehow still has the restaurant_tables feature granted (e.g. the
+        // "grant every feature" flagship demo) must never actually land on
+        // this screen instead of the normal product checkout, or "add to
+        // cart" silently breaks for that shop's whole business type.
+        if (! Tenancy::shop()->isRestaurant()) {
+            return redirect()->route('app.pos');
+        }
+
         // scoped to whereNull('sale_id') — a split-billed-away item is no
         // longer part of the table's still-running (unpaid) total
         $tables = RestaurantTable::with(['openOrder.items' => fn ($q) => $q->whereNull('sale_id')])
