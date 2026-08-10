@@ -38,6 +38,7 @@ use App\Http\Controllers\App\StockTransferController;
 use App\Http\Controllers\App\SubscriptionRenewalController;
 use App\Http\Controllers\App\WhatsappBulkController;
 use App\Http\Controllers\App\WhatsappCredentialController;
+use App\Http\Controllers\App\WhatsappTemplateController;
 use App\Http\Controllers\App\PartnerController;
 use App\Http\Controllers\App\PartnerTransactionController;
 use App\Http\Controllers\App\PosController;
@@ -393,6 +394,12 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
     Route::middleware(['owner', 'feature:whatsapp_bulk'])->group(function () {
         Route::get('whatsapp-bulk', [WhatsappBulkController::class, 'index'])->name('whatsappBulk.index');
         Route::post('whatsapp-bulk/send', [WhatsappBulkController::class, 'send'])->name('whatsappBulk.send');
+        Route::post('whatsapp-bulk/import-contacts', [WhatsappBulkController::class, 'importContacts'])->name('whatsappBulk.importContacts');
+        Route::get('whatsapp-bulk/import-template', [WhatsappBulkController::class, 'importTemplate'])->name('whatsappBulk.importTemplate');
+
+        Route::post('whatsapp-templates', [WhatsappTemplateController::class, 'store'])->name('whatsappTemplates.store');
+        Route::put('whatsapp-templates/{whatsappMessageTemplate}', [WhatsappTemplateController::class, 'update'])->name('whatsappTemplates.update');
+        Route::delete('whatsapp-templates/{whatsappMessageTemplate}', [WhatsappTemplateController::class, 'destroy'])->name('whatsappTemplates.destroy');
     });
 
     Route::middleware(['perm:promotions', 'feature:promotions'])->group(function () {

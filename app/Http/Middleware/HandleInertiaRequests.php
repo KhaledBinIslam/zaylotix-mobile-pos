@@ -74,6 +74,11 @@ class HandleInertiaRequests extends Middleware
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),
+                // one-shot list WhatsappBulkController::importContacts() hands
+                // back so the bulk-send page can pre-select exactly the
+                // contacts that import just touched, without needing its own
+                // dedicated Inertia response shape
+                'importedCustomerIds' => fn () => $request->session()->get('importedCustomerIds'),
             ],
         ];
     }

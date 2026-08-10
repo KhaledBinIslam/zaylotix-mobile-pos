@@ -1,11 +1,13 @@
 <script setup>
-import { Head, useForm, Link } from '@inertiajs/vue3';
+import { Head, useForm, Link, router, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import Sheet from '@/Components/Sheet.vue';
 import { useI18n } from '@/composables/useI18n';
 
-const props = defineProps({ connected: Boolean, customers: Array, recentLogs: Array });
+const props = defineProps({ connected: Boolean, customers: Array, recentLogs: Array, templates: { type: Array, default: () => [] } });
 const { t } = useI18n();
+const page = usePage();
 
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 
@@ -23,6 +25,12 @@ function toggle(c) {
 function selectAll() {
     filtered.value.forEach((c) => (selected.value[c.id] = true));
 }
+// "নির্দিষ্ট গ্রুপে পাঠানো" — the one group specific enough to deserve its
+// own one-tap shortcut (a due reminder is the single most common reason an
+// owner would want to message exactly this subset and nobody else)
+function selectDueOnly() {
+    filtered.value.filter((c) => c.due > 0).forEach((c) => (selected.value[c.id] = true));
+}
 function clearSelection() {
     selected.value = {};
 }
@@ -36,6 +44,57 @@ function send() {
     form.post(route('app.whatsappBulk.send'), {
         preserveScroll: true,
         onSuccess: () => { clearSelection(); form.reset('message'); },
+    });
+}
+
+// ---------------- saved templates (this shop's own, reusable snippets —
+// separate from Meta's own approved Template concept, see
+// WhatsappMessageTemplate's docblock) ----------------
+const templatesForCurrentType = computed(() => props.templates.filter((tpl) => tpl.send_type === form.send_type));
+function applyTemplate(tpl) {
+    if (tpl.send_type === 'template') {
+        form.template_name = tpl.template_name || '';
+        form.language_code = tpl.language_code || 'bn';
+    } else {
+        form.message = tpl.message || '';
+    }
+}
+function deleteTemplate(tpl) {
+    if (!confirm(`"${tpl.label}" ${t('whatsappBulk.deleteTemplateConfirm')}`)) return;
+    router.delete(route('app.whatsappTemplates.destroy', tpl.id), { preserveScroll: true });
+}
+
+const templateSheet = ref(false);
+const templateForm = useForm({ label: '', send_type: 'text', template_name: '', language_code: 'bn', message: '' });
+function openSaveTemplate() {
+    templateForm.reset();
+    templateForm.send_type = form.send_type;
+    templateForm.template_name = form.template_name;
+    templateForm.language_code = form.language_code;
+    templateForm.message = form.message;
+    templateSheet.value = true;
+}
+function saveTemplate() {
+    templateForm.post(route('app.whatsappTemplates.store'), {
+        preserveScroll: true,
+        onSuccess: () => { templateSheet.value = false; templateForm.reset(); },
+    });
+}
+
+// ---------------- new-number import (paste/type text and/or a CSV, both
+// landing as real Customer records — see WhatsappBulkController::importContacts) ----------------
+const importSheet = ref(false);
+const importForm = useForm({ text: '', file: null });
+function saveImport() {
+    importForm.post(route('app.whatsappBulk.importContacts'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            importSheet.value = false;
+            importForm.reset();
+            // pre-selects exactly what was just imported — see the
+            // 'importedCustomerIds' flash key HandleInertiaRequests shares
+            (page.props.flash.importedCustomerIds || []).forEach((id) => (selected.value[id] = true));
+        },
     });
 }
 </script>
@@ -65,6 +124,19 @@ function send() {
                 </div>
             </div>
 
+            <div v-if="templatesForCurrentType.length" class="field">
+                <label>{{ t('whatsappBulk.savedTemplatesLabel') }}</label>
+                <div style="display:flex;flex-wrap:wrap;gap:8px">
+                    <button
+                        v-for="tpl in templatesForCurrentType" :key="tpl.id" type="button" class="btn sm ghost"
+                        style="width:auto;padding:0 12px;display:inline-flex;align-items:center;gap:8px" @click="applyTemplate(tpl)"
+                    >
+                        {{ tpl.label }}
+                        <span style="opacity:.5" :title="t('whatsappBulk.deleteTemplateConfirm')" @click.stop="deleteTemplate(tpl)">✕</span>
+                    </button>
+                </div>
+            </div>
+
             <template v-if="form.send_type === 'template'">
                 <div class="field">
                     <label>{{ t('whatsappBulk.templateNameLabel') }} <span style="color:var(--dim);font-weight:400">{{ t('whatsappBulk.templateNameHint') }}</span></label>
@@ -83,13 +155,22 @@ function send() {
                     <div v-if="form.errors.message" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.message }}</div>
                 </div>
             </template>
+            <button
+                type="button" class="btn sm ghost" style="margin-bottom:14px"
+                :disabled="form.send_type === 'template' ? !form.template_name : !form.message"
+                @click="openSaveTemplate"
+            >
+                💾 {{ t('whatsappBulk.saveAsTemplate') }}
+            </button>
 
             <div class="hr"></div>
 
-            <div style="display:flex;gap:8px;margin-bottom:10px">
-                <input v-model="q" :placeholder="t('whatsappBulk.searchCustomers')" style="flex:1">
+            <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+                <input v-model="q" :placeholder="t('whatsappBulk.searchCustomers')" style="flex:1;min-width:160px">
                 <button class="btn sm ghost" style="width:auto;padding:0 14px" @click="selectAll">{{ t('whatsappBulk.selectAll') }}</button>
+                <button class="btn sm ghost" style="width:auto;padding:0 14px" @click="selectDueOnly">{{ t('whatsappBulk.selectDueOnly') }}</button>
                 <button class="btn sm ghost" style="width:auto;padding:0 14px" @click="clearSelection">{{ t('whatsappBulk.clearSelection') }}</button>
+                <button class="btn sm ghost" style="width:auto;padding:0 14px" @click="importSheet = true">📥 {{ t('whatsappBulk.importContacts') }}</button>
             </div>
 
             <div v-for="c in filtered" :key="c.id" class="row" @click="toggle(c)" :class="{ incart: selected[c.id] }" :style="selected[c.id] ? 'border-color:var(--gold);background:var(--goldSoft)' : ''">
@@ -118,6 +199,44 @@ function send() {
                     </div>
                 </div>
             </div>
+
+            <!-- new-number import -->
+            <Sheet v-model="importSheet" :title="t('whatsappBulk.importContacts')" :subtitle="t('whatsappBulk.importContactsSub')">
+                <div class="card" style="margin-bottom:14px;background:var(--roseSoft);color:var(--rose);font-size:12.5px">
+                    ⚠ {{ t('whatsappBulk.consentReminder') }}
+                </div>
+                <div class="field">
+                    <label>{{ t('whatsappBulk.pasteNumbersLabel') }} <span style="color:var(--dim);font-weight:400">{{ t('whatsappBulk.pasteNumbersHint') }}</span></label>
+                    <textarea v-model="importForm.text" rows="5" :placeholder="t('whatsappBulk.pasteNumbersPlaceholder')"></textarea>
+                    <div v-if="importForm.errors.text" style="color:var(--rose);font-size:12px;margin-top:6px">{{ importForm.errors.text }}</div>
+                </div>
+                <div class="hr"></div>
+                <a :href="route('app.whatsappBulk.importTemplate')" class="btn ghost sm" style="margin-bottom:14px;display:inline-block">{{ t('stock.downloadTemplate') }}</a>
+                <div class="field">
+                    <label>{{ t('stock.chooseFile') }}</label>
+                    <input type="file" accept=".csv,text/csv" @change="importForm.file = $event.target.files[0]">
+                    <div v-if="importForm.errors.file" style="color:var(--rose);font-size:12px;margin-top:6px">{{ importForm.errors.file }}</div>
+                </div>
+                <button class="btn" :disabled="importForm.processing || (!importForm.text && !importForm.file)" @click="saveImport">
+                    {{ importForm.processing ? '...' : t('whatsappBulk.importSubmit') }}
+                </button>
+                <button class="btn ghost" style="margin-top:10px" @click="importSheet = false">{{ t('common.cancel') }}</button>
+            </Sheet>
+
+            <!-- save current message as a reusable template -->
+            <Sheet v-model="templateSheet" :title="t('whatsappBulk.saveTemplateTitle')">
+                <div class="field">
+                    <label>{{ t('whatsappBulk.templateLabelLabel') }}</label>
+                    <input v-model="templateForm.label" :placeholder="t('whatsappBulk.templateLabelPlaceholder')">
+                    <div v-if="templateForm.errors.label" style="color:var(--rose);font-size:12px;margin-top:6px">{{ templateForm.errors.label }}</div>
+                </div>
+                <div class="card" style="margin-bottom:14px;font-size:12.5px;color:var(--mut)">
+                    {{ templateForm.send_type === 'template' ? t('whatsappBulk.sendTypeTemplate') : t('whatsappBulk.sendTypeText') }} —
+                    {{ templateForm.send_type === 'template' ? templateForm.template_name : templateForm.message }}
+                </div>
+                <button class="btn" :disabled="templateForm.processing || !templateForm.label" @click="saveTemplate">{{ templateForm.processing ? '...' : t('stock.save') }}</button>
+                <button class="btn ghost" style="margin-top:10px" @click="templateSheet = false">{{ t('common.cancel') }}</button>
+            </Sheet>
         </template>
     </AppLayout>
 </template>
