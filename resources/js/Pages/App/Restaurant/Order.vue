@@ -26,6 +26,13 @@ const shop = computed(() => page.props.shop);
 // subtotal/VAT-preview immediately instead of looking stale until sync.
 const liveOrderTotal = computed(() => props.order.items
     .reduce((s, it) => s + it.price * it.qty - Math.min(it.discount || 0, it.price * it.qty), 0));
+// same "in cart" badge/highlight Pos/Index.vue's product grid already shows
+// (see qtyInCart there) — this screen never had it, so a menu item that was
+// genuinely added gave no lasting visual sign of it on the card itself,
+// only a change to the order panel a cashier might not be looking at
+function qtyInOrder(productId) {
+    return props.order.items.filter((it) => it.product_id === productId).reduce((s, it) => s + it.qty, 0);
+}
 // complimentary (free/staff-meal) bills give away real inventory for free —
 // owner-only, same reasoning as Pos/Index.vue
 const isOwner = computed(() => page.props.auth?.user?.role === 'owner');
@@ -235,6 +242,15 @@ async function postItem(productId, qty) {
             body: JSON.stringify(body),
         });
         if (res.ok) {
+            // the one path that used to end with no feedback at all, despite
+            // this function's own docblock above claiming otherwise — a
+            // click that actually worked (item genuinely reached the order,
+            // confirmed live against the real dev DB) still looked and felt
+            // exactly like a click that did nothing, because nothing on
+            // screen said so until the cashier noticed the cart total change
+            // themselves. Matches Pos/Index.vue's addToCart() toast.
+            const product = props.products.find((p) => p.id === productId);
+            toast('✅ ' + (product?.name || '') + ' ' + t('pos.added'));
             router.reload({ only: ['order'], preserveScroll: true, preserveState: true });
         } else {
             const data = await res.json().catch(() => ({}));
@@ -686,7 +702,8 @@ onBeforeUnmount(() => {
                 </div>
 
                 <div v-if="filtered.length" class="pgrid rest-grid">
-                    <div v-for="p in filtered" :key="p.id" class="pcard">
+                    <div v-for="p in filtered" :key="p.id" class="pcard" :class="{ incart: qtyInOrder(p.id) }">
+                        <span v-if="qtyInOrder(p.id)" class="qbadge">{{ qtyInOrder(p.id) }}</span>
                         <!-- 'toggle' sold-out is the one case actually disabled here (a real,
                              owner-set "not today" state) — 'untracked'/'tracked' always stay
                              clickable and let the server give the real answer, same reasoning
