@@ -18,7 +18,16 @@ const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 // to a component's setup context), so this works globally, before any page
 // has even mounted. This is purely additive feedback — it doesn't change
 // what any individual page's own onError/onSuccess handlers already do.
-router.on('exception', () => {
+router.on('exception', (event) => {
+    // TEMPORARY diagnostic — see Order.vue's postItem() for why: this event
+    // firing right after a raw-fetch success toast can silently clobber it
+    // (useToast is a single message slot), which would look exactly like
+    // "add says it worked but nothing else on screen ever changes" on
+    // whatever's triggering this. alert() so it can't be missed/overwritten
+    // the way a toast can, purely to see what event.detail.exception is.
+    try {
+        alert('INERTIA EXCEPTION: ' + (event?.detail?.exception?.message || event?.detail?.exception || 'unknown'));
+    } catch (e) { /* ignore */ }
     const { toast } = useToast();
     toast('📴 নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন');
 });
@@ -34,6 +43,11 @@ router.on('exception', () => {
 // bug anywhere else in the app too, present or future.
 window.addEventListener('unhandledrejection', (event) => {
     console.error('Unhandled promise rejection:', event.reason);
+    // TEMPORARY diagnostic — see the router.on('exception') handler above
+    // for why alert() instead of just the toast right now.
+    try {
+        alert('UNHANDLED REJECTION: ' + (event.reason?.message || event.reason));
+    } catch (e) { /* ignore */ }
     const { toast } = useToast();
     toast('⚠️ কিছু একটা ভুল হয়েছে — আবার চেষ্টা করুন। সমস্যা থাকলে পেজ রিলোড করুন।');
 });
