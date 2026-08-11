@@ -1,5 +1,17 @@
 apply plugin: 'com.android.application'
 
+// release signing — see android/.gitignore's comment on keystore.properties/
+// *.keystore for why neither the real key nor its password are ever
+// committed; this file just loads them from that gitignored properties
+// file (present locally / on whatever machine actually builds a release,
+// never in the repo itself) so a release build stays reproducible without
+// hardcoding secrets into tracked source.
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "com.zaylotix.pos"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,10 +28,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                storeFile file("$projectDir/" + keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
         }
     }
 }

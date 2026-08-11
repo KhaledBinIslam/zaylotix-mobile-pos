@@ -254,7 +254,12 @@ const sidebarGroups = computed(() => [
              bottom tab bar below is used instead -->
         <aside class="hidden lg:flex lg:flex-col lg:w-64 lg:shrink-0 lg:bg-white lg:border-r lg:sticky lg:top-0 lg:h-screen">
             <div class="p-5 border-b flex items-center gap-2">
-                <img v-if="platformLogoUrl" :src="platformLogoUrl" class="w-[34px] h-[34px] object-contain rounded-lg shrink-0">
+                <!-- a shop's own uploaded logo (More → logo) takes priority here
+                     over the platform's own brand mark — this header is the one
+                     place a shop is "branded" in daily use, unlike receipts/
+                     labels which always show the shop's logo regardless -->
+                <img v-if="shop?.logo_url" :src="shop.logo_url" class="w-[34px] h-[34px] object-contain rounded-lg shrink-0">
+                <img v-else-if="platformLogoUrl" :src="platformLogoUrl" class="w-[34px] h-[34px] object-contain rounded-lg shrink-0">
                 <ZaylotixMark v-else :size="34" />
                 <div>
                     <div class="font-extrabold text-base leading-tight" style="color:var(--green)">Zaylotix POS</div>
@@ -322,7 +327,9 @@ const sidebarGroups = computed(() => [
                 </div>
 
                 <div id="top" class="lg:hidden">
-                    <img v-if="platformLogoUrl" :src="platformLogoUrl" style="width:40px;height:40px;object-fit:contain;border-radius:12px;flex:0 0 auto">
+                    <!-- see the desktop sidebar's matching comment above — same priority order -->
+                    <img v-if="shop?.logo_url" :src="shop.logo_url" style="width:40px;height:40px;object-fit:contain;border-radius:12px;flex:0 0 auto">
+                    <img v-else-if="platformLogoUrl" :src="platformLogoUrl" style="width:40px;height:40px;object-fit:contain;border-radius:12px;flex:0 0 auto">
                     <ZaylotixMark v-else :size="40" />
                     <div class="btitle">
                         <b style="font-size:17px;display:block;line-height:1.15">Zaylotix POS</b>

@@ -3,7 +3,6 @@
   "appName": "Zaylotix POS",
   "webDir": "capacitor-www",
   "server": {
-    "url": "http://192.168.0.187:8123",
-    "cleartext": true
+    "url": "https://pos.zaylotix.com"
   }
 }
