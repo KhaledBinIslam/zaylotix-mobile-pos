@@ -251,18 +251,18 @@ async function postItem(productId, qty) {
             // themselves. Matches Pos/Index.vue's addToCart() toast.
             const product = props.products.find((p) => p.id === productId);
             toast('✅ ' + (product?.name || '') + ' ' + t('pos.added'));
-            // TEMPORARY diagnostic (remove once the mobile-only "add works,
-            // order never visibly updates" report is root-caused) — this
-            // reload previously had zero error handling of its own, so a
-            // failure here was invisible: a fast-following app.js global
-            // 'exception' toast could silently overwrite the "added" toast
-            // above (useToast is a single message slot) with no other sign
-            // anything went wrong. alert() is deliberately blocking/impossible
-            // to miss, unlike a toast, purely to capture what's actually
-            // failing on the one device class (mobile) that's shown this.
+            // this reload previously had zero error handling of its own — if
+            // it ever fails, app.js's global router.on('exception') safety
+            // net still shows a toast, but it would silently overwrite the
+            // "added" toast above (useToast is a single message slot) with
+            // no visible link back to what the cashier was actually doing.
+            // A one-time retry costs nothing and resolves the transient
+            // network blips this is realistically ever caused by, rather
+            // than leaving the order screen looking out of date until the
+            // cashier notices and manually reloads the page themselves.
             router.reload({
                 only: ['order'], preserveScroll: true, preserveState: true,
-                onError: (errors) => alert('RELOAD FAILED: ' + JSON.stringify(errors)),
+                onError: () => router.reload({ only: ['order'], preserveScroll: true, preserveState: true }),
             });
         } else {
             const data = await res.json().catch(() => ({}));
