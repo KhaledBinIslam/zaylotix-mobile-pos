@@ -23,8 +23,15 @@
 //     skipped entirely, same as v1) — those go through the app's own
 //     explicit offline queues (see useOfflineSync.js /
 //     useOfflineActionQueue.js), never a service-worker cache.
-
-const CACHE = 'zaylotix-shell-v2';
+//
+// v3: scoped the network-first layer down to /app/* only (see the comment
+// above that check below) — v2's cache accidentally held at least one
+// /admin/* Inertia-XHR JSON response that then got served back for an
+// unrelated /admin/* page navigation. Bumping the cache name here isn't
+// just cosmetic: it's what makes the existing activate handler actually
+// throw out that already-corrupted v2 cache on every device that had it,
+// instead of silently carrying the bad entry forward forever.
+const CACHE = 'zaylotix-shell-v3';
 const SHELL_ASSETS = ['/manifest.json'];
 
 self.addEventListener('install', (event) => {
@@ -62,6 +69,21 @@ self.addEventListener('fetch', (event) => {
     );
     return;
   }
+
+  // Offline support was only ever meant for the shop-facing app (a cashier
+  // needs to keep selling for hours with no signal) — the admin panel isn't
+  // used offline and was never supposed to be touched by this at all.
+  // Bug found live: this used to catch every same-origin GET regardless of
+  // path, relying on the response's own `Vary: X-Inertia` header (Inertia
+  // does send it — see inertiajs/inertia-laravel's Middleware) to keep a
+  // cached full-HTML page and a cached Inertia-XHR JSON response for the
+  // *same URL* from colliding in the Cache API. In practice that collided
+  // anyway on this host — an admin page navigation came back served straight
+  // from a stale cached JSON response (visibly raw JSON in the browser,
+  // for the wrong URL entirely). Scoping this whole cache layer to /app/*
+  // removes the admin panel from it completely, which is both the actual
+  // fix for what was seen and matches what this was always meant to cover.
+  if (!url.pathname.startsWith('/app/')) return;
 
   // network-first, write-through cache, fall back to the last good copy —
   // covers both a hard page navigation and Inertia's own XHR page-visit
