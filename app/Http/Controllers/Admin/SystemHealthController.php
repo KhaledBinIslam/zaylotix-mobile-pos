@@ -28,7 +28,12 @@ class SystemHealthController extends Controller
 
         $logPath = storage_path('logs/laravel.log');
         $recentErrors = [];
-        if (is_file($logPath)) {
+        // a genuinely empty log (freshly cleared, or a brand new install
+        // that's never logged anything yet) crashed this page outright —
+        // fread()'s $length must be > 0, and filesize() on an empty file is
+        // exactly 0, so this simply skips the tail-read for that case
+        // instead of ever calling fread() with nothing to read.
+        if (is_file($logPath) && filesize($logPath) > 0) {
             // tail the last ~500KB rather than reading a potentially huge
             // file whole — recent entries are what an admin actually wants
             $size = filesize($logPath);
