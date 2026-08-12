@@ -384,7 +384,25 @@ async function submitCheckout() {
             body: JSON.stringify(payload),
         });
 
-        const data = await res.json();
+        // TEMPORARY diagnostic — see the catch block's comment below for
+        // the bug this is chasing. Cloned *before* the res.json() attempt
+        // below (a Response body can only be read once) purely so that if
+        // parsing fails, we can still read the actual raw text that came
+        // back and show it directly instead of the generic message — this
+        // is the one thing that's been impossible to see any other way so
+        // far (repeated direct server-side checkout calls have all come
+        // back completely correct, so whatever this is only shows up on
+        // the one path we can't drive by hand).
+        const resForDiagnostic = res.clone();
+        let data;
+        try {
+            data = await res.json();
+        } catch (parseErr) {
+            const rawText = await resForDiagnostic.text();
+            alert('CHECKOUT RESPONSE WAS NOT JSON\nStatus: ' + res.status + '\nFirst 500 chars:\n' + rawText.slice(0, 500));
+            errorMsg.value = t('pos.checkoutUnclear');
+            return;
+        }
 
         if (!res.ok) {
             errorMsg.value = data.message || Object.values(data.errors || {})[0]?.[0] || t('pos.checkoutError');
@@ -406,16 +424,13 @@ async function submitCheckout() {
             resetCartAfterCheckout();
             toast(t('pos.savedOffline'));
         } else {
-            // Deliberately NOT auto-retried, unlike a plain read/reload
-            // elsewhere in the app — this exact catch (res.json() throwing
-            // because the response body wasn't valid JSON, e.g. a transient
-            // host-level hiccup handing back an HTML page instead) can't be
-            // told apart here from "the sale was actually created and only
-            // the response got corrupted after the fact". A blind retry
-            // risks double-selling — charging stock and the till twice for
-            // one cart — which is worse than an occasional confusing
-            // message, so this asks the cashier to verify instead of ever
-            // silently resubmitting a non-idempotent checkout on its own.
+            // A genuine fetch()-level failure that isn't a dropped
+            // connection (a non-JSON response is handled separately above,
+            // right where it's read, so the diagnostic there can see the
+            // actual body). Deliberately NOT auto-retried, unlike a plain
+            // read/reload elsewhere in the app — checkout isn't idempotent,
+            // so blindly resubmitting risks double-selling if the first
+            // attempt actually reached the server.
             errorMsg.value = t('pos.checkoutUnclear');
         }
     } finally {
