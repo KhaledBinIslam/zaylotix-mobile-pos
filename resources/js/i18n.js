@@ -665,6 +665,12 @@ export const translations = {
     'pos.added': { bn: 'যোগ হয়েছে', en: 'added' },
     'pos.checkoutError': { bn: 'বিল করতে সমস্যা হয়েছে', en: 'Something went wrong at checkout' },
     'pos.networkError': { bn: 'নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন', en: 'Network error — please try again' },
+    // shown specifically when we can't tell whether the sale actually went
+    // through before the response failed to parse (see submitCheckout's
+    // comment on why this is never auto-retried) — deliberately points the
+    // cashier at Sales History first, not straight back at the বিল করুন
+    // button, so a genuinely-completed sale doesn't get charged twice
+    'pos.checkoutUnclear': { bn: 'সংযোগ সমস্যা হয়েছে — বিল হয়েছে কিনা Sales History-তে আগে চেক করুন, তারপর দরকার হলে আবার চেষ্টা করুন', en: "Connection hiccup — check Sales History to see if this went through before trying again" },
     'pos.changeVariant': { bn: 'পরিবর্তন করুন', en: 'change' },
     'pos.savedOffline': { bn: '📴 নেট নেই — বিক্রিটি সংরক্ষিত হয়েছে, নেট আসলে অটো পাঠানো হবে', en: "📴 Offline — sale saved, will auto-send once you're back online" },
 

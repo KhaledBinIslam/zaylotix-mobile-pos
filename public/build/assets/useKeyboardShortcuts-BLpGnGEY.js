@@ -1,0 +1,1 @@
+import{E as r,G as d}from"./app-CRP0JjZ-.js";function a(t){function n(e){const o=t[e.key];o&&(e.preventDefault(),o(e))}r(()=>document.addEventListener("keydown",n)),d(()=>document.removeEventListener("keydown",n))}export{a as u};

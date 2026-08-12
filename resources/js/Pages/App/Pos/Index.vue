@@ -406,7 +406,17 @@ async function submitCheckout() {
             resetCartAfterCheckout();
             toast(t('pos.savedOffline'));
         } else {
-            errorMsg.value = t('pos.networkError');
+            // Deliberately NOT auto-retried, unlike a plain read/reload
+            // elsewhere in the app — this exact catch (res.json() throwing
+            // because the response body wasn't valid JSON, e.g. a transient
+            // host-level hiccup handing back an HTML page instead) can't be
+            // told apart here from "the sale was actually created and only
+            // the response got corrupted after the fact". A blind retry
+            // risks double-selling — charging stock and the till twice for
+            // one cart — which is worse than an occasional confusing
+            // message, so this asks the cashier to verify instead of ever
+            // silently resubmitting a non-idempotent checkout on its own.
+            errorMsg.value = t('pos.checkoutUnclear');
         }
     } finally {
         submitting.value = false;
