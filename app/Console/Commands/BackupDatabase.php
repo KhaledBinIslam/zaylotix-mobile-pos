@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
+use Ifsnop\Mysqldump\Mysqldump;
 
 class BackupDatabase extends Command
 {
@@ -38,26 +39,25 @@ class BackupDatabase extends Command
         }
 
         if ($connection === 'mysql') {
-            // mysqldump needs a real filesystem path to write to; dump to a
-            // scratch temp file, then always hand it to the Storage disk
-            // abstraction (even for 'local') so the final location is
-            // exactly where config/backup.php says it is — no special case.
+            // Deliberately NOT shelling out to the real `mysqldump` binary —
+            // this shop's actual hosting (shared, no SSH exec access) has
+            // exec()/shell_exec()/proc_open() all disabled for security, the
+            // same reason storage:link needed a manual workaround at deploy
+            // time (see Filesystem::link()). Every nightly run of this
+            // command failed outright until this was caught live via the
+            // admin System Health log — a real backup had never once
+            // succeeded on production. ifsnop/mysqldump-php reimplements
+            // mysqldump in pure PHP over the existing PDO connection, so it
+            // works identically whether exec() is available or not.
             $tmpPath = tempnam(sys_get_temp_dir(), 'zaylotix-backup-').'.sql';
 
-            $command = sprintf(
-                'mysqldump -h%s -P%s -u%s %s %s > %s',
-                escapeshellarg($config['host']),
-                escapeshellarg((string) $config['port']),
-                escapeshellarg($config['username']),
-                $config['password'] ? '-p'.escapeshellarg($config['password']) : '',
-                escapeshellarg($config['database']),
-                escapeshellarg($tmpPath)
-            );
+            $dsn = sprintf('mysql:host=%s;port=%s;dbname=%s', $config['host'], $config['port'], $config['database']);
 
-            exec($command, $output, $exitCode);
-
-            if ($exitCode !== 0) {
-                $this->error('mysqldump failed. Is it installed and on PATH?');
+            try {
+                $dump = new Mysqldump($dsn, $config['username'], $config['password'] ?? '');
+                $dump->start($tmpPath);
+            } catch (\Throwable $e) {
+                $this->error('Database dump failed: '.$e->getMessage());
                 File::delete($tmpPath);
 
                 return self::FAILURE;
