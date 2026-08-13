@@ -90,8 +90,23 @@ self.addEventListener('fetch', (event) => {
   // fetches (they carry different Accept/X-Inertia headers, which the
   // Cache API keys on via the response's own Vary header, so a cached HTML
   // page and a cached Inertia JSON response for the same URL don't collide)
+  //
+  // Bug found live: a restaurant order's "add item" flow does a POST, then
+  // immediately fires an Inertia partial reload (GET, same URL, different
+  // X-Inertia-Partial-Data header) to refresh the cart. That reload could
+  // come back INSTANTLY with the pre-add state — the item flashed onto the
+  // cart (this device's own optimistic update) and then vanished a moment
+  // later. Root cause: `fetch(request)` here is still subject to the
+  // BROWSER's own native HTTP cache (a completely different, separate layer
+  // from this file's own explicit Cache API usage below) — Laravel wasn't
+  // sending any Cache-Control on these dynamic responses, so nothing ever
+  // told the browser it couldn't just reuse an earlier response for the
+  // same URL instead of actually asking the network again. `cache: 'no-store'`
+  // forces every one of these fetches to genuinely hit the network, every
+  // time — our own deliberate caching below (for the offline fallback) is
+  // a completely separate mechanism and is untouched by this.
   event.respondWith(
-    fetch(request)
+    fetch(request, { cache: 'no-store' })
       .then((res) => {
         // only cache a genuinely good response — never cache a 4xx/5xx
         // (an expired-session redirect, a validation error page, etc.), or
