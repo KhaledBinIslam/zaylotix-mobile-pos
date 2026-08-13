@@ -410,12 +410,15 @@ two surfaces.
 
 The shop app is already a mobile-first, installable PWA:
 `public/manifest.json` + `public/sw.js` (registered in `resources/js/app.js`,
-production builds only) + `public/icons/icon.svg` (the Zaylotix mark, used as
-the favicon and PWA icon today). **Before shipping, also generate raster
-icon PNGs** at `public/icons/icon-192.png`, `icon-512.png`, and a maskable
-`icon-maskable-512.png` from the same mark — some install prompts (notably
-older Android/iOS flows) still require PNG rather than SVG; the manifest
-already references them, they just aren't checked into this repo yet.
+production builds only) + the real Zaylotix mark as raster PNGs —
+`public/icons/icon-192.png`/`icon-512.png` (PWA install icon, also doubling
+as `maskable` purpose since the mark already sits on a full-bleed circle),
+`public/favicon-16.png`/`favicon-32.png` (browser tab), and
+`public/apple-touch-icon.png` (iOS home-screen bookmark) — all generated
+from `assets/icon.png`, the same source PNG the Android app icon is built
+from (see `npx capacitor-assets generate` below), so every surface (browser
+tab, PWA install, Android app icon) uses the exact same source image
+instead of separately hand-drawn approximations.
 
 To wrap it as an installable Android APK with [Capacitor](https://capacitorjs.com/),
 which loads the deployed site in a WebView with native camera access for the

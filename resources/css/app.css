@@ -331,7 +331,15 @@ body {
 .brandbar { background: var(--ink); color: #DCEBE1; font-size: 11px; text-align: center; padding: 6px 12px; letter-spacing: .2px; font-weight: 500; }
 .brandbar a { color: var(--gold); font-weight: 700; text-decoration: none; }
 
-#login { position: fixed; inset: 0; z-index: 100; overflow-y: auto; background: radial-gradient(600px 340px at 85% -6%, rgba(242, 106, 27, .10), transparent), radial-gradient(560px 400px at -8% 106%, rgba(31, 164, 99, .14), transparent), var(--bg); display: flex; align-items: center; justify-content: center; padding: 24px 18px; }
+/* align-items: safe center falls back to start-alignment instead of
+   clipping when content is taller than the viewport (Signup's longer form
+   on a short phone screen) — without `safe`, flexbox centers assuming
+   symmetric overflow, so the top of the content (the "দোকান খুলুন" heading)
+   scrolls up past position 0 and becomes unreachable, not just off-screen.
+   The plain `center` line first is the fallback for browsers that don't
+   understand the `safe` keyword — an unsupported value invalidates the
+   whole declaration, leaving the previous one in effect. */
+#login { position: fixed; inset: 0; z-index: 100; overflow-y: auto; background: radial-gradient(600px 340px at 85% -6%, rgba(242, 106, 27, .10), transparent), radial-gradient(560px 400px at -8% 106%, rgba(31, 164, 99, .14), transparent), var(--bg); display: flex; align-items: center; align-items: safe center; justify-content: center; padding: 24px 18px; }
 .login-inner { width: 100%; max-width: 400px; }
 .login-brand { text-align: center; margin-bottom: 22px; }
 .login-brand .blogo { margin: 0 auto 12px; box-shadow: 0 8px 22px rgba(31, 164, 99, .32); }
@@ -379,7 +387,8 @@ body {
     .landing-hero { padding-top: 12px; }
 }
 
-#onboarding { position: fixed; inset: 0; z-index: 100; overflow-y: auto; background: radial-gradient(600px 340px at 85% -6%, rgba(242, 106, 27, .10), transparent), radial-gradient(560px 400px at -8% 106%, rgba(31, 164, 99, .14), transparent), var(--bg); display: flex; align-items: center; justify-content: center; padding: 24px 18px; }
+/* same align-items: safe center fix as #login above — same overflow-clipping risk on a tall step. */
+#onboarding { position: fixed; inset: 0; z-index: 100; overflow-y: auto; background: radial-gradient(600px 340px at 85% -6%, rgba(242, 106, 27, .10), transparent), radial-gradient(560px 400px at -8% 106%, rgba(31, 164, 99, .14), transparent), var(--bg); display: flex; align-items: center; align-items: safe center; justify-content: center; padding: 24px 18px; }
 .onb-inner { width: 100%; max-width: 400px; }
 .onb-dots { display: flex; justify-content: center; gap: 7px; margin-bottom: 18px; }
 .onb-dots span { width: 8px; height: 8px; border-radius: 50%; background: var(--line2); }

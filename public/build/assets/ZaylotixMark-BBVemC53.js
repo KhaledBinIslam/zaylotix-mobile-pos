@@ -1,0 +1,1 @@
+import{o as e,c as i}from"./app-D_ogiITW.js";const o=["width","height"],n={__name:"ZaylotixMark",props:{size:{type:[Number,String],default:40}},setup(t){return(s,c)=>(e(),i("img",{src:"/icons/icon-192.png",width:t.size,height:t.size,alt:"Zaylotix",style:{display:"block"}},null,8,o))}};export{n as _};

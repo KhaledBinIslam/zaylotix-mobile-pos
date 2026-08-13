@@ -167,6 +167,7 @@ export const translations = {
     'restaurant.cancelOrder': { bn: '❌ অর্ডার বাতিল', en: '❌ Cancel order' },
     'restaurant.cancelOrderConfirm': { bn: 'পুরো অর্ডার বাতিল করবেন? সব স্টক ফেরত যাবে।', en: 'Cancel the whole order? All stock will be restored.' },
     'restaurant.noItemsYet': { bn: 'এখনো কিছু অর্ডার করা হয়নি', en: 'Nothing ordered yet' },
+    'restaurant.cartSyncFailed': { bn: 'যোগ হয়েছে, কিন্তু কার্ট এখনো আপডেট দেখানো যায়নি — একটু পর নিজে থেকেই ঠিক হয়ে যাবে, অথবা পেজ রিফ্রেশ করুন', en: "Added, but the cart display couldn't refresh yet — it'll catch up on its own shortly, or refresh the page" },
     'restaurant.each': { bn: 'প্রতিটি', en: 'each' },
     'restaurant.vatEstimate': { bn: 'ভ্যাট (আনুমানিক)', en: 'VAT (estimate)' },
     'restaurant.sentToKitchen': { bn: 'কিচেনে পাঠানো হয়েছে', en: 'sent to kitchen' },

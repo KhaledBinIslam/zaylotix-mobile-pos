@@ -251,18 +251,42 @@ async function postItem(productId, qty) {
             // themselves. Matches Pos/Index.vue's addToCart() toast.
             const product = props.products.find((p) => p.id === productId);
             toast('✅ ' + (product?.name || '') + ' ' + t('pos.added'));
-            // this reload previously had zero error handling of its own — if
-            // it ever fails, app.js's global router.on('exception') safety
-            // net still shows a toast, but it would silently overwrite the
-            // "added" toast above (useToast is a single message slot) with
-            // no visible link back to what the cashier was actually doing.
+            // Root-cause fix: the add really did save (the POST above got a
+            // 200) but the cart panel used to stay looking empty/unchanged
+            // whenever this FOLLOW-UP router.reload() failed — a second,
+            // separate request that can transiently fail on its own (shared-
+            // host session hiccups under load) even when the add itself
+            // succeeded. A cashier saw a clear "✅ added" toast right next to
+            // a cart that never moved, with the item genuinely sitting in
+            // the database the whole time. Mirrors the offline-queue branch
+            // below exactly: update order.items directly, right here, so the
+            // cart is correct the instant the add succeeds — the reload
+            // below is now just a best-effort reconciliation (real id,
+            // served_at, another device's changes), never the only path to
+            // a correct-looking cart.
+            const existing = props.order.items.find((it) => it.product_id === productId && !it.kot_printed_at && !it.sale_id);
+            if (existing) {
+                existing.qty += qty;
+            } else if (product) {
+                props.order.items.push({
+                    id: -Date.now(), product_id: productId, product_name: product.name,
+                    qty, price: product.price, cost: product.cost, discount: 0,
+                    kot_printed_at: null, served_at: null, sale_id: null,
+                });
+            }
             // A one-time retry costs nothing and resolves the transient
-            // network blips this is realistically ever caused by, rather
-            // than leaving the order screen looking out of date until the
-            // cashier notices and manually reloads the page themselves.
+            // network blips this is realistically ever caused by. If BOTH
+            // attempts fail, the cart above is still correct (the optimistic
+            // update covers it) — this second failure just means the
+            // server's exact copy (real id, any other device's changes)
+            // hasn't been fetched yet, worth a quiet heads-up rather than
+            // silence, but not a "your sale is wrong" alarm.
             router.reload({
                 only: ['order'], preserveScroll: true, preserveState: true,
-                onError: () => router.reload({ only: ['order'], preserveScroll: true, preserveState: true }),
+                onError: () => router.reload({
+                    only: ['order'], preserveScroll: true, preserveState: true,
+                    onError: () => toast('⚠️ ' + t('restaurant.cartSyncFailed')),
+                }),
             });
         } else {
             const data = await res.json().catch(() => ({}));
