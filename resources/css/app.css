@@ -373,9 +373,13 @@ body {
 /* hero + closing bands — a bold gradient "card" rather than plain-panel text
    on the page background, so the very first (and last) thing a visitor sees
    reads as a real product, not a bare form page */
+/* purple → pink, sampled straight from the real logo's own colors (#7C3AED
+   circle, #EC1E79 dots) — this is a marketing/branding surface, so it leans
+   on Zaylotix's actual brand identity rather than reusing the in-app POS
+   screens' functional green/gold theme. */
 .landing-hero, .landing-closing { text-align: center; border-radius: 28px; padding: 40px 22px 34px; color: #fff; position: relative; overflow: hidden;
-    background: radial-gradient(500px 260px at 85% -10%, rgba(242, 106, 27, .35), transparent), radial-gradient(420px 300px at -10% 110%, rgba(255, 255, 255, .12), transparent), linear-gradient(135deg, #178A52 0%, #1FA463 60%, #14824F 100%);
-    box-shadow: 0 20px 50px rgba(20, 130, 79, .28);
+    background: radial-gradient(520px 280px at 88% -10%, rgba(236, 30, 121, .45), transparent), radial-gradient(420px 300px at -10% 110%, rgba(255, 255, 255, .14), transparent), linear-gradient(135deg, #6D28D9 0%, #7C3AED 55%, #9333EA 100%);
+    box-shadow: 0 20px 50px rgba(109, 40, 217, .3);
 }
 .landing-hero { margin-bottom: 40px; }
 .landing-closing { margin-top: 44px; }
@@ -387,7 +391,7 @@ body {
 .landing-cta .btn { width: auto; }
 .btn.lg { padding: 15px 26px; font-size: 15.5px; border-radius: 15px; }
 .btn.ghost.light { background: rgba(255, 255, 255, .14); color: #fff; border: 1.5px solid rgba(255, 255, 255, .55); }
-.landing-trust { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 18px; margin-top: 22px; font-size: 12.5px; font-weight: 600; color: rgba(255, 255, 255, .85); }
+.landing-closing-punch { font-size: 16px !important; font-weight: 800; color: #fff !important; background: rgba(255, 255, 255, .16); border-radius: 12px; padding: 10px 18px; display: inline-block; margin-top: 8px !important; }
 
 .landing-section { margin-top: 44px; }
 .landing-section h2 { text-align: center; font-size: 19px; font-weight: 800; color: var(--ink); margin-bottom: 6px; }
@@ -414,13 +418,33 @@ body {
 
 /* platform strip — offline / Android / multi-device, a lighter tinted band since it's 3 short facts, not a 6-card wall */
 .landing-platform { display: grid; grid-template-columns: 1fr; gap: 12px; }
-.landing-platform-card { background: var(--goldSoft); border-radius: var(--r); padding: 18px; text-align: center; }
-.licon { display: inline-flex; align-items: center; justify-content: center; color: var(--gold2); }
+.landing-platform-card { border-radius: var(--r); padding: 18px; text-align: center; }
+.licon { display: inline-flex; align-items: center; justify-content: center; }
 .licon svg { width: 16px; height: 16px; }
 .licon.lg { margin-bottom: 8px; }
 .licon.lg svg { width: 28px; height: 28px; }
 .landing-platform-card b { display: block; font-size: 14px; margin-bottom: 4px; color: var(--ink); }
 .landing-platform-card span { display: block; font-size: 12.5px; color: var(--mut); line-height: 1.55; }
+
+/* "why Zaylotix" — real, defensible differentiators (language, breadth,
+   affordability, offline-capable), no fabricated numbers or reviews */
+.landing-why { display: grid; grid-template-columns: 1fr; gap: 12px; }
+.landing-why-item { display: flex; gap: 12px; align-items: flex-start; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; }
+.landing-why-item .landing-pillar-icon { flex: 0 0 auto; margin-bottom: 0; }
+.landing-why-item b { display: block; font-size: 14px; margin-bottom: 3px; color: var(--ink); }
+.landing-why-item span { display: block; font-size: 12.8px; color: var(--mut); line-height: 1.6; }
+.landing-stat-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 28px; margin: 20px 0 4px; }
+.landing-stat { text-align: center; }
+.landing-stat b { display: block; font-size: 24px; font-weight: 850; color: var(--purple); }
+.landing-stat span { display: block; font-size: 12px; color: var(--mut); font-weight: 600; }
+
+/* extras — dense checklist of everything beyond the 6 main pillars
+   (loans, promotions, quotations, multi-branch, restaurant KDS/reservation,
+   payment gateway, etc.) — proof this is a genuinely full system, without
+   bloating each pillar card into an unreadable wall of text */
+.landing-extras { display: grid; grid-template-columns: 1fr; gap: 8px 20px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r2); padding: 22px; box-shadow: var(--sh); }
+.landing-extras-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--tx); padding: 5px 0; }
+.landing-extras-item svg { width: 15px; height: 15px; flex: 0 0 auto; color: var(--green2); }
 
 .landing-audience { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
 .landing-audience-pill { display: flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 700; color: var(--tx); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 9px 16px 9px 12px; }
@@ -429,12 +453,15 @@ body {
 @media (min-width: 700px) {
     .landing-pillars { grid-template-columns: repeat(2, 1fr); }
     .landing-platform { grid-template-columns: repeat(3, 1fr); }
+    .landing-why { grid-template-columns: repeat(2, 1fr); }
+    .landing-extras { grid-template-columns: repeat(2, 1fr); }
     .landing-hero h1, .landing-closing h2 { font-size: 32px; }
     .landing-hero p, .landing-closing p { font-size: 15.5px; }
 }
 @media (min-width: 1024px) {
     .landing-inner { max-width: 1040px; }
     .landing-pillars { grid-template-columns: repeat(3, 1fr); }
+    .landing-extras { grid-template-columns: repeat(3, 1fr); }
     .landing-hero, .landing-closing { padding: 52px 40px 44px; }
 }
 

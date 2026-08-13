@@ -32,6 +32,8 @@ const ICON_PATHS = {
     mobile: '<rect x="7" y="2.5" width="10" height="19" rx="2"/><line x1="10.5" y1="18" x2="13.5" y2="18"/>',
     supershop: '<path d="M3.5 9l1-5h15l1 5"/><path d="M4.5 9v10.5h15V9"/><path d="M9.5 19.5V14h5v5.5"/>',
     whatsapp: '<path d="M12 3.5a8.5 8.5 0 0 0-7.3 12.8L3.5 20.5l4.4-1.2A8.5 8.5 0 1 0 12 3.5z"/><path d="M8.6 10.3c.3 2.6 2.6 4.9 5.2 5.2.9.1 1.6-.5 1.6-1.3v-.4l-1.7-.7-.6.6c-1-.5-1.9-1.4-2.4-2.4l.6-.6-.7-1.7h-.4c-.8 0-1.7.5-1.6 1.3z" fill="currentColor" stroke="none"/>',
+    shield: '<path d="M12 3l7 3v5.5c0 4.5-3 7.7-7 9-4-1.3-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4.5"/>',
+    check: '<path d="M4 12.5l5 5L20 6"/>',
 };
 
 // Grouped like the app's own admin feature categories (billing/inventory/
@@ -48,12 +50,38 @@ const PILLARS = [
 ];
 
 const PLATFORM = [
-    { icon: 'globe', title: 'landing.platform.offline', desc: 'landing.platform.offlineDesc' },
-    { icon: 'android', title: 'landing.platform.android', desc: 'landing.platform.androidDesc' },
-    { icon: 'devices', title: 'landing.platform.devices', desc: 'landing.platform.devicesDesc' },
+    { icon: 'globe', accent: 'green', title: 'landing.platform.offline', desc: 'landing.platform.offlineDesc' },
+    { icon: 'android', accent: 'gold', title: 'landing.platform.android', desc: 'landing.platform.androidDesc' },
+    { icon: 'devices', accent: 'sky', title: 'landing.platform.devices', desc: 'landing.platform.devicesDesc' },
 ];
 
-const TRUST = ['landing.trust.1', 'landing.trust.2', 'landing.trust.3'];
+// Real, verifiable counts (not marketing guesses) — 8 business types in
+// config/business_types.php, 32 opt-in features in FeatureSeeder (rounded
+// down to 30+ so the claim stays true even as that list changes), rather
+// than an invented "500+ shops" style stat this app has no way to back up.
+const STATS = [
+    { n: '৮+', label: 'landing.stat.types' },
+    { n: '৩০+', label: 'landing.stat.features' },
+    { n: '১৪', label: 'landing.stat.trial' },
+];
+
+// Genuine differentiators, not fabricated reviews/testimonials
+const WHY = [
+    { icon: 'globe', accent: 'purple', title: 'landing.why.bangla', desc: 'landing.why.banglaDesc' },
+    { icon: 'supershop', accent: 'gold', title: 'landing.why.types', desc: 'landing.why.typesDesc' },
+    { icon: 'inventory', accent: 'green', title: 'landing.why.allInOne', desc: 'landing.why.allInOneDesc' },
+    { icon: 'shield', accent: 'sky', title: 'landing.why.offline', desc: 'landing.why.offlineDesc' },
+];
+
+// Beyond the 6 main pillars above — real modules (see app/Http/Controllers/App)
+// this system already has, kept as a dense checklist rather than bloating
+// every pillar card into an unreadable wall of text
+const EXTRAS = [
+    'landing.extra.gateway', 'landing.extra.branch', 'landing.extra.reservation',
+    'landing.extra.kds', 'landing.extra.cds', 'landing.extra.workPeriod',
+    'landing.extra.medicine', 'landing.extra.loan', 'landing.extra.heldCart',
+    'landing.extra.attendance', 'landing.extra.stockTransfer', 'landing.extra.notifications',
+];
 
 const AUDIENCE = [
     { icon: 'grocery', label: 'landing.audience.grocery' },
@@ -97,8 +125,11 @@ const AUDIENCE = [
                     </a>
                 </div>
 
-                <div class="landing-trust">
-                    <span v-for="tr in TRUST" :key="tr">{{ t(tr) }}</span>
+                <div class="landing-stat-row">
+                    <div v-for="s in STATS" :key="s.label" class="landing-stat">
+                        <b>{{ s.n }}</b>
+                        <span>{{ t(s.label) }}</span>
+                    </div>
                 </div>
             </header>
 
@@ -119,12 +150,38 @@ const AUDIENCE = [
             </section>
 
             <section class="landing-section">
+                <h2>{{ t('landing.extrasTitle') }}</h2>
+                <p class="landing-section-sub">{{ t('landing.extrasSub') }}</p>
+                <div class="landing-extras">
+                    <div v-for="ex in EXTRAS" :key="ex" class="landing-extras-item">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" v-html="ICON_PATHS.check"></svg>
+                        {{ t(ex) }}
+                    </div>
+                </div>
+            </section>
+
+            <section class="landing-section">
                 <h2>{{ t('landing.platformTitle') }}</h2>
                 <div class="landing-platform">
-                    <div v-for="p in PLATFORM" :key="p.title" class="landing-platform-card">
+                    <div v-for="p in PLATFORM" :key="p.title" class="landing-platform-card" :class="'ac-' + p.accent">
                         <span class="licon lg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" v-html="ICON_PATHS[p.icon]"></svg></span>
                         <b>{{ t(p.title) }}</b>
                         <span>{{ t(p.desc) }}</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="landing-section">
+                <h2>{{ t('landing.whyTitle') }}</h2>
+                <div class="landing-why">
+                    <div v-for="w in WHY" :key="w.title" class="landing-why-item">
+                        <div class="landing-pillar-icon" :class="'ac-' + w.accent">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" v-html="ICON_PATHS[w.icon]"></svg>
+                        </div>
+                        <div>
+                            <b>{{ t(w.title) }}</b>
+                            <span>{{ t(w.desc) }}</span>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -142,6 +199,7 @@ const AUDIENCE = [
             <footer class="landing-closing">
                 <h2>{{ t('landing.closingTitle') }}</h2>
                 <p>{{ t('landing.closingSub') }}</p>
+                <p class="landing-closing-punch">{{ t('landing.closingPunch') }}</p>
                 <div class="landing-cta">
                     <Link :href="route('signup')" class="btn lg">{{ t('landing.signupBtn') }}</Link>
                     <Link :href="route('login')" class="btn ghost lg light">{{ t('landing.loginBtn') }}</Link>

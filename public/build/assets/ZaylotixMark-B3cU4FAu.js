@@ -1,0 +1,1 @@
+import{o as t,c as i}from"./app-BgktXY9f.js";const n=["width","height"],a={__name:"ZaylotixMark",props:{size:{type:[Number,String],default:40}},setup(e){return(o,s)=>(t(),i("img",{src:"/icons/icon-192.png",width:e.size,height:e.size,alt:"Zaylotix",style:{display:"inline-block"}},null,8,n))}};export{a as _};
