@@ -13,7 +13,7 @@ class Shop extends Model
     // Shop itself is NOT tenant-scoped (it *is* the tenant) — access control
     // happens via ShopPolicy (owner can only see their own; admin sees all).
     protected $fillable = [
-        'parent_shop_id', 'is_warehouse', 'business_type_id', 'name', 'name_en', 'phone', 'kitchen_whatsapp', 'payment_timing', 'kitchen_print_order', 'area', 'owner_name', 'logo_path', 'receipt_footer', 'bin_no',
+        'parent_shop_id', 'is_warehouse', 'business_type_id', 'name', 'name_en', 'phone', 'kitchen_whatsapp', 'payment_timing', 'kitchen_print_order', 'area', 'owner_name', 'support_contact_name', 'support_contact_phone', 'logo_path', 'receipt_footer', 'bin_no',
         'sales_mode', 'hardware_scanner_enabled', 'lang', 'plan', 'monthly_fee', 'staff_limit', 'status',
         'subscription_start', 'subscription_expiry',
         'cash_balance', 'bank_balance', 'capital',

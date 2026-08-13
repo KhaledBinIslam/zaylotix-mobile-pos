@@ -8,9 +8,14 @@ const props = defineProps({ setting: Object });
 const preview = ref(null);
 const form = useForm({ logo: null });
 const reminderForm = useForm({ reminder_days: props.setting.reminder_days });
+const whatsappForm = useForm({ whatsapp_contact: props.setting.whatsapp_contact });
 
 function saveReminderDays() {
     reminderForm.patch(route('admin.siteSettings.reminderDays'), { preserveScroll: true });
+}
+
+function saveWhatsappContact() {
+    whatsappForm.patch(route('admin.siteSettings.whatsappContact'), { preserveScroll: true });
 }
 
 function pickFile(e) {
@@ -80,6 +85,20 @@ function remove() {
                 </button>
             </div>
             <div v-if="reminderForm.errors.reminder_days" class="text-rose-600 text-xs mt-2">{{ reminderForm.errors.reminder_days }}</div>
+        </div>
+
+        <div class="bg-white border rounded-xl p-6 max-w-lg mt-6">
+            <h2 class="font-semibold text-gray-900 mb-1">Landing Page WhatsApp Button</h2>
+            <p class="text-sm text-gray-500 mb-4">The number the public landing page's "WhatsApp" button opens a chat with, for shops interested in signing up. Digits only, with country code (e.g. 8801XXXXXXXXX), no + or spaces.</p>
+
+            <label class="block text-sm font-medium text-gray-700 mb-1">WhatsApp number</label>
+            <div class="flex items-center gap-2">
+                <input v-model="whatsappForm.whatsapp_contact" placeholder="8801XXXXXXXXX" class="border rounded-lg px-3 py-2 text-sm w-48">
+                <button class="px-4 py-2 rounded-lg [background:#7C3AED] text-white font-semibold text-sm" :disabled="whatsappForm.processing" @click="saveWhatsappContact">
+                    {{ whatsappForm.processing ? 'Saving...' : 'Save' }}
+                </button>
+            </div>
+            <div v-if="whatsappForm.errors.whatsapp_contact" class="text-rose-600 text-xs mt-2">{{ whatsappForm.errors.whatsapp_contact }}</div>
         </div>
     </AdminLayout>
 </template>

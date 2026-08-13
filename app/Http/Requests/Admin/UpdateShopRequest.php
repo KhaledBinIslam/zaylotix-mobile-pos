@@ -22,6 +22,11 @@ class UpdateShopRequest extends FormRequest
             'phone' => ['required', 'string', 'max:20', Rule::unique('shops', 'phone')->ignore($shopId)],
             'area' => ['nullable', 'string', 'max:255'],
             'owner_name' => ['nullable', 'string', 'max:255'],
+            // "who to contact for support on THIS shop" — shown in that shop's
+            // own app footer (AppLayout.vue), blank by default. Distinct from
+            // owner_name above (that's the shop owner's own name).
+            'support_contact_name' => ['nullable', 'string', 'max:255'],
+            'support_contact_phone' => ['nullable', 'string', 'max:20'],
             'business_type_id' => ['required', 'exists:business_types,id'],
             'sales_mode' => ['required', 'in:scan,manual,both'],
             'plan' => ['required', 'in:trial,monthly,yearly'],

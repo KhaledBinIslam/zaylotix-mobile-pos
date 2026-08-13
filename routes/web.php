@@ -18,6 +18,7 @@ use App\Http\Controllers\App\EmployeeController;
 use App\Http\Controllers\App\HeldCartController;
 use App\Http\Controllers\App\HelpController;
 use App\Http\Controllers\App\HomeController;
+use App\Http\Controllers\App\LandingController;
 use App\Http\Controllers\App\LoanController;
 use App\Http\Controllers\App\LoanPaymentController;
 use App\Http\Controllers\App\MedicineCatalogController;
@@ -68,13 +69,19 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
 /**
- * Deliberately not Route::redirect('/', '/login') — this app has no route
- * named `home` or `dashboard` (the shop one is `app.home`, admin's is
- * `admin.dashboard`), so Laravel's `guest` middleware falls back to
- * redirecting an already-authenticated visitor back to `/` when they land
- * on /login — which then bounced them straight back to /login, forever
- * (ERR_TOO_MANY_REDIRECTS). Sending an authenticated visitor to their own
- * home directly breaks that loop instead of feeding it.
+ * An already-authenticated visitor still skips straight past the landing
+ * page to their own home — this app has no route named `home` or
+ * `dashboard` (the shop one is `app.home`, admin's is `admin.dashboard`),
+ * so Laravel's `guest` middleware falls back to redirecting an
+ * already-authenticated visitor back to `/` when they land on /login,
+ * which would otherwise bounce them straight back to /login forever
+ * (ERR_TOO_MANY_REDIRECTS) — sending them to their own home directly
+ * breaks that loop instead of feeding it.
+ *
+ * A guest, who previously got redirect()->route('login') here (the login
+ * form — with a prefilled demo login and a hardcoded owner/contact footer
+ * — as the very first thing anyone saw), now gets the public intro/landing
+ * page instead. See LandingController.
  */
 Route::get('/', function () {
     if (Auth::guard('web')->check()) {
@@ -84,7 +91,7 @@ Route::get('/', function () {
         return redirect()->route('admin.dashboard');
     }
 
-    return redirect()->route('login');
+    return app(LandingController::class)->index();
 });
 
 Route::middleware('guest')->group(function () {

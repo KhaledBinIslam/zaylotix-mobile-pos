@@ -23,6 +23,7 @@ function createBranch() {
 const form = useForm({
     name: props.shop.name, name_en: props.shop.name_en, phone: props.shop.phone,
     area: props.shop.area, owner_name: props.shop.owner_name,
+    support_contact_name: props.shop.support_contact_name, support_contact_phone: props.shop.support_contact_phone,
     business_type_id: props.shop.business_type_id, sales_mode: props.shop.sales_mode,
     plan: props.shop.plan, monthly_fee: props.shop.monthly_fee, staff_limit: props.shop.staff_limit, status: props.shop.status, lang: props.shop.lang,
     subscription_start: props.shop.subscription_start, subscription_expiry: props.shop.subscription_expiry,
@@ -98,6 +99,17 @@ const recommendedFeatureKeys = () => {
                 <div><label class="text-sm font-medium text-gray-600">Area</label><input v-model="form.area" class="mt-1 w-full rounded-lg border-gray-300"></div>
             </div>
             <div><label class="text-sm font-medium text-gray-600">Owner name</label><input v-model="form.owner_name" class="mt-1 w-full rounded-lg border-gray-300"></div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="text-sm font-medium text-gray-600">Support contact name <span class="text-xs font-normal text-gray-400">— shown in this shop's own app footer, blank = hidden</span></label>
+                    <input v-model="form.support_contact_name" placeholder="e.g. Zaylotix Support" class="mt-1 w-full rounded-lg border-gray-300">
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-gray-600">Support contact phone</label>
+                    <input v-model="form.support_contact_phone" placeholder="e.g. 01XXXXXXXXX" class="mt-1 w-full rounded-lg border-gray-300">
+                </div>
+            </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>

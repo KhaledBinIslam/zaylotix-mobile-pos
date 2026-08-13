@@ -89,9 +89,7 @@ function submit() {
             </div>
 
             <div class="login-foot">
-                A <a href="https://zaylotix.com/" target="_blank" rel="noopener" style="color:#7C3AED;font-weight:800">Zaylotix →</a> product<br>
-                Owner: <a href="https://khaledbinislam.com/" target="_blank" rel="noopener">Khaled Bin Islam →</a><br>
-                Contact: <a href="tel:01979894356">01979894356</a>
+                A <a href="https://zaylotix.com/" target="_blank" rel="noopener" style="color:#7C3AED;font-weight:800">Zaylotix →</a> product
             </div>
         </div>
     </div>

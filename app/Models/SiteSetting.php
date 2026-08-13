@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Storage;
  */
 class SiteSetting extends Model
 {
-    protected $fillable = ['logo_path', 'reminder_days'];
+    protected $fillable = ['logo_path', 'reminder_days', 'whatsapp_contact'];
 
     protected $appends = ['logo_url'];
 

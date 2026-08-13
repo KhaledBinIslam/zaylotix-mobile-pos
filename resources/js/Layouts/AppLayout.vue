@@ -311,8 +311,12 @@ const sidebarGroups = computed(() => [
             </div>
 
             <div class="p-4 border-t text-center text-[11px] text-gray-400">
-                A <a href="https://zaylotix.com/" target="_blank" class="font-semibold" style="color:var(--green)">Zaylotix</a> product<br>
-                Owner: <a href="https://khaledbinislam.com/" target="_blank" class="font-semibold text-gray-600">Khaled Bin Islam</a>
+                A <a href="https://zaylotix.com/" target="_blank" class="font-semibold" style="color:var(--green)">Zaylotix</a> product
+                <template v-if="shop?.support_contact_name || shop?.support_contact_phone"><br>
+                    {{ t('more.supportContact') }}:
+                    <span v-if="shop?.support_contact_name" class="font-semibold text-gray-600">{{ shop.support_contact_name }}</span>
+                    <a v-if="shop?.support_contact_phone" :href="'tel:' + shop.support_contact_phone" class="font-semibold text-gray-600">{{ shop.support_contact_phone }}</a>
+                </template>
             </div>
         </aside>
 
@@ -322,8 +326,8 @@ const sidebarGroups = computed(() => [
             <div id="phone">
                 <div class="brandbar lg:hidden">
                     A <a href="https://zaylotix.com/" target="_blank" rel="noopener">Zaylotix →</a> product
-                    &nbsp;•&nbsp; Owner: <a href="https://khaledbinislam.com/" target="_blank" rel="noopener">Khaled Bin Islam →</a>
-                    &nbsp;•&nbsp; <a href="tel:01979894356">01979894356</a>
+                    <template v-if="shop?.support_contact_name">&nbsp;•&nbsp; {{ shop.support_contact_name }}</template>
+                    <template v-if="shop?.support_contact_phone">&nbsp;•&nbsp; <a :href="'tel:' + shop.support_contact_phone">{{ shop.support_contact_phone }}</a></template>
                 </div>
 
                 <div id="top" class="lg:hidden">

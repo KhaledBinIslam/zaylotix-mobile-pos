@@ -33,6 +33,23 @@ class SiteSettingController extends Controller
         return back()->with('success', 'রিমাইন্ডারের দিনসংখ্যা সংরক্ষণ করা হয়েছে।');
     }
 
+    /**
+     * The number the public landing page's "WhatsApp" button opens a chat
+     * with (wa.me/<this>) — platform-wide contact for shops interested in
+     * signing up. Digits only (with country code), no '+' or spaces, matching
+     * the wa.me link format used elsewhere in the app (kitchen_whatsapp etc).
+     */
+    public function updateWhatsappContact(Request $request)
+    {
+        $data = $request->validate([
+            'whatsapp_contact' => ['nullable', 'string', 'max:20', 'regex:/^[0-9]*$/'],
+        ]);
+
+        SiteSetting::current()->update($data);
+
+        return back()->with('success', 'WhatsApp নম্বর সংরক্ষণ করা হয়েছে।');
+    }
+
     public function update(Request $request)
     {
         $request->validate([

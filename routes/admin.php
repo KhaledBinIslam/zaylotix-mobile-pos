@@ -84,6 +84,7 @@ Route::middleware('admin')->group(function () {
         Route::post('site-settings', [SiteSettingController::class, 'update'])->name('siteSettings.update');
         Route::delete('site-settings', [SiteSettingController::class, 'destroy'])->name('siteSettings.destroy');
         Route::patch('site-settings/reminder-days', [SiteSettingController::class, 'updateReminderDays'])->name('siteSettings.reminderDays');
+        Route::patch('site-settings/whatsapp-contact', [SiteSettingController::class, 'updateWhatsappContact'])->name('siteSettings.whatsappContact');
 
         Route::get('faqs', [FaqController::class, 'index'])->name('faqs.index');
         Route::post('faqs', [FaqController::class, 'store'])->name('faqs.store');

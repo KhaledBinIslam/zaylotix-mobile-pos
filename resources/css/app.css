@@ -346,6 +346,39 @@ body {
 .login-foot a { color: var(--green); font-weight: 700; text-decoration: none; }
 .login-foot a[href^="tel"] { color: var(--gold); }
 
+/* public landing page — the guest-only "/" page, shown before login/signup.
+   Own scroll (unlike #login/#onboarding, which are fixed single-screen
+   overlays) since this page has real scrollable content. Reuses .btn/
+   .login-foot from above rather than inventing a new button vocabulary. */
+.landing { min-height: 100vh; background: radial-gradient(680px 360px at 88% -6%, rgba(242, 106, 27, .08), transparent), radial-gradient(600px 420px at -8% 106%, rgba(31, 164, 99, .10), transparent), var(--bg); padding: 32px 18px 40px; }
+.landing-inner { width: 100%; max-width: 880px; margin: 0 auto; }
+.landing-hero { text-align: center; margin-bottom: 36px; }
+.landing-pill { display: inline-block; margin: 14px 0 4px; font-size: 12.5px; font-weight: 700; color: var(--green2); background: var(--greenSoft); border-radius: 999px; padding: 5px 14px; }
+.landing-hero h1 { font-size: 26px; font-weight: 850; letter-spacing: -.4px; margin: 14px 0 10px; color: var(--ink); }
+.landing-hero p { font-size: 14.5px; color: var(--mut); line-height: 1.7; max-width: 560px; margin: 0 auto; }
+.landing-cta { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 24px; }
+.landing-cta .btn { width: auto; padding-left: 22px; padding-right: 22px; }
+.landing-cta-bottom { margin-top: 8px; padding-top: 28px; border-top: 1px solid var(--line); }
+.landing-section { margin-top: 40px; }
+.landing-section h2 { text-align: center; font-size: 19px; font-weight: 800; color: var(--ink); margin-bottom: 18px; }
+.landing-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.landing-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; box-shadow: var(--sh); }
+.landing-card-icon { font-size: 24px; margin-bottom: 8px; }
+.landing-card b { display: block; font-size: 14px; margin-bottom: 3px; }
+.landing-card span { display: block; font-size: 12.5px; color: var(--mut); line-height: 1.55; }
+.landing-audience { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.landing-audience-pill { display: flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 700; color: var(--tx); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 9px 16px; }
+
+@media (min-width: 700px) {
+    .landing-grid { grid-template-columns: repeat(3, 1fr); }
+    .landing-hero h1 { font-size: 32px; }
+    .landing-hero p { font-size: 15.5px; }
+}
+@media (min-width: 1024px) {
+    .landing-inner { max-width: 1040px; }
+    .landing-hero { padding-top: 12px; }
+}
+
 #onboarding { position: fixed; inset: 0; z-index: 100; overflow-y: auto; background: radial-gradient(600px 340px at 85% -6%, rgba(242, 106, 27, .10), transparent), radial-gradient(560px 400px at -8% 106%, rgba(31, 164, 99, .14), transparent), var(--bg); display: flex; align-items: center; justify-content: center; padding: 24px 18px; }
 .onb-inner { width: 100%; max-width: 400px; }
 .onb-dots { display: flex; justify-content: center; gap: 7px; margin-bottom: 18px; }

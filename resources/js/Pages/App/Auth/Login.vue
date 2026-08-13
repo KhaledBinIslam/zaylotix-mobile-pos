@@ -8,8 +8,8 @@ defineProps({ subscriptionExpired: Boolean });
 const { t } = useI18n();
 
 const form = useForm({
-    login: '01979894356',
-    password: '1234',
+    login: '',
+    password: '',
     remember: true,
 });
 
@@ -55,15 +55,12 @@ function submit() {
                     <button class="btn" type="submit" :disabled="form.processing">
                         {{ form.processing ? '...' : t('login.submit') }}
                     </button>
-                    <div class="lc-hint">{{ t('login.hint') }} <b>1234</b></div>
                     <div class="lc-hint">{{ t('login.noAccount') }}<Link :href="route('signup')" style="color:var(--green);font-weight:700">{{ t('login.signupLink') }}</Link></div>
                 </form>
             </div>
 
             <div class="login-foot">
-                A <a href="https://zaylotix.com/" target="_blank" rel="noopener" style="color:#7C3AED;font-weight:800">Zaylotix →</a> product<br>
-                Owner: <a href="https://khaledbinislam.com/" target="_blank" rel="noopener">Khaled Bin Islam →</a><br>
-                Contact: <a href="tel:01979894356">01979894356</a>
+                A <a href="https://zaylotix.com/" target="_blank" rel="noopener" style="color:#7C3AED;font-weight:800">Zaylotix →</a> product
             </div>
         </div>
     </div>
