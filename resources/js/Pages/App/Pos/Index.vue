@@ -384,22 +384,29 @@ async function submitCheckout() {
             body: JSON.stringify(payload),
         });
 
-        // TEMPORARY diagnostic — see the catch block's comment below for
-        // the bug this is chasing. Cloned *before* the res.json() attempt
-        // below (a Response body can only be read once) purely so that if
-        // parsing fails, we can still read the actual raw text that came
-        // back and show it directly instead of the generic message — this
-        // is the one thing that's been impossible to see any other way so
-        // far (repeated direct server-side checkout calls have all come
-        // back completely correct, so whatever this is only shows up on
-        // the one path we can't drive by hand).
-        const resForDiagnostic = res.clone();
+        // Root-caused live (a diagnostic that briefly sat here caught the
+        // actual raw response — full app-shell HTML at HTTP 200, not JSON):
+        // this fetch got silently redirected to a normal page load instead
+        // of hitting checkout() at all. `res.redirected`/`res.url` changing
+        // is exactly how that shows up client-side, and it means the
+        // session/CSRF state was stale the moment this fired — the cart
+        // was never charged, so this is always safe to say plainly and
+        // send the cashier to log back in, rather than trying (and
+        // failing) to parse a login page as a sale.
+        if (res.redirected || res.url !== route('app.pos.checkout')) {
+            errorMsg.value = t('pos.sessionExpired');
+            setTimeout(() => window.location.reload(), 2500);
+            return;
+        }
+
         let data;
         try {
             data = await res.json();
         } catch (parseErr) {
-            const rawText = await resForDiagnostic.text();
-            alert('CHECKOUT RESPONSE WAS NOT JSON\nStatus: ' + res.status + '\nFirst 500 chars:\n' + rawText.slice(0, 500));
+            // genuinely unexpected shape from a 200 same-URL response —
+            // rare enough (everything explainable is handled above) that
+            // this stays the conservative "we can't tell if it went
+            // through" message rather than a blind retry.
             errorMsg.value = t('pos.checkoutUnclear');
             return;
         }

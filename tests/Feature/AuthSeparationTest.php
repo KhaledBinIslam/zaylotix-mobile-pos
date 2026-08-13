@@ -58,4 +58,29 @@ class AuthSeparationTest extends TestCase
 
         $this->assertFalse(Auth::guard('admin')->check());
     }
+
+    /**
+     * Root-cause regression guard for a live production bug: a raw-fetch
+     * screen (POS checkout, Restaurant addItem/bill, etc.) sends
+     * Accept: application/json and handles its own JSON error shape.
+     * Before this, a logged-out/session-expired request always got
+     * redirect()->route('login') regardless of that header — fetch()
+     * silently followed it into the login page's full HTML, which the
+     * caller then failed to parse as JSON, surfacing as a confusing
+     * "not valid JSON" error instead of a clear "you're logged out" one.
+     */
+    public function test_json_request_gets_a_401_instead_of_a_redirect_when_logged_out(): void
+    {
+        $response = $this->getJson('/app/home');
+
+        $response->assertStatus(401);
+    }
+
+    /** A plain browser navigation (no Accept: application/json) must keep working exactly as before — still the normal redirect, not a raw 401 page. */
+    public function test_plain_navigation_still_redirects_to_login_when_logged_out(): void
+    {
+        $response = $this->get('/app/home');
+
+        $response->assertRedirect(route('login'));
+    }
 }

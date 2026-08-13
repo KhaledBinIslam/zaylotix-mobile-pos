@@ -23,6 +23,14 @@ class CheckSubscriptionActive
             $request->session()->invalidate();
             $request->session()->regenerateToken();
 
+            // see EnsureShopUser's matching comment — same reasoning, same
+            // fix: a JSON-expecting fetch() must never get a redirect it'll
+            // silently follow into an unparseable HTML page instead of the
+            // clear "you're logged out" it can actually act on.
+            if ($request->expectsJson()) {
+                abort(401, 'আপনার সাবস্ক্রিপশনের মেয়াদ শেষ হয়ে গেছে বা shop নিষ্ক্রিয়।');
+            }
+
             return redirect()->route('login')->with('subscription_expired', true);
         }
 

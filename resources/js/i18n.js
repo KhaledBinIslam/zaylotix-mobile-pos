@@ -671,6 +671,11 @@ export const translations = {
     // cashier at Sales History first, not straight back at the বিল করুন
     // button, so a genuinely-completed sale doesn't get charged twice
     'pos.checkoutUnclear': { bn: 'সংযোগ সমস্যা হয়েছে — বিল হয়েছে কিনা Sales History-তে আগে চেক করুন, তারপর দরকার হলে আবার চেষ্টা করুন', en: "Connection hiccup — check Sales History to see if this went through before trying again" },
+    // checkout() never even ran when this shows (the request landed on a
+    // login/other page instead) — the cart was never charged, safe to say
+    // so plainly. Auto-reloads shortly after so the cashier lands back on
+    // a fresh, correctly-logged-in POS screen without having to do it themselves.
+    'pos.sessionExpired': { bn: 'সেশনের মেয়াদ শেষ হয়ে গেছে — বিল হয়নি, আবার login করে আসছে...', en: 'Session expired — nothing was charged, logging you back in...' },
     'pos.changeVariant': { bn: 'পরিবর্তন করুন', en: 'change' },
     'pos.savedOffline': { bn: '📴 নেট নেই — বিক্রিটি সংরক্ষিত হয়েছে, নেট আসলে অটো পাঠানো হবে', en: "📴 Offline — sale saved, will auto-send once you're back online" },
 

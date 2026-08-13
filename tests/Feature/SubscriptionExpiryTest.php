@@ -51,4 +51,26 @@ class SubscriptionExpiryTest extends TestCase
         $response->assertRedirect(route('login'));
         $this->assertGuest('web');
     }
+
+    /**
+     * Root-cause regression guard for a live production bug: a raw-fetch
+     * screen (POS checkout, Restaurant addItem/bill, etc.) sends
+     * Accept: application/json and handles its own JSON error shape.
+     * Before this, a deactivated shop always got redirect()->route('login')
+     * regardless of that header — fetch() silently followed it into the
+     * login page's full HTML, which the caller then failed to parse as
+     * JSON, surfacing as a confusing "not valid JSON" error instead of a
+     * clear "you're logged out" one. This must come back as a real 401
+     * JSON response for any request that says it wants JSON.
+     */
+    public function test_json_request_gets_a_401_instead_of_a_redirect_when_shop_is_inactive(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $shop->update(['status' => 'inactive']);
+
+        $response = $this->actingAs($owner, 'web')->getJson('/app/home');
+
+        $response->assertStatus(401);
+        $this->assertGuest('web');
+    }
 }

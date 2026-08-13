@@ -12,6 +12,19 @@ class EnsureShopUser
     public function handle(Request $request, Closure $next): Response
     {
         if (! Auth::guard('web')->check()) {
+            // Root-caused live: a raw-fetch screen (POS/Restaurant checkout,
+            // addItem, etc.) sends Accept: application/json and handles its
+            // own JSON error shape — a redirect() here gets silently
+            // followed by fetch() to the login page's full HTML, landing
+            // back as an ordinary 200 response the caller then fails to
+            // parse as JSON, surfacing as a confusing "not valid JSON"
+            // failure instead of a clear "you're logged out" one. A plain
+            // browser navigation (no Accept: application/json) is unaffected
+            // — still gets the normal redirect exactly as before.
+            if ($request->expectsJson()) {
+                abort(401, 'সেশনের মেয়াদ শেষ হয়ে গেছে — আবার login করুন।');
+            }
+
             return redirect()->route('login');
         }
 
