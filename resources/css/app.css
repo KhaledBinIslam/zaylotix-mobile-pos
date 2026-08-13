@@ -433,10 +433,16 @@ body {
 .landing-why-item .landing-pillar-icon { flex: 0 0 auto; margin-bottom: 0; }
 .landing-why-item b { display: block; font-size: 14px; margin-bottom: 3px; color: var(--ink); }
 .landing-why-item span { display: block; font-size: 12.8px; color: var(--mut); line-height: 1.6; }
+/* Bug found live: these numbers sit inside the dark purple .landing-hero
+   band, same as its h1/p above — but were left at var(--purple)/var(--mut)
+   (colors meant for TEXT ON A LIGHT background), which on the purple
+   gradient itself was nearly unreadable, almost the same color as its own
+   background. White/light, matching how the hero's own heading and body
+   text are already handled. */
 .landing-stat-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 28px; margin: 20px 0 4px; }
 .landing-stat { text-align: center; }
-.landing-stat b { display: block; font-size: 24px; font-weight: 850; color: var(--purple); }
-.landing-stat span { display: block; font-size: 12px; color: var(--mut); font-weight: 600; }
+.landing-stat b { display: block; font-size: 24px; font-weight: 850; color: #fff; }
+.landing-stat span { display: block; font-size: 12px; color: rgba(255, 255, 255, .78); font-weight: 600; }
 
 /* extras — dense checklist of everything beyond the 6 main pillars
    (loans, promotions, quotations, multi-branch, restaurant KDS/reservation,

@@ -7,14 +7,14 @@ use Tests\Concerns\CreatesShops;
 use Tests\TestCase;
 
 /**
- * Root-cause regression guard for a live bug: an app/admin page response
- * with no Cache-Control at all left the browser's own native HTTP cache
- * (a separate layer entirely from sw.js's own deliberate caching) free to
- * silently reuse an earlier response for the same URL. Concretely: a
- * restaurant order's "add item" POST, then an immediate Inertia partial
- * reload (GET, same URL) to refresh the cart, could come back with the
- * pre-add state — the item flashed onto the cart and vanished a moment
- * later. See SecurityHeaders.
+ * Root-cause regression guard for a live bug hit twice: first on /app/*
+ * (a restaurant order's add-item POST + reload could come back with the
+ * pre-add state — item flashed onto the cart and vanished), then again on
+ * the PUBLIC /login page reached directly, which rendered as raw JSON
+ * instead of the actual page (a Link-click's Inertia XHR JSON response for
+ * that URL got silently replayed back for a later real navigation). Every
+ * response now gets Cache-Control: no-store unconditionally — see
+ * SecurityHeaders.
  */
 class SecurityHeadersTest extends TestCase
 {
@@ -55,5 +55,21 @@ class SecurityHeadersTest extends TestCase
 
         $response->assertHeader('X-Frame-Options', 'SAMEORIGIN');
         $response->assertHeader('X-Content-Type-Options', 'nosniff');
+    }
+
+    /**
+     * The actual bug: /login (and /, /signup — any public guest page) must
+     * never be cached by the browser either, not just /app/* and /admin/*.
+     * A guest reaching /login by typing the URL/opening a fresh tab, after
+     * an earlier Inertia Link click had fetched it as raw XHR JSON, was
+     * getting that stale JSON response back instead of the real page.
+     */
+    public function test_public_guest_pages_are_never_cached_by_the_browser_either(): void
+    {
+        foreach (['/', '/login', '/signup'] as $path) {
+            $response = $this->get($path);
+
+            $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'), "expected no-store on {$path}");
+        }
     }
 }
