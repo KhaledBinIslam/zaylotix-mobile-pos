@@ -139,12 +139,20 @@ body {
 .pill.sky { background: #E3EFFB; color: var(--sky); }
 .pill.mut { background: #EDF2ED; color: var(--mut); }
 
-.btn { background: var(--gold); color: #fff; font-weight: 750; border-radius: 13px; padding: 12px 18px; display: inline-flex; align-items: center; justify-content: center; gap: 9px; width: 100%; font-size: 14.5px; box-shadow: 0 4px 14px rgba(242, 106, 27, .28); border: 0; cursor: pointer; }
-.btn:active { transform: translateY(1px); }
+/* premium pass: bigger, more confident tap target (44px+ line, matching
+   the platform-standard minimum comfortable touch size non-tech users
+   shouldn't have to aim carefully for) + a smooth press transition instead
+   of an instant snap — same colors/shadows/layout as before, this only
+   ever makes .btn itself feel a size and a touch more solid; every place
+   that already uses .btn/.btn.ghost/.btn.sm picks this up automatically,
+   nothing about their own markup changes */
+.btn { background: var(--gold); color: #fff; font-weight: 750; border-radius: 13px; padding: 14px 18px; display: inline-flex; align-items: center; justify-content: center; gap: 9px; width: 100%; font-size: 15px; box-shadow: 0 4px 14px rgba(242, 106, 27, .28); border: 0; cursor: pointer; transition: transform .12s ease, box-shadow .12s ease, opacity .12s ease; }
+.btn:active { transform: translateY(1px) scale(.99); box-shadow: 0 2px 8px rgba(242, 106, 27, .22); }
 .btn.ghost { background: var(--panel); color: var(--tx); border: 1.5px solid var(--line2); box-shadow: none; }
+.btn.ghost:active { box-shadow: none; }
 .btn.wa { background: var(--wa); color: #04220F; }
 .btn.rose { background: var(--rose); color: #2A0509; }
-.btn.sm { padding: 9px 13px; font-size: 13px; width: auto; border-radius: 10px; }
+.btn.sm { padding: 10px 14px; font-size: 13.5px; width: auto; border-radius: 11px; }
 
 .grand-total-bar { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, var(--green), var(--green2)); color: #fff; border-radius: 13px; padding: 12px 16px; margin-bottom: 10px; font-size: 14px; font-weight: 700; box-shadow: 0 4px 14px rgba(31, 164, 99, .3); }
 .grand-total-bar b { font-size: 19px; font-weight: 850; letter-spacing: -.3px; }
@@ -502,8 +510,8 @@ body {
    body-inherited font plus generous 13px padding, making a handful of
    number fields eat the whole screen on mobile and look oversized on web
    too. Still comfortably tappable (~40px tall), just no longer bloated. */
-input:not([type="checkbox"]):not([type="radio"]), select, textarea { font: inherit; font-size: 14.5px; background: #fff; border: 1.5px solid var(--line); color: var(--tx); border-radius: 11px; padding: 10px 12px; outline: none; width: 100%; }
-input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:focus { border-color: var(--gold); }
+input:not([type="checkbox"]):not([type="radio"]), select, textarea { font: inherit; font-size: 14.5px; background: #fff; border: 1.5px solid var(--line); color: var(--tx); border-radius: 11px; padding: 10px 12px; outline: none; width: 100%; transition: border-color .12s ease, box-shadow .12s ease; }
+input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:focus { border-color: var(--gold); box-shadow: 0 0 0 3px var(--goldSoft); }
 /* explicit, EQUAL width+height — not width:auto. @tailwindcss/forms (used on
    every Admin page) sets appearance:none + height:1rem on every checkbox/
    radio; width:auto left height alone at 1rem while width collapsed to a
