@@ -31,7 +31,23 @@
 // just cosmetic: it's what makes the existing activate handler actually
 // throw out that already-corrupted v2 cache on every device that had it,
 // instead of silently carrying the bad entry forward forever.
-const CACHE = 'zaylotix-shell-v3';
+//
+// v4: closed the actual remaining gap — /build/* (the JS/CSS bundle) is
+// deliberately cache-first FOREVER once fetched (see below), which is
+// exactly right for offline support, but meant a phone that had the app
+// open/cached from BEFORE any given deploy could stay stuck running that
+// OLD code indefinitely: skipWaiting()+clients.claim() (below, already
+// present) change which service worker answers FUTURE requests, but never
+// forced an ALREADY-LOADED page to drop what it already has in memory and
+// actually fetch anything new — and on mobile there's no real equivalent
+// of a desktop hard-refresh a non-technical cashier could even attempt.
+// Every deploy must reach every open tab with zero action from anyone —
+// so now, the moment THIS new service worker activates (which already
+// only happens after wiping every old cache, above), it forces every
+// currently-open tab to actually reload — fetching a genuinely fresh page
+// (and, since old caches are already gone, a genuinely fresh JS bundle)
+// instead of silently continuing to run whatever was already in memory.
+const CACHE = 'zaylotix-shell-v4';
 const SHELL_ASSETS = ['/manifest.json'];
 
 self.addEventListener('install', (event) => {
@@ -43,11 +59,19 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
-    )
+    caches.keys()
+      .then((keys) =>
+        Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
+      )
+      .then(() => self.clients.claim())
+      .then(() =>
+        // force every open tab onto the version that was just activated —
+        // navigating a client to its own current URL is a full reload
+        // through this (now-active) service worker, not a no-op
+        self.clients.matchAll({ type: 'window' })
+      )
+      .then((clients) => Promise.all(clients.map((client) => client.navigate(client.url).catch(() => {}))))
   );
-  self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
