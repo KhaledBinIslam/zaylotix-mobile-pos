@@ -1,6 +1,6 @@
 <script setup>
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import { useI18n } from '@/composables/useI18n';
@@ -456,6 +456,14 @@ const payMode = ref('cash');
 const discount = ref(0);
 const customerPhone = ref('');
 const customerName = ref('');
+// same billing-UX simplification as Pos/Index.vue — collapsed by default so
+// the common dine-in cash bill needs zero taps here, expands automatically
+// if either field already has something or if the sale is going on বাকি/credit
+const showCustomerInfo = ref(false);
+watch([customerPhone, customerName], ([phone, name]) => {
+    if (phone.trim() || name.trim()) showCustomerInfo.value = true;
+});
+watch(payMode, (mode) => { if (mode === 'credit') showCustomerInfo.value = true; });
 const billBaseTotal = computed(() => (splitMode.value ? splitSubtotal.value : liveOrderTotal.value));
 // complimentary forces the server to charge nothing (discount = subtotal,
 // see TableOrderController::bill()) — the displayed total must reflect that
@@ -817,6 +825,10 @@ onBeforeUnmount(() => {
         <Sheet v-model="billSheet" :title="t('restaurant.billSheetTitle')" wide>
             <div class="checkout-cols">
             <div>
+            <button v-if="!showCustomerInfo" type="button" class="btn ghost sm" style="width:100%;margin-bottom:14px" @click="showCustomerInfo = true">
+                👤 {{ t('pos.addCustomerInfo') }}
+            </button>
+            <template v-else>
             <div class="field">
                 <label>{{ t('pos.mobileLabel') }} <span style="color:var(--dim);font-weight:400">{{ t('pos.mobileHint') }}</span></label>
                 <input v-model="customerPhone" inputmode="tel" placeholder="01XXXXXXXXX">
@@ -825,6 +837,7 @@ onBeforeUnmount(() => {
                 <label>{{ t('pos.customerName') }}</label>
                 <input v-model="customerName" :placeholder="t('pos.customerName')">
             </div>
+            </template>
             <div class="field">
                 <label>{{ t('pos.payment') }}</label>
                 <div v-if="payMode !== 'complimentary'" class="seg">

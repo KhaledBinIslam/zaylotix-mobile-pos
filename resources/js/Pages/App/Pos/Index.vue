@@ -63,6 +63,20 @@ const quotationId = ref(null);
 const customerPhone = ref('');
 const customerName = ref('');
 const customerLookup = ref(null); // { found, name, due } — result of the last phone lookup
+// Billing-UX simplification: for the common walk-in cash sale, customer
+// phone/name were sitting right below the cart, in the way before a
+// cashier ever reached the payment method — even though both fields are
+// (and remain) fully optional, having them always expanded made every
+// checkout look like it needed more steps than it actually does. Collapsed
+// by default; opens automatically if either field already has something in
+// it (a resumed held cart, a prefilled quotation) so real data is never
+// hidden behind a tap.
+const showCustomerInfo = ref(false);
+watch([customerPhone, customerName], ([phone, name]) => {
+    if (phone.trim() || name.trim()) showCustomerInfo.value = true;
+});
+// a বাকি/credit sale is meaningless without someone to collect it from later
+watch(payMode, (mode) => { if (mode === 'credit') showCustomerInfo.value = true; });
 const submitting = ref(false);
 const errorMsg = ref('');
 const heldSheet = ref(false);
@@ -351,6 +365,7 @@ function resetCartAfterCheckout() {
     customerPhone.value = '';
     customerName.value = '';
     customerLookup.value = null;
+    showCustomerInfo.value = false;
     splitMode.value = false;
     splitAmounts.value = { cash: '', bkash: '', nagad: '' };
     saleType.value = 'retail';
@@ -1063,6 +1078,13 @@ useKeyboardShortcuts({
                     </div>
                 </div>
 
+                <!-- collapsed by default (see showCustomerInfo's docblock) — a fast
+                     cash sale needs zero taps here; a shop that wants due/loyalty/
+                     memo tracking is one tap away, same fields as always -->
+                <button v-if="!showCustomerInfo" type="button" class="btn ghost sm" style="width:100%;margin-bottom:14px" @click="showCustomerInfo = true">
+                    👤 {{ t('pos.addCustomerInfo') }}
+                </button>
+                <template v-else>
                 <div class="field">
                     <label>{{ t('pos.mobileLabel') }} <span style="color:var(--dim);font-weight:400">{{ t('pos.mobileHint') }}</span></label>
                     <input v-model="customerPhone" inputmode="tel" placeholder="01XXXXXXXXX">
@@ -1079,6 +1101,7 @@ useKeyboardShortcuts({
                     <label>{{ t('pos.customerName') }}</label>
                     <input v-model="customerName" :placeholder="t('pos.customerName')">
                 </div>
+                </template>
 
                 <div v-if="hasWholesalePricing" class="field">
                     <label>{{ t('pos.saleTypeLabel') }}</label>
@@ -1127,7 +1150,7 @@ useKeyboardShortcuts({
                         </div>
                         <div v-if="splitRemainder > 0" style="font-size:13px;font-weight:700;color:var(--rose)">
                             {{ t('pos.splitDue') }}: {{ money(splitRemainder) }}
-                            <div v-if="!customerPhone.trim()" style="font-size:12px;font-weight:600;margin-top:2px">{{ t('pos.splitNeedsPhone') }}</div>
+                            <div v-if="!customerPhone.trim()" style="font-size:12px;font-weight:600;margin-top:2px;cursor:pointer" @click="showCustomerInfo = true">{{ t('pos.splitNeedsPhone') }}</div>
                         </div>
                     </div>
 

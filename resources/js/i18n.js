@@ -708,6 +708,7 @@ export const translations = {
     'pos.oldCustomer': { bn: 'পুরাতন কাস্টমার —', en: 'Returning customer —' },
     'pos.dueExists': { bn: '(বাকি আছে {due})', en: '(due: {due})' },
     'pos.customerName': { bn: 'কাস্টমারের নাম', en: "Customer's name" },
+    'pos.addCustomerInfo': { bn: 'কাস্টমারের তথ্য যোগ করুন (ঐচ্ছিক)', en: 'Add customer info (optional)' },
     'pos.payment': { bn: 'পেমেন্ট', en: 'Payment' },
     'pos.splitPayment': { bn: '➗ ভাগ করে দিন (একাধিক মাধ্যম)', en: '➗ Split across methods' },
     'pos.splitOff': { bn: 'সাধারণ পেমেন্ট', en: 'Simple payment' },
