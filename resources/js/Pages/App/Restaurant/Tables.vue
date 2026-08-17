@@ -5,6 +5,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import { useI18n } from '@/composables/useI18n';
 import { useToast } from '@/composables/useToast';
+import { usePollingReload } from '@/composables/usePollingReload';
 
 const props = defineProps({ tables: Array, takeawayOrders: { type: Array, default: () => [] } });
 const { t } = useI18n();
@@ -74,11 +75,12 @@ function removeTable(tbl) {
 // while a sheet here is actually mid-submit, same guard the other polled
 // screens (Order/Stock) already use, so a background refresh never queues
 // in front of something the owner just tapped
+const { pollReload } = usePollingReload();
 let pollTimer = null;
 onMounted(() => {
     pollTimer = setInterval(() => {
         if (addSheet.value || settingsSheet.value) return;
-        router.reload({ only: ['tables'], preserveScroll: true });
+        pollReload({ only: ['tables'], preserveScroll: true });
     }, 10000);
 });
 onBeforeUnmount(() => clearInterval(pollTimer));

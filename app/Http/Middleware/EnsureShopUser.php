@@ -12,16 +12,29 @@ class EnsureShopUser
     public function handle(Request $request, Closure $next): Response
     {
         if (! Auth::guard('web')->check()) {
-            // Root-caused live: a raw-fetch screen (POS/Restaurant checkout,
-            // addItem, etc.) sends Accept: application/json and handles its
-            // own JSON error shape — a redirect() here gets silently
-            // followed by fetch() to the login page's full HTML, landing
-            // back as an ordinary 200 response the caller then fails to
-            // parse as JSON, surfacing as a confusing "not valid JSON"
-            // failure instead of a clear "you're logged out" one. A plain
-            // browser navigation (no Accept: application/json) is unaffected
-            // — still gets the normal redirect exactly as before.
-            if ($request->expectsJson()) {
+            // Root-caused live, twice: first a raw-fetch screen (POS/
+            // Restaurant checkout, addItem, etc.) sends Accept:
+            // application/json and handles its own JSON error shape — a
+            // redirect() here gets silently followed by fetch() to the
+            // login page's full HTML, surfacing as a confusing "not valid
+            // JSON" failure instead of a clear "you're logged out" one.
+            // Second, and more disruptive: this app has ~6 screens
+            // (Order/Pos/Stock/Tables/Kds/Cds) that quietly poll every
+            // 8-15s for another device's changes via router.reload() — a
+            // completely normal Inertia navigation, which Inertia's client
+            // auto-FOLLOWS if it gets a redirect back, same as any other
+            // Inertia visit. One transient session-read hiccup on this
+            // host's chronically loaded shared DB (not an actual elapsed
+            // timeout — it could hit at any point) was enough to silently
+            // drag a cashier away from an in-progress sale to the login
+            // page, with whatever they'd already rung up still sitting
+            // unsaved on the screen they got yanked off of. usePollingReload
+            // marks every one of those background polls with this header so
+            // they always get a real, catchable JSON error instead — never
+            // a redirect Inertia would blindly follow. A plain browser
+            // navigation (neither of these) is unaffected — still gets the
+            // normal redirect exactly as before.
+            if ($request->expectsJson() || $request->header('X-Inertia-Poll') === 'true') {
                 abort(401, 'সেশনের মেয়াদ শেষ হয়ে গেছে — আবার login করুন।');
             }
 

@@ -248,6 +248,7 @@ export const translations = {
     'common.edit': { bn: 'এডিট', en: 'Edit' },
     'common.delete': { bn: 'মুছুন', en: 'Delete' },
     'common.contact': { bn: 'যোগাযোগ', en: 'Contact' },
+    'common.connectionUnstable': { bn: 'সংযোগে সাময়িক সমস্যা হচ্ছে — কাজ চালিয়ে যান, এমনিতেই আবার চেষ্টা হবে', en: "Connection is unstable — keep working, it'll retry on its own" },
     'pos.weightEntryLabel': { bn: 'পরিমাণ লিখুন', en: 'Enter amount' },
     'pos.addToCartButton': { bn: 'কার্টে যোগ করুন', en: 'Add to cart' },
     'notif.title': { bn: 'নোটিফিকেশন', en: 'Notifications' },

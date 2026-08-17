@@ -3,6 +3,7 @@ import { Head, router } from '@inertiajs/vue3';
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useI18n } from '@/composables/useI18n';
+import { usePollingReload } from '@/composables/usePollingReload';
 
 const props = defineProps({ products: Array, categories: Array, todaysOrders: Array });
 const { t } = useI18n();
@@ -17,10 +18,11 @@ const STATUS_COLOR = { pending: 'var(--rose)', cooked: 'var(--gold2)', served: '
 // read-only screen meant for a second monitor/tablet facing the customer —
 // only the order-status side needs to stay live, the menu itself barely
 // ever changes mid-service
+const { pollReload } = usePollingReload();
 let pollTimer = null;
 onMounted(() => {
     pollTimer = setInterval(() => {
-        router.reload({ only: ['todaysOrders'], preserveScroll: true });
+        pollReload({ only: ['todaysOrders'], preserveScroll: true });
     }, 8000);
 });
 onBeforeUnmount(() => clearInterval(pollTimer));

@@ -83,4 +83,31 @@ class AuthSeparationTest extends TestCase
 
         $response->assertRedirect(route('login'));
     }
+
+    /**
+     * Root-cause regression guard: this app has ~6 screens (Order/Pos/
+     * Stock/Tables/Kds/Cds — see usePollingReload.js) that quietly poll
+     * every 8-15s for another device's changes via a normal Inertia
+     * router.reload(). Before this, a transient session-read hiccup on a
+     * background poll (not an actual logout) got the same redirect a real
+     * navigation would, which Inertia's client auto-follows — silently
+     * dragging a cashier off whatever they were doing, mid-sale, to the
+     * login page. A background poll must always get a plain JSON error
+     * instead, exactly like an explicit raw-fetch action already does.
+     */
+    public function test_a_background_poll_gets_a_401_instead_of_a_redirect_when_logged_out(): void
+    {
+        $response = $this->get('/app/home', ['X-Inertia-Poll' => 'true']);
+
+        $response->assertStatus(401);
+    }
+
+    /** Same poll header, but on an Inertia-style plain visit (no Accept: application/json) — the header alone must be enough, since Inertia's own router.reload() doesn't set that Accept value. */
+    public function test_a_background_poll_without_an_explicit_json_accept_header_still_gets_a_401(): void
+    {
+        $response = $this->withHeaders(['X-Inertia-Poll' => 'true', 'Accept' => 'text/html, application/xhtml+xml'])
+            ->get('/app/home');
+
+        $response->assertStatus(401);
+    }
 }

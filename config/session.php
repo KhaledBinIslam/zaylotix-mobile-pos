@@ -32,7 +32,13 @@ return [
     |
     */
 
-    'lifetime' => (int) env('SESSION_LIFETIME', 120),
+    // A cashier's shift can easily run 8-12 hours; 120 (Laravel's stock
+    // default) meant anyone idle-but-present (reading a menu with a
+    // customer, a slow hour) for 2 hours could be logged out mid-shift.
+    // Laravel's own session mechanism is already "sliding" — any request at
+    // all resets this clock — so this is genuinely how long someone can go
+    // with NO request whatsoever, not a hard cap on total session length.
+    'lifetime' => (int) env('SESSION_LIFETIME', 720),
 
     'expire_on_close' => env('SESSION_EXPIRE_ON_CLOSE', false),
 

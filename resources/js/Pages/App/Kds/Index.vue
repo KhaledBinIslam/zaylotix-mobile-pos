@@ -3,6 +3,7 @@ import { Head, router } from '@inertiajs/vue3';
 import { ref, onMounted, onBeforeUnmount } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useI18n } from '@/composables/useI18n';
+import { usePollingReload } from '@/composables/usePollingReload';
 
 defineProps({ openOrders: Array, cookedOrders: Array });
 const { t } = useI18n();
@@ -20,10 +21,11 @@ const SOURCE_ICON = { delivery: '🛵', takeaway: '🥡' };
 
 // same live-polling pattern as Tables.vue/Order.vue — a cook's screen must
 // reflect what a cashier just sent to the kitchen without a manual refresh
+const { pollReload } = usePollingReload();
 let pollTimer = null;
 onMounted(() => {
     pollTimer = setInterval(() => {
-        router.reload({ only: ['openOrders', 'cookedOrders'], preserveScroll: true });
+        pollReload({ only: ['openOrders', 'cookedOrders'], preserveScroll: true });
     }, 8000);
 });
 onBeforeUnmount(() => clearInterval(pollTimer));

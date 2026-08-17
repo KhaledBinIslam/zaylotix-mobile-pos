@@ -7,6 +7,7 @@ import Pagination from '@/Components/Pagination.vue';
 import HowToHint from '@/Components/HowToHint.vue';
 import { useI18n } from '@/composables/useI18n';
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts';
+import { usePollingReload } from '@/composables/usePollingReload';
 
 const props = defineProps({
     products: Object, categories: Array, units: Array, stats: Object, q: String, categoryId: [Number, String],
@@ -369,11 +370,12 @@ function saveImport() {
 // same reasoning as the POS page — another device (cashier, or the owner
 // on a second phone) can change stock at any moment, so quietly re-check
 // every 15s rather than showing a number that's gone stale
+const { pollReload } = usePollingReload();
 let pollTimer = null;
 onMounted(() => {
     pollTimer = setInterval(() => {
         if (productSheet.value || stockInSheet.value) return;
-        router.reload({ only: ['products'], preserveScroll: true, preserveState: true });
+        pollReload({ only: ['products'], preserveScroll: true, preserveState: true });
     }, 15000);
 });
 onBeforeUnmount(() => clearInterval(pollTimer));

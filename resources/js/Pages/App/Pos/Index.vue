@@ -9,6 +9,8 @@ import { useI18n } from '@/composables/useI18n';
 import { useHardwareScanner } from '@/composables/useHardwareScanner';
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts';
 import { useOfflineSync } from '@/composables/useOfflineSync';
+import { usePollingReload } from '@/composables/usePollingReload';
+import { fetchWithSessionRetry } from '@/support/fetchWithSessionRetry';
 
 const props = defineProps({
     products: Array,
@@ -374,13 +376,13 @@ async function submitCheckout() {
     const payload = buildCheckoutPayload();
 
     try {
-        const res = await fetch(route('app.pos.checkout'), {
+        // fetchWithSessionRetry: one safe, automatic retry if this hits a
+        // 401 (see its own docblock) before ever telling a cashier mid-sale
+        // that they're logged out over what was really just one transient
+        // hiccup on this host.
+        const res = await fetchWithSessionRetry(route('app.pos.checkout'), {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': csrfToken(),
-                'Accept': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken(), Accept: 'application/json' },
             body: JSON.stringify(payload),
         });
 
@@ -455,7 +457,7 @@ async function payViaGateway(provider) {
     errorMsg.value = '';
 
     try {
-        const res = await fetch(route('app.gatewayCheckout.initiate', provider), {
+        const res = await fetchWithSessionRetry(route('app.gatewayCheckout.initiate', provider), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken(), Accept: 'application/json' },
             body: JSON.stringify({
@@ -809,11 +811,12 @@ onMounted(() => {
     }
 });
 
+const { pollReload } = usePollingReload();
 let pollTimer = null;
 onMounted(() => {
     pollTimer = setInterval(() => {
         if (cartOpen.value || scannerOpen.value || receiptOpen.value || submitting.value) return;
-        router.reload({ only: ['products'], preserveScroll: true, preserveState: true });
+        pollReload({ only: ['products'], preserveScroll: true, preserveState: true });
     }, 15000);
 });
 onBeforeUnmount(() => clearInterval(pollTimer));

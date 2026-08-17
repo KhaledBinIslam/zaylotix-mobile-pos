@@ -7,6 +7,8 @@ import { useI18n } from '@/composables/useI18n';
 import { useToast } from '@/composables/useToast';
 import { useHardwareScanner } from '@/composables/useHardwareScanner';
 import { useOfflineActionQueue } from '@/composables/useOfflineActionQueue';
+import { usePollingReload } from '@/composables/usePollingReload';
+import { fetchWithSessionRetry } from '@/support/fetchWithSessionRetry';
 
 const props = defineProps({
     order: Object, products: Array, categories: Array,
@@ -236,7 +238,10 @@ async function postItem(productId, qty) {
     try {
         url = route('app.restaurant.orders.items.store', props.order.id);
         body = { product_id: productId, qty };
-        const res = await fetch(url, {
+        // fetchWithSessionRetry: one safe, automatic retry on a 401 (see its
+        // own docblock) — the same transient-hiccup protection as the
+        // background polls above, for this explicit tap too.
+        const res = await fetchWithSessionRetry(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken(), Accept: 'application/json' },
             body: JSON.stringify(body),
@@ -280,10 +285,13 @@ async function postItem(productId, qty) {
             // update covers it) — this second failure just means the
             // server's exact copy (real id, any other device's changes)
             // hasn't been fetched yet, worth a quiet heads-up rather than
-            // silence, but not a "your sale is wrong" alarm.
-            router.reload({
+            // silence, but not a "your sale is wrong" alarm. pollReload (not
+            // router.reload directly) so a transient auth hiccup on either
+            // attempt answers with a catchable error instead of a redirect
+            // that would drag the cashier away mid-sale — see usePollingReload.
+            pollReload({
                 only: ['order'], preserveScroll: true, preserveState: true,
-                onError: () => router.reload({
+                onError: () => pollReload({
                     only: ['order'], preserveScroll: true, preserveState: true,
                     onError: () => toast('⚠️ ' + t('restaurant.cartSyncFailed')),
                 }),
@@ -501,7 +509,10 @@ async function submitBill() {
     };
 
     try {
-        const res = await fetch(url, {
+        // fetchWithSessionRetry: one safe, automatic retry on a 401 — a
+        // 401 here happens in middleware, strictly before bill() starts its
+        // transaction, so nothing was ever charged the first time.
+        const res = await fetchWithSessionRetry(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken(), Accept: 'application/json' },
             body: JSON.stringify(body),
@@ -555,11 +566,12 @@ function submitTableAction() {
 const moreSheet = ref(false);
 
 // another device could add/remove items on the same table order
+const { pollReload } = usePollingReload();
 let pollTimer = null;
 onMounted(() => {
     pollTimer = setInterval(() => {
         if (billSheet.value || scannerOpen.value) return;
-        router.reload({ only: ['order'], preserveScroll: true, preserveState: true });
+        pollReload({ only: ['order'], preserveScroll: true, preserveState: true });
     }, 8000);
 });
 onBeforeUnmount(() => {

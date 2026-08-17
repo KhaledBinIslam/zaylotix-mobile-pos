@@ -73,4 +73,42 @@ class SubscriptionExpiryTest extends TestCase
         $response->assertStatus(401);
         $this->assertGuest('web');
     }
+
+    /**
+     * Root-cause regression guard: this app has ~6 screens (Order/Pos/Stock/
+     * Tables/Kds/Cds — see usePollingReload.js) that quietly poll every
+     * 8-15s for another device's changes. Unlike EnsureShopUser's harmless
+     * redirect, THIS middleware actually calls logout()+session()->invalidate()
+     * — a background poll hitting a transient false negative (e.g. a
+     * momentary failed Shop::find under load, not a real subscription
+     * change) would have destroyed a live, paying shop's session outright,
+     * not just misrouted one request. A poll must get the same 401 a real
+     * inactive shop gets, but WITHOUT the session actually being touched —
+     * an explicit navigation/action enforces it for real within moments of
+     * any genuine lapse anyway.
+     */
+    public function test_a_background_poll_gets_a_401_but_does_not_actually_destroy_the_session(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $shop->update(['status' => 'inactive']);
+
+        $response = $this->actingAs($owner, 'web')->get('/app/home', ['X-Inertia-Poll' => 'true']);
+
+        $response->assertStatus(401);
+        // the point of the fix: still authenticated afterward — a poll never
+        // gets to invalidate a real session over a transient/soft failure
+        $this->assertAuthenticated('web');
+    }
+
+    /** An explicit, non-poll navigation for a genuinely inactive shop must keep enforcing exactly as before — this fix only ever softens the background-poll path, never the real one. */
+    public function test_a_plain_navigation_still_fully_logs_out_when_shop_is_inactive(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $shop->update(['status' => 'inactive']);
+
+        $response = $this->actingAs($owner, 'web')->get('/app/home');
+
+        $response->assertRedirect(route('login'));
+        $this->assertGuest('web');
+    }
 }
