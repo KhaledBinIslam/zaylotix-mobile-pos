@@ -60,4 +60,35 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js').catch(() => {});
     });
+
+    // Safe update propagation for the one real, still-open gap: /build/*
+    // (the JS/CSS bundle) is cache-first FOREVER once fetched (see sw.js),
+    // so a phone/APK that had the app open from before a deploy could stay
+    // stuck running that old code indefinitely — nothing native (this app's
+    // WebView already forces LOAD_NO_CACHE at the native HTTP layer) touches
+    // the service worker's OWN separate Cache API storage. A first attempt
+    // at fixing this (sw.js v4) reloaded every open tab the INSTANT a new
+    // service worker took over, with zero regard for whether anyone was
+    // mid-sale — reverted immediately after it visibly disrupted live
+    // selling ("app/pos kaj korche na"). This is the safe version: wait for
+    // the service worker handoff (controllerchange — fires once a new
+    // version has actually taken over), then wait AGAIN for the one moment
+    // nobody's looking at this tab (backgrounded — the shop app minimized,
+    // or the phone locked) before reloading. By the time it's looked at
+    // again, it's already fresh; nothing on screen is ever interrupted.
+    let swRefreshPending = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (swRefreshPending) return;
+        swRefreshPending = true;
+        const reloadWhenHidden = () => {
+            if (document.visibilityState !== 'hidden') return;
+            document.removeEventListener('visibilitychange', reloadWhenHidden);
+            window.location.reload();
+        };
+        if (document.visibilityState === 'hidden') {
+            reloadWhenHidden();
+        } else {
+            document.addEventListener('visibilitychange', reloadWhenHidden);
+        }
+    });
 }
