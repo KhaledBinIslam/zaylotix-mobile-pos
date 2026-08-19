@@ -105,6 +105,17 @@ body {
 .pgsub { color: var(--mut); font-size: 13px; margin-bottom: 16px; }
 
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; box-shadow: var(--sh); }
+
+/* "kitchen ticket" card — KDS/CDS live-order cards, a colored left accent
+   bar instead of a thin all-around border reads more like a real order
+   ticket at a glance (urgent/open = rose, done = green), same .card
+   shadow/radius/padding underneath so it still belongs to the same family */
+.ticket { border-left: 4px solid var(--rose); padding-left: 16px; }
+.ticket.done { border-left-color: var(--green); opacity: .8; }
+.ticket-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.ticket-head b { font-size: 16px; font-weight: 800; }
+.ticket-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-top: 1px solid var(--line); }
+.ticket-row:first-of-type { border-top: none; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .stat { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 15px; box-shadow: var(--sh); }
 .stat .k { font-size: 12px; color: var(--mut); display: flex; align-items: center; gap: 6px; }

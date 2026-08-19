@@ -43,12 +43,12 @@ onBeforeUnmount(() => clearInterval(pollTimer));
         </div>
 
         <template v-if="tab === 'open'">
-            <div v-for="o in openOrders" :key="o.id" class="card" style="margin-bottom:14px;border-color:var(--rose)">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                    <b style="font-size:16px">{{ SOURCE_ICON[o.order_source] || '🍽️' }} {{ o.table_name || t('restaurant.takeawayLabel') }}</b>
-                    <span style="font-size:11.5px;color:var(--dim)">{{ o.opened_at }}</span>
+            <div v-for="o in openOrders" :key="o.id" class="card ticket" style="margin-bottom:14px">
+                <div class="ticket-head">
+                    <b>{{ SOURCE_ICON[o.order_source] || '🍽️' }} {{ o.table_name || t('restaurant.takeawayLabel') }}</b>
+                    <span class="pill rose">{{ o.opened_at }}</span>
                 </div>
-                <div v-for="it in o.items" :key="it.id" style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--line)">
+                <div v-for="it in o.items" :key="it.id" class="ticket-row">
                     <span><b>{{ it.qty }}×</b> {{ it.product_name }}</span>
                     <button class="btn sm" style="width:auto;padding:6px 16px" @click="cook(it)">{{ t('kds.cookButton') }}</button>
                 </div>
@@ -58,11 +58,11 @@ onBeforeUnmount(() => clearInterval(pollTimer));
         </template>
 
         <template v-else>
-            <div v-for="o in cookedOrders" :key="o.id" class="card" style="margin-bottom:14px;opacity:.75">
-                <b style="font-size:15px">{{ SOURCE_ICON[o.order_source] || '🍽️' }} {{ o.table_name || t('restaurant.takeawayLabel') }}</b>
-                <div v-for="it in o.items" :key="it.id" style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--line);font-size:13.5px">
+            <div v-for="o in cookedOrders" :key="o.id" class="card ticket done" style="margin-bottom:14px">
+                <div class="ticket-head"><b>{{ SOURCE_ICON[o.order_source] || '🍽️' }} {{ o.table_name || t('restaurant.takeawayLabel') }}</b></div>
+                <div v-for="it in o.items" :key="it.id" class="ticket-row" style="font-size:13.5px">
                     <span><b>{{ it.qty }}×</b> {{ it.product_name }}</span>
-                    <span style="color:var(--green)">✓ {{ it.cooked_at }}</span>
+                    <span class="pill mint">✓ {{ it.cooked_at }}</span>
                 </div>
             </div>
             <div v-if="!cookedOrders.length" class="empty"><div class="big">🍳</div>{{ t('kds.noneCookedYet') }}</div>

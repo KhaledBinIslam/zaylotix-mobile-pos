@@ -13,7 +13,7 @@ const cat = ref('all');
 const filtered = computed(() => props.products.filter((p) => cat.value === 'all' || p.category_id === cat.value));
 
 const STATUS_LABEL = { pending: 'kds.tabOpen', cooked: 'kds.tabCooked', served: 'restaurant.served' };
-const STATUS_COLOR = { pending: 'var(--rose)', cooked: 'var(--gold2)', served: 'var(--green)' };
+const STATUS_PILL = { pending: 'rose', cooked: 'gold', served: 'mint' };
 
 // read-only screen meant for a second monitor/tablet facing the customer —
 // only the order-status side needs to stay live, the menu itself barely
@@ -56,11 +56,11 @@ onBeforeUnmount(() => clearInterval(pollTimer));
 
             <aside class="lg:order-2 lg:w-80 lg:shrink-0">
                 <div class="sechead"><h2>{{ t('cds.ordersHeading') }}</h2></div>
-                <div v-for="o in todaysOrders" :key="o.id" class="card" style="margin-bottom:12px">
+                <div v-for="o in todaysOrders" :key="o.id" class="card ticket" style="margin-bottom:12px">
                     <b style="font-size:14.5px">{{ o.table_name || t('restaurant.takeawayLabel') }}</b>
-                    <div v-for="it in o.items" :key="it.id" style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-top:1px solid var(--line)">
+                    <div v-for="it in o.items" :key="it.id" class="ticket-row" style="font-size:13px">
                         <span>{{ it.qty }}× {{ it.product_name }}</span>
-                        <span :style="{ color: STATUS_COLOR[it.status], fontWeight: 700 }">{{ t(STATUS_LABEL[it.status]) }}</span>
+                        <span class="pill" :class="STATUS_PILL[it.status]">{{ t(STATUS_LABEL[it.status]) }}</span>
                     </div>
                 </div>
                 <div v-if="!todaysOrders.length" class="empty"><div class="big">🍽️</div>{{ t('cds.noOrdersToday') }}</div>
