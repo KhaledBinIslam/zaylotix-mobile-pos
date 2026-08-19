@@ -32,22 +32,27 @@
 // throw out that already-corrupted v2 cache on every device that had it,
 // instead of silently carrying the bad entry forward forever.
 //
-// v4: closed the actual remaining gap — /build/* (the JS/CSS bundle) is
-// deliberately cache-first FOREVER once fetched (see below), which is
-// exactly right for offline support, but meant a phone that had the app
-// open/cached from BEFORE any given deploy could stay stuck running that
-// OLD code indefinitely: skipWaiting()+clients.claim() (below, already
-// present) change which service worker answers FUTURE requests, but never
-// forced an ALREADY-LOADED page to drop what it already has in memory and
-// actually fetch anything new — and on mobile there's no real equivalent
-// of a desktop hard-refresh a non-technical cashier could even attempt.
-// Every deploy must reach every open tab with zero action from anyone —
-// so now, the moment THIS new service worker activates (which already
-// only happens after wiping every old cache, above), it forces every
-// currently-open tab to actually reload — fetching a genuinely fresh page
-// (and, since old caches are already gone, a genuinely fresh JS bundle)
-// instead of silently continuing to run whatever was already in memory.
-const CACHE = 'zaylotix-shell-v4';
+// v4 (REVERTED): tried closing the "phone stuck on pre-deploy cached JS
+// forever" gap by having activate force every open tab to
+// client.navigate(client.url) the instant this service worker took over.
+// Reverted almost immediately — live report right after this shipped was
+// "app isn't working, POS isn't working": an unsolicited, unannounced
+// full-page reload firing on every open tab at once, with zero regard for
+// whether a cashier was mid-sale (typing a phone number, halfway through a
+// checkout sheet, anything) wipes out everything they had on screen and
+// can visibly flash/redirect somewhere jarring — exactly what "the app
+// isn't working" looks like from the other side of the counter, even
+// though the underlying navigation itself "succeeded". A background
+// service worker has no way to know it's a safe moment to do that; a
+// non-idempotent-write safety judgment call, same category as never
+// blindly retrying a checkout — this was worse, since it wasn't even
+// asked for, it just happened. The real fix for "stuck on stale cached JS"
+// needs a moment that's actually safe (e.g. only reload a tab that's
+// genuinely idle, or ask first) — deliberately left for a separate,
+// carefully-scoped pass rather than shipped again half-thought-through.
+// This version keeps only the safe part every prior bump already had:
+// purge old caches, claim clients — no forced navigation of anyone.
+const CACHE = 'zaylotix-shell-v5';
 const SHELL_ASSETS = ['/manifest.json'];
 
 self.addEventListener('install', (event) => {
@@ -64,13 +69,6 @@ self.addEventListener('activate', (event) => {
         Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
       )
       .then(() => self.clients.claim())
-      .then(() =>
-        // force every open tab onto the version that was just activated —
-        // navigating a client to its own current URL is a full reload
-        // through this (now-active) service worker, not a no-op
-        self.clients.matchAll({ type: 'window' })
-      )
-      .then((clients) => Promise.all(clients.map((client) => client.navigate(client.url).catch(() => {}))))
   );
 });
 
