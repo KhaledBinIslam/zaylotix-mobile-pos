@@ -267,6 +267,12 @@ body {
    bell by default, and re-anchored near the sidebar's bell on desktop
    (see AppLayout.vue) since that button lives in the sidebar footer instead */
 .notif-scrim { position: fixed; inset: 0; background: transparent; z-index: 62; }
+/* Desktop sidebar's active-item state — was raw Tailwind bg-emerald-50/
+   text-emerald-700, which don't correspond to this app's own brand tokens
+   (--green/--greenSoft below are the real ones, used everywhere else:
+   pills, quick-action buttons, totals). Same active look, now on-token. */
+.nav-item-on { background: var(--greenSoft); color: var(--green2); }
+
 .notif-dropdown {
   position: fixed; z-index: 63; top: 62px; right: 14px; width: 320px; max-width: 90vw;
   max-height: 60vh; overflow-y: auto; background: var(--panel); border: 1px solid var(--line);

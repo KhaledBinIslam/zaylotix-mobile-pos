@@ -157,6 +157,52 @@ const SCREEN_LABELS = {
 };
 const screenLabel = computed(() => SCREEN_LABELS[props.active] || props.active);
 
+// One coherent icon family for the desktop sidebar, matching the exact
+// stroke convention the mobile bottom tab bar already established (24x24
+// viewBox, stroke-width 1.9, fill none) — before this, the sidebar used
+// raw emoji for every item while the bottom bar used these hand-drawn
+// line icons, on the same layout file. Two icon languages in one nav is
+// exactly the "mixed icon styles" inconsistency a coherent product
+// shouldn't have — recognition, not decoration (see Section 26).
+const ICONS = {
+    cart: '<path d="M3 4h2l2.4 11.4a2 2 0 0 0 2 1.6h7.2a2 2 0 0 0 2-1.6L21 8H6"/><circle cx="9" cy="20" r="1"/><circle cx="17" cy="20" r="1"/>',
+    calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 3v4M16 3v4"/>',
+    pot: '<path d="M6 8h12v2a6 6 0 0 1-12 0V8z"/><path d="M6 8V6a2 2 0 0 1 2-2h1"/><path d="M18 10h1a2 2 0 0 0 0-4h-1"/>',
+    monitor: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+    receipt: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
+    invoice: '<path d="M6 3h9l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v4h4"/><path d="M8 12h6M8 16h4"/>',
+    gift: '<rect x="3" y="8" width="18" height="13" rx="1"/><path d="M3 8h18v4H3z"/><path d="M12 8v13"/><path d="M12 8c-1.5-4-6-4-6-1.5S9 8 12 8zM12 8c1.5-4 6-4 6-1.5S15 8 12 8z"/>',
+    clipboard: '<rect x="6" y="4" width="12" height="17" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M9 11h6M9 15h4"/>',
+    box: '<path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/>',
+    ruler: '<path d="M3 17l14-14 4 4-14 14z"/><path d="M14 6l2 2M11 9l2 2M8 12l2 2"/>',
+    tag: '<path d="M20.5 12.5L12 21l-9-9L11.5 3.5H20a1 1 0 0 1 1 1v8z"/><circle cx="16" cy="8" r="1.3" fill="currentColor" stroke="none"/>',
+    truck: '<rect x="1" y="6" width="14" height="11" rx="1"/><path d="M15 10h4l3 3v4h-7z"/><circle cx="6" cy="19" r="1.6"/><circle cx="17.5" cy="19" r="1.6"/>',
+    history: '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 8v4l3 2"/>',
+    factory: '<path d="M3 21V10l6 4v-4l6 4V6l6 4v11z"/><path d="M3 21h18"/>',
+    phone: '<rect x="7" y="2.5" width="10" height="19" rx="2"/><line x1="10.5" y1="18" x2="13.5" y2="18"/>',
+    trash: '<path d="M4 7h16"/><path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/><path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/>',
+    undo: '<path d="M3 12a9 9 0 1 0 2.6-6.3"/><path d="M3 4v5h5"/>',
+    hash: '<path d="M5 9h14M5 15h14M9 3L7 21M17 3l-2 18"/>',
+    flask: '<path d="M9 3h6M10 3v5l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/>',
+    pan: '<circle cx="11" cy="13" r="7"/><path d="M18 10h3"/>',
+    trending: '<path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/>',
+    briefcase: '<rect x="2" y="7" width="20" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+    handshake: '<circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><path d="M2 20c0-3 3-5 6-5s6 2 6 5M10 20c0-3 3-5 6-5s6 2 6 5"/>',
+    barChart: '<path d="M4 20V11"/><path d="M11 20V4"/><path d="M18 20v-7"/><path d="M3 20h18"/>',
+    trendingDown: '<path d="M23 18l-9.5-9.5-5 5L1 6"/><path d="M17 18h6v-6"/>',
+    upload: '<path d="M12 3v12"/><path d="M7 8l5-5 5 5"/><path d="M4 21h16"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/>',
+    activity: '<path d="M3 12h4l2 8 4-16 2 8h6"/>',
+    help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 4.8 1c0 1.2-.8 1.8-1.6 2.4-.6.5-1.2 1-1.2 1.8"/><circle cx="12" cy="17" r=".4" fill="currentColor" stroke="none"/>',
+    users: '<circle cx="9" cy="8" r="3.2"/><path d="M3.2 20a5.8 5.8 0 0 1 11.6 0"/><circle cx="17.5" cy="9" r="2.4"/><path d="M15.8 20a4.6 4.6 0 0 1 7.4-3.7"/>',
+    image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 15l-5-5-9 9"/>',
+    settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+    bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+    globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18z"/>',
+    logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>',
+    home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/>',
+};
+
 // The "আরো" page (More.vue) holds a few actions that don't have their own
 // route — a cashier form, the shop logo, purchase/damage/return/stock-count
 // sheets, and data export — they're all opened as sheets on that one page.
@@ -196,53 +242,53 @@ const sidebarGroups = computed(() => [
             // type) without ever hiding the button itself. The separate
             // "টেবিল" item that used to sit here as the restaurant-only
             // stand-in is gone — this one link now covers it.
-            { key: 'sell', label: t('nav.sellFull'), href: mobileSellHref.value, icon: '🛒', on: mobileSellActive.value, show: hasPerm('pos') },
-            { key: 'reservations', label: t('nav.reservations'), href: route('app.reservations.index'), icon: '📅', on: props.active === 'reservations', show: hasPerm('pos') && isRestaurant.value && hasFeature('restaurant_tables') },
-            { key: 'kds', label: t('nav.kds'), href: route('app.kds.index'), icon: '🍳', on: props.active === 'kds', show: hasPerm('pos') && isRestaurant.value && hasFeature('restaurant_tables') },
-            { key: 'cds', label: t('nav.cds'), href: route('app.cds.index'), icon: '🖥️', on: props.active === 'cds', show: hasPerm('pos') && isRestaurant.value && hasFeature('restaurant_tables') },
-            { key: 'sales', label: t('nav.salesHistory'), href: route('app.sales'), icon: '🧮', on: props.active === 'sales', show: hasPerm('sales_history') },
-            { key: 'due', label: t('nav.dueFull'), href: route('app.customers'), icon: '🧾', on: props.active === 'due', show: hasPerm('customers') },
-            { key: 'promotions', label: t('nav.promotions'), href: route('app.promotions.index'), icon: '🎁', on: props.active === 'promotions', show: hasPerm('promotions') && hasFeature('promotions') },
-            { key: 'quotations', label: t('nav.quotations'), href: route('app.quotations.index'), icon: '📋', on: props.active === 'quotations', show: hasPerm('pos') && hasFeature('quotations') },
+            { key: 'sell', label: t('nav.sellFull'), href: mobileSellHref.value, icon: 'cart', on: mobileSellActive.value, show: hasPerm('pos') },
+            { key: 'reservations', label: t('nav.reservations'), href: route('app.reservations.index'), icon: 'calendar', on: props.active === 'reservations', show: hasPerm('pos') && isRestaurant.value && hasFeature('restaurant_tables') },
+            { key: 'kds', label: t('nav.kds'), href: route('app.kds.index'), icon: 'pot', on: props.active === 'kds', show: hasPerm('pos') && isRestaurant.value && hasFeature('restaurant_tables') },
+            { key: 'cds', label: t('nav.cds'), href: route('app.cds.index'), icon: 'monitor', on: props.active === 'cds', show: hasPerm('pos') && isRestaurant.value && hasFeature('restaurant_tables') },
+            { key: 'sales', label: t('nav.salesHistory'), href: route('app.sales'), icon: 'receipt', on: props.active === 'sales', show: hasPerm('sales_history') },
+            { key: 'due', label: t('nav.dueFull'), href: route('app.customers'), icon: 'invoice', on: props.active === 'due', show: hasPerm('customers') },
+            { key: 'promotions', label: t('nav.promotions'), href: route('app.promotions.index'), icon: 'gift', on: props.active === 'promotions', show: hasPerm('promotions') && hasFeature('promotions') },
+            { key: 'quotations', label: t('nav.quotations'), href: route('app.quotations.index'), icon: 'clipboard', on: props.active === 'quotations', show: hasPerm('pos') && hasFeature('quotations') },
         ],
     },
     {
         label: t('nav.category.inventory'),
         items: [
-            { key: 'stock', label: isRestaurant.value ? t('nav.stockFullRestaurant') : t('nav.stockFull'), href: route('app.stock'), icon: '📦', on: props.active === 'stock', show: hasPerm('stock') },
-            { key: 'units', label: t('nav.units'), href: route('app.units.index'), icon: '📏', on: props.active === 'units', show: hasPerm('stock') },
-            { key: 'barcode', label: t('nav.barcode'), href: route('app.barcodeLabels.index'), icon: '🏷️', on: props.active === 'more' && page.url.startsWith('/app/barcode-labels'), show: hasPerm('barcode_labels') && hasFeature('barcode_printing') },
-            { key: 'purchase', label: t('nav.purchase'), href: moreLink('purchase'), icon: '🚚', on: isMoreLinkActive('purchase'), show: hasPerm('purchases') && hasFeature('purchases') },
-            { key: 'purchaseHistory', label: t('nav.purchaseHistory'), href: route('app.purchases.index'), icon: '📜', on: props.active === 'purchaseHistory', show: hasPerm('purchases') && hasFeature('purchases') },
-            { key: 'suppliers', label: t('nav.suppliers'), href: route('app.suppliers'), icon: '🏭', on: props.active === 'suppliers', show: hasPerm('purchases') && hasFeature('suppliers') },
-            { key: 'serials', label: t('nav.serials'), href: route('app.serials.index'), icon: '📱', on: props.active === 'serials', show: hasPerm('stock') && hasFeature('serial_tracking') },
-            { key: 'damage', label: t('nav.damage'), href: moreLink('damage'), icon: '🗑️', on: isMoreLinkActive('damage'), show: hasPerm('damages') && hasFeature('damages') },
-            { key: 'return', label: t('nav.return'), href: moreLink('return'), icon: '↩️', on: isMoreLinkActive('return'), show: hasPerm('returns') && hasFeature('returns') },
-            { key: 'count', label: t('nav.stockCount'), href: moreLink('count'), icon: '🔢', on: isMoreLinkActive('count'), show: hasPerm('stock_count') && hasFeature('stock_count') },
-            { key: 'ingredients', label: t('nav.ingredients'), href: route('app.ingredients.index'), icon: '🧂', on: props.active === 'ingredients', show: hasPerm('stock') && hasFeature('ingredient_tracking') },
-            { key: 'preparations', label: t('nav.preparations'), href: route('app.preparations.index'), icon: '🍳', on: props.active === 'preparations', show: hasPerm('stock') && hasFeature('ingredient_tracking') },
-            { key: 'estimator', label: t('nav.estimator'), href: route('app.estimator.index'), icon: '🧮', on: props.active === 'estimator', show: hasPerm('stock') && hasFeature('ingredient_tracking') },
+            { key: 'stock', label: isRestaurant.value ? t('nav.stockFullRestaurant') : t('nav.stockFull'), href: route('app.stock'), icon: 'box', on: props.active === 'stock', show: hasPerm('stock') },
+            { key: 'units', label: t('nav.units'), href: route('app.units.index'), icon: 'ruler', on: props.active === 'units', show: hasPerm('stock') },
+            { key: 'barcode', label: t('nav.barcode'), href: route('app.barcodeLabels.index'), icon: 'tag', on: props.active === 'more' && page.url.startsWith('/app/barcode-labels'), show: hasPerm('barcode_labels') && hasFeature('barcode_printing') },
+            { key: 'purchase', label: t('nav.purchase'), href: moreLink('purchase'), icon: 'truck', on: isMoreLinkActive('purchase'), show: hasPerm('purchases') && hasFeature('purchases') },
+            { key: 'purchaseHistory', label: t('nav.purchaseHistory'), href: route('app.purchases.index'), icon: 'history', on: props.active === 'purchaseHistory', show: hasPerm('purchases') && hasFeature('purchases') },
+            { key: 'suppliers', label: t('nav.suppliers'), href: route('app.suppliers'), icon: 'factory', on: props.active === 'suppliers', show: hasPerm('purchases') && hasFeature('suppliers') },
+            { key: 'serials', label: t('nav.serials'), href: route('app.serials.index'), icon: 'phone', on: props.active === 'serials', show: hasPerm('stock') && hasFeature('serial_tracking') },
+            { key: 'damage', label: t('nav.damage'), href: moreLink('damage'), icon: 'trash', on: isMoreLinkActive('damage'), show: hasPerm('damages') && hasFeature('damages') },
+            { key: 'return', label: t('nav.return'), href: moreLink('return'), icon: 'undo', on: isMoreLinkActive('return'), show: hasPerm('returns') && hasFeature('returns') },
+            { key: 'count', label: t('nav.stockCount'), href: moreLink('count'), icon: 'hash', on: isMoreLinkActive('count'), show: hasPerm('stock_count') && hasFeature('stock_count') },
+            { key: 'ingredients', label: t('nav.ingredients'), href: route('app.ingredients.index'), icon: 'flask', on: props.active === 'ingredients', show: hasPerm('stock') && hasFeature('ingredient_tracking') },
+            { key: 'preparations', label: t('nav.preparations'), href: route('app.preparations.index'), icon: 'pan', on: props.active === 'preparations', show: hasPerm('stock') && hasFeature('ingredient_tracking') },
+            { key: 'estimator', label: t('nav.estimator'), href: route('app.estimator.index'), icon: 'trending', on: props.active === 'estimator', show: hasPerm('stock') && hasFeature('ingredient_tracking') },
         ],
     },
     {
         label: t('nav.category.accounts'),
         items: [
-            { key: 'accounts', label: t('nav.accounts'), href: route('app.accounts'), icon: '💼', on: props.active === 'accounts', show: hasPerm('accounts') && hasFeature('accounts') },
-            { key: 'partners', label: t('nav.partners'), href: route('app.partners.index'), icon: '🤝', on: props.active === 'partners', show: isOwner.value && hasFeature('partners') },
-            { key: 'reports', label: t('nav.reports'), href: route('app.reports'), icon: '📊', on: props.active === 'reports', show: hasPerm('reports') && hasFeature('reports') },
-            { key: 'expenses', label: t('nav.expenses'), href: route('app.expenses'), icon: '💸', on: props.active === 'expenses', show: hasPerm('expenses') && hasFeature('expenses') },
-            { key: 'export', label: t('nav.export'), href: moreLink('export'), icon: '📤', on: isMoreLinkActive('export'), show: hasPerm('export') && hasFeature('export') },
+            { key: 'accounts', label: t('nav.accounts'), href: route('app.accounts'), icon: 'briefcase', on: props.active === 'accounts', show: hasPerm('accounts') && hasFeature('accounts') },
+            { key: 'partners', label: t('nav.partners'), href: route('app.partners.index'), icon: 'handshake', on: props.active === 'partners', show: isOwner.value && hasFeature('partners') },
+            { key: 'reports', label: t('nav.reports'), href: route('app.reports'), icon: 'barChart', on: props.active === 'reports', show: hasPerm('reports') && hasFeature('reports') },
+            { key: 'expenses', label: t('nav.expenses'), href: route('app.expenses'), icon: 'trendingDown', on: props.active === 'expenses', show: hasPerm('expenses') && hasFeature('expenses') },
+            { key: 'export', label: t('nav.export'), href: moreLink('export'), icon: 'upload', on: isMoreLinkActive('export'), show: hasPerm('export') && hasFeature('export') },
         ],
     },
     {
         label: t('nav.category.settings'),
         items: [
-            { key: 'cashier', label: t('nav.cashier'), href: route('app.staff.index'), icon: '👤', on: props.active === 'cashier', show: isOwner.value && hasFeature('cashier_management') },
-            { key: 'activity', label: t('nav.activity'), href: route('app.activity'), icon: '📋', on: props.active === 'activity', show: isOwner.value && hasFeature('activity_log') },
-            { key: 'help', label: t('nav.help'), href: route('app.help'), icon: '❓', on: props.active === 'help', show: true },
-            { key: 'employees', label: t('nav.employees'), href: route('app.employees.index'), icon: '👥', on: props.active === 'employees', show: isOwner.value && hasFeature('hr_payroll') },
-            { key: 'logo', label: t('nav.logo'), href: moreLink('logo'), icon: '🖼️', on: isMoreLinkActive('logo'), show: hasPerm('settings') },
-            { key: 'more', label: t('nav.moreAll'), href: moreLink(), icon: '⚙️', on: isMoreLinkActive(), show: true },
+            { key: 'cashier', label: t('nav.cashier'), href: route('app.staff.index'), icon: 'user', on: props.active === 'cashier', show: isOwner.value && hasFeature('cashier_management') },
+            { key: 'activity', label: t('nav.activity'), href: route('app.activity'), icon: 'activity', on: props.active === 'activity', show: isOwner.value && hasFeature('activity_log') },
+            { key: 'help', label: t('nav.help'), href: route('app.help'), icon: 'help', on: props.active === 'help', show: true },
+            { key: 'employees', label: t('nav.employees'), href: route('app.employees.index'), icon: 'users', on: props.active === 'employees', show: isOwner.value && hasFeature('hr_payroll') },
+            { key: 'logo', label: t('nav.logo'), href: moreLink('logo'), icon: 'image', on: isMoreLinkActive('logo'), show: hasPerm('settings') },
+            { key: 'more', label: t('nav.moreAll'), href: moreLink(), icon: 'settings', on: isMoreLinkActive(), show: true },
         ],
     },
 ]);
@@ -276,10 +322,10 @@ const sidebarGroups = computed(() => [
             <nav class="flex-1 p-3 space-y-3 overflow-y-auto">
                 <Link
                     :href="route('app.home')"
-                    class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium"
-                    :class="active === 'home' ? 'bg-emerald-50 text-emerald-700' : 'text-gray-600 hover:bg-gray-100'"
+                    class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium"
+                    :class="active === 'home' ? 'nav-item-on' : 'text-gray-600 hover:bg-gray-100'"
                 >
-                    <span class="text-lg">🏠</span> {{ t('nav.home') }}
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 shrink-0" v-html="ICONS.home"></svg> {{ t('nav.home') }}
                 </Link>
 
                 <div v-for="group in sidebarGroups" :key="group.label">
@@ -288,10 +334,10 @@ const sidebarGroups = computed(() => [
                         <Link
                             v-for="item in group.items.filter(i => i.show)" :key="item.key"
                             :href="item.href"
-                            class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium"
-                            :class="item.on ? 'bg-emerald-50 text-emerald-700' : 'text-gray-600 hover:bg-gray-100'"
+                            class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium"
+                            :class="item.on ? 'nav-item-on' : 'text-gray-600 hover:bg-gray-100'"
                         >
-                            <span class="text-lg">{{ item.icon }}</span> {{ item.label }}
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 shrink-0" v-html="ICONS[item.icon]"></svg> {{ item.label }}
                         </Link>
                     </template>
                 </div>
@@ -299,14 +345,14 @@ const sidebarGroups = computed(() => [
 
             <div class="p-3 border-t space-y-1">
                 <button v-if="isOwner" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100" @click="toggleNotifications">
-                    <span class="text-lg">🔔</span> {{ t('notif.title') }}
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 shrink-0" v-html="ICONS.bell"></svg> {{ t('notif.title') }}
                     <span v-if="unreadCount" class="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">{{ unreadCount }}</span>
                 </button>
                 <button class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100" @click="toggleLang">
-                    <span class="text-lg">🌐</span> {{ lang === 'bn' ? 'English' : 'বাংলা' }}
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 shrink-0" v-html="ICONS.globe"></svg> {{ lang === 'bn' ? 'English' : 'বাংলা' }}
                 </button>
                 <button class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-rose-600 hover:bg-rose-50" @click="logout">
-                    <span class="text-lg">🚪</span> {{ t('common.logout') }}
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 shrink-0" v-html="ICONS.logout"></svg> {{ t('common.logout') }}
                 </button>
             </div>
 
@@ -347,7 +393,7 @@ const sidebarGroups = computed(() => [
                         style="margin-left:auto;position:relative;border:1.5px solid var(--line2);border-radius:99px;width:38px;height:38px;color:var(--green);background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:16px"
                         @click="toggleNotifications"
                     >
-                        🔔
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px" v-html="ICONS.bell"></svg>
                         <span v-if="unreadCount" style="position:absolute;top:-3px;right:-3px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--rose);color:#fff;font-size:9.5px;font-weight:800;display:flex;align-items:center;justify-content:center">{{ unreadCount }}</span>
                     </button>
                     <button
@@ -362,7 +408,7 @@ const sidebarGroups = computed(() => [
                         style="margin-left:8px;border:1.5px solid var(--line2);border-radius:99px;padding:7px 13px;font-size:12.5px;font-weight:700;color:var(--green);background:var(--panel);display:flex;align-items:center;gap:6px"
                         @click="logout"
                     >
-                        🚪 {{ t('common.logout') }}
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px" v-html="ICONS.logout"></svg> {{ t('common.logout') }}
                     </button>
                 </div>
 
