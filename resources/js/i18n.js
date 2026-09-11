@@ -271,12 +271,17 @@ export const translations = {
     'workPeriod.endButton': { bn: 'শিফট বন্ধ করুন', en: 'Close shift' },
 
     // ---- landing (public homepage, before login) ----
-    'landing.tagline': { bn: 'Where Business Clicks', en: 'Where Business Clicks' },
+    'landing.tagline': { bn: 'ব্যবসা চলুক নিশ্চিন্তে', en: 'Run your shop with confidence' },
     'landing.heroTitle': { bn: 'আপনার দোকানের জন্য স্মার্ট POS সিস্টেম', en: 'A smart POS system for your shop' },
     'landing.heroSubtitle': { bn: 'বিক্রি, স্টক, বাকির হিসাব আর রিপোর্ট — সব একসাথে, এক জায়গায়। মুদি থেকে রেস্টুরেন্ট, সব ধরনের দোকানের জন্য।', en: 'Sales, stock, credit ledger, and reports — all in one place. For every kind of shop, from grocery to restaurant.' },
-    'landing.loginBtn': { bn: '🔓 লগইন', en: '🔓 Log in' },
-    'landing.signupBtn': { bn: '🚀 সাইন আপ (নতুন দোকান)', en: '🚀 Sign up (new shop)' },
-    'landing.whatsappBtn': { bn: '💬 WhatsApp এ যোগাযোগ করুন', en: '💬 Contact us on WhatsApp' },
+    // no emoji on these three — a signup/login/WhatsApp button reads as a
+    // confident product action on its own; the WhatsApp button already
+    // shows its own hand-drawn SVG icon right before this label (see
+    // Landing/Index.vue's ICON_PATHS.whatsapp), so a 💬 baked into the text
+    // too was a literal double icon on the same button.
+    'landing.loginBtn': { bn: 'লগইন', en: 'Log in' },
+    'landing.signupBtn': { bn: 'সাইন আপ করুন', en: 'Sign up' },
+    'landing.whatsappBtn': { bn: 'WhatsApp-এ কথা বলুন', en: 'Chat on WhatsApp' },
     'landing.featuresTitle': { bn: 'কী কী আছে', en: "What's included" },
     'landing.featuresSub': { bn: 'যা যা লাগে দোকান চালাতে — সবই এক জায়গায়', en: 'Everything a shop needs to run — all in one place' },
 
@@ -355,7 +360,7 @@ export const translations = {
 
     'landing.closingTitle': { bn: 'আজই শুরু করুন', en: 'Start today' },
     'landing.closingSub': { bn: '১৪ দিন সম্পূর্ণ ফ্রি ট্রায়াল — কোনো কার্ড লাগবে না', en: '14 days completely free trial — no card needed' },
-    'landing.closingPunch': { bn: 'এত ফিচার, এত সহজে ব্যবহারের সুযোগ আর কোথাও নেই', en: "This much, this easy, in one place — nowhere else" },
+    'landing.closingPunch': { bn: 'একটাই অ্যাপ — আপনার দোকানের পুরো হিসাব', en: 'One app — your whole shop\'s accounts, sorted' },
 
     'landing.audienceTitle': { bn: 'কাদের জন্য', en: "Who it's for" },
     'landing.audience.grocery': { bn: 'মুদি দোকান', en: 'Grocery' },
