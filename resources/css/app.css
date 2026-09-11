@@ -155,14 +155,17 @@ body {
 .stat .k { font-size: 12px; color: var(--mut); display: flex; align-items: center; gap: 6px; }
 .stat .v { font-size: 23px; font-weight: 800; margin-top: 7px; letter-spacing: -.5px; font-variant-numeric: tabular-nums; }
 .stat .h { font-size: 11px; color: var(--dim); margin-top: 2px; }
+/* flat soft tints, not a gradient-to-white fade — same call as the other
+   hero-stat cards across the app (Accounts/Customers/Expenses/etc.): the
+   emphasis comes from the tint + bold number, not from a gradient. */
 .stat.gold .v { color: var(--gold); }
-.stat.gold { background: linear-gradient(160deg, var(--goldSoft), #fff); }
+.stat.gold { background: var(--goldSoft); }
 .stat.mint .v { color: var(--mint); }
-.stat.mint { background: linear-gradient(160deg, var(--greenSoft), #fff); }
+.stat.mint { background: var(--greenSoft); }
 .stat.rose .v { color: var(--rose); }
-.stat.rose { background: linear-gradient(160deg, var(--roseSoft), #fff); }
+.stat.rose { background: var(--roseSoft); }
 .stat.sky .v { color: var(--sky); }
-.stat.sky { background: linear-gradient(160deg, #E3EFFB, #fff); }
+.stat.sky { background: #E3EFFB; }
 
 .sechead { display: flex; align-items: center; justify-content: space-between; margin: 22px 2px 12px; }
 .sechead h2 { font-size: 16px; font-weight: 700; }
