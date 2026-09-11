@@ -15,7 +15,14 @@
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Hind+Siliguri:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=Baloo+Da+2:wght@600;700;800&display=swap" rel="stylesheet">
+        <!-- Space Grotesk (Latin) + Baloo Da 2 (Bengali) — a distinct display
+             pairing used ONLY for the public landing page's headlines (see
+             --font-display in app.css), never the app's own screens. Browsers
+             fall back per-glyph within a font-family list, so Latin text in a
+             headline renders in Space Grotesk and Bengali text in the same
+             headline automatically renders in Baloo Da 2 — no lang-detection
+             JS needed. -->
 
         <!-- Scripts -->
         @routes
