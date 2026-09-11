@@ -993,7 +993,7 @@ useKeyboardShortcuts({
         <div style="height:78px" class="lg:hidden"></div>
         <div class="posbar lg:hidden">
             <div v-if="!cartCount" class="posbar-empty">{{ t('pos.cartEmptyHint') }}{{ canScan ? t('pos.orScan') : '' }}</div>
-            <button v-else class="btn" style="box-shadow:0 6px 18px rgba(242,106,27,.4)" @click="cartOpen = true">
+            <button v-else class="btn" @click="cartOpen = true">
                 <span style="display:flex;align-items:center;gap:8px"><span class="cartcount">{{ cartCount }}</span> {{ t('pos.billButton') }}</span>
                 <span style="margin-left:auto;font-weight:850">{{ money(subtotal) }}</span>
             </button>

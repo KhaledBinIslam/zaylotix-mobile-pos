@@ -48,7 +48,7 @@ function saveServiceCharge() {
         <div class="pgttl">{{ t('nav.accounts') }}</div>
         <div class="pgsub">{{ t('acc.subtitle') }}</div>
 
-        <div class="card" style="background:linear-gradient(135deg,var(--greenSoft),#fff);margin-bottom:16px;text-align:center">
+        <div class="card" style="background:var(--greenSoft);margin-bottom:16px;text-align:center">
             <div style="color:var(--mut);font-size:13px">{{ t('acc.businessValue') }}</div>
             <div style="font-size:32px;font-weight:850;color:var(--green);letter-spacing:-.5px">{{ money(netWorth) }}</div>
             <div style="font-size:12px;color:var(--dim)">{{ t('acc.assetsMinusLiabilities') }}</div>

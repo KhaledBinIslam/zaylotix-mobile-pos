@@ -500,7 +500,7 @@ function sendMemoWA() {
              long product grid; sticky so it stays visible while scrolling,
              not just present on first load -->
         <div v-if="cartCount" style="position:sticky;top:0;z-index:10;margin:-2px -2px 12px;padding:2px">
-            <button type="button" class="btn" style="box-shadow:0 6px 18px rgba(242,106,27,.4)" @click="cartOpen = true">
+            <button type="button" class="btn" @click="cartOpen = true">
                 <span style="display:flex;align-items:center;gap:8px"><span class="cartcount">{{ cartCount }}</span> {{ t('pos.viewCart') }}</span>
                 <span style="margin-left:auto;font-weight:850">{{ money(subtotal) }}</span>
             </button>

@@ -104,7 +104,7 @@ function sendOffer() {
         <div class="pgsub">{{ t('due.subtitle') }}</div>
         <HowToHint screen-key="due" />
 
-        <div class="card" style="background:linear-gradient(135deg,var(--roseSoft),#fff);border-color:var(--line2);margin-bottom:16px">
+        <div class="card" style="background:var(--roseSoft);border-color:var(--line2);margin-bottom:16px">
             <div class="k" style="color:var(--mut);font-size:12px">{{ t('due.totalReceivable') }}</div>
             <div style="font-size:30px;font-weight:850;color:var(--rose);letter-spacing:-.5px">{{ money(totalDue) }}</div>
             <div style="font-size:12px;color:var(--dim);margin-top:2px">{{ withDue.length }} {{ t('home.customers') }}</div>

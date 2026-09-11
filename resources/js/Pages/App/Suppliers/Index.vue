@@ -42,7 +42,7 @@ function pay() {
         <div class="pgttl">{{ t('supplier.title') }}</div>
         <div class="pgsub">{{ t('supplier.subtitle') }}</div>
 
-        <div class="card" style="background:linear-gradient(135deg,var(--roseSoft),#fff);margin-bottom:16px;text-align:center">
+        <div class="card" style="background:var(--roseSoft);margin-bottom:16px;text-align:center">
             <div style="color:var(--mut);font-size:13px">{{ t('supplier.totalPayable') }}</div>
             <div style="font-size:30px;font-weight:850;color:var(--rose)">{{ money(totalPayable) }}</div>
         </div>

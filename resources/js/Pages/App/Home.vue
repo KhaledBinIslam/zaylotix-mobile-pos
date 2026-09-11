@@ -85,7 +85,7 @@ const payModeClass = { cash: 'mint', bkash: 'gold', nagad: 'gold', credit: 'rose
             </div>
         </div>
 
-        <div class="card" style="margin-top:16px;background:linear-gradient(135deg,var(--goldSoft),var(--greenSoft));border-color:var(--line2)">
+        <div class="card" style="margin-top:16px;background:var(--greenSoft);border-color:var(--line2)">
             <div style="display:flex;align-items:center;gap:12px">
                 <div style="font-size:26px">📱</div>
                 <div style="flex:1"><b style="font-size:14px">{{ t('home.noScannerNeeded') }}</b></div>

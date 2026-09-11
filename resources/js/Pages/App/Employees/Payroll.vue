@@ -49,7 +49,7 @@ function submitPay() {
 
         <input v-model="selectedMonth" type="month" style="margin-bottom:12px" @change="changeMonth">
 
-        <div class="card" style="background:linear-gradient(135deg,var(--greenSoft),#fff);margin-bottom:16px;text-align:center">
+        <div class="card" style="background:var(--greenSoft);margin-bottom:16px;text-align:center">
             <div style="color:var(--mut);font-size:13px">{{ t('pay.totalPaid') }}</div>
             <div style="font-size:26px;font-weight:850;color:var(--green)">{{ money(totalPaidThisMonth) }}</div>
         </div>

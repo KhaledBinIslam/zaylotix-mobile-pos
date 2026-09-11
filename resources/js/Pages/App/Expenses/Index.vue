@@ -21,7 +21,7 @@ function save() {
     <Head :title="t('exp.title')" />
     <AppLayout active="more">
         <div class="pgttl">{{ t('exp.title') }}</div>
-        <div class="card" style="background:linear-gradient(135deg,var(--roseSoft),#fff);margin-bottom:16px;text-align:center">
+        <div class="card" style="background:var(--roseSoft);margin-bottom:16px;text-align:center">
             <div style="color:var(--mut);font-size:13px">{{ t('exp.total') }}</div>
             <div style="font-size:30px;font-weight:850;color:var(--rose)">{{ money(total) }}</div>
         </div>
