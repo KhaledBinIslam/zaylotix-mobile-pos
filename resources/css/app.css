@@ -27,8 +27,43 @@
   --purple: #7C3AED;
   --purpleSoft: #EFE7FD;
   --wa: #25D366;
+
+  /* --mint and --green are the same hex on purpose, not a leftover
+     duplicate: --green is the BRAND color (nav, primary money/sell
+     accents), --mint is the SEMANTIC "success/done" color (pills, stat
+     cards). They happen to match today; keeping them as separate names
+     means a future brand-color tweak doesn't silently repaint every
+     "completed" badge in the app, and vice versa. */
+  --mint: #1FA463;
+
+  /* restrained radius scale (Section 8) — most existing rules still carry
+     their own literal px value rather than referencing these; this is the
+     scale new/updated components should converge on, not a retroactive
+     rename of every existing rule in one pass. Small (chips, inputs,
+     qty-steppers) / medium (buttons, cards) / large (sheets, hero panels) —
+     three sizes is enough for a shop app, not ten. */
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
   --r: 16px;
   --r2: 22px;
+
+  /* spacing scale (Section 7) — same adoption note as radius above: new
+     work should reach for these instead of another one-off 13px/17px/19px. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+
+  /* One real shadow, used for elevation only (cards lifting off the page
+     background) — not a per-component colored glow. Section 9/28: a
+     button/badge/stat tile matching its own fill color back at itself as a
+     tinted shadow is the "glowing SaaS button" pattern this brief asks to
+     remove; interactive controls rely on their own fill + a plain
+     translateY press state instead, not light bleeding out from under them. */
   --sh: 0 6px 20px rgba(18, 38, 28, .08);
 }
 
@@ -94,7 +129,6 @@ body {
 .sticky-footer { position: sticky; bottom: 0; background: var(--bg); padding-top: 6px; z-index: 5; }
 
 #top { position: sticky; top: 0; z-index: 30; padding: 14px 18px 12px; background: rgba(242, 247, 242, .9); backdrop-filter: blur(12px); display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--line); }
-.blogo { width: 40px; height: 40px; border-radius: 12px; flex: 0 0 auto; background: linear-gradient(140deg, var(--green), #0F7A45); display: flex; align-items: center; justify-content: center; font-weight: 800; color: #fff; font-size: 20px; box-shadow: 0 4px 14px rgba(31, 164, 99, .3); }
 
 #view { flex: 1; overflow-y: auto; padding: 18px 18px 110px; }
 .backbtn { display: inline-flex; align-items: center; gap: 5px; background: none; border: none; padding: 0; margin-bottom: 12px; color: var(--mut); font-size: 13px; font-weight: 650; }
@@ -157,15 +191,24 @@ body {
    ever makes .btn itself feel a size and a touch more solid; every place
    that already uses .btn/.btn.ghost/.btn.sm picks this up automatically,
    nothing about their own markup changes */
-.btn { background: var(--gold); color: #fff; font-weight: 750; border-radius: 13px; padding: 14px 18px; display: inline-flex; align-items: center; justify-content: center; gap: 9px; width: 100%; font-size: 15px; box-shadow: 0 4px 14px rgba(242, 106, 27, .28); border: 0; cursor: pointer; transition: transform .12s ease, box-shadow .12s ease, opacity .12s ease; }
-.btn:active { transform: translateY(1px) scale(.99); box-shadow: 0 2px 8px rgba(242, 106, 27, .22); }
+/* Section 9/28: no colored glow (a shadow tinted to match the button's own
+   fill, bleeding out from under it, is the recognizable "AI SaaS button"
+   tell) — the gold fill itself already carries all the visual weight a
+   primary action needs; depth comes from a plain neutral shadow only,
+   restrained enough that .btn.ghost can drop it entirely and still read as
+   part of the same family, not a lesser one. */
+.btn { background: var(--gold); color: #fff; font-weight: 750; border-radius: var(--radius-md); padding: 14px 18px; display: inline-flex; align-items: center; justify-content: center; gap: 9px; width: 100%; font-size: 15px; box-shadow: 0 1px 2px rgba(18, 38, 28, .12); border: 0; cursor: pointer; transition: transform .12s ease, box-shadow .12s ease, opacity .12s ease; }
+.btn:active { transform: translateY(1px) scale(.99); box-shadow: none; }
 .btn.ghost { background: var(--panel); color: var(--tx); border: 1.5px solid var(--line2); box-shadow: none; }
 .btn.ghost:active { box-shadow: none; }
 .btn.wa { background: var(--wa); color: #04220F; }
 .btn.rose { background: var(--rose); color: #2A0509; }
 .btn.sm { padding: 10px 14px; font-size: 13.5px; width: auto; border-radius: 11px; }
 
-.grand-total-bar { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, var(--green), var(--green2)); color: #fff; border-radius: 13px; padding: 12px 16px; margin-bottom: 10px; font-size: 14px; font-weight: 700; box-shadow: 0 4px 14px rgba(31, 164, 99, .3); }
+/* flat brand green, not a gradient+glow — the grand total is the one number
+   a cashier must never misread, so it earns a solid color block for
+   contrast; it doesn't need to also look like a marketing button */
+.grand-total-bar { display: flex; justify-content: space-between; align-items: center; background: var(--green2); color: #fff; border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 10px; font-size: 14px; font-weight: 700; }
 .grand-total-bar b { font-size: 19px; font-weight: 850; letter-spacing: -.3px; }
 .btn:disabled { opacity: .55; cursor: not-allowed; }
 .btnrow { display: flex; gap: 10px; }
@@ -175,7 +218,10 @@ body {
 .tab svg { width: 23px; height: 23px; stroke: currentColor; fill: none; stroke-width: 1.9; }
 .tab.on { color: var(--gold); }
 .tab.sell { position: relative; }
-.tab.sell .fab { width: 52px; height: 52px; border-radius: 16px; margin-top: -24px; margin-bottom: 2px; background: linear-gradient(140deg, var(--gold), var(--gold2)); color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 18px rgba(242, 106, 27, .42); }
+/* flat gold, not a gradient — this is the one nav icon that's meant to
+   stand out as the primary action (Sell), a solid fill plus its raised
+   position already does that without also glowing */
+.tab.sell .fab { width: 52px; height: 52px; border-radius: var(--radius-md); margin-top: -24px; margin-bottom: 2px; background: var(--gold); color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(18, 38, 28, .18); }
 .tab.sell .fab svg { width: 26px; height: 26px; stroke-width: 2.4; stroke: #fff; }
 
 #scrim { position: fixed; inset: 0; background: rgba(4, 6, 20, .6); z-index: 50; }
@@ -364,8 +410,6 @@ body {
 #login { position: fixed; inset: 0; z-index: 100; overflow-y: auto; background: radial-gradient(600px 340px at 85% -6%, rgba(242, 106, 27, .10), transparent), radial-gradient(560px 400px at -8% 106%, rgba(31, 164, 99, .14), transparent), var(--bg); display: flex; align-items: center; align-items: safe center; justify-content: center; padding: 24px 18px; }
 .login-inner { width: 100%; max-width: 400px; }
 .login-brand { text-align: center; margin-bottom: 22px; }
-.login-brand .blogo { margin: 0 auto 12px; box-shadow: 0 8px 22px rgba(31, 164, 99, .32); }
-.login-name { font-size: 30px; font-weight: 850; letter-spacing: -.6px; color: var(--ink); }
 .login-tag { font-size: 13.5px; color: var(--mut); margin-top: 3px; }
 .login-card { background: var(--panel); border: 1px solid var(--line); border-radius: 22px; padding: 24px 20px; box-shadow: 0 12px 40px rgba(18, 38, 28, .12); }
 .lc-h { font-size: 20px; font-weight: 800; }
