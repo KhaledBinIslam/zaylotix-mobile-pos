@@ -57,7 +57,11 @@ class DemoShopSeederTest extends TestCase
         $shop = Shop::withoutGlobalScopes()->where('phone', '01700000008')->first();
         $items = Product::withoutGlobalScopes()->where('shop_id', $shop->id)->get()->keyBy('name');
 
-        $this->assertCount(3, $items);
+        // menu was expanded to spread items across every menu category
+        // (Rice & Curry, Kebab/Grill, Fast Food, Drinks, Sweets/Dessert,
+        // Other) for seller demos — assert "at least the original 3", not
+        // an exact count that would break every time the menu grows.
+        $this->assertGreaterThanOrEqual(3, $items->count());
 
         $biryani = $items['চিকেন বিরিয়ানি'];
         $this->assertSame('untracked', $biryani->stock_mode);

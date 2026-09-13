@@ -110,7 +110,7 @@ class DemoShopSeeder extends Seeder
 
         Tenancy::set($shop->id);
 
-        $cat = ProductCategory::where('shop_id', $shop->id)->first();
+        $cats = ProductCategory::where('shop_id', $shop->id)->get()->keyBy('name_en');
         $unit = Unit::where('shop_id', $shop->id)->first();
 
         // Showcases all 3 of Product::STOCK_MODE_* — a real restaurant menu
@@ -118,17 +118,26 @@ class DemoShopSeeder extends Seeder
         // (no meaningful count), kabab is the kind of dish an owner might
         // just flip to "sold out" once the tray's empty, and bottled/canned
         // drinks are exactly the packaged-goods case a real piece count
-        // still makes sense for.
+        // still makes sense for. Spread across every menu category (not
+        // just the first one) so a seller demo shows all of them populated.
         $menu = [
-            ['name' => 'চিকেন বিরিয়ানি', 'name_en' => 'Chicken Biryani', 'emoji' => '🍛', 'price' => 220, 'cost' => 140, 'stock_mode' => Product::STOCK_MODE_UNTRACKED, 'stock' => 0],
-            ['name' => 'বিফ কাবাব', 'name_en' => 'Beef Kabab', 'emoji' => '🍢', 'price' => 180, 'cost' => 110, 'stock_mode' => Product::STOCK_MODE_TOGGLE, 'stock' => 1],
-            ['name' => 'কোল্ড ড্রিংকস', 'name_en' => 'Cold Drinks', 'emoji' => '🥤', 'price' => 40, 'cost' => 25, 'stock_mode' => Product::STOCK_MODE_TRACKED, 'stock' => 48],
+            ['name' => 'চিকেন বিরিয়ানি', 'name_en' => 'Chicken Biryani', 'emoji' => '🍛', 'cat' => 'Rice & Curry', 'price' => 220, 'cost' => 140, 'stock_mode' => Product::STOCK_MODE_UNTRACKED, 'stock' => 0],
+            ['name' => 'খিচুড়ি', 'name_en' => 'Khichuri', 'emoji' => '🍛', 'cat' => 'Rice & Curry', 'price' => 90, 'cost' => 55, 'stock_mode' => Product::STOCK_MODE_UNTRACKED, 'stock' => 0],
+            ['name' => 'বিফ কাবাব', 'name_en' => 'Beef Kabab', 'emoji' => '🍢', 'cat' => 'Kebab/Grill', 'price' => 180, 'cost' => 110, 'stock_mode' => Product::STOCK_MODE_TOGGLE, 'stock' => 1],
+            ['name' => 'চিকেন গ্রিল', 'name_en' => 'Chicken Grill', 'emoji' => '🍗', 'cat' => 'Kebab/Grill', 'price' => 200, 'cost' => 130, 'stock_mode' => Product::STOCK_MODE_TOGGLE, 'stock' => 1],
+            ['name' => 'চিকেন বার্গার', 'name_en' => 'Chicken Burger', 'emoji' => '🍔', 'cat' => 'Fast Food', 'price' => 150, 'cost' => 95, 'stock_mode' => Product::STOCK_MODE_TOGGLE, 'stock' => 1],
+            ['name' => 'ফ্রেঞ্চ ফ্রাই', 'name_en' => 'French Fries', 'emoji' => '🍟', 'cat' => 'Fast Food', 'price' => 100, 'cost' => 60, 'stock_mode' => Product::STOCK_MODE_TRACKED, 'stock' => 30],
+            ['name' => 'কোল্ড ড্রিংকস', 'name_en' => 'Cold Drinks', 'emoji' => '🥤', 'cat' => 'Drinks', 'price' => 40, 'cost' => 25, 'stock_mode' => Product::STOCK_MODE_TRACKED, 'stock' => 48],
+            ['name' => 'বোরহানি', 'name_en' => 'Borhani', 'emoji' => '🥛', 'cat' => 'Drinks', 'price' => 30, 'cost' => 18, 'stock_mode' => Product::STOCK_MODE_TRACKED, 'stock' => 20],
+            ['name' => 'ফিরনি', 'name_en' => 'Firni', 'emoji' => '🍮', 'cat' => 'Sweets/Dessert', 'price' => 50, 'cost' => 30, 'stock_mode' => Product::STOCK_MODE_TRACKED, 'stock' => 15],
+            ['name' => 'মিষ্টি দই', 'name_en' => 'Sweet Yogurt', 'emoji' => '🍮', 'cat' => 'Sweets/Dessert', 'price' => 40, 'cost' => 25, 'stock_mode' => Product::STOCK_MODE_TRACKED, 'stock' => 18],
+            ['name' => 'সালাদ', 'name_en' => 'Salad', 'emoji' => '🥗', 'cat' => 'Other', 'price' => 30, 'cost' => 15, 'stock_mode' => Product::STOCK_MODE_UNTRACKED, 'stock' => 0],
         ];
         foreach ($menu as $m) {
             Product::firstOrCreate(
                 ['shop_id' => $shop->id, 'name' => $m['name']],
                 [
-                    'category_id' => $cat?->id,
+                    'category_id' => $cats[$m['cat']]->id ?? null,
                     'unit_id' => $unit?->id,
                     'name_en' => $m['name_en'],
                     'emoji' => $m['emoji'],
@@ -138,6 +147,15 @@ class DemoShopSeeder extends Seeder
                     'stock' => $m['stock'],
                 ]
             );
+        }
+
+        // an earlier version of this seeder mis-categorized every menu item
+        // into whichever category happened to be first() — fix that up on
+        // shops that already exist, so this isn't just a fresh-install fix.
+        foreach ($menu as $m) {
+            if (isset($cats[$m['cat']])) {
+                Product::where('shop_id', $shop->id)->where('name', $m['name'])->update(['category_id' => $cats[$m['cat']]->id]);
+            }
         }
 
         foreach (['টেবিল ১', 'টেবিল ২', 'টেবিল ৩', 'টেবিল ৪'] as $name) {
@@ -208,6 +226,12 @@ class DemoShopSeeder extends Seeder
             ['name' => 'সেভেন আপ ৫০০ মিলি', 'name_en' => '7Up 500ml', 'emoji' => '🥤', 'cat' => 'Drinks', 'price' => 35, 'cost' => 28, 'stock' => 48, 'barcode' => '8901234500086'],
             ['name' => 'ইয়াম ইয়াম নুডলস', 'name_en' => 'Yum Yum Noodles', 'emoji' => '🍜', 'cat' => 'Grocery', 'price' => 20, 'cost' => 15, 'stock' => 90, 'barcode' => '8901234500093'],
             ['name' => 'ডানো গুড়া দুধ ৫০০গ্রা', 'name_en' => 'Dano Milk 500g', 'emoji' => '🥛', 'cat' => 'Grocery', 'price' => 450, 'cost' => 415, 'stock' => 9, 'barcode' => '8901234500109'],
+            // Dairy and Other were previously empty — every nav category
+            // should have something in it for a seller demo to look complete.
+            ['name' => 'ডিম (ডজন)', 'name_en' => 'Egg (dozen)', 'emoji' => '🥚', 'cat' => 'Dairy', 'price' => 150, 'cost' => 135, 'stock' => 20, 'barcode' => '8901234500116'],
+            ['name' => 'ব্র্যাক দই ৫০০গ্রাম', 'name_en' => 'Brac Yogurt 500g', 'emoji' => '🍶', 'cat' => 'Dairy', 'price' => 90, 'cost' => 75, 'stock' => 15, 'barcode' => '8901234500123'],
+            ['name' => 'ম্যাচ বক্স', 'name_en' => 'Match Box', 'emoji' => '🔥', 'cat' => 'Other', 'price' => 5, 'cost' => 3, 'stock' => 100, 'barcode' => '8901234500130'],
+            ['name' => 'টিস্যু পেপার', 'name_en' => 'Tissue Paper', 'emoji' => '🧻', 'cat' => 'Other', 'price' => 60, 'cost' => 48, 'stock' => 25, 'barcode' => '8901234500147'],
         ];
 
         $productModels = [];
@@ -368,32 +392,18 @@ class DemoShopSeeder extends Seeder
 
         Tenancy::set($shop->id); // see the comment in groceryFlagship() above
 
-        $cat = ProductCategory::where('shop_id', $shop->id)->first();
+        $cats = ProductCategory::where('shop_id', $shop->id)->get()->keyBy('name_en');
+        $cat = $cats->first();
         $unit = Unit::where('shop_id', $shop->id)->first();
 
         if ($typeSlug === 'clothing') {
-            $this->clothingDemo($shop, $cat, $unit);
+            $this->clothingDemo($shop, $cats, $unit);
         } else {
-            $extra = match ($typeSlug) {
-                'pharmacy' => ['expiry_date' => now()->addYear()->toDateString(), 'batch_no' => 'BATCH-001'],
-                'mobile' => ['imei' => '359123456789012'],
-                'cosmetics' => ['expiry_date' => now()->addMonths(18)->toDateString()],
-                default => [],
-            };
-
-            Product::firstOrCreate(
-                ['shop_id' => $shop->id, 'name' => 'ডেমো পণ্য ১'],
-                array_merge([
-                    'category_id' => $cat?->id,
-                    'unit_id' => $unit?->id,
-                    'name_en' => 'Demo Product 1',
-                    'emoji' => '📦',
-                    'barcode' => '9000000000'.$shop->id,
-                    'cost' => 100,
-                    'price' => 150,
-                    'stock' => 20,
-                ], $extra)
-            );
+            // remove the old single placeholder product from shops that
+            // already have it — categorizedCatalog() below now seeds a
+            // real, properly-categorized product in its place.
+            Product::where('shop_id', $shop->id)->where('name', 'ডেমো পণ্য ১')->delete();
+            $this->seedCatalog($shop, $typeSlug, $cats, $unit);
         }
 
         // pharmacy: a box of tablets, sellable as a whole strip or single tablets
@@ -447,13 +457,19 @@ class DemoShopSeeder extends Seeder
      * base Product row (what this used to seed) never exercises that flow
      * at all, since ProductVariantController/Clothing/Pos.vue only offer a
      * picker when a product actually has variant rows.
+     *
+     * $cats is keyed by name_en (see lightDemo) — both the shirt and the
+     * saree used to be dropped into whichever category was first() instead
+     * of their real one; fixed here so every clothing category (Shirts,
+     * Pants, Saree, Three-piece, Kids wear, Shoes, Other) actually has a
+     * product in it for a seller demo.
      */
-    private function clothingDemo(Shop $shop, ?ProductCategory $cat, ?Unit $unit): void
+    private function clothingDemo(Shop $shop, \Illuminate\Support\Collection $cats, ?Unit $unit): void
     {
         $shirt = Product::firstOrCreate(
             ['shop_id' => $shop->id, 'name' => 'কটন শার্ট'],
             [
-                'category_id' => $cat?->id,
+                'category_id' => $cats['Shirts']->id ?? null,
                 'unit_id' => $unit?->id,
                 'name_en' => 'Cotton Shirt',
                 'emoji' => '👕',
@@ -462,6 +478,7 @@ class DemoShopSeeder extends Seeder
                 'stock' => 0, // variant products keep their own stock sum on the parent — see ProductVariantController
             ]
         );
+        Product::where('id', $shirt->id)->update(['category_id' => $cats['Shirts']->id ?? null]);
 
         $variants = [
             ['color' => 'লাল', 'size' => 'M', 'stock' => 12],
@@ -480,17 +497,178 @@ class DemoShopSeeder extends Seeder
         // real variant change
         $shirt->update(['stock' => $shirt->variants()->sum('stock')]);
 
-        Product::firstOrCreate(
-            ['shop_id' => $shop->id, 'name' => 'সুতি শাড়ি'],
-            [
-                'category_id' => $cat?->id,
-                'unit_id' => $unit?->id,
-                'name_en' => 'Cotton Saree',
-                'emoji' => '🥻',
-                'cost' => 900,
-                'price' => 1500,
-                'stock' => 15,
-            ]
-        );
+        $others = [
+            ['name' => 'ফরমাল প্যান্ট', 'name_en' => 'Formal Pant', 'emoji' => '👖', 'cat' => 'Pants', 'price' => 850, 'cost' => 550, 'stock' => 18],
+            ['name' => 'জিন্স প্যান্ট', 'name_en' => 'Jeans', 'emoji' => '👖', 'cat' => 'Pants', 'price' => 1100, 'cost' => 750, 'stock' => 14],
+            ['name' => 'সুতি শাড়ি', 'name_en' => 'Cotton Saree', 'emoji' => '🥻', 'cat' => 'Saree', 'price' => 1500, 'cost' => 900, 'stock' => 15],
+            ['name' => 'জামদানি শাড়ি', 'name_en' => 'Jamdani Saree', 'emoji' => '🥻', 'cat' => 'Saree', 'price' => 4500, 'cost' => 3200, 'stock' => 5],
+            ['name' => 'থ্রি-পিস (কাতান)', 'name_en' => 'Three-piece (Katan)', 'emoji' => '👗', 'cat' => 'Three-piece', 'price' => 2200, 'cost' => 1600, 'stock' => 10],
+            ['name' => 'বাচ্চাদের ফ্রক', 'name_en' => 'Kids Frock', 'emoji' => '🧒', 'cat' => 'Kids wear', 'price' => 550, 'cost' => 350, 'stock' => 12],
+            ['name' => 'স্নিকার্স জুতা', 'name_en' => 'Sneakers', 'emoji' => '👟', 'cat' => 'Shoes', 'price' => 1800, 'cost' => 1300, 'stock' => 8],
+            ['name' => 'বেল্ট', 'name_en' => 'Belt', 'emoji' => '📦', 'cat' => 'Other', 'price' => 350, 'cost' => 220, 'stock' => 20],
+        ];
+        foreach ($others as $p) {
+            Product::firstOrCreate(
+                ['shop_id' => $shop->id, 'name' => $p['name']],
+                [
+                    'category_id' => $cats[$p['cat']]->id ?? null,
+                    'unit_id' => $unit?->id,
+                    'name_en' => $p['name_en'],
+                    'emoji' => $p['emoji'],
+                    'cost' => $p['cost'],
+                    'price' => $p['price'],
+                    'stock' => $p['stock'],
+                ]
+            );
+        }
+
+        // fix up the saree's category on shops seeded before this method
+        // spread products across the real categories (it used to land in
+        // Shirts, same bug as the shirt above).
+        if (isset($cats['Saree'])) {
+            Product::where('shop_id', $shop->id)->where('name', 'সুতি শাড়ি')->update(['category_id' => $cats['Saree']->id]);
+        }
+    }
+
+    /**
+     * Seeds a handful of realistic products into every category of a
+     * business type's catalog (see categorizedCatalog() below) so a demo
+     * shop shows something in *every* nav category — a seller being trained
+     * on their own shop type needs to see it populated, not just whichever
+     * category lightDemo's old single placeholder product happened to land
+     * in (always the first one, see the bug this replaced).
+     */
+    private function seedCatalog(Shop $shop, string $typeSlug, \Illuminate\Support\Collection $cats, ?Unit $unit): void
+    {
+        foreach ($this->categorizedCatalog($typeSlug) as $catName => $items) {
+            foreach ($items as $p) {
+                Product::firstOrCreate(
+                    ['shop_id' => $shop->id, 'name' => $p['name']],
+                    array_merge([
+                        'category_id' => $cats[$catName]->id ?? null,
+                        'unit_id' => $unit?->id,
+                        'name_en' => $p['name_en'],
+                        'emoji' => $p['emoji'],
+                        'cost' => $p['cost'],
+                        'price' => $p['price'],
+                        'stock' => $p['stock'],
+                    ], $p['extra'] ?? [])
+                );
+            }
+        }
+    }
+
+    /** Category-keyed (by name_en) product catalog per business type, used by seedCatalog(). */
+    private function categorizedCatalog(string $typeSlug): array
+    {
+        return match ($typeSlug) {
+            // 'Tablets' is deliberately absent here — the Napa Tablet
+            // box->strip->tablet unit-conversion demo (built separately in
+            // lightDemo) already covers that category on its own.
+            'pharmacy' => [
+                'Syrup' => [
+                    ['name' => 'এইস প্লাস সিরাপ ৬০মিলি', 'name_en' => 'Ace Plus Syrup 60ml', 'emoji' => '🍯', 'price' => 45, 'cost' => 35, 'stock' => 30, 'extra' => ['expiry_date' => now()->addMonths(20)->toDateString(), 'batch_no' => 'SYR-2026-01']],
+                    ['name' => 'ফিলসন সিরাপ ১০০মিলি', 'name_en' => 'Filson Syrup 100ml', 'emoji' => '🍯', 'price' => 60, 'cost' => 48, 'stock' => 25, 'extra' => ['expiry_date' => now()->addMonths(20)->toDateString(), 'batch_no' => 'SYR-2026-02']],
+                ],
+                'Injection' => [
+                    ['name' => 'ভিটামিন বি১২ ইনজেকশন', 'name_en' => 'Vitamin B12 Injection', 'emoji' => '💉', 'price' => 25, 'cost' => 18, 'stock' => 40, 'extra' => ['expiry_date' => now()->addMonths(15)->toDateString(), 'batch_no' => 'INJ-2026-01']],
+                    ['name' => 'ডেক্সট্রোজ স্যালাইন', 'name_en' => 'Dextrose Saline', 'emoji' => '💉', 'price' => 90, 'cost' => 70, 'stock' => 20, 'extra' => ['expiry_date' => now()->addMonths(15)->toDateString(), 'batch_no' => 'INJ-2026-02']],
+                ],
+                'Medical equipment' => [
+                    ['name' => 'ডিজিটাল থার্মোমিটার', 'name_en' => 'Digital Thermometer', 'emoji' => '🩺', 'price' => 250, 'cost' => 180, 'stock' => 10],
+                    ['name' => 'ব্লাড প্রেসার মেশিন', 'name_en' => 'Blood Pressure Machine', 'emoji' => '🩺', 'price' => 1800, 'cost' => 1400, 'stock' => 5],
+                ],
+                'Other' => [
+                    ['name' => 'সার্জিক্যাল হ্যান্ড গ্লাভস', 'name_en' => 'Surgical Hand Gloves', 'emoji' => '🧤', 'price' => 10, 'cost' => 6, 'stock' => 100],
+                    ['name' => 'ফেস মাস্ক (বক্স)', 'name_en' => 'Face Mask (box)', 'emoji' => '😷', 'price' => 120, 'cost' => 90, 'stock' => 15],
+                ],
+            ],
+            'mobile' => [
+                'Handsets' => [
+                    ['name' => 'স্যামসাং গ্যালাক্সি A15', 'name_en' => 'Samsung Galaxy A15', 'emoji' => '📱', 'price' => 19500, 'cost' => 17800, 'stock' => 4, 'extra' => ['imei' => '359123456789012']],
+                    ['name' => 'শাওমি রেডমি ১৩সি', 'name_en' => 'Xiaomi Redmi 13C', 'emoji' => '📱', 'price' => 13500, 'cost' => 12200, 'stock' => 6, 'extra' => ['imei' => '359123456789099']],
+                ],
+                'Chargers' => [
+                    ['name' => 'স্যামসাং ফাস্ট চার্জার', 'name_en' => 'Samsung Fast Charger', 'emoji' => '🔌', 'price' => 550, 'cost' => 420, 'stock' => 20],
+                    ['name' => 'টাইপ-সি ক্যাবল', 'name_en' => 'Type-C Cable', 'emoji' => '🔌', 'price' => 150, 'cost' => 100, 'stock' => 35],
+                ],
+                'Headphones' => [
+                    ['name' => 'ওয়্যারলেস ইয়ারবাড', 'name_en' => 'Wireless Earbuds', 'emoji' => '🎧', 'price' => 1200, 'cost' => 900, 'stock' => 12],
+                ],
+                'Covers' => [
+                    ['name' => 'সিলিকন ব্যাক কভার', 'name_en' => 'Silicone Back Cover', 'emoji' => '🛡️', 'price' => 180, 'cost' => 120, 'stock' => 30],
+                ],
+                'Accessories' => [
+                    ['name' => 'পাওয়ার ব্যাংক ১০০০০mAh', 'name_en' => 'Power Bank 10000mAh', 'emoji' => '🔋', 'price' => 1400, 'cost' => 1100, 'stock' => 8],
+                    ['name' => 'মেমোরি কার্ড ৩২জিবি', 'name_en' => 'Memory Card 32GB', 'emoji' => '💾', 'price' => 450, 'cost' => 350, 'stock' => 18],
+                ],
+                'Other' => [
+                    ['name' => 'স্ক্রিন প্রোটেক্টর', 'name_en' => 'Screen Protector', 'emoji' => '📱', 'price' => 100, 'cost' => 60, 'stock' => 40],
+                ],
+            ],
+            'cosmetics' => [
+                'Skin care' => [
+                    ["name" => 'পন্ডস ফেসওয়াশ', 'name_en' => "Pond's Face Wash", 'emoji' => '🧴', 'price' => 220, 'cost' => 175, 'stock' => 25, 'extra' => ['expiry_date' => now()->addMonths(18)->toDateString()]],
+                ],
+                'Makeup' => [
+                    ['name' => 'ম্যাক লিপস্টিক', 'name_en' => 'MAC Lipstick', 'emoji' => '💄', 'price' => 850, 'cost' => 650, 'stock' => 10, 'extra' => ['expiry_date' => now()->addMonths(18)->toDateString()]],
+                    ['name' => 'কম্প্যাক্ট পাউডার', 'name_en' => 'Compact Powder', 'emoji' => '💄', 'price' => 380, 'cost' => 290, 'stock' => 14, 'extra' => ['expiry_date' => now()->addMonths(18)->toDateString()]],
+                ],
+                'Perfume' => [
+                    ['name' => 'জারা পারফিউম ১০০মিলি', 'name_en' => 'Zara Perfume 100ml', 'emoji' => '🧪', 'price' => 1600, 'cost' => 1250, 'stock' => 6, 'extra' => ['expiry_date' => now()->addMonths(18)->toDateString()]],
+                ],
+                'Hair care' => [
+                    ['name' => 'সানসিল্ক শ্যাম্পু', 'name_en' => 'Sunsilk Shampoo', 'emoji' => '💇', 'price' => 320, 'cost' => 260, 'stock' => 20, 'extra' => ['expiry_date' => now()->addMonths(18)->toDateString()]],
+                    ['name' => 'প্যারাসুট নারিকেল তেল', 'name_en' => 'Parachute Coconut Oil', 'emoji' => '💇', 'price' => 180, 'cost' => 140, 'stock' => 22, 'extra' => ['expiry_date' => now()->addMonths(18)->toDateString()]],
+                ],
+                'Other' => [
+                    ['name' => 'নেইল পলিশ', 'name_en' => 'Nail Polish', 'emoji' => '💅', 'price' => 150, 'cost' => 100, 'stock' => 16, 'extra' => ['expiry_date' => now()->addMonths(18)->toDateString()]],
+                ],
+            ],
+            'supershop' => [
+                'Grocery' => [
+                    ['name' => 'স্কয়ার লবণ ১ কেজি', 'name_en' => 'Square Salt 1kg', 'emoji' => '🧂', 'price' => 40, 'cost' => 34, 'stock' => 60],
+                    ['name' => 'ফ্রেশ চা পাতা ২০০গ্রাম', 'name_en' => 'Fresh Tea 200g', 'emoji' => '🍵', 'price' => 160, 'cost' => 140, 'stock' => 30],
+                ],
+                'Oil & Ghee' => [
+                    ['name' => 'রূপচাঁদা সয়াবিন তেল ৫ লিটার', 'name_en' => 'Rupchanda Soybean Oil 5L', 'emoji' => '🫒', 'price' => 920, 'cost' => 860, 'stock' => 20],
+                ],
+                'Rice & Flour' => [
+                    ['name' => 'মিনিকেট চাল ৫০ কেজি', 'name_en' => 'Miniket Rice 50kg', 'emoji' => '🍚', 'price' => 3200, 'cost' => 3050, 'stock' => 8],
+                ],
+                'Spices' => [
+                    ['name' => 'মরিচ গুড়া ২০০গ্রাম', 'name_en' => 'Chili Powder 200g', 'emoji' => '🌶️', 'price' => 70, 'cost' => 55, 'stock' => 25],
+                ],
+                'Drinks' => [
+                    ['name' => 'কোকাকোলা ১ লিটার', 'name_en' => 'Coca-Cola 1L', 'emoji' => '🥤', 'price' => 90, 'cost' => 75, 'stock' => 40],
+                    ['name' => 'মোজো ৫০০মিলি', 'name_en' => 'Mojo 500ml', 'emoji' => '🥤', 'price' => 40, 'cost' => 32, 'stock' => 50],
+                ],
+                'Snacks' => [
+                    ['name' => 'প্রিংগলস চিপস', 'name_en' => 'Pringles Chips', 'emoji' => '🍪', 'price' => 250, 'cost' => 210, 'stock' => 15],
+                ],
+                'Dairy' => [
+                    ['name' => 'মার্কস গুড়া দুধ ৫০০গ্রাম', 'name_en' => 'Marks Milk Powder 500g', 'emoji' => '🥛', 'price' => 480, 'cost' => 440, 'stock' => 10],
+                ],
+                'Personal care' => [
+                    ['name' => 'লাক্স সাবান', 'name_en' => 'Lux Soap', 'emoji' => '🧼', 'price' => 45, 'cost' => 38, 'stock' => 60],
+                    ['name' => 'কোলগেট টুথপেস্ট', 'name_en' => 'Colgate Toothpaste', 'emoji' => '🪥', 'price' => 90, 'cost' => 75, 'stock' => 40],
+                ],
+                'Other' => [
+                    ['name' => 'প্লাস্টিক ব্যাগ (প্যাকেট)', 'name_en' => 'Plastic Bag (pack)', 'emoji' => '🛍️', 'price' => 20, 'cost' => 12, 'stock' => 100],
+                ],
+            ],
+            'general' => [
+                'General' => [
+                    ['name' => 'নোটবুক (৮০ পাতা)', 'name_en' => 'Notebook (80 pages)', 'emoji' => '📓', 'price' => 40, 'cost' => 28, 'stock' => 50],
+                    ['name' => 'বলপয়েন্ট কলম', 'name_en' => 'Ballpoint Pen', 'emoji' => '🖊️', 'price' => 10, 'cost' => 6, 'stock' => 100],
+                    ['name' => 'প্লাস্টিক বালতি', 'name_en' => 'Plastic Bucket', 'emoji' => '🪣', 'price' => 180, 'cost' => 140, 'stock' => 15],
+                ],
+                'Other' => [
+                    ['name' => 'ছাতা', 'name_en' => 'Umbrella', 'emoji' => '☂️', 'price' => 350, 'cost' => 260, 'stock' => 10],
+                    ['name' => 'টর্চ লাইট', 'name_en' => 'Torch Light', 'emoji' => '🔦', 'price' => 150, 'cost' => 100, 'stock' => 12],
+                ],
+            ],
+            default => [],
+        };
     }
 }
