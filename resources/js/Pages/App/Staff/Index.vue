@@ -91,7 +91,7 @@ const staffPermsByCategory = computed(() => {
                     <div v-for="(list, cat) in staffPermsByCategory" :key="cat" style="margin-bottom:10px">
                         <div style="font-size:11px;font-weight:800;color:var(--dim);text-transform:uppercase;margin-bottom:6px">{{ cat }}</div>
                         <label v-for="p in list" :key="p.key" style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13.5px">
-                            <input type="checkbox" :value="p.key" v-model="form.permissions" style="width:auto">
+                            <input type="checkbox" :value="p.key" v-model="form.permissions">
                             {{ lang === 'en' ? (p.label_en || p.label_bn) : p.label_bn }}
                         </label>
                     </div>

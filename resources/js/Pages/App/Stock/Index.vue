@@ -502,7 +502,7 @@ useKeyboardShortcuts({
                 <div v-if="form.errors.shelf_location" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.shelf_location }}</div>
             </div>
             <label v-if="hasPrescriptionRecords" style="display:flex;align-items:center;gap:8px;margin-bottom:16px;font-size:13.5px;font-weight:600;cursor:pointer">
-                <input v-model="form.requires_prescription" type="checkbox" style="width:auto">
+                <input v-model="form.requires_prescription" type="checkbox">
                 {{ t('stock.requiresPrescription') }}
             </label>
             <div class="field">
@@ -540,7 +540,7 @@ useKeyboardShortcuts({
 
             <div v-if="hasWeightBasedSelling && !editingHasVariants" class="field">
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                    <input v-model="form.sold_by_weight" type="checkbox" style="width:auto">
+                    <input v-model="form.sold_by_weight" type="checkbox">
                     {{ t('stock.soldByWeight') }}
                 </label>
                 <div style="color:var(--dim);font-size:12px;margin-top:4px">{{ t('stock.soldByWeightHint') }}</div>
@@ -593,7 +593,7 @@ useKeyboardShortcuts({
                 <div class="field" v-else-if="isRestaurant && form.stock_mode === 'toggle'">
                     <label>{{ t('stock.stockModeToggle') }}</label>
                     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px">
-                        <input v-model="form.available" type="checkbox" style="width:auto">
+                        <input v-model="form.available" type="checkbox">
                         {{ form.available ? t('pos.availableToday') : t('pos.soldOutToday') }}
                     </label>
                 </div>

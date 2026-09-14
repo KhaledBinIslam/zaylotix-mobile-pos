@@ -202,7 +202,7 @@ function summary(p) {
             </div>
 
             <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin:10px 0">
-                <input type="checkbox" v-model="form.active" style="width:auto">
+                <input type="checkbox" v-model="form.active">
                 {{ t('promotion.activeLabel') }}
             </label>
 

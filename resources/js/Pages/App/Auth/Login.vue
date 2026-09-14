@@ -48,7 +48,7 @@ function submit() {
                     <div v-if="form.errors.login" style="color:var(--rose);font-size:12.5px;margin-bottom:10px">{{ form.errors.login }}</div>
 
                     <label class="remember">
-                        <input v-model="form.remember" type="checkbox" style="width:auto">
+                        <input v-model="form.remember" type="checkbox">
                         <span>{{ t('login.remember') }}</span>
                     </label>
 

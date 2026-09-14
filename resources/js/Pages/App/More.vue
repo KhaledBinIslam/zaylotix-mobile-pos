@@ -552,7 +552,7 @@ onMounted(() => {
             <div v-for="f in GATEWAY_FIELDS[gatewayActiveTab]" :key="f.key" class="field">
                 <label v-if="!f.bool">{{ f.label }}</label>
                 <label v-if="f.bool" style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                    <input v-model="gatewayForm[f.key]" type="checkbox" style="width:auto">
+                    <input v-model="gatewayForm[f.key]" type="checkbox">
                     {{ f.label }}
                 </label>
                 <textarea v-else-if="f.textarea" v-model="gatewayForm[f.key]" rows="4" style="font-family:monospace;font-size:11px"></textarea>
@@ -637,7 +637,7 @@ onMounted(() => {
             </div>
 
             <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin:10px 0">
-                <input type="checkbox" v-model="purchaseAlsoStock" style="width:auto">
+                <input type="checkbox" v-model="purchaseAlsoStock">
                 {{ t('purchase.alsoAddStock') }}
             </label>
             <template v-if="purchaseAlsoStock">

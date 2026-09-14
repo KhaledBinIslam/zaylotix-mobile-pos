@@ -617,7 +617,7 @@ onBeforeUnmount(() => {
                         <div v-if="pendingItems.length" style="font-size:11px;font-weight:800;color:var(--dim);text-transform:uppercase;margin-bottom:4px">{{ t('restaurant.pendingItems') }}</div>
                         <div v-for="it in pendingItems" :key="it.id" style="margin-bottom:6px">
                             <div class="cart-line">
-                                <input v-if="splitMode" type="checkbox" style="width:auto;margin-right:2px" :checked="selectedItemIds.includes(it.id)" @change="toggleItemSelected(it.id)">
+                                <input v-if="splitMode" type="checkbox" style="margin-right:2px" :checked="selectedItemIds.includes(it.id)" @change="toggleItemSelected(it.id)">
                                 <div class="nm">
                                     <b>{{ it.product_name }}</b>
                                     <span>{{ money(it.price) }} {{ t('restaurant.each') }} = {{ money(it.qty * it.price) }}<span v-if="it.discount > 0" style="color:var(--rose)"> (−{{ money(it.discount) }} {{ t('pos.itemDiscountApplied') }})</span></span>
