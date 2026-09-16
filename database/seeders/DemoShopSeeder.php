@@ -64,11 +64,24 @@ class DemoShopSeeder extends Seeder
      * only its products/etc were lost), reuse it as-is rather than calling
      * ShopProvisioner::provision() again, which would try to INSERT a
      * second User with that same phone and fail on its unique constraint.
+     *
+     * Features are still re-synced on a reused shop, though — this class's
+     * own docblock already promises "repair every demo shop" on a re-run,
+     * but until this fix that repair silently stopped at products/tables/
+     * sales; a feature added to a call site's list here later (e.g. General
+     * Store Demo gaining weight_based_selling to demo আলু) never reached a
+     * shop that already existed, because ShopProvisioner::provision() —
+     * the only place features were granted — was skipped entirely on
+     * reuse. sync() (not attach/merge) is correct here: this seeder is the
+     * single source of truth for what a demo shop's feature set should be,
+     * the same way it already is for its categories/units.
      */
     private function provisionOrReuse(string $phone, array $shopAttrs, string $ownerName, array $featureKeys): Shop
     {
         $existing = Shop::withoutGlobalScopes()->where('phone', $phone)->first();
         if ($existing) {
+            $existing->features()->sync(Feature::whereIn('key', $featureKeys)->pluck('id'));
+
             return $existing;
         }
 
@@ -386,6 +399,15 @@ class DemoShopSeeder extends Seeder
                 // biggest format, needs the full toolkit — restaurant_tables
                 // excluded, see the matching comment in groceryFlagship() above
                 'supershop' => Feature::where('key', '!=', 'restaurant_tables')->pluck('key')->all(),
+                // weight_based_selling isn't in config/business_types.php's
+                // recommended set for 'general' (a catch-all type stays
+                // conservative by design), but a demo shop's whole point is
+                // showcasing the app — this shop carries the আলু example
+                // below specifically to demo loose/weighed selling, so it
+                // needs the feature switched on or Stock/Index.vue's own
+                // sold_by_weight checkbox stays hidden (POS itself doesn't
+                // gate on the feature, only the Stock edit form does).
+                'general' => ['memo_whatsapp', 'memo_print', 'purchases', 'returns', 'accounts', 'expenses', 'reports', 'cashier_management', 'weight_based_selling'],
                 default => ['memo_whatsapp', 'memo_print', 'purchases', 'returns', 'accounts', 'expenses', 'reports', 'cashier_management'],
             }
         );
@@ -442,6 +464,39 @@ class DemoShopSeeder extends Seeder
             ProductUnit::firstOrCreate(
                 ['shop_id' => $shop->id, 'product_id' => $medicine->id, 'unit_id' => $boxUnit->id],
                 ['factor' => 100, 'price' => 170] // 1 box = 10 strips x 10 tablets, whole-box price
+            );
+        }
+
+        // general: a loose/weighed commodity (আলু) to demo weight-based
+        // selling end-to-end. None of the other seeded products anywhere in
+        // this seeder actually belong here — audited every demo shop's
+        // catalog against its assigned unit before adding this, and every
+        // existing product (Soybean Oil 1L, Sugar 1kg, Rice 5kg, etc.) is a
+        // sealed, branded, fixed-size pack meant to be sold as one whole
+        // unit, not loose by weight — none of them were ever mis-set to
+        // sold_by_weight=false; that flag was correct for all of them
+        // already. আলু is the first genuinely loose-sold demo item, and it
+        // needs its own unit_id (কেজি) too, not the shop's default পিস.
+        if ($typeSlug === 'general') {
+            // firstOrCreate, not a plain lookup — this shop may have been
+            // provisioned before config/business_types.php's 'general' unit
+            // list included কেজি (ShopProvisioner only seeds units once, at
+            // creation time), so an older demo shop's unit table can simply
+            // be missing it.
+            $kgUnit = Unit::firstOrCreate(['shop_id' => $shop->id, 'code' => 'kg'], ['name' => 'কেজি', 'name_en' => 'Kilogram']);
+            Product::firstOrCreate(
+                ['shop_id' => $shop->id, 'name' => 'আলু'],
+                [
+                    'category_id' => $cats['General']->id ?? $cat?->id,
+                    'unit_id' => $kgUnit?->id ?? $unit?->id,
+                    'name_en' => 'Potato',
+                    'emoji' => '🥔',
+                    'cost' => 32,
+                    'price' => 40, // ৳40/kg — 350g at checkout = ৳14
+                    'sold_by_weight' => true,
+                    'weight_unit' => 'kg',
+                    'stock' => 60, // kg on hand, not a piece count — sold_by_weight products store real decimal kg
+                ]
             );
         }
 
