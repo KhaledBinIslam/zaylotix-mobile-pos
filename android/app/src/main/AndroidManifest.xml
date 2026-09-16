@@ -32,4 +32,16 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Barcode-scan-by-camera (Pos/Index.vue's openScanner(), via html5-qrcode's
+         getUserMedia call) was silently failing in the packaged app — Capacitor's
+         own WebChromeClient already forwards a getUserMedia video request to
+         Android's runtime CAMERA permission prompt (see BridgeWebChromeClient.
+         onPermissionRequest), but that prompt can never succeed for a permission
+         the app never declared here; requesting an undeclared permission is
+         auto-denied with no dialog shown at all, which is exactly what made this
+         look broken with no visible cause. required="false" because sales_mode
+         also supports 'manual' entry — a shop without a working camera must still
+         be installable. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 </manifest>
