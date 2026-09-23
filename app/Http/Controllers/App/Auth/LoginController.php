@@ -4,6 +4,7 @@ namespace App\Http\Controllers\App\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\App\LoginRequest;
+use App\Support\DefaultLandingRoute;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
@@ -32,7 +33,7 @@ class LoginController extends Controller
             return back()->withErrors(['login' => __('Your subscription is inactive. Please contact the admin.')]);
         }
 
-        return redirect()->intended(route('app.home'));
+        return redirect()->intended(route(DefaultLandingRoute::for($user)));
     }
 
     public function destroy(Request $request)

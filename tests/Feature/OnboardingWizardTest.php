@@ -41,14 +41,17 @@ class OnboardingWizardTest extends TestCase
         $response->assertOk();
     }
 
-    public function test_completing_onboarding_marks_the_shop_and_returns_home(): void
+    public function test_completing_onboarding_marks_the_shop_and_returns_to_pos(): void
     {
         [$shop, $owner] = $this->createShopWithOwner(['onboarded_at' => null]);
 
         $this->actingAs($owner, 'web')->post('/app/onboarding/complete')
-            ->assertRedirect(route('app.home'));
+            ->assertRedirect(route('app.pos'));
 
         $this->assertNotNull($shop->fresh()->onboarded_at);
+        $this->actingAs($owner, 'web')->get('/app/pos')->assertOk();
+        // Home stays directly reachable too — just no longer the default
+        // landing page (see DefaultLandingRoute).
         $this->actingAs($owner, 'web')->get('/app/home')->assertOk();
     }
 

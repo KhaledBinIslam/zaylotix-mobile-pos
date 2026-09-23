@@ -39,7 +39,7 @@ class AuthSeparationTest extends TestCase
         $owner->forceFill(['password' => bcrypt('secret123')])->save();
 
         $this->post('/login', ['login' => '01900000001', 'password' => 'secret123'])
-            ->assertRedirect(route('app.home'));
+            ->assertRedirect(route('app.pos'));
 
         $this->assertTrue(Auth::guard('web')->check());
         $this->assertFalse(Auth::guard('admin')->check());

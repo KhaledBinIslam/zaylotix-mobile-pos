@@ -31,6 +31,15 @@ class PosController extends Controller
     {
         $shop = Tenancy::shop();
 
+        // Same check HomeController::index() already had — needed here too
+        // now that POS, not Home, is the default post-login landing page
+        // (see DefaultLandingRoute) for anyone who can reach it. Without
+        // this, a brand-new owner would land straight on POS and skip the
+        // first-run wizard entirely just by never passing through Home.
+        if (Auth::guard('web')->user()?->role === 'owner' && ! $shop?->onboarded_at) {
+            return redirect()->route('app.onboarding');
+        }
+
         // a restaurant-type shop's real "sell" screen is the Tables/order
         // flow (table + takeaway/delivery channel + KOT) — this plain
         // product-only checkout has none of that and is the wrong screen

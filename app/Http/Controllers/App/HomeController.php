@@ -64,12 +64,15 @@ class HomeController extends Controller
             // — never the raw model, see Shop::toArrayForUser()
             'shop' => $shop?->toArrayForUser(Auth::guard('web')->user()),
             'todaySale' => (float) $todaySales->sum('total'),
-            'todayProfit' => (float) $todaySales->sum('profit'),
             'billsToday' => $todaySales->count(),
             'weekSale' => (float) $weekSales->sum('total'),
-            'weekProfit' => (float) $weekSales->sum('profit'),
             'monthSale' => (float) $monthSales->sum('total'),
-            'monthProfit' => (float) $monthSales->sum('profit'),
+            // profit/margin deliberately not sent here anymore — Khaled's
+            // explicit request: Profit & Loss belongs in Reports (checked
+            // end-of-day), not the home screen a cashier sees the instant
+            // the app opens. Reports/Index.vue already computes its own
+            // full P&L independently of this controller, so this is a
+            // clean removal, not something that needed "moving" logic.
             'totalDue' => (float) Customer::sum('due'),
             'dueCustomerCount' => Customer::where('due', '>', 0)->count(),
             'lowStockCount' => $lowStock + $outOfStock,

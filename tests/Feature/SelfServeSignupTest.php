@@ -38,7 +38,12 @@ class SelfServeSignupTest extends TestCase
             'area' => 'Dhaka',
         ]);
 
-        $response->assertRedirect(route('app.home'));
+        // brand-new signup redirects to POS same as any other login (see
+        // DefaultLandingRoute) — the owner's own onboarded_at is still
+        // null at this point, so an actual visit to /app/pos bounces to
+        // /app/onboarding first (covered by OnboardingWizardTest), but
+        // that's a separate subsequent request from this redirect target.
+        $response->assertRedirect(route('app.pos'));
 
         $shop = Shop::where('phone', '01711223344')->first();
         $this->assertNotNull($shop);

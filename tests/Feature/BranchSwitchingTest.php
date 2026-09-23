@@ -51,7 +51,7 @@ class BranchSwitchingTest extends TestCase
 
         $this->actingAs($owner, 'web')
             ->post("/app/branches/{$branch->id}/switch")
-            ->assertRedirect(route('app.home'));
+            ->assertRedirect(route('app.pos'));
 
         // the real, previously-broken assertion: a totally separate
         // subsequent request must still see the branch, not silently fall

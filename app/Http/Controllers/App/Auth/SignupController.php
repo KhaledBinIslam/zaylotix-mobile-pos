@@ -4,6 +4,7 @@ namespace App\Http\Controllers\App\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\BusinessType;
+use App\Support\DefaultLandingRoute;
 use App\Support\FeatureRecommendations;
 use App\Support\ShopProvisioner;
 use Illuminate\Http\Request;
@@ -69,6 +70,6 @@ class SignupController extends Controller
         Auth::guard('web')->login($owner);
         $request->session()->regenerate();
 
-        return redirect()->route('app.home')->with('success', 'স্বাগতম! আপনার দোকান তৈরি হয়েছে — ১৪ দিনের ফ্রি ট্রায়াল শুরু হলো।');
+        return redirect()->route(DefaultLandingRoute::for($owner))->with('success', 'স্বাগতম! আপনার দোকান তৈরি হয়েছে — ১৪ দিনের ফ্রি ট্রায়াল শুরু হলো।');
     }
 }

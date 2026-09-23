@@ -8,12 +8,9 @@ const { t } = useI18n();
 const props = defineProps({
     shop: Object,
     todaySale: Number,
-    todayProfit: Number,
     billsToday: Number,
     weekSale: Number,
-    weekProfit: Number,
     monthSale: Number,
-    monthProfit: Number,
     totalDue: Number,
     dueCustomerCount: Number,
     lowStockCount: Number,
@@ -49,11 +46,6 @@ const payModeClass = { cash: 'mint', bkash: 'gold', nagad: 'gold', credit: 'rose
                 <div class="v">{{ money(todaySale) }}</div>
                 <div class="h">{{ billsToday }} {{ t('home.bills') }}</div>
             </div>
-            <div class="stat mint">
-                <div class="k">{{ t('home.todayProfit') }}</div>
-                <div class="v">{{ money(todayProfit) }}</div>
-                <div class="h">{{ todaySale ? Math.round((todayProfit / todaySale) * 100) : 0 }}% {{ t('home.margin') }}</div>
-            </div>
             <div class="stat rose">
                 <div class="k">{{ t('home.totalDue') }}</div>
                 <div class="v">{{ money(totalDue) }}</div>
@@ -62,6 +54,20 @@ const payModeClass = { cash: 'mint', bkash: 'gold', nagad: 'gold', credit: 'rose
             <div class="stat sky">
                 <div class="k">{{ t('home.lowStock') }}</div>
                 <div class="v">{{ lowStockCount }}</div>
+                <div class="h">{{ t('home.products') }}</div>
+            </div>
+            <!-- Profit/margin used to be here — moved to Reports (see
+                 HomeController's own comment) since Khaled's explicit
+                 request was that this screen, seen the instant the app
+                 opens, shouldn't lead with an end-of-day accounting
+                 figure. Out-of-stock replaces it: outOfStockCount was
+                 already being sent here and computed, just never actually
+                 shown anywhere — an immediately-actionable count fits this
+                 screen's "what needs attention right now" purpose better
+                 than a look-back profit number ever did. -->
+            <div class="stat mint">
+                <div class="k">{{ t('home.outOfStock') }}</div>
+                <div class="v">{{ outOfStockCount }}</div>
                 <div class="h">{{ t('home.products') }}</div>
             </div>
         </div>
@@ -75,12 +81,10 @@ const payModeClass = { cash: 'mint', bkash: 'gold', nagad: 'gold', credit: 'rose
                 <div style="flex:1;text-align:center;padding:8px 4px;border-radius:12px;background:var(--panel2,rgba(0,0,0,.02))">
                     <div style="font-size:10.5px;color:var(--mut)">{{ t('home.thisWeek') }}</div>
                     <div style="font-size:15px;font-weight:800;margin-top:2px">{{ money(weekSale) }}</div>
-                    <div style="font-size:10px;color:var(--mint,#1FA463)">{{ t('home.profit') }} {{ money(weekProfit) }}</div>
                 </div>
                 <div style="flex:1;text-align:center;padding:8px 4px;border-radius:12px;background:var(--panel2,rgba(0,0,0,.02))">
                     <div style="font-size:10.5px;color:var(--mut)">{{ t('home.thisMonth') }}</div>
                     <div style="font-size:15px;font-weight:800;margin-top:2px">{{ money(monthSale) }}</div>
-                    <div style="font-size:10px;color:var(--mint,#1FA463)">{{ t('home.profit') }} {{ money(monthProfit) }}</div>
                 </div>
             </div>
         </div>

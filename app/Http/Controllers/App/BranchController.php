@@ -5,6 +5,7 @@ namespace App\Http\Controllers\App;
 use App\Http\Controllers\Controller;
 use App\Models\Shop;
 use App\Support\CatalogSync;
+use App\Support\DefaultLandingRoute;
 use App\Support\Tenancy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -31,7 +32,7 @@ class BranchController extends Controller
 
         $request->session()->put('active_branch_id', $branch->id);
 
-        return redirect()->route('app.home');
+        return redirect()->route(DefaultLandingRoute::for($user));
     }
 
     /**
