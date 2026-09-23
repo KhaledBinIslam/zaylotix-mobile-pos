@@ -1,0 +1,1 @@
+import{E as r,G as d}from"./app-Bp8I05NO.js";function a(t){function n(e){const o=t[e.key];o&&(e.preventDefault(),o(e))}r(()=>document.addEventListener("keydown",n)),d(()=>document.removeEventListener("keydown",n))}export{a as u};

@@ -6,6 +6,7 @@ import Sheet from '@/Components/Sheet.vue';
 import HowToHint from '@/Components/HowToHint.vue';
 import { useToast } from '@/composables/useToast';
 import { useI18n } from '@/composables/useI18n';
+import { reportClientError } from '@/support/reportClientError';
 
 const props = defineProps({ customers: Array });
 const { toast } = useToast();
@@ -49,6 +50,32 @@ function markPaid(c) {
         onSuccess: () => (collectSheet.value = false),
         onFinish: () => (markingPaid.value = false),
     });
+}
+
+// --- payment history ledger — date, amount, and the due snapshot right
+// before/after each collection (Khaled's explicit request: no way to look
+// back and see "who paid what, when, leaving how much still owed" before
+// this — customers.due was only ever a single running number). Lazy-
+// loaded per customer, same pattern More.vue's settings sheets use. ---
+const historySheet = ref(false);
+const historyLoading = ref(false);
+const historyPayments = ref([]);
+function openHistory(c) {
+    collecting.value = c;
+    historySheet.value = true;
+    historyPayments.value = [];
+    historyLoading.value = true;
+    fetch(route('app.payments.history', c.id), { headers: { Accept: 'application/json' } })
+        .then((r) => {
+            if (!r.ok) throw new Error(`payments.history responded ${r.status}`);
+            return r.json();
+        })
+        .then((data) => { historyPayments.value = data.payments; })
+        .catch((e) => {
+            reportClientError(e, 'openHistory');
+            toast('⚠️ ' + t('due.historyLoadFailed'));
+        })
+        .finally(() => (historyLoading.value = false));
 }
 
 function remindWA(c) {
@@ -130,7 +157,7 @@ function sendOffer() {
         <template v-if="withDue.length">
             <div class="sechead"><h2>{{ t('due.collectToday') }}</h2></div>
             <div v-for="c in withDue" :key="c.id">
-                <div class="row" :style="selected[c.id] ? 'border-color:var(--gold);background:var(--goldSoft)' : ''" @click="selectMode ? toggleSelect(c.id) : null">
+                <div class="row" :style="selected[c.id] ? 'border-color:var(--gold);background:var(--goldSoft)' : ''" @click="selectMode ? toggleSelect(c.id) : openHistory(c)">
                     <div class="ava" :style="selected[c.id] ? 'background:var(--gold);color:#fff;border-color:var(--gold)' : ''">{{ selectMode && selected[c.id] ? '✓' : c.name[0] }}</div>
                     <div class="mid"><b>{{ c.name }}</b><span>📞 {{ c.phone }}<template v-if="hasLoyaltyPoints"> • ⭐ {{ c.loyalty_points }}</template></span></div>
                     <div class="end"><b class="pill rose">{{ money(c.due) }}</b></div>
@@ -144,7 +171,7 @@ function sendOffer() {
 
         <template v-if="cleared.length">
             <div class="sechead"><h2>{{ t('due.allCustomers') }}</h2></div>
-            <div v-for="c in cleared" :key="c.id" class="row" :style="selected[c.id] ? 'border-color:var(--gold);background:var(--goldSoft)' : ''" @click="selectMode ? toggleSelect(c.id) : null">
+            <div v-for="c in cleared" :key="c.id" class="row" :style="selected[c.id] ? 'border-color:var(--gold);background:var(--goldSoft)' : ''" @click="selectMode ? toggleSelect(c.id) : openHistory(c)">
                 <div class="ava" :style="selected[c.id] ? 'background:var(--gold);color:#fff;border-color:var(--gold)' : ''">{{ selectMode && selected[c.id] ? '✓' : c.name[0] }}</div>
                 <div class="mid"><b>{{ c.name }}</b><span>📞 {{ c.phone || t('due.noNumber') }} • {{ t('due.totalBought') }} {{ money(c.total_spent) }}<template v-if="hasLoyaltyPoints"> • ⭐ {{ c.loyalty_points }}</template></span></div>
                 <div class="end"><span class="pill mint">{{ t('due.paid') }}</span></div>
@@ -187,6 +214,28 @@ function sendOffer() {
             <button class="btn ghost" style="margin-top:10px" :disabled="markingPaid" @click="markPaid(collecting)">
                 {{ markingPaid ? '...' : `${t('due.markFullPaid')} (${money(collecting?.due || 0)})` }}
             </button>
+            <button class="btn ghost" style="margin-top:10px" @click="collectSheet = false; openHistory(collecting)">
+                {{ t('due.paymentHistory') }}
+            </button>
+        </Sheet>
+
+        <Sheet v-model="historySheet" :title="collecting?.name" :subtitle="t('due.paymentHistorySub')">
+            <div v-if="historyLoading" class="empty"><div class="big">⏳</div></div>
+            <template v-else-if="historyPayments.length">
+                <div v-for="p in historyPayments" :key="p.id" class="card" style="margin-bottom:10px">
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                        <span style="font-size:12px;color:var(--mut)">{{ p.date.slice(0, 10) }}<template v-if="p.user"> • {{ t('due.collectedBy') }} {{ p.user.name }}</template></span>
+                        <b style="color:var(--green);font-size:15px">+{{ money(p.amount) }}</b>
+                    </div>
+                    <div v-if="p.due_before !== null && p.due_after !== null" style="display:flex;justify-content:space-between;margin-top:6px;font-size:12px;color:var(--dim)">
+                        <span>{{ t('due.dueBefore') }}: {{ money(p.due_before) }}</span>
+                        <span>→</span>
+                        <span>{{ t('due.dueAfter') }}: {{ money(p.due_after) }}</span>
+                    </div>
+                </div>
+            </template>
+            <div v-else class="empty"><div class="big">📜</div>{{ t('due.noPaymentsYet') }}</div>
+            <button class="btn ghost" style="margin-top:10px" @click="historySheet = false">{{ t('common.cancel') }}</button>
         </Sheet>
 
         <Sheet v-model="offerSheet" :title="t('due.offerSheetTitle')" :subtitle="t('due.offerSheetSub')">

@@ -42,12 +42,18 @@ class PaymentController extends Controller
                 ]);
             }
 
+            $dueBefore = (float) $locked->due;
             $locked->decrement('due', $amount);
 
             $locked->payments()->create([
                 'shop_id' => Tenancy::id(),
                 'user_id' => Auth::guard('web')->id() ?? Auth::guard('sanctum')->id(),
                 'amount' => $amount,
+                // snapshotted here, not re-derived later from other rows —
+                // see the migration's own comment on why a ledger row's
+                // before/after has to be captured at the moment it happens
+                'due_before' => $dueBefore,
+                'due_after' => $dueBefore - $amount,
                 'method' => $data['method'] ?? 'cash',
                 'date' => now()->toDateString(),
             ]);
@@ -60,6 +66,18 @@ class PaymentController extends Controller
         });
 
         return back()->with('success', 'Payment recorded.');
+    }
+
+    /** Per-customer payment ledger — date, amount, and the due snapshot right before/after that specific collection. */
+    public function history(Customer $customer)
+    {
+        $this->authorize('view', $customer);
+
+        $payments = $customer->payments()->with('user:id,name')->latest('date')->latest('id')->get([
+            'id', 'customer_id', 'user_id', 'amount', 'due_before', 'due_after', 'method', 'date',
+        ]);
+
+        return response()->json(['payments' => $payments]);
     }
 
     public function full(Customer $customer)
@@ -75,6 +93,8 @@ class PaymentController extends Controller
                 'shop_id' => Tenancy::id(),
                 'user_id' => Auth::guard('web')->id() ?? Auth::guard('sanctum')->id(),
                 'amount' => $amount,
+                'due_before' => $amount,
+                'due_after' => 0,
                 'method' => 'cash',
                 'date' => now()->toDateString(),
             ]);
