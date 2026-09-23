@@ -951,7 +951,15 @@ export const translations = {
     'stock.stockInTitle': { bn: '📥 স্টক ঢোকান', en: '📥 Add Stock' },
     'stock.currentStock': { bn: 'বর্তমান স্টক:', en: 'Current stock:' },
     'stock.howManyArrived': { bn: 'কত এলো', en: 'How many arrived' },
-    'stock.stockInPacksHint': { bn: 'এই পণ্যের স্ট্রিপ/বক্স প্যাক সাইজ আছে — তবে এখানে সবসময় সংখ্যা দিন {pieces}-এ, যেমন ৫ বক্স x ১০০ পিস এলে ৫০০ লিখুন।', en: "This product has strip/box pack sizes — but always enter the count here in {pieces}, e.g. if 5 boxes x 100 pieces arrived, enter 500." },
+    // Same bug class as the pharmacy-fields fix (unit_conversion is shared
+    // by grocery/supershop/pharmacy, not pharmacy-only) — this used to name
+    // "স্ট্রিপ" (strip) explicitly, a pack size that only ever exists for
+    // pharmacy's medicine boxes. A grocery/supershop product's own pack
+    // sizes are never strips, so seeing that word here was the same kind
+    // of "why is this pharmacy wording on my shop" confusion, just milder.
+    // Genericized to "pack size(s)" — the actual unit name is already
+    // dynamic via {pieces} right after it.
+    'stock.stockInPacksHint': { bn: 'এই পণ্যের একাধিক প্যাক সাইজ আছে — তবে এখানে সবসময় সংখ্যা দিন {pieces}-এ, যেমন ৫ বক্স x ১০০ পিস এলে ৫০০ লিখুন।', en: "This product has multiple pack sizes — but always enter the count here in {pieces}, e.g. if 5 boxes x 100 pieces arrived, enter 500." },
     'stock.costOptional': { bn: 'ক্রয় মূল্য (ঐচ্ছিক)', en: 'Cost price (optional)' },
     'stock.addToStock': { bn: '✅ স্টকে যোগ করুন', en: '✅ Add to stock' },
 
