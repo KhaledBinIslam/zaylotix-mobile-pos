@@ -497,6 +497,9 @@ onMounted(() => {
             <button v-if="hasPerm('purchases') && features.includes('suppliers')" class="row" style="width:100%;text-align:left" @click="supplierReturnSheet = true">
                 <div class="ava">📦</div><div class="mid"><b>{{ t('more.supplierReturnTitle') }}</b><span>{{ t('more.supplierReturnSub') }}</span></div><div class="end">›</div>
             </button>
+            <Link v-if="isOwner" :href="route('app.stockHistory.index')" class="row">
+                <div class="ava">📜</div><div class="mid"><b>{{ t('more.stockHistoryTitle') }}</b><span>{{ t('more.stockHistorySub') }}</span></div><div class="end">›</div>
+            </Link>
             <Link v-if="hasPerm('stock') && features.includes('ingredient_tracking')" :href="route('app.ingredients.index')" class="row">
                 <div class="ava">🧂</div><div class="mid"><b>{{ t('nav.ingredients') }}</b><span>{{ t('ingredient.subtitle') }}</span></div><div class="end">›</div>
             </Link>

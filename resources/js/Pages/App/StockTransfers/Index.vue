@@ -8,6 +8,7 @@ const props = defineProps({ siblings: Array, products: Array, recentTransfers: A
 const { t } = useI18n();
 
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
+const fmt = (dt) => new Date(dt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 const q = ref('');
 const filtered = computed(() => props.products.filter((p) =>
@@ -73,7 +74,7 @@ function send() {
                     <div class="ava">🚚</div>
                     <div class="mid">
                         <b>{{ tr.product_name }} × {{ tr.qty }}</b>
-                        <span>{{ tr.from_shop?.name }} → {{ tr.to_shop?.name }} • {{ tr.user?.name }}</span>
+                        <span>{{ tr.from_shop?.name }} → {{ tr.to_shop?.name }} • {{ tr.user?.name }} • {{ fmt(tr.created_at) }}</span>
                     </div>
                 </div>
             </div>

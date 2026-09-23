@@ -30,4 +30,9 @@ class SalesReturn extends Model
     {
         return $this->belongsTo(ProductBatch::class, 'product_batch_id');
     }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
 }

@@ -35,6 +35,7 @@ use App\Http\Controllers\App\NotificationController;
 use App\Http\Controllers\App\OnboardingController;
 use App\Http\Controllers\App\PaymentController;
 use App\Http\Controllers\App\PaymentGatewayController;
+use App\Http\Controllers\App\StockHistoryController;
 use App\Http\Controllers\App\StockTransferController;
 use App\Http\Controllers\App\SubscriptionRenewalController;
 use App\Http\Controllers\App\WhatsappBulkController;
@@ -149,6 +150,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::post('work-period/open', [WorkPeriodController::class, 'open'])->name('workPeriod.open');
         Route::post('work-period/{workPeriod}/close', [WorkPeriodController::class, 'close'])->name('workPeriod.close');
         Route::get('work-period/history', [WorkPeriodController::class, 'index'])->name('workPeriod.index');
+        Route::get('stock-history', [StockHistoryController::class, 'index'])->name('stockHistory.index');
 
         Route::post('pos/held-carts', [HeldCartController::class, 'store'])->name('heldCarts.store');
         Route::post('pos/held-carts/{heldCart}/resume', [HeldCartController::class, 'resume'])->name('heldCarts.resume');
