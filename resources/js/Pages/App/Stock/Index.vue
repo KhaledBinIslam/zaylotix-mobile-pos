@@ -789,10 +789,15 @@ useKeyboardShortcuts({
                 <div class="field"><label>{{ t('stock.howManyArrived') }} ({{ unitLabel(stockInProduct) }})</label><input v-model="stockInQty" type="number" :step="stockInProduct?.sold_by_weight ? 0.001 : 1"></div>
                 <div class="field"><label>{{ t('stock.costOptional') }}</label><input v-model="stockInCost" type="number" step="0.01"></div>
             </div>
-            <div v-if="hasBatchTracking" class="f2">
+            <template v-if="hasBatchTracking">
                 <div class="field"><label>{{ t('stock.batchNo') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label><input v-model="stockInBatchNo"></div>
+                <!-- full width, not paired in .f2 like batchNo above it - a
+                     native date input's own day/month/year+calendar-icon
+                     widget needs more room than a half-width column gives
+                     it on a narrow phone (reported: this field visibly
+                     breaking during stock-in) -->
                 <div class="field"><label>{{ t('stock.expiryDate') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label><input v-model="stockInExpiryDate" type="date"></div>
-            </div>
+            </template>
             <template v-if="hasSerialTracking">
                 <div class="field">
                     <label>{{ t('stock.imeis') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.imeisHint') }}</span></label>

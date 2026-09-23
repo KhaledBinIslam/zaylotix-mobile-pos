@@ -312,6 +312,16 @@ body {
 .field { margin-bottom: 11px; }
 .field label { display: block; font-size: 12px; color: var(--mut); margin-bottom: 4px; font-weight: 600; }
 .f2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+/* a native <input type="date"> has its own fixed-width internal widget
+   (day/month/year segments + calendar icon) that a plain text input
+   doesn't - a grid column's implicit min-width is "auto" (its content's
+   own min-content size), so a date input paired with another field in
+   this 2-column grid could refuse to shrink to its 1fr share and force
+   the whole row wider than the sheet, visibly overflowing/breaking on a
+   narrow phone (reported: batch-no + expiry-date during stock-in, but
+   the same pairing exists on the promotions and reports date-range
+   pickers too). This is the standard fix for that grid-overflow class. */
+.f2 > * { min-width: 0; }
 
 .cart-line { display: flex; align-items: center; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--line); }
 .cart-line .nm { flex: 1; min-width: 0; }
