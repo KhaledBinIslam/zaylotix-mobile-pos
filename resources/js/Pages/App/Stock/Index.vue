@@ -71,8 +71,21 @@ const outOfStockCount = computed(() => props.stats.out_of_stock);
 const expiringSoonCount = computed(() => props.stats.expiring_soon);
 const categoryCounts = computed(() => props.stats.category_counts);
 
+// Root-caused live (2026-09-23, real-user report): a non-weight-based
+// product's stock badge on every row here always said "পিস" (pieces),
+// regardless of what unit the owner actually picked for it (কেজি, লিটার,
+// প্যাকেট, বক্স, সেট, ...) — this hardcoded 'stock.pieces' unconditionally
+// instead of reading the product's own p.unit relation, which every other
+// unit-aware spot in this app (POS's product cards, this same file's own
+// edit form) already reads correctly. A General Store owner who set a
+// product's unit to কেজি (without also knowing about the separate
+// sold_by_weight loose-selling toggle — a different concept, not implied
+// by picking a unit) would see it labeled "পিস" everywhere this function
+// is used, looking exactly like "my kg got silently changed to piece".
+// Falls back to the generic pieces label only when the product genuinely
+// has no unit set at all, same fallback POS already uses.
 function unitLabel(p) {
-    if (!p.sold_by_weight) return t('stock.pieces');
+    if (!p.sold_by_weight) return p.unit?.name || t('stock.pieces');
     return p.weight_unit === 'litre' ? t('stock.unitLitre') : t('stock.unitKg');
 }
 // weighed stock shows up to 3 decimals (never trailing zeros past what's

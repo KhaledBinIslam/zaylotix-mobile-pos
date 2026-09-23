@@ -352,7 +352,25 @@ body {
 .upill { background: var(--greenSoft); color: var(--green); border: 1px solid var(--line2); border-radius: 8px; padding: 5px 9px; font-size: 11px; font-weight: 700; white-space: nowrap; }
 .cart-line-discount { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: 11.5px; color: var(--mut); }
 .cart-line-discount input { width: 78px; padding: 5px 8px; font-size: 12.5px; text-align: right; }
-.posbar { position: sticky; bottom: 0; left: 0; right: 0; padding: 12px 0 4px; background: linear-gradient(0deg, var(--bg) 70%, transparent); }
+/* position:fixed, not sticky — sticky only "catches" once its own natural
+   flow position (at the END of the product grid, inside #view's own
+   overflow-y:auto scroll) has already scrolled near the bottom of that
+   scroll area. For a short catalog that's immediate, so it looked fine —
+   but a shop with hundreds/thousands of products has to scroll nearly to
+   the bottom of the whole grid before it ever appears at all, exactly the
+   "select a product at the top, can't find the bill button" report this
+   fixes. Fixed positioning is anchored to the viewport regardless of #view's
+   scroll offset or the grid's length, so it's visible immediately.
+   #phone/#view have no transform/filter/will-change (verified — those would
+   otherwise scope position:fixed to that ancestor instead of the viewport),
+   so this stays correct without moving the element out of its current spot
+   in the template. Centered exactly like #sheet (same #phone max-width
+   breakpoints) since fixed positioning drops out of #view's own width/
+   padding — bottom offset clears #nav's real rendered height (measured
+   live: ~78px content+padding) plus the same safe-area inset #nav itself
+   already adds, so it sits just above the tab bar, never overlapping it. */
+.posbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(78px + env(safe-area-inset-bottom)); width: 100%; max-width: 430px; padding: 12px 18px 4px; background: linear-gradient(0deg, var(--bg) 70%, transparent); z-index: 25; }
+@media (min-width: 700px) and (max-width: 1023px) { .posbar { max-width: 680px; } }
 .posbar-empty { text-align: center; color: var(--dim); font-size: 13px; padding: 14px; }
 .cartcount { background: rgba(255, 255, 255, .28); min-width: 24px; height: 24px; padding: 0 7px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; font-weight: 850; font-size: 13px; }
 
