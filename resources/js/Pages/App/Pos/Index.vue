@@ -348,6 +348,18 @@ const total = computed(() => Math.max(0, subtotal.value - effectiveDiscount.valu
 const splitTendered = computed(() => ['cash', 'bkash', 'nagad'].reduce((s, m) => s + (Number(splitAmounts.value[m]) || 0), 0));
 const splitRemainder = computed(() => Math.max(0, Math.round((total.value - splitTendered.value) * 100) / 100));
 
+// Prefill cash with the current total when entering split mode (one-time
+// copy, not a binding, so the cashier can still edit it down); clear on
+// exit so a stale amount doesn't resurface next time it's toggled on.
+function toggleSplitMode() {
+    splitMode.value = !splitMode.value;
+    if (splitMode.value) {
+        splitAmounts.value = { cash: total.value || '', bkash: '', nagad: '' };
+    } else {
+        splitAmounts.value = { cash: '', bkash: '', nagad: '' };
+    }
+}
+
 function buildPayments() {
     if (splitMode.value) {
         return ['cash', 'bkash', 'nagad']
@@ -1163,7 +1175,7 @@ useKeyboardShortcuts({
                 <div class="field">
                     <div style="display:flex;justify-content:space-between;align-items:center">
                         <label style="margin-bottom:0">{{ t('pos.payment') }}</label>
-                        <button type="button" style="border:none;background:none;color:var(--sky);font-size:12px;font-weight:700;padding:4px 0" @click="splitMode = !splitMode">
+                        <button type="button" style="border:none;background:none;color:var(--sky);font-size:12px;font-weight:700;padding:4px 0" @click="toggleSplitMode()">
                             {{ splitMode ? t('pos.splitOff') : t('pos.splitPayment') }}
                         </button>
                     </div>
