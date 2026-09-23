@@ -102,6 +102,35 @@ const filtered = computed(() => props.products.filter((p) =>
     (cat.value === 'all' || p.category_id === cat.value)
 ));
 
+// Lazy-loading fallback for the list-virtualization request (see .pcard's
+// content-visibility in app.css for the other half) — a shop with
+// hundreds/thousands of products would otherwise mount every single
+// matching card's DOM/Vue overhead up front on every keystroke/category
+// tap, even the ones content-visibility would immediately hide. This caps
+// what's actually IN the DOM at any time to a growing window instead:
+// starts at RENDER_CHUNK cards, and grows by RENDER_CHUNK more each time
+// the sentinel div at the bottom of the grid scrolls into view — the
+// classic "infinite scroll" pattern, applied here purely for render-cost
+// capping rather than pagination UX. Resets to the first chunk whenever
+// the actual result set changes (a new search/category should start back
+// at the top, not stay scrolled through whatever window size a PREVIOUS,
+// unrelated search had grown to).
+const RENDER_CHUNK = 60;
+const renderLimit = ref(RENDER_CHUNK);
+watch(filtered, () => { renderLimit.value = RENDER_CHUNK; });
+const visibleProducts = computed(() => filtered.value.slice(0, renderLimit.value));
+const loadMoreSentinel = ref(null);
+let loadMoreObserver = null;
+onMounted(() => {
+    loadMoreObserver = new IntersectionObserver((entries) => {
+        if (entries[0]?.isIntersecting && renderLimit.value < filtered.value.length) {
+            renderLimit.value += RENDER_CHUNK;
+        }
+    }, { root: document.getElementById('view'), rootMargin: '600px' });
+    if (loadMoreSentinel.value) loadMoreObserver.observe(loadMoreSentinel.value);
+});
+onBeforeUnmount(() => loadMoreObserver?.disconnect());
+
 function qtyInCart(productId) {
     return cart.value.filter((l) => l.product_id === productId).reduce((s, l) => s + l.qty, 0);
 }
@@ -898,7 +927,7 @@ useKeyboardShortcuts({
                 </div>
 
                 <div v-if="filtered.length" class="pgrid rest-grid">
-                    <div v-for="p in filtered" :key="p.id" class="pcard" :class="{ incart: qtyInCart(p.id) }">
+                    <div v-for="p in visibleProducts" :key="p.id" class="pcard" :class="{ incart: qtyInCart(p.id) }">
                         <span v-if="p.sold_by_weight && qtyInCart(p.id)" class="qbadge">{{ formatWeightQty(p, qtyInCart(p.id)) }}</span>
                         <span v-else-if="qtyInCart(p.id)" class="qbadge">{{ qtyInCart(p.id) }}</span>
                         <!-- a weighed product always opens the weight-entry sheet — a plain tap-to-add-1 makes no sense for a loose kg/litre item -->
@@ -967,6 +996,11 @@ useKeyboardShortcuts({
                     </div>
                 </div>
                 <div v-else class="empty"><div class="big">🔍</div>{{ t('pos.notFound') }}</div>
+                <!-- invisible trigger for the lazy-loading fallback (see
+                     loadMoreObserver above) — grows visibleProducts by
+                     another chunk once this scrolls near the viewport,
+                     never shown to the cashier -->
+                <div ref="loadMoreSentinel" style="height:1px"></div>
             </div>
 
             <!-- order panel — desktop only, a live read view of the cart with the full editable Sheet one tap away for payment/discount/customer details -->

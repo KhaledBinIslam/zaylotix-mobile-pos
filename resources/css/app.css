@@ -321,7 +321,21 @@ body {
 .qn { min-width: 26px; text-align: center; font-weight: 750; font-variant-numeric: tabular-nums; }
 
 .pgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.pcard { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--sh); position: relative; width: 100%; }
+/* content-visibility:auto tells the browser to skip layout/paint entirely
+   for any card currently off-screen — no JS, no change to how many cards
+   are actually in the DOM, every click handler/cart-state binding on a
+   card keeps working exactly as before. This is what actually fixes
+   scroll jank on a shop with hundreds/thousands of products: the per-
+   frame layout/paint cost during scroll is what a huge unfiltered grid
+   makes expensive, and content-visibility removes that cost for whatever
+   isn't currently visible. contain-intrinsic-size reserves an average
+   card's real measured height (~124-165px depending on whether a low-
+   stock/pack-size line is showing) so the scrollbar/scroll position don't
+   jump around as off-screen cards get measured for the first time. See
+   Pos/Index.vue's visibleProducts/loadMoreSentinel for the complementary
+   piece — capping how many cards ever get mounted at once in the first
+   place, which this alone doesn't do. */
+.pcard { content-visibility: auto; contain-intrinsic-size: 0 140px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--sh); position: relative; width: 100%; }
 .pcard-main { display: block; width: 100%; padding: 12px; text-align: left; background: transparent; border: none; }
 .pcard .em { font-size: 22px; }
 /* a real product photo bleeds to the card's edges and sits above the name/
