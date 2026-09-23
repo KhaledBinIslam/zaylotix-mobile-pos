@@ -55,15 +55,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->respond(function (Response $response, Throwable $exception, Request $request) {
             $status = $response->getStatusCode();
 
-            if ($status === 419) {
-                return back()->with('error', 'সেশনের মেয়াদ শেষ হয়ে গেছে — আবার চেষ্টা করুন।');
-            }
-
-            if (! in_array($status, [403, 404, 429, 500, 503], true)) {
+            if (! in_array($status, [419, 403, 404, 429, 500, 503], true)) {
                 return $response;
             }
 
             $generic = match ($status) {
+                419 => 'সেশনের মেয়াদ শেষ হয়ে গেছে — আবার চেষ্টা করুন।',
                 403 => $exception->getMessage() ?: 'এই কাজের অনুমতি নেই।',
                 404 => 'যা খুঁজছেন তা পাওয়া যায়নি — মুছে ফেলা হয়ে থাকতে পারে।',
                 429 => 'অনেক চেষ্টা হয়ে গেছে, একটু পর আবার চেষ্টা করুন।',
@@ -71,10 +68,24 @@ return Application::configure(basePath: dirname(__DIR__))
             };
 
             // Plain JSON/fetch callers (POS checkout, barcode lookup) need a
-            // JSON body back, not an HTML/Inertia page, so their existing
-            // error handling (data.message) keeps working unchanged.
+            // JSON body back, not an HTML/Inertia page or a followed
+            // redirect, so their existing error handling (data.message)
+            // keeps working. 419 used to be handled separately above,
+            // unconditionally redirecting — bypassing this check entirely
+            // — before this check even existed for it. Root-caused live via
+            // POS checkout's own comment: a raw fetch() follows that
+            // redirect() silently (fetch defaults to redirect:'follow') and
+            // lands on a normal 200 HTML page instead of ever seeing an
+            // error, which is exactly what surfaced as "session expired"
+            // during checkout with no clear trigger — the CSRF token going
+            // stale on a long-open POS tab is a real, occasional thing;
+            // silently eating the resulting error was the actual bug.
             if ($request->expectsJson() && ! $request->header('X-Inertia')) {
                 return response()->json(['message' => $generic], $status);
+            }
+
+            if ($status === 419) {
+                return back()->with('error', $generic);
             }
 
             // Never forward a raw framework/DB exception message to the

@@ -429,6 +429,21 @@ async function submitCheckout() {
         }
 
         if (!res.ok) {
+            // 419 means the CSRF token baked into this long-open tab's meta
+            // tag went stale (the session got regenerated at some point
+            // without a full page reload ever refreshing it) — the cart was
+            // never charged, and retrying with the same stale token would
+            // just fail the same way again, so reload to pick up a fresh
+            // one before the cashier's next attempt. This used to be caught
+            // upstream by the res.redirected check above (the server
+            // silently redirected instead of returning this 419 at all,
+            // see that comment) — now that the server answers correctly,
+            // handle it here where the real status code makes it certain.
+            if (res.status === 419) {
+                errorMsg.value = t('pos.sessionExpired');
+                setTimeout(() => window.location.reload(), 2500);
+                return;
+            }
             errorMsg.value = data.message || Object.values(data.errors || {})[0]?.[0] || t('pos.checkoutError');
             return;
         }
