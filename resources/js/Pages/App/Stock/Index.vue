@@ -433,7 +433,7 @@ useKeyboardShortcuts({
             <button class="btn sm" style="width:auto;padding:0 16px" @click="applyFilter">{{ t('sales.searchButton') }}</button>
         </div>
 
-        <div v-if="hasBatchTracking && (companies.length || genericNames.length)" class="f2" style="margin-bottom:12px">
+        <div v-if="hasPrescriptionRecords && (companies.length || genericNames.length)" class="f2" style="margin-bottom:12px">
             <div v-if="companies.length" class="field" style="margin-bottom:0">
                 <select v-model="companyFilter" @change="applyFilter">
                     <option value="">{{ t('stock.allCompanies') }}</option>
@@ -480,7 +480,22 @@ useKeyboardShortcuts({
         <Pagination :links="products.links" />
 
         <Sheet v-model="productSheet" :title="editing ? (isRestaurant ? t('stock.editTitleRestaurant') : t('stock.editTitle')) : (isRestaurant ? t('stock.newTitleRestaurant') : t('stock.newTitle'))">
-            <div v-if="!editing && hasBatchTracking" class="field">
+            <!-- Root-caused live (2026-09-23, real-user report): a Super
+                 Shop owner (batch_tracking is granted to supershop/cosmetics
+                 too, for expiry-dated perishables — see config/
+                 business_types.php) saw "Search the medicine database" and
+                 a Paracetamol-example generic-name field on every new
+                 product, looking exactly like the shop had silently become
+                 a Pharmacy. These three fields (medicine catalog search,
+                 generic name, company) are the pharmacy-only trio — see the
+                 💊-prefixed display of generic_name/company on this same
+                 page's product rows — batch_tracking alone was never the
+                 right gate for them; prescription_records already exists
+                 and is pharmacy-exclusive (the requires_prescription
+                 checkbox below already correctly uses it). shelf_location
+                 stays on hasBatchTracking below — genuinely useful for any
+                 shop with a physical rack/shelf system, not pharmacy-only. -->
+            <div v-if="!editing && hasPrescriptionRecords" class="field">
                 <label>{{ t('stock.medicineCatalogSearch') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
                 <input v-model="medicineQuery" :placeholder="t('stock.medicineCatalogPlaceholder')" @input="searchMedicineCatalog">
                 <div v-if="medicineResults.length" class="card" style="margin-top:6px;padding:0">
@@ -497,13 +512,13 @@ useKeyboardShortcuts({
                 <input v-model="form.name">
                 <div v-if="form.errors.name" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.name }}</div>
             </div>
-            <div v-if="hasBatchTracking" class="field">
+            <div v-if="hasPrescriptionRecords" class="field">
                 <label>{{ t('stock.genericName') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.genericNameHint') }}</span></label>
                 <input v-model="form.generic_name" :placeholder="t('stock.genericNamePlaceholder')" list="generic-name-options">
                 <datalist id="generic-name-options"><option v-for="g in genericNames" :key="g" :value="g" /></datalist>
                 <div v-if="form.errors.generic_name" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.generic_name }}</div>
             </div>
-            <div v-if="hasBatchTracking" class="field">
+            <div v-if="hasPrescriptionRecords" class="field">
                 <label>{{ t('stock.company') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
                 <input v-model="form.company" :placeholder="t('stock.companyPlaceholder')" list="company-options">
                 <datalist id="company-options"><option v-for="c in companies" :key="c" :value="c" /></datalist>
