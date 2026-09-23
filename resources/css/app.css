@@ -425,14 +425,25 @@ body {
 .help-fab { position: fixed; right: 16px; bottom: calc(84px + env(safe-area-inset-bottom)); height: 44px; padding: 0 16px 0 14px; border-radius: 99px; background: #25D366; color: #fff; font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 7px; border: none; box-shadow: 0 6px 18px rgba(37, 211, 102, .4); z-index: 40; cursor: pointer; white-space: nowrap; }
 .help-fab span:first-child { font-size: 19px; }
 @media (min-width: 1024px) { .help-fab { bottom: 24px; } }
-/* reported with a screenshot: on a phone-width screen this pill covered
-   half the bottom area, right over the product grid/nav bar below it.
-   Shrunk it down on narrow screens only — still the same green ❓+label
-   pill (so it stays recognizable per the comment above), just smaller
-   footprint; desktop/tablet keep the original size. */
+/* Screens with a fixed bottom bill/action bar (.posbar - retail POS,
+   barcode labels, WhatsApp bulk send) sit in the same bottom-right
+   corner as this button. Shrinking the fab alone (below) didn't fix
+   the actual bug reported with a screenshot: it still landed squarely
+   on top of that bar, right over the price text. Lift it clear above
+   the bar's height, only on the <1024px widths where the bar is
+   actually shown (matches .posbar's own `lg:hidden`). */
+@media (max-width: 1023px) {
+    body:has(.posbar) .help-fab { bottom: calc(150px + env(safe-area-inset-bottom)); }
+}
+/* Separately: on phone-width screens this pill also covered a
+   disproportionate chunk of the bottom area by itself. Shrunk it down
+   here — still the same green ❓+label pill (so it stays recognizable
+   per the comment above), just a smaller footprint; desktop/tablet
+   keep the original size. */
 @media (max-width: 480px) {
     .help-fab { height: 34px; padding: 0 11px 0 9px; font-size: 11.5px; gap: 5px; bottom: calc(78px + env(safe-area-inset-bottom)); }
     .help-fab span:first-child { font-size: 14px; }
+    body:has(.posbar) .help-fab { bottom: calc(152px + env(safe-area-inset-bottom)); }
 }
 /* real root cause of the support button overlapping the bottom nav on
    desktop/web width, reported with a screenshot: #nav's own base rule sets
