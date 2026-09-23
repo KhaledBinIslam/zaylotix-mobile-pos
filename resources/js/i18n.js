@@ -269,6 +269,15 @@ export const translations = {
     'workPeriod.closeHint': { bn: 'শিফট চলছে {time} ধরে — এখন হাতে থাকা ক্যাশ গুনে লিখুন', en: 'Shift has run for {time} — count and enter the cash on hand now' },
     'workPeriod.closingCash': { bn: 'এখন হাতে ক্যাশ আছে', en: 'Closing cash' },
     'workPeriod.endButton': { bn: 'শিফট বন্ধ করুন', en: 'Close shift' },
+    'workPeriod.historyPrompt': { bn: 'শিফট ইতিহাস', en: 'Shift history' },
+    'workPeriod.historyPromptSub': { bn: 'পুরনো শিফটের ঘাটতি/বাড়তি দেখুন', en: 'See past shifts\' shortage/overage' },
+    'workPeriod.historyTitle': { bn: 'শিফট ইতিহাস', en: 'Shift history' },
+    'workPeriod.historySubtitle': { bn: 'প্রতিটা শিফটে ক্যাশ কতটা মিলেছে', en: 'How well cash matched each shift' },
+    'workPeriod.matched': { bn: 'হিসাব মিলেছে', en: 'Matched' },
+    'workPeriod.shortage': { bn: 'ঘাটতি', en: 'Shortage' },
+    'workPeriod.overage': { bn: 'বাড়তি', en: 'Overage' },
+    'workPeriod.openedBy': { bn: 'খুলেছেন', en: 'Opened by' },
+    'workPeriod.empty': { bn: 'এখনো কোনো শিফট বন্ধ করা হয়নি।', en: 'No shifts closed yet.' },
 
     // ---- landing (public homepage, before login) ----
     'landing.tagline': { bn: 'ব্যবসা চলুক নিশ্চিন্তে', en: 'Run your shop with confidence' },

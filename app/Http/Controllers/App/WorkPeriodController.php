@@ -9,6 +9,7 @@ use App\Support\Tenancy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Inertia\Inertia;
 
 /**
  * Shift/cash-drawer tracking — entirely optional, never blocks POS/checkout.
@@ -66,13 +67,40 @@ class WorkPeriodController extends Controller
         $expectedChange = (float) $shop->cash_balance - (float) $workPeriod->cash_balance_at_open;
         $actualChange = $data['closing_cash'] - (float) $workPeriod->opening_cash;
 
+        $variance = round($actualChange - $expectedChange, 2);
+
         $workPeriod->update([
             'closed_at' => now(),
             'closing_cash' => $data['closing_cash'],
             'cash_balance_at_close' => $shop->cash_balance,
-            'variance' => round($actualChange - $expectedChange, 2),
+            'variance' => $variance,
         ]);
 
-        return back()->with('success', 'শিফট বন্ধ হয়েছে।');
+        // the whole point of counting cash at close is to catch a shortage
+        // (or a surprise overage) immediately - the variance used to be
+        // computed and saved but never actually shown to anyone, so closing
+        // a shift was a black box. Fold it straight into the same toast the
+        // UI already displays on close, no new plumbing needed.
+        $amount = number_format(abs($variance), 2);
+        $message = match (true) {
+            $variance === 0.0 => 'শিফট বন্ধ হয়েছে। হিসাব মিলেছে ✅',
+            $variance < 0 => "শিফট বন্ধ হয়েছে। ঘাটতি ৳{$amount} ⚠️",
+            default => "শিফট বন্ধ হয়েছে। বাড়তি ৳{$amount}",
+        };
+
+        return back()->with('success', $message);
+    }
+
+    /** Past (closed) shifts, newest first - so a shortage/overage caught at
+     *  close time isn't lost the moment the toast disappears. Owner-only in
+     *  the nav (see More.vue), same convention as the Activity Log. */
+    public function index()
+    {
+        $periods = WorkPeriod::with('openedByUser:id,name')
+            ->whereNotNull('closed_at')
+            ->latest('closed_at')
+            ->paginate(30);
+
+        return Inertia::render('App/Shifts/Index', ['periods' => $periods]);
     }
 }

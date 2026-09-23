@@ -148,6 +148,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
 
         Route::post('work-period/open', [WorkPeriodController::class, 'open'])->name('workPeriod.open');
         Route::post('work-period/{workPeriod}/close', [WorkPeriodController::class, 'close'])->name('workPeriod.close');
+        Route::get('work-period/history', [WorkPeriodController::class, 'index'])->name('workPeriod.index');
 
         Route::post('pos/held-carts', [HeldCartController::class, 'store'])->name('heldCarts.store');
         Route::post('pos/held-carts/{heldCart}/resume', [HeldCartController::class, 'resume'])->name('heldCarts.resume');

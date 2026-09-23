@@ -359,6 +359,9 @@ onMounted(() => {
             <button v-if="hasPerm('pos') && !activeWorkPeriod" class="row" style="width:100%;text-align:left;border:none;background:none;cursor:pointer" @click="workPeriodSheet = true">
                 <div class="ava">🕒</div><div class="mid"><b>{{ t('workPeriod.startPrompt') }}</b><span>{{ t('workPeriod.startPromptSub') }}</span></div><div class="end">›</div>
             </button>
+            <Link v-if="isOwner" :href="route('app.workPeriod.index')" class="row">
+                <div class="ava">📊</div><div class="mid"><b>{{ t('workPeriod.historyPrompt') }}</b><span>{{ t('workPeriod.historyPromptSub') }}</span></div><div class="end">›</div>
+            </Link>
             <button v-if="isMainShopWithBranches" class="row" style="width:100%;text-align:left;border:none;background:none;cursor:pointer" @click="syncBranchCatalog">
                 <div class="ava">🔄</div><div class="mid"><b>{{ t('branch.syncButton') }}</b><span>{{ t('branch.syncButtonSub') }}</span></div><div class="end">›</div>
             </button>

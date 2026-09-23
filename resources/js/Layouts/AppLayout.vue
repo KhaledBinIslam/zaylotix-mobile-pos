@@ -153,7 +153,7 @@ const SCREEN_LABELS = {
     sales: 'বিক্রির ইতিহাস', promotions: 'অফার/কুপন', quotations: 'কোটেশন', accounts: 'হিসাব-নিকাশ',
     reports: 'রিপোর্ট', expenses: 'খরচ', purchaseHistory: 'ক্রয়ের ইতিহাস', suppliers: 'সাপ্লায়ার',
     serials: 'IMEI/ওয়ারেন্টি', cashier: 'ক্যাশিয়ার', activity: 'অ্যাক্টিভিটি লগ', more: 'আরও', help: 'সাহায্য', partners: 'পার্টনার হিসাব', employees: 'কর্মচারী ও বেতন',
-    ingredients: 'উপাদান ও রেসিপি', preparations: 'প্রস্তুতকরণ', estimator: 'ইনগ্রেডিয়েন্ট এস্টিমেটর',
+    ingredients: 'উপাদান ও রেসিপি', preparations: 'প্রস্তুতকরণ', estimator: 'ইনগ্রেডিয়েন্ট এস্টিমেটর', shifts: 'শিফট ইতিহাস',
 };
 const screenLabel = computed(() => SCREEN_LABELS[props.active] || props.active);
 
