@@ -552,7 +552,7 @@ function sendMemoWA() {
                             <div class="pp">{{ money(p.price) }}</div>
                             <div v-if="hasProductVariants && p.variants?.length" class="ps">{{ t('pos.pickVariant') }} ({{ p.variants.length }})</div>
                             <div v-else-if="p.stock <= 0" class="ps" style="color:var(--rose)">{{ t('pos.outOfStock') }}</div>
-                            <div v-else-if="hasLowStockAlerts && stockLevel(p.stock, p.reorder_point) === 'low'" class="ps" style="color:var(--gold2);font-weight:700">⚠ {{ t('pos.inStock', { n: p.stock }) }} {{ t('pos.lowStock') }}</div>
+                            <div v-else-if="hasLowStockAlerts && stockLevel(p.stock, p.reorder_point) === 'low'" class="ps" style="color:var(--gold2);font-weight:700">⚠ {{ t('pos.inStock', { n: Math.round(Number(p.stock)), u: t('pos.unit') }) }} {{ t('pos.lowStock') }}</div>
                         </div>
                     </button>
                 </div>

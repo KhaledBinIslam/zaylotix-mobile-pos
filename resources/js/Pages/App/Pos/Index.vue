@@ -978,8 +978,8 @@ useKeyboardShortcuts({
                             <div class="pp">{{ money(p.price) }} <span style="color:var(--dim);font-weight:500">/ {{ p.unit?.name || t('pos.unit') }}</span></div>
                             <div class="ps">
                                 <span v-if="stockLevel(p) === 'out'" style="color:var(--rose)">{{ t('pos.outOfStock') }}</span>
-                                <span v-else-if="hasLowStockAlerts && stockLevel(p) === 'low'" style="color:var(--gold2);font-weight:700">⚠ {{ t('pos.inStock', { n: p.stock }) }} {{ t('pos.lowStock') }}</span>
-                                <span v-else>{{ t('pos.inStock', { n: p.stock }) }}</span>
+                                <span v-else-if="hasLowStockAlerts && stockLevel(p) === 'low'" style="color:var(--gold2);font-weight:700">⚠ {{ t('pos.inStock', { n: Math.round(Number(p.stock)), u: p.unit?.name || t('pos.unit') }) }} {{ t('pos.lowStock') }}</span>
+                                <span v-else>{{ t('pos.inStock', { n: Math.round(Number(p.stock)), u: p.unit?.name || t('pos.unit') }) }}</span>
                             </div>
                             <!-- FEFO already picks the soonest-expiring batch automatically at
                                  checkout — this is purely visibility, same wording/color Stock/

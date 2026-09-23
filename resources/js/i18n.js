@@ -691,7 +691,7 @@ export const translations = {
     'pos.scanTitle': { bn: 'স্ক্যান করুন', en: 'Scan' },
     'pos.allProducts': { bn: 'সব পণ্য', en: 'All Products' },
     'pos.unit': { bn: 'পিস', en: 'pc' },
-    'pos.inStock': { bn: '{n} পিস আছে', en: '{n} in stock' },
+    'pos.inStock': { bn: '{n} {u} আছে', en: '{n} {u} in stock' },
     'pos.outOfStock': { bn: 'শেষ', en: 'Out of stock' },
     'pos.alwaysAvailable': { bn: 'সবসময় পাওয়া যায়', en: 'Always available' },
     'pos.availableToday': { bn: 'আজ আছে', en: 'Available today' },

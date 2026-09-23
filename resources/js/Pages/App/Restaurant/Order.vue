@@ -784,7 +784,7 @@ onBeforeUnmount(() => {
                             <div class="ps">
                                 <span v-if="p.stock_mode === 'untracked'" style="color:var(--mut)">{{ t('pos.alwaysAvailable') }}</span>
                                 <span v-else-if="p.stock_mode === 'toggle'" :style="{ color: p.stock > 0 ? 'var(--mut)' : 'var(--rose)' }">{{ p.stock > 0 ? t('pos.availableToday') : t('pos.soldOutToday') }}</span>
-                                <span v-else-if="p.stock > 0">{{ t('pos.inStock', { n: p.stock }) }}</span>
+                                <span v-else-if="p.stock > 0">{{ t('pos.inStock', { n: Math.round(Number(p.stock)), u: t('pos.unit') }) }}</span>
                                 <span v-else style="color:var(--rose)">{{ t('pos.outOfStock') }}</span>
                             </div>
                         </button>
