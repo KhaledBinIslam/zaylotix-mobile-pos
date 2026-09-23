@@ -4,6 +4,10 @@ import { ref, computed, onMounted } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import { useI18n } from '@/composables/useI18n';
+import { useToast } from '@/composables/useToast';
+import { reportClientError } from '@/support/reportClientError';
+
+const { toast } = useToast();
 
 const props = defineProps({ shop: Object, products: Array, suppliers: Array });
 
@@ -50,8 +54,15 @@ const renewalSubmitting = ref(false);
 function openRenewalSheet() {
     renewalSheet.value = true;
     fetch(route('app.subscriptionRenewal.index'), { headers: { Accept: 'application/json' } })
-        .then((r) => r.json())
-        .then((data) => { renewalInfo.value = data; });
+        .then((r) => {
+            if (!r.ok) throw new Error(`subscriptionRenewal.index responded ${r.status}`);
+            return r.json();
+        })
+        .then((data) => { renewalInfo.value = data; })
+        .catch((e) => {
+            reportClientError(e, 'openRenewalSheet');
+            toast('⚠️ ' + t('more.renewalLoadFailed'));
+        });
 }
 async function payRenewal(provider) {
     renewalSubmitting.value = true;
@@ -157,8 +168,15 @@ const gatewayForm = useForm({});
 function openGatewaySheet() {
     gatewaySheet.value = true;
     fetch(route('app.paymentGateways.index'), { headers: { Accept: 'application/json' } })
-        .then((r) => r.json())
-        .then((data) => { gatewayProviders.value = data.providers; gatewayConfigured.value = data.configured; });
+        .then((r) => {
+            if (!r.ok) throw new Error(`paymentGateways.index responded ${r.status}`);
+            return r.json();
+        })
+        .then((data) => { gatewayProviders.value = data.providers; gatewayConfigured.value = data.configured; })
+        .catch((e) => {
+            reportClientError(e, 'openGatewaySheet');
+            toast('⚠️ ' + t('more.gatewayLoadFailed'));
+        });
 }
 function selectGatewayTab(provider) {
     gatewayActiveTab.value = provider;
@@ -198,8 +216,15 @@ const waTestForm = useForm({ phone: '' });
 function openWaSheet() {
     waSheet.value = true;
     fetch(route('app.whatsappCredential.index'), { headers: { Accept: 'application/json' } })
-        .then((r) => r.json())
-        .then((data) => { waConfigured.value = data.configured; });
+        .then((r) => {
+            if (!r.ok) throw new Error(`whatsappCredential.index responded ${r.status}`);
+            return r.json();
+        })
+        .then((data) => { waConfigured.value = data.configured; })
+        .catch((e) => {
+            reportClientError(e, 'openWaSheet');
+            toast('⚠️ ' + t('more.whatsappLoadFailed'));
+        });
 }
 function saveWa() {
     waForm.post(route('app.whatsappCredential.store'), {

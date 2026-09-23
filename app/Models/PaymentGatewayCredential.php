@@ -38,12 +38,24 @@ class PaymentGatewayCredential extends Model
      */
     public function maskedSummary(): string
     {
-        $idField = match ($this->provider) {
-            'bkash' => $this->credentials['username'] ?? null,
-            'nagad' => $this->credentials['merchant_id'] ?? null,
-            'sslcommerz' => $this->credentials['store_id'] ?? null,
-            default => null,
-        };
+        // 'credentials' is decrypted with the app's CURRENT APP_KEY on every
+        // read (see the cast above) — a row saved under a key that's since
+        // rotated (e.g. .env regenerated after this row was written) throws
+        // Illuminate\Contracts\Encryption\DecryptException here. That used
+        // to take down this row's ENTIRE containing list (index() has no
+        // try/catch of its own), turning "one stale credential" into a
+        // blank/broken settings sheet with no visible reason — caught here
+        // instead so it degrades to just this one row showing generic.
+        try {
+            $idField = match ($this->provider) {
+                'bkash' => $this->credentials['username'] ?? null,
+                'nagad' => $this->credentials['merchant_id'] ?? null,
+                'sslcommerz' => $this->credentials['store_id'] ?? null,
+                default => null,
+            };
+        } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
+            return 'configured';
+        }
 
         if (! $idField) {
             return 'configured';

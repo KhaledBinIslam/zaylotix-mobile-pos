@@ -55,6 +55,30 @@ class PaymentGatewayCredentialTest extends TestCase
         $this->assertStringStartsWith('tes', $body['configured']['sslcommerz']['masked_summary']);
     }
 
+    /**
+     * A row saved under an APP_KEY that's since rotated throws
+     * DecryptException on every read of ->credentials — this used to take
+     * down the ENTIRE list (index() had no try/catch of its own), turning
+     * one stale credential into a blank/broken settings sheet with no
+     * visible reason. Simulated here by writing garbage directly into the
+     * raw encrypted column, which is exactly what an undecryptable payload
+     * looks like from the model's point of view.
+     */
+    public function test_an_undecryptable_credential_row_degrades_to_generic_instead_of_crashing_the_list(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $good = PaymentGatewayCredential::create(['shop_id' => $shop->id, 'provider' => 'bkash', 'credentials' => ['username' => 'gooduser'], 'is_active' => true]);
+        $bad = PaymentGatewayCredential::create(['shop_id' => $shop->id, 'provider' => 'sslcommerz', 'credentials' => ['store_id' => 'placeholder'], 'is_active' => true]);
+        DB::table('payment_gateway_credentials')->where('id', $bad->id)->update(['credentials' => 'not-actually-encrypted-garbage']);
+
+        $response = $this->actingAs($owner, 'web')->getJson('/app/payment-gateways');
+
+        $response->assertOk();
+        $body = $response->json('configured');
+        $this->assertStringStartsWith('goo', $body['bkash']['masked_summary'], 'the undamaged row must still show its real summary');
+        $this->assertSame('configured', $body['sslcommerz']['masked_summary'], 'the undecryptable row must degrade to generic, not crash the whole response');
+    }
+
     public function test_a_cashier_cannot_configure_or_view_gateway_credentials(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();

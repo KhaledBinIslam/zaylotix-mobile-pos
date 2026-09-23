@@ -6,6 +6,7 @@ import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { createApp, h } from 'vue';
 import { ZiggyVue } from '../../vendor/tightenco/ziggy';
 import { useToast } from './composables/useToast';
+import { reportClientError } from './support/reportClientError';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
@@ -33,7 +34,7 @@ router.on('exception', () => {
 // block) — fixed there specifically, but this catches the same CLASS of
 // bug anywhere else in the app too, present or future.
 window.addEventListener('unhandledrejection', (event) => {
-    console.error('Unhandled promise rejection:', event.reason);
+    reportClientError(event.reason, 'unhandledrejection');
     const { toast } = useToast();
     toast('⚠️ কিছু একটা ভুল হয়েছে — আবার চেষ্টা করুন। সমস্যা থাকলে পেজ রিলোড করুন।');
 });

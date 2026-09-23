@@ -65,6 +65,7 @@ use App\Http\Controllers\App\SupplierController;
 use App\Http\Controllers\App\SupplierPaymentController;
 use App\Http\Controllers\App\SupplierReturnController;
 use App\Http\Controllers\App\TableOrderController;
+use App\Http\Controllers\App\ClientErrorLogController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
@@ -133,6 +134,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
     Route::post('branches/sync-catalog', [BranchController::class, 'syncCatalog'])->name('branches.syncCatalog');
     Route::get('stock-transfers', [StockTransferController::class, 'index'])->name('stockTransfers.index');
     Route::post('stock-transfers', [StockTransferController::class, 'store'])->name('stockTransfers.store');
+    Route::post('client-error-log', [ClientErrorLogController::class, 'store'])->name('clientErrorLog.store')->middleware('throttle:30,1');
 
     Route::middleware('perm:pos')->group(function () {
         Route::get('pos', [PosController::class, 'index'])->name('pos');

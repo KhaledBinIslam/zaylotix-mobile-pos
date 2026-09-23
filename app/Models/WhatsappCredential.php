@@ -27,10 +27,23 @@ class WhatsappCredential extends Model
         return $this->belongsTo(Shop::class);
     }
 
-    /** Enough for the owner to confirm which number is connected, never enough to reconstruct the access token. */
+    /**
+     * Enough for the owner to confirm which number is connected, never
+     * enough to reconstruct the access token.
+     *
+     * Same guard as PaymentGatewayCredential::maskedSummary() — a row saved
+     * under an APP_KEY that's since rotated throws DecryptException on
+     * every read of ->credentials, which used to take down this whole
+     * settings sheet (WhatsappCredentialController::index() has no
+     * try/catch of its own) instead of just this one row.
+     */
     public function maskedSummary(): string
     {
-        $phoneNumberId = $this->credentials['phone_number_id'] ?? null;
+        try {
+            $phoneNumberId = $this->credentials['phone_number_id'] ?? null;
+        } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
+            return 'configured';
+        }
         if (! $phoneNumberId) {
             return 'configured';
         }
