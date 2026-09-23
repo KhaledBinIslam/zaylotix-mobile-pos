@@ -12,6 +12,15 @@ const { toast } = useToast();
 const platformLogoUrl = computed(() => page.props.platformLogoUrl);
 const isSuperAdmin = computed(() => page.props.auth?.admin?.role === 'super_admin');
 watch(() => page.props.flash?.success, (msg) => { if (msg) toast(msg); });
+// Root-caused live (2026-09-23, real-user report): saving Admin/Shops/Edit
+// with a stale CSRF token (bootstrap/app.php's exception handler already
+// does `back()->with('error', 'সেশনের মেয়াদ শেষ...')` for exactly this)
+// landed back on the SAME edit page with the SAME unchanged data and
+// absolutely no visible sign anything went wrong — this layout only ever
+// watched flash.success, never flash.error, so the failure was completely
+// silent. Looked exactly like "I keep picking Grocery and hitting save,
+// it just won't take" with no error shown anywhere to explain why.
+watch(() => page.props.flash?.error, (msg) => { if (msg) toast('⚠️ ' + msg); });
 
 const mobileOpen = ref(false);
 
