@@ -28,6 +28,9 @@ const shop = computed(() => page.props.shop);
 // subtotal/VAT-preview immediately instead of looking stale until sync.
 const liveOrderTotal = computed(() => props.order.items
     .reduce((s, it) => s + it.price * it.qty - Math.min(it.discount || 0, it.price * it.qty), 0));
+// gross (pre-item-discount) version, for the bill sheet's discount
+// breakdown — see the totalDiscount computed further down
+const grossOrderTotal = computed(() => props.order.items.reduce((s, it) => s + it.price * it.qty, 0));
 // same "in cart" badge/highlight Pos/Index.vue's product grid already shows
 // (see qtyInCart there) — this screen never had it, so a menu item that was
 // genuinely added gave no lasting visual sign of it on the card itself,
@@ -449,6 +452,9 @@ function toggleItemSelected(itemId) {
 const splitSubtotal = computed(() => props.order.items
     .filter((it) => selectedItemIds.value.includes(it.id))
     .reduce((s, it) => s + it.price * it.qty - Math.min(it.discount || 0, it.price * it.qty), 0));
+const grossSplitSubtotal = computed(() => props.order.items
+    .filter((it) => selectedItemIds.value.includes(it.id))
+    .reduce((s, it) => s + it.price * it.qty, 0));
 
 // --- billing sheet ---
 const billSheet = ref(false);
@@ -469,6 +475,12 @@ const billBaseTotal = computed(() => (splitMode.value ? splitSubtotal.value : li
 // see TableOrderController::bill()) — the displayed total must reflect that
 // the instant "🎁 Complimentary" is picked, not just after the bill is sent
 const effectiveDiscount = computed(() => (payMode.value === 'complimentary' ? billBaseTotal.value : (discount.value || 0)));
+// Display-only breakdown for the bill sheet — see Pos/Index.vue's
+// identical pair for why: billBaseTotal is already net of each item's
+// own discount, so a bill with only per-item discounts applied (no
+// overall discount) showed no discount line at all in the breakdown.
+const grossBillBase = computed(() => (splitMode.value ? grossSplitSubtotal.value : grossOrderTotal.value));
+const totalDiscount = computed(() => (grossBillBase.value - billBaseTotal.value) + effectiveDiscount.value);
 // mirrors TableOrderController::bill()'s own math — additive on top of the
 // discounted subtotal, unlike the VAT preview above which is backed out of
 // an already-inclusive price and never added to what's actually charged
@@ -859,7 +871,7 @@ onBeforeUnmount(() => {
             </div>
             <div>
             <div class="card" style="margin-bottom:14px">
-                <div v-if="effectiveDiscount > 0" style="display:flex;justify-content:space-between;font-size:13px;color:var(--mut);padding-bottom:6px"><span>{{ t('pos.overallDiscount') }}</span><span>− {{ money(effectiveDiscount) }}</span></div>
+                <div v-if="totalDiscount > 0" style="display:flex;justify-content:space-between;font-size:13px;color:var(--mut);padding-bottom:6px"><span>{{ t('pos.overallDiscount') }}</span><span>− {{ money(totalDiscount) }}</span></div>
                 <div v-if="serviceCharge > 0" style="display:flex;justify-content:space-between;font-size:13px;color:var(--mut);padding-bottom:6px"><span>{{ t('pos.serviceCharge') }}</span><span>+ {{ money(serviceCharge) }}</span></div>
                 <div style="display:flex;justify-content:space-between;font-size:19px;font-weight:800"><span>{{ t('pos.grandTotal') }}</span><b style="color:var(--gold)">{{ money(billTotal) }}</b></div>
             </div>

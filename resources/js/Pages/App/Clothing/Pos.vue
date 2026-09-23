@@ -220,6 +220,12 @@ const subtotal = computed(() => cart.value.reduce((s, l) => s + lineTotal(l), 0)
 // receipt comes back, or the sheet keeps showing a price that's never
 // actually charged
 const effectiveDiscount = computed(() => (payMode.value === 'complimentary' ? subtotal.value : (discount.value || 0)));
+// Display-only breakdown for the checkout sheet — see Pos/Index.vue's
+// identical pair for why: `subtotal` is already net of each line's own
+// discount, so showing it next to "Discount: -৳0" whenever only
+// per-line discounts were used made it look like nothing was discounted.
+const grossSubtotal = computed(() => cart.value.reduce((s, l) => s + lineUnitPrice(l) * l.qty, 0));
+const totalDiscount = computed(() => (grossSubtotal.value - subtotal.value) + effectiveDiscount.value);
 const serviceCharge = computed(() => {
     const rate = shop.value?.service_charge_rate;
     if (rate === null || rate === undefined) return 0;
@@ -707,8 +713,8 @@ function sendMemoWA() {
 
             <div>
                 <div style="border-top:1px solid var(--line);margin-top:10px;padding-top:10px">
-                    <div style="display:flex;justify-content:space-between;padding:2px 0"><span>{{ t('pos.subtotalLabel') }}</span><b>{{ money(subtotal) }}</b></div>
-                    <div v-if="effectiveDiscount > 0" style="display:flex;justify-content:space-between;padding:2px 0"><span>{{ t('pos.overallDiscount') }}</span><b>− {{ money(effectiveDiscount) }}</b></div>
+                    <div style="display:flex;justify-content:space-between;padding:2px 0"><span>{{ t('pos.subtotalLabel') }}</span><b>{{ money(grossSubtotal) }}</b></div>
+                    <div v-if="totalDiscount > 0" style="display:flex;justify-content:space-between;padding:2px 0"><span>{{ t('pos.overallDiscount') }}</span><b>− {{ money(totalDiscount) }}</b></div>
                     <div v-if="serviceCharge > 0" style="display:flex;justify-content:space-between;padding:2px 0"><span>{{ t('pos.serviceCharge') }}</span><b>+ {{ money(serviceCharge) }}</b></div>
                     <div style="display:flex;justify-content:space-between;padding:6px 0 0;font-weight:800;font-size:16px"><span>{{ t('pos.totalLabel') }}</span><b>{{ money(total) }}</b></div>
                 </div>

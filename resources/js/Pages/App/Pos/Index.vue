@@ -332,6 +332,16 @@ const subtotal = computed(() => cart.value.reduce((s, l) => s + lineTotal(l), 0)
 // that the instant "🎁 Complimentary" is picked, not just after the receipt
 // comes back, or the sheet keeps showing a price that's never actually charged
 const effectiveDiscount = computed(() => (payMode.value === 'complimentary' ? subtotal.value : (discount.value || 0)));
+// Display-only breakdown for the checkout sheet: `subtotal` above is
+// already net of each line's own discount (that's what the checkout math
+// needs), so showing it next to "Discount: -৳0" whenever only per-line
+// discounts were used — never touching the separate overall-discount
+// field — made it look like nothing had been discounted at all, even
+// with ৳10 of line discounts actually applied (reported with a
+// screenshot). These two are for display only; `total` below is
+// unchanged and still matches the server's math exactly.
+const grossSubtotal = computed(() => cart.value.reduce((s, l) => s + lineRaw(l), 0));
+const totalDiscount = computed(() => (grossSubtotal.value - subtotal.value) + effectiveDiscount.value);
 // mirrors the server's own PosController::checkout() math exactly — service
 // charge is additive on top of the discounted subtotal, unlike VAT (which is
 // backed out of an already-inclusive price and shown separately, never added)
@@ -1258,8 +1268,8 @@ useKeyboardShortcuts({
                      always visible either way without extra scrolling -->
                 <div class="sticky-footer">
                     <div class="card" style="margin-bottom:10px">
-                        <div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--mut);font-size:13.5px"><span>{{ t('pos.subtotal') }}</span><b>{{ money(subtotal) }}</b></div>
-                        <div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--mut);font-size:13.5px"><span>{{ t('pos.overallDiscount') }}</span><b>− {{ money(effectiveDiscount) }}</b></div>
+                        <div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--mut);font-size:13.5px"><span>{{ t('pos.subtotal') }}</span><b>{{ money(grossSubtotal) }}</b></div>
+                        <div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--mut);font-size:13.5px"><span>{{ t('pos.overallDiscount') }}</span><b>− {{ money(totalDiscount) }}</b></div>
                         <div v-if="serviceCharge > 0" style="display:flex;justify-content:space-between;padding:3px 0;color:var(--mut);font-size:13.5px"><span>{{ t('pos.serviceCharge') }}</span><b>+ {{ money(serviceCharge) }}</b></div>
                     </div>
 
