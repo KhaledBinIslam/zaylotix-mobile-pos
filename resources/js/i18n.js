@@ -421,7 +421,7 @@ export const translations = {
     'home.topDue': { bn: 'বেশি বাকি যাদের', en: 'Highest Dues' },
     'home.remind': { bn: 'রিমাইন্ড', en: 'Remind' },
     'home.noDue': { bn: 'কোনো বাকি নেই 🎉', en: 'No outstanding dues 🎉' },
-    'pay.cash': { bn: 'নগদ', en: 'Cash' },
+    'pay.cash': { bn: 'ক্যাশ', en: 'Cash' },
     'pay.bkash': { bn: 'বিকাশ', en: 'bKash' },
     'pay.nagad': { bn: 'নগদ(MFS)', en: 'Nagad (MFS)' },
     'pay.credit': { bn: 'বাকি', en: 'Credit' },
