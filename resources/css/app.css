@@ -691,7 +691,11 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
 input[type="checkbox"], input[type="radio"] { width: 18px; height: 18px; accent-color: var(--gold); }
 ::placeholder { color: var(--dim); }
 
-#toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 100px; z-index: 90; background: var(--ink); border: 1px solid var(--ink); color: #fff; padding: 12px 18px; border-radius: 14px; font-size: 13.5px; font-weight: 600; box-shadow: 0 8px 24px rgba(18, 38, 28, .28); max-width: 90%; text-align: center; }
+/* was bottom-center, 100px up — right where the POS bill bar/checkout
+   button lives, so a fresh "added to cart" toast kept covering exactly the
+   button a cashier needed to tap next (reported with a screenshot). Moved
+   to the top-right corner, clear of any bottom-anchored bar. */
+#toast { position: fixed; top: calc(130px + env(safe-area-inset-top)); right: 16px; z-index: 90; background: var(--ink); border: 1px solid var(--ink); color: #fff; padding: 12px 18px; border-radius: 14px; font-size: 13.5px; font-weight: 600; box-shadow: 0 8px 24px rgba(18, 38, 28, .28); max-width: min(90%, 340px); text-align: center; }
 
 /* ---- barcode scanner overlay ---- */
 #scanwrap { position: fixed; inset: 0; z-index: 70; background: #000; display: flex; flex-direction: column; }
