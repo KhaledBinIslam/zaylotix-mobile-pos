@@ -8,6 +8,7 @@ import HowToHint from '@/Components/HowToHint.vue';
 import { useI18n } from '@/composables/useI18n';
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts';
 import { usePollingReload } from '@/composables/usePollingReload';
+import { useToast } from '@/composables/useToast';
 
 const props = defineProps({
     products: Object, categories: Array, units: Array, stats: Object, q: String, categoryId: [Number, String],
@@ -33,6 +34,7 @@ const hasWholesalePricing = computed(() => features.value.includes('wholesale_pr
 // wrong (it can be granted to a non-restaurant shop, e.g. the flagship demo).
 const isRestaurant = computed(() => page.props.shop?.business_type_slug === 'restaurant');
 const { t } = useI18n();
+const { toast } = useToast();
 
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 
@@ -52,6 +54,45 @@ function applyFilter() {
         company: companyFilter.value || undefined,
         generic_name: genericFilter.value || undefined,
     }, { preserveState: true, preserveScroll: true });
+}
+
+// Camera barcode search — reported: this screen's search box should work
+// the same way POS's already does (name/barcode text search + a camera
+// scan option), so an owner can scan a shelf tag to jump straight to that
+// product instead of typing it out. Simpler than POS's own scanner (no
+// cart to add to, no variant/invoice special-casing) - a decoded barcode
+// just becomes the search term and re-runs the normal server search above.
+const scannerOpen = ref(false);
+const scanHint = ref('');
+let html5Qrcode = null;
+async function openScanner() {
+    scannerOpen.value = true;
+    scanHint.value = t('pos.scanHintDefault');
+    try {
+        const { Html5Qrcode } = await import('html5-qrcode');
+        html5Qrcode = new Html5Qrcode('stock-reader', { verbose: false });
+        await html5Qrcode.start(
+            { facingMode: 'environment' },
+            { fps: 12, qrbox: { width: 260, height: 200 } },
+            (decodedText) => {
+                if (navigator.vibrate) navigator.vibrate(40);
+                q.value = decodedText.trim();
+                closeScanner();
+                applyFilter();
+            },
+            () => {},
+        );
+    } catch (e) {
+        toast('❌ ' + t('pos.cameraNotFound'));
+        closeScanner();
+    }
+}
+async function closeScanner() {
+    scannerOpen.value = false;
+    if (html5Qrcode) {
+        try { await html5Qrcode.stop(); html5Qrcode.clear(); } catch (e) { /* already stopped */ }
+        html5Qrcode = null;
+    }
 }
 function setCategory(id) {
     cat.value = id;
@@ -437,6 +478,7 @@ useKeyboardShortcuts({
 
         <div style="display:flex;gap:8px;margin-bottom:12px">
             <input ref="searchInput" v-model="q" :placeholder="isRestaurant ? t('stock.searchPlaceholderRestaurant') : t('stock.searchPlaceholder')" style="flex:1" @keyup.enter="applyFilter">
+            <button class="btn ghost" style="width:auto;padding:0 16px" :title="t('pos.scanTitle')" @click="openScanner">📷</button>
             <button class="btn sm" style="width:auto;padding:0 16px" @click="applyFilter">{{ t('sales.searchButton') }}</button>
         </div>
 
@@ -831,5 +873,22 @@ useKeyboardShortcuts({
             </button>
             <button class="btn ghost" style="margin-top:10px" @click="importSheet = false">{{ t('common.cancel') }}</button>
         </Sheet>
+
+        <Teleport to="body">
+            <div v-if="scannerOpen" id="scanwrap">
+                <div class="scan-top">
+                    <button class="scan-x" @click="closeScanner">✕</button>
+                    <div style="color:#fff;font-weight:700">{{ t('pos.scanProductTitle') }}</div>
+                </div>
+                <div id="stock-reader"></div>
+                <div class="scan-frame"></div>
+                <div class="scan-hint">{{ scanHint }}</div>
+                <div class="scan-manual">
+                    <button class="btn ghost" style="background:rgba(0,0,0,.55);color:#fff;border-color:rgba(255,255,255,.25)" @click="closeScanner">
+                        {{ t('common.cancel') }}
+                    </button>
+                </div>
+            </div>
+        </Teleport>
     </AppLayout>
 </template>
