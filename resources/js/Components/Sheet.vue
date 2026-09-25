@@ -1,5 +1,8 @@
 <script setup>
 import { watch, onBeforeUnmount } from 'vue';
+import { useI18n } from '@/composables/useI18n';
+
+const { t } = useI18n();
 
 // `wide` — opt-in, only for a sheet whose content genuinely benefits from
 // desktop/tablet room (checkout being the main case: Khaled's explicit
@@ -48,6 +51,12 @@ onBeforeUnmount(() => window.removeEventListener('popstate', onPopState));
         <div v-if="modelValue" id="scrim" style="display: block" @click="$emit('update:modelValue', false)" />
         <div v-if="modelValue" id="sheet" :class="{ wide }" style="display: block">
             <div class="grab" />
+            <!-- reported with screenshots: closing relied entirely on tapping
+                 the dimmed backdrop, an invisible affordance nobody could be
+                 expected to discover on their own. The backdrop tap still
+                 works, but this is now the primary, always-visible way out
+                 of any sheet in the app, not just the ones with a title. -->
+            <button type="button" class="sheet-close" :aria-label="t('common.close')" @click="$emit('update:modelValue', false)">✕</button>
             <div v-if="title" class="shttl">{{ title }}</div>
             <div v-if="subtitle" class="shsub">{{ subtitle }}</div>
             <slot />
