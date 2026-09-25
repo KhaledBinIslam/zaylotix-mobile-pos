@@ -13,6 +13,7 @@ import { useToast } from '@/composables/useToast';
 const props = defineProps({
     products: Object, categories: Array, units: Array, stats: Object, q: String, categoryId: [Number, String],
     company: String, genericName: String, companies: { type: Array, default: () => [] }, genericNames: { type: Array, default: () => [] },
+    stockStatus: String,
 });
 
 const page = usePage();
@@ -53,6 +54,19 @@ function applyFilter() {
         category_id: cat.value === 'all' ? undefined : cat.value,
         company: companyFilter.value || undefined,
         generic_name: genericFilter.value || undefined,
+        stock_status: props.stockStatus || undefined,
+    }, { preserveState: true, preserveScroll: true });
+}
+// reported: this screen's own low-stock/out-of-stock tiles showed a count
+// but tapping did nothing either - filters the same list down to exactly
+// those products (toggles off if the same tile is tapped again)
+function filterByStockStatus(status) {
+    router.get(route('app.stock'), {
+        q: q.value || undefined,
+        category_id: cat.value === 'all' ? undefined : cat.value,
+        company: companyFilter.value || undefined,
+        generic_name: genericFilter.value || undefined,
+        stock_status: props.stockStatus === status ? undefined : status,
     }, { preserveState: true, preserveScroll: true });
 }
 
@@ -458,8 +472,8 @@ useKeyboardShortcuts({
 
         <div class="grid2" style="margin-bottom:14px">
             <div class="stat sky"><div class="k">{{ isRestaurant ? t('stock.totalProductsRestaurant') : t('stock.totalProducts') }}</div><div class="v">{{ totalProducts }}</div></div>
-            <div class="stat gold"><div class="k">{{ t('stock.lowStockCount') }}</div><div class="v">{{ lowStockCount }}</div></div>
-            <div class="stat rose"><div class="k">{{ t('stock.outOfStockCount') }}</div><div class="v">{{ outOfStockCount }}</div></div>
+            <button type="button" class="stat gold" style="width:100%;text-align:left;cursor:pointer" :style="stockStatus === 'low' ? 'border-color:var(--gold);border-width:2px' : ''" @click="filterByStockStatus('low')"><div class="k">{{ t('stock.lowStockCount') }}</div><div class="v">{{ lowStockCount }}</div></button>
+            <button type="button" class="stat rose" style="width:100%;text-align:left;cursor:pointer" :style="stockStatus === 'out' ? 'border-color:var(--rose);border-width:2px' : ''" @click="filterByStockStatus('out')"><div class="k">{{ t('stock.outOfStockCount') }}</div><div class="v">{{ outOfStockCount }}</div></button>
             <div v-if="hasBatchTracking" class="stat mint"><div class="k">{{ t('stock.expiringSoonCount') }}</div><div class="v">{{ expiringSoonCount }}</div></div>
         </div>
 

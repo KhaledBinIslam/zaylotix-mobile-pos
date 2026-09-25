@@ -36,8 +36,13 @@ class HomeController extends Controller
         // run low on, and a "sold out today" toggle isn't a purchasing
         // alert, so only 'tracked' products (every product, on every
         // non-restaurant shop) count here
-        $lowStock = Product::where('stock_mode', 'tracked')->where('stock', '>', 0)->where('stock', '<=', 6)->count();
-        $outOfStock = Product::where('stock_mode', 'tracked')->where('stock', 0)->count();
+        //
+        // Product::scopeLowStock()/scopeOutOfStock() - shared with
+        // ProductController::index()'s $stats and stock_status filter
+        // (the tile tapping this now opens to, see StockStatusFilterTest),
+        // so this count and what tapping it shows can never drift apart.
+        $lowStock = Product::lowStock()->count();
+        $outOfStock = Product::outOfStock()->count();
 
         $recentSales = Sale::with('customer')->latest('id')->limit(4)->get();
         $topDue = Customer::where('due', '>', 0)->orderByDesc('due')->limit(3)->get();
@@ -75,7 +80,15 @@ class HomeController extends Controller
             // clean removal, not something that needed "moving" logic.
             'totalDue' => (float) Customer::sum('due'),
             'dueCustomerCount' => Customer::where('due', '>', 0)->count(),
-            'lowStockCount' => $lowStock + $outOfStock,
+            // used to be $lowStock + $outOfStock — silently folding
+            // out-of-stock products into the "Low Stock" tile's own count,
+            // even though there's a separate "Out of Stock" tile right next
+            // to it for exactly those products. That mismatch went unnoticed
+            // while neither tile was clickable; now that tapping "Low Stock"
+            // opens Stock filtered to stock_status=low (which never includes
+            // an out-of-stock product — see Product::scopeLowStock()), the
+            // tile's own number has to mean the same "strictly low" thing.
+            'lowStockCount' => $lowStock,
             'outOfStockCount' => $outOfStock,
             'productCount' => Product::count(),
             'customerCount' => Customer::count(),

@@ -27,6 +27,11 @@ class ProductController extends Controller
         $categoryId = $request->get('category_id');
         $company = $request->get('company');
         $genericName = $request->get('generic_name');
+        // 'low' / 'out' — reported: Home's own low-stock/out-of-stock tiles
+        // showed a number but tapping did nothing. Same thresholds as the
+        // $stats calculation below (and Home's own), so the filtered list
+        // here always matches whatever count sent someone to it.
+        $stockStatus = $request->get('stock_status');
 
         // paginated — an unbounded ->get() here was a real scale risk for a
         // pharmacy/supershop with a large catalog (every product's full
@@ -44,6 +49,8 @@ class ProductController extends Controller
             ->when($categoryId, fn ($query) => $query->where('category_id', $categoryId))
             ->when($company, fn ($query) => $query->where('company', $company))
             ->when($genericName, fn ($query) => $query->where('generic_name', $genericName))
+            ->when($stockStatus === 'low', fn ($query) => $query->lowStock())
+            ->when($stockStatus === 'out', fn ($query) => $query->outOfStock())
             ->orderByDesc('id')
             ->paginate(30)
             ->withQueryString();
@@ -56,12 +63,10 @@ class ProductController extends Controller
         // display already special-cases them on the frontend, but these
         // dashboard totals need the same exclusion or every always-available
         // dish would inflate "out of stock" by sitting at stock=0 forever
-        $lowStockCount = Product::where('stock_mode', 'tracked')->where('sold_by_weight', false)->whereBetween('stock', [0.01, 6])->count()
-            + Product::where('stock_mode', 'tracked')->where('sold_by_weight', true)->whereBetween('stock', [0.01, 1])->count();
         $stats = [
             'total' => Product::count(),
-            'low_stock' => $lowStockCount,
-            'out_of_stock' => Product::where('stock_mode', 'tracked')->where('stock', '<=', 0)->count(),
+            'low_stock' => Product::lowStock()->count(),
+            'out_of_stock' => Product::outOfStock()->count(),
             'expiring_soon' => Tenancy::shop()?->hasFeature('batch_tracking')
                 ? ProductBatch::available()->whereNotNull('expiry_date')->whereDate('expiry_date', '<=', now()->addDays(60))->distinct('product_id')->count('product_id')
                 : 0,
@@ -77,6 +82,7 @@ class ProductController extends Controller
             'categoryId' => $categoryId,
             'company' => $company,
             'genericName' => $genericName,
+            'stockStatus' => $stockStatus,
             // distinct, non-null values only — feeds the company/generic
             // filter dropdowns; a shop that's never used either field just
             // gets an empty list and the dropdown quietly doesn't show

@@ -120,13 +120,37 @@ class Product extends Model
     {
         // decimal:3 makes $this->stock a numeric string (precision safety
         // for weighed products) — every comparison here casts explicitly
-        // rather than relying on PHP's loose == coercion
-        return (float) $this->stock > 0 && (float) $this->stock <= 6;
+        // rather than relying on PHP's loose == coercion. A weighed
+        // product's real "running low" line is much tighter (a fraction of
+        // one kg/litre) than a piece-counted product's — see scopeLowStock().
+        return $this->stock_mode === self::STOCK_MODE_TRACKED
+            && (float) $this->stock > 0
+            && (float) $this->stock <= ($this->sold_by_weight ? 1 : 6);
     }
 
     public function isOut(): bool
     {
-        return (float) $this->stock <= 0;
+        return $this->stock_mode === self::STOCK_MODE_TRACKED && (float) $this->stock <= 0;
+    }
+
+    /** Kept in sync everywhere this concept appears (Home's low-stock
+     *  tile, Stock's own copy of it, and the stock_status=low filter
+     *  tapping either now opens to) — these used to be three separately
+     *  hand-written copies of the same threshold that quietly drifted
+     *  apart (a weighed product's real "low" line is much tighter than a
+     *  piece-counted one's, and a negative-stock product from an
+     *  over-return wasn't consistently caught as "out"). 'untracked'/
+     *  'toggle' restaurant items are excluded — see STOCK_MODE_* docblock. */
+    public function scopeLowStock($query)
+    {
+        return $query->where('stock_mode', self::STOCK_MODE_TRACKED)->where(fn ($w) => $w
+            ->where(fn ($ww) => $ww->where('sold_by_weight', false)->whereBetween('stock', [0.01, 6]))
+            ->orWhere(fn ($ww) => $ww->where('sold_by_weight', true)->whereBetween('stock', [0.01, 1])));
+    }
+
+    public function scopeOutOfStock($query)
+    {
+        return $query->where('stock_mode', self::STOCK_MODE_TRACKED)->where('stock', '<=', 0);
     }
 
     public function displayName(string $lang = 'bn'): string

@@ -51,11 +51,14 @@ const payModeClass = { cash: 'mint', bkash: 'gold', nagad: 'gold', credit: 'rose
                 <div class="v">{{ money(totalDue) }}</div>
                 <div class="h">{{ dueCustomerCount }} {{ t('home.customers') }}</div>
             </div>
-            <div class="stat sky">
+            <!-- reported: showed a count but tapping did nothing — now
+                 opens Stock pre-filtered to exactly these products, same
+                 thresholds ProductController uses for this count itself -->
+            <Link :href="route('app.stock', { stock_status: 'low' })" class="stat sky">
                 <div class="k">{{ t('home.lowStock') }}</div>
                 <div class="v">{{ lowStockCount }}</div>
                 <div class="h">{{ t('home.products') }}</div>
-            </div>
+            </Link>
             <!-- Profit/margin used to be here — moved to Reports (see
                  HomeController's own comment) since Khaled's explicit
                  request was that this screen, seen the instant the app
@@ -65,11 +68,11 @@ const payModeClass = { cash: 'mint', bkash: 'gold', nagad: 'gold', credit: 'rose
                  shown anywhere — an immediately-actionable count fits this
                  screen's "what needs attention right now" purpose better
                  than a look-back profit number ever did. -->
-            <div class="stat mint">
+            <Link :href="route('app.stock', { stock_status: 'out' })" class="stat mint">
                 <div class="k">{{ t('home.outOfStock') }}</div>
                 <div class="v">{{ outOfStockCount }}</div>
                 <div class="h">{{ t('home.products') }}</div>
-            </div>
+            </Link>
         </div>
 
         <div class="card" style="margin-top:16px">
