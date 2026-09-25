@@ -31,6 +31,7 @@ class ReportController extends Controller
             'sales' => Sale::whereDate('date', '>=', $from)->whereDate('date', '<=', $to)->latest('id')->limit(50)->get(),
             'topProducts' => Reports::topProducts($from, $to),
             'bottomProducts' => Reports::bottomProducts($from, $to),
+            'productProfitReport' => Reports::productProfitReport($from, $to),
             'cashierBreakdown' => Reports::cashierCashBreakdown($from, $to),
             // a distinct, browsable list of what's coming due (next 60 days)
             // — the daily alert notification tells the owner *that* something

@@ -5,7 +5,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import { useI18n } from '@/composables/useI18n';
 
 const props = defineProps({
-    from: String, to: String, preset: String, stats: Object, sales: Array, topProducts: Array, bottomProducts: Array,
+    from: String, to: String, preset: String, stats: Object, sales: Array, topProducts: Array, bottomProducts: Array, productProfitReport: { type: Array, default: () => [] },
     expiringSoon: Array, cashierBreakdown: Array, restaurantBreakdown: Object, salesByType: Object, itemWisePurchases: Array,
     summary: Object, categoryReport: Object, discountReport: Object, wastageReport: Array, ratingReport: Object, heatmap: Object, consumptionReport: Array, complimentaryReport: Object, combinedStats: Object,
     variantInventory: Object,
@@ -176,6 +176,28 @@ function heatColor(count) {
                     <div class="ava" style="font-size:13px;font-weight:800">{{ i + 1 }}</div>
                     <div class="mid"><b>{{ p.product_name }}</b><span>{{ p.qty_sold }} {{ t('rep.unitsSold') }}</span></div>
                     <div class="end"><b>{{ money(p.revenue) }}</b></div>
+                </div>
+            </div>
+        </template>
+
+        <!-- Khaled's explicit request: topProducts above already carries
+             revenue/profit per product, but ranked by quantity sold (for
+             "what's moving"), capped at 20. This is the same numbers ranked
+             by profit instead, with margin % added, so it actually answers
+             "which products are worth stocking" rather than "which sell
+             the most units" — a high-volume product can still be a low
+             (or negative) margin one, and vice versa. -->
+        <template v-if="productProfitReport?.length">
+            <div class="sechead"><h2>{{ t('rep.productProfitReport') }}</h2></div>
+            <div class="pgsub" style="margin-top:-8px">{{ t('rep.productProfitReportSub') }}</div>
+            <div class="card" style="padding:0;margin-bottom:14px">
+                <div v-for="(p, i) in productProfitReport" :key="p.product_name" class="row" style="cursor:default" :style="i > 0 ? 'border-top:1px solid var(--line)' : ''">
+                    <div class="ava" style="font-size:13px;font-weight:800">{{ i + 1 }}</div>
+                    <div class="mid">
+                        <b>{{ p.product_name }}</b>
+                        <span>{{ p.qty_sold }} {{ t('rep.unitsSold') }} • {{ t('rep.revenue') }} {{ money(p.revenue) }} • {{ p.margin_pct }}% {{ t('rep.margin') }}</span>
+                    </div>
+                    <div class="end"><b :style="{ color: p.profit >= 0 ? 'var(--green)' : 'var(--rose)' }">{{ money(p.profit) }}</b></div>
                 </div>
             </div>
         </template>

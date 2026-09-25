@@ -166,6 +166,30 @@ class Reports
             ->get();
     }
 
+    /** Per-product profit/margin — Khaled's explicit request: topProducts()/
+     *  bottomProducts() already compute revenue and profit per product, but
+     *  only to rank by quantity sold (for "what's moving" / "what's dead
+     *  stock"), capped at 20 either way. This is the same underlying
+     *  numbers, ranked by profit instead, uncapped up to a generous 200 (a
+     *  shop with more distinct products sold in one range than that is
+     *  itself a rare edge case, not worth an extra paginated screen for),
+     *  so an owner can see which products are actually worth stocking. */
+    public static function productProfitReport(string $from, string $to)
+    {
+        return SaleItem::whereHas('sale', fn ($q) => $q->whereDate('date', '>=', $from)->whereDate('date', '<=', $to))
+            ->selectRaw('product_name, SUM(qty) as qty_sold, SUM(qty * price - discount) as revenue, SUM((price - cost) * qty - discount) as profit')
+            ->groupBy('product_name')
+            ->orderByDesc('profit')
+            ->limit(200)
+            ->get()
+            ->map(function ($row) {
+                $revenue = (float) $row->revenue;
+                $row->margin_pct = $revenue > 0 ? round(((float) $row->profit / $revenue) * 100, 1) : 0;
+
+                return $row;
+            });
+    }
+
     /** Retail vs wholesale split — how much of the range's revenue/profit came from each sale_type (see the wholesale_pricing migration). */
     public static function salesByType(string $from, string $to): array
     {
