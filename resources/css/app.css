@@ -230,8 +230,16 @@ body {
 .btn:disabled { opacity: .55; cursor: not-allowed; }
 .btnrow { display: flex; gap: 10px; }
 
-#nav { position: sticky; bottom: 0; z-index: 30; display: grid; grid-template-columns: repeat(5, 1fr); background: rgba(255, 255, 255, .94); backdrop-filter: blur(12px); border-top: 1px solid var(--line); padding: 8px 6px calc(8px + env(safe-area-inset-bottom)); }
-.tab { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0; color: var(--dim); font-size: 10.5px; font-weight: 600; border-radius: 12px; }
+/* was a hardcoded 5-column grid, assuming every shop's cashier sees all 5
+   tabs (Home/Stock/Sell/Due/More) - several are conditionally rendered per
+   hasPerm() above, so a staff account with fewer permissions had visibly
+   fewer <Link class="tab"> children than grid columns, and the grid left
+   the unused trailing columns empty instead of stretching what remained
+   (reported: menu "bunches to the left" for a reduced-permission staff
+   account). flex + flex:1 on each tab below shares the row evenly no
+   matter how many tabs actually exist. */
+#nav { position: sticky; bottom: 0; z-index: 30; display: flex; background: rgba(255, 255, 255, .94); backdrop-filter: blur(12px); border-top: 1px solid var(--line); padding: 8px 6px calc(8px + env(safe-area-inset-bottom)); }
+.tab { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0; color: var(--dim); font-size: 10.5px; font-weight: 600; border-radius: 12px; }
 .tab svg { width: 23px; height: 23px; stroke: currentColor; fill: none; stroke-width: 1.9; }
 .tab.on { color: var(--gold); }
 .tab.sell { position: relative; }
