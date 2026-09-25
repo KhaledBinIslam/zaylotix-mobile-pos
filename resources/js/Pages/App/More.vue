@@ -392,6 +392,32 @@ onMounted(() => {
             </Link>
         </template>
 
+        <!-- moved up from below "দোকান" (Shop) — reported as one of the
+             more frequently-reached-for sections, so it now sits right
+             after Sales/Customers instead of past the settings-heavy
+             Shop section, cutting down on scrolling to get here -->
+        <template v-if="(hasPerm('accounts') && features.includes('accounts')) || (hasPerm('reports') && features.includes('reports')) || (hasPerm('expenses') && features.includes('expenses'))">
+            <div class="sechead"><h2>{{ t('more.sectionAccounts') }}</h2></div>
+            <Link v-if="hasPerm('accounts') && features.includes('accounts')" :href="route('app.accounts')" class="row">
+                <div class="ava">💼</div><div class="mid"><b>{{ t('nav.accounts') }}</b><span>{{ t('more.accountsSub') }}</span></div><div class="end">›</div>
+            </Link>
+            <Link v-if="hasPerm('accounts') && features.includes('accounts')" :href="route('app.cashLedger.index')" class="row">
+                <div class="ava">💵</div><div class="mid"><b>{{ t('nav.cashLedger') }}</b><span>{{ t('more.cashLedgerSub') }}</span></div><div class="end">›</div>
+            </Link>
+            <Link v-if="hasPerm('accounts') && features.includes('accounts')" :href="route('app.loans.index')" class="row">
+                <div class="ava">🤲</div><div class="mid"><b>{{ t('nav.loans') }}</b><span>{{ t('more.loansSub') }}</span></div><div class="end">›</div>
+            </Link>
+            <Link v-if="isOwner && features.includes('partners')" :href="route('app.partners.index')" class="row">
+                <div class="ava">🤝</div><div class="mid"><b>{{ t('nav.partners') }}</b><span>{{ t('more.partnersSub') }}</span></div><div class="end">›</div>
+            </Link>
+            <Link v-if="hasPerm('reports') && features.includes('reports')" :href="route('app.reports')" class="row">
+                <div class="ava">📊</div><div class="mid"><b>{{ t('more.reportsTitle') }}</b><span>{{ t('more.reportsSub') }}</span></div><div class="end">›</div>
+            </Link>
+            <Link v-if="hasPerm('expenses') && features.includes('expenses')" :href="route('app.expenses')" class="row">
+                <div class="ava">💸</div><div class="mid"><b>{{ t('more.expensesTitle') }}</b><span>{{ t('more.expensesSub') }}</span></div><div class="end">›</div>
+            </Link>
+        </template>
+
         <div class="sechead"><h2>{{ t('more.sectionShop') }}</h2></div>
         <div class="row" style="cursor:default">
             <div class="ava">🌐</div>
@@ -448,28 +474,6 @@ onMounted(() => {
         <Link v-if="isOwner && features.includes('hr_payroll')" :href="route('app.payroll.index')" class="row">
             <div class="ava">💰</div><div class="mid"><b>{{ t('nav.payroll') }}</b><span>{{ t('pay.subtitle') }}</span></div><div class="end">›</div>
         </Link>
-
-        <template v-if="(hasPerm('accounts') && features.includes('accounts')) || (hasPerm('reports') && features.includes('reports')) || (hasPerm('expenses') && features.includes('expenses'))">
-            <div class="sechead"><h2>{{ t('more.sectionAccounts') }}</h2></div>
-            <Link v-if="hasPerm('accounts') && features.includes('accounts')" :href="route('app.accounts')" class="row">
-                <div class="ava">💼</div><div class="mid"><b>{{ t('nav.accounts') }}</b><span>{{ t('more.accountsSub') }}</span></div><div class="end">›</div>
-            </Link>
-            <Link v-if="hasPerm('accounts') && features.includes('accounts')" :href="route('app.cashLedger.index')" class="row">
-                <div class="ava">💵</div><div class="mid"><b>{{ t('nav.cashLedger') }}</b><span>{{ t('more.cashLedgerSub') }}</span></div><div class="end">›</div>
-            </Link>
-            <Link v-if="hasPerm('accounts') && features.includes('accounts')" :href="route('app.loans.index')" class="row">
-                <div class="ava">🤲</div><div class="mid"><b>{{ t('nav.loans') }}</b><span>{{ t('more.loansSub') }}</span></div><div class="end">›</div>
-            </Link>
-            <Link v-if="isOwner && features.includes('partners')" :href="route('app.partners.index')" class="row">
-                <div class="ava">🤝</div><div class="mid"><b>{{ t('nav.partners') }}</b><span>{{ t('more.partnersSub') }}</span></div><div class="end">›</div>
-            </Link>
-            <Link v-if="hasPerm('reports') && features.includes('reports')" :href="route('app.reports')" class="row">
-                <div class="ava">📊</div><div class="mid"><b>{{ t('more.reportsTitle') }}</b><span>{{ t('more.reportsSub') }}</span></div><div class="end">›</div>
-            </Link>
-            <Link v-if="hasPerm('expenses') && features.includes('expenses')" :href="route('app.expenses')" class="row">
-                <div class="ava">💸</div><div class="mid"><b>{{ t('more.expensesTitle') }}</b><span>{{ t('more.expensesSub') }}</span></div><div class="end">›</div>
-            </Link>
-        </template>
 
         <template v-if="(hasPerm('stock_count') && features.includes('stock_count')) || (hasPerm('purchases') && features.includes('purchases')) || (hasPerm('purchases') && features.includes('suppliers')) || (hasPerm('stock') && features.includes('serial_tracking')) || (hasPerm('damages') && features.includes('damages')) || (hasPerm('returns') && features.includes('returns')) || (hasPerm('stock') && features.includes('ingredient_tracking'))">
             <div class="sechead"><h2>{{ t('more.sectionStock') }}</h2></div>
