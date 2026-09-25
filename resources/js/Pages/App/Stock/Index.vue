@@ -180,7 +180,14 @@ function openEdit(p) {
     form.name = p.name; form.name_en = p.name_en; form.emoji = p.emoji;
     form.generic_name = p.generic_name; form.company = p.company; form.shelf_location = p.shelf_location; form.requires_prescription = p.requires_prescription;
     form.category_id = p.category_id; form.unit_id = p.unit_id; form.barcode = p.barcode;
-    form.cost = p.cost; form.price = p.price; form.wholesale_price = p.wholesale_price; form.discount_price = p.discount_price; form.stock = p.stock;
+    form.cost = p.cost; form.price = p.price; form.wholesale_price = p.wholesale_price; form.discount_price = p.discount_price;
+    // p.stock comes back from the server as a decimal-cast string ("124.000")
+    // even for a piece-counted product — prefilling that raw into the form
+    // meant just opening and re-saving without touching this field failed
+    // the backend's `integer` rule (Laravel's integer check rejects any
+    // decimal point, trailing zeros or not). Only a genuinely weighed
+    // product's stock should keep its fractional precision here.
+    form.stock = p.sold_by_weight ? p.stock : Math.round(Number(p.stock));
     form.reorder_point = p.reorder_point;
     form.stock_mode = p.stock_mode || 'tracked';
     form.available = Number(p.stock) > 0; // only meaningful when stock_mode is 'toggle' — see Product::isMarkedAvailable()

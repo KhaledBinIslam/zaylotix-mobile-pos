@@ -804,6 +804,7 @@ export const translations = {
     // so plainly. Auto-reloads shortly after so the cashier lands back on
     // a fresh, correctly-logged-in POS screen without having to do it themselves.
     'pos.sessionExpired': { bn: 'সেশনের মেয়াদ শেষ হয়ে গেছে — বিল হয়নি, আবার login করে আসছে...', en: 'Session expired — nothing was charged, logging you back in...' },
+    'pos.cartRestored': { bn: '✅ আপনার কার্ট ফিরিয়ে আনা হয়েছে — আবার "বিল করুন" চাপুন', en: '✅ Your cart was restored — tap Checkout again' },
     'pos.changeVariant': { bn: 'পরিবর্তন করুন', en: 'change' },
     'pos.savedOffline': { bn: '📴 নেট নেই — বিক্রিটি সংরক্ষিত হয়েছে, নেট আসলে অটো পাঠানো হবে', en: "📴 Offline — sale saved, will auto-send once you're back online" },
 

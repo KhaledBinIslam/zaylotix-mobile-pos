@@ -89,6 +89,44 @@ const prescriptionNote = ref('');
 const cartNeedsPrescription = computed(() => hasPrescriptionRecords.value && cart.value.some((l) => productOf(l.product_id)?.requires_prescription));
 const prescriptionConfirmed = ref(false);
 
+// A stale session/CSRF token at checkout (reported: leaving the billing
+// sheet open for a few minutes, then tapping বিল করুন) can only be fixed by
+// a real page reload — there's no XHR-only way to get a fresh token here.
+// That reload used to just wipe the in-progress sale outright, forcing the
+// whole cart to be rebuilt from scratch. Snapshot it to sessionStorage right
+// before reloading, then silently restore it once the fresh page mounts.
+const CART_RECOVERY_KEY = 'zaylotix_pos_cart_recovery';
+function saveCartForRecovery() {
+    try {
+        sessionStorage.setItem(CART_RECOVERY_KEY, JSON.stringify({
+            cart: cart.value, discount: discount.value, couponCode: couponCode.value,
+            customerPhone: customerPhone.value, customerName: customerName.value, payMode: payMode.value,
+            splitMode: splitMode.value, splitAmounts: splitAmounts.value,
+            prescriptionNote: prescriptionNote.value, prescriptionConfirmed: prescriptionConfirmed.value,
+        }));
+    } catch { /* storage unavailable — the reload still proceeds, just without recovery */ }
+}
+onMounted(() => {
+    let saved;
+    try { saved = JSON.parse(sessionStorage.getItem(CART_RECOVERY_KEY)); } catch { saved = null; }
+    if (!saved) return;
+    sessionStorage.removeItem(CART_RECOVERY_KEY);
+    // drop any line whose product no longer exists in this catalog (e.g.
+    // deleted between the failed attempt and this reload) rather than
+    // restoring a cart entry the rest of this screen can't safely render
+    cart.value = (saved.cart || []).filter((l) => productOf(l.product_id));
+    discount.value = saved.discount || 0;
+    couponCode.value = saved.couponCode || '';
+    customerPhone.value = saved.customerPhone || '';
+    customerName.value = saved.customerName || '';
+    payMode.value = saved.payMode || 'cash';
+    splitMode.value = saved.splitMode || false;
+    splitAmounts.value = saved.splitAmounts || { cash: '', bkash: '', nagad: '' };
+    prescriptionNote.value = saved.prescriptionNote || '';
+    prescriptionConfirmed.value = saved.prescriptionConfirmed || false;
+    if (cart.value.length) { cartOpen.value = true; toast(t('pos.cartRestored')); }
+});
+
 const filtered = computed(() => props.products.filter((p) =>
     (!q.value
         || p.name.toLowerCase().includes(q.value.toLowerCase())
@@ -463,6 +501,7 @@ async function submitCheckout() {
         // failing) to parse a login page as a sale.
         if (res.redirected || res.url !== route('app.pos.checkout')) {
             errorMsg.value = t('pos.sessionExpired');
+            saveCartForRecovery();
             setTimeout(() => window.location.reload(), 2500);
             return;
         }
@@ -492,6 +531,7 @@ async function submitCheckout() {
             // handle it here where the real status code makes it certain.
             if (res.status === 419) {
                 errorMsg.value = t('pos.sessionExpired');
+                saveCartForRecovery();
                 setTimeout(() => window.location.reload(), 2500);
                 return;
             }
