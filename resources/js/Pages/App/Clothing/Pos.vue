@@ -211,6 +211,13 @@ function decrementLine(l) {
 function removeLine(l) {
     cart.value = cart.value.filter((x) => x !== l);
 }
+// reported: a cart line's quantity could only be nudged one tap at a time
+// — no way to type a number directly, painful for a large quantity
+function setQty(l, value) {
+    const n = Math.floor(Number(value)) || 0;
+    if (n <= 0) { cart.value = cart.value.filter((x) => x !== l); return; }
+    l.qty = n;
+}
 
 const cartCount = computed(() => cart.value.reduce((s, l) => s + l.qty, 0));
 const subtotal = computed(() => cart.value.reduce((s, l) => s + lineTotal(l), 0));
@@ -579,7 +586,7 @@ function sendMemoWA() {
                             </span>
                             <span style="display:flex;align-items:center;gap:4px">
                                 <button class="qbtn" style="width:22px;height:22px;font-size:13px" @click="decrementLine(l)">−</button>
-                                <span class="qn" style="min-width:16px;font-size:12px">{{ l.qty }}</span>
+                                <input type="number" inputmode="numeric" class="qn-input" style="font-size:12px" :value="l.qty" min="1" @change="setQty(l, $event.target.value)">
                                 <button class="qbtn" style="width:22px;height:22px;font-size:13px" @click="incrementLine(l)">＋</button>
                             </span>
                             <b style="text-align:right">{{ money(lineTotal(l)) }}</b>

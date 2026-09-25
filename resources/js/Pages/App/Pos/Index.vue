@@ -227,6 +227,15 @@ function inc(line, d) {
     line.qty += d;
     if (line.qty <= 0) cart.value = cart.value.filter((l) => l !== line);
 }
+// reported: a cart line's quantity could only be nudged one tap at a time
+// (+/- buttons) — no way to type a number directly, painful for a large
+// quantity like 50. Typing is only for non-weighed lines; a weighed line's
+// own fractional entry already has a dedicated sheet (see openWeightEntry).
+function setQty(line, value) {
+    const n = Math.floor(Number(value)) || 0;
+    if (n <= 0) { cart.value = cart.value.filter((l) => l !== line); return; }
+    line.qty = n;
+}
 
 // --- weight/volume quick-entry — a loose product's base-unit line is a
 // decimal kg/litre qty, so a plain ±1 stepper makes no sense; tapping the
@@ -1086,7 +1095,7 @@ useKeyboardShortcuts({
                             </span>
                             <span v-else style="display:flex;align-items:center;gap:4px">
                                 <button class="qbtn" style="width:22px;height:22px;font-size:13px" @click="inc(l, -1)">−</button>
-                                <span class="qn" style="min-width:16px;font-size:12px">{{ l.qty }}</span>
+                                <input type="number" inputmode="numeric" class="qn-input" style="font-size:12px" :value="l.qty" min="1" @change="setQty(l, $event.target.value)">
                                 <button class="qbtn" style="width:22px;height:22px;font-size:13px" @click="inc(l, 1)">＋</button>
                             </span>
                             <b style="text-align:right">{{ money(lineTotal(l)) }}</b>
@@ -1159,7 +1168,7 @@ useKeyboardShortcuts({
                             </template>
                             <template v-else>
                                 <button class="qbtn" @click="inc(l, -1)">−</button>
-                                <span class="qn">{{ l.qty }}</span>
+                                <input type="number" inputmode="numeric" class="qn-input" :value="l.qty" min="1" @change="setQty(l, $event.target.value)">
                                 <button class="qbtn" @click="inc(l, 1)">＋</button>
                             </template>
                         </div>
