@@ -72,7 +72,7 @@ class StaffController extends Controller
 
         if ($current >= $limit) {
             throw \Illuminate\Validation\ValidationException::withMessages([
-                'name' => "আপনার প্যাকেজে সর্বোচ্চ {$limit} জন ক্যাশিয়ার যোগ করা যাবে। বেশি দরকার হলে অ্যাডমিনের সাথে যোগাযোগ করুন।",
+                'name' => "আপনার প্যাকেজে সর্বোচ্চ {$limit} জন স্টাফ যোগ করা যাবে। বেশি দরকার হলে অ্যাডমিনের সাথে যোগাযোগ করুন।",
             ]);
         }
 
@@ -94,7 +94,7 @@ class StaffController extends Controller
             'lang' => $shop->lang,
         ]);
 
-        return back()->with('success', 'ক্যাশিয়ার যোগ হয়েছে।');
+        return back()->with('success', 'স্টাফ যোগ হয়েছে।');
     }
 
     public function update(Request $request, User $staff)
@@ -117,7 +117,7 @@ class StaffController extends Controller
             ...(! empty($data['password']) ? ['password' => $data['password']] : []),
         ]);
 
-        return back()->with('success', 'ক্যাশিয়ারের তথ্য আপডেট হয়েছে।');
+        return back()->with('success', 'স্টাফের তথ্য আপডেট হয়েছে।');
     }
 
     public function destroy(User $staff)
@@ -127,6 +127,6 @@ class StaffController extends Controller
 
         $staff->delete();
 
-        return back()->with('success', 'ক্যাশিয়ার মুছে ফেলা হয়েছে।');
+        return back()->with('success', 'স্টাফ মুছে ফেলা হয়েছে।');
     }
 }
