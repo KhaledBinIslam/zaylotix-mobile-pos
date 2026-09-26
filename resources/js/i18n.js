@@ -379,6 +379,36 @@ export const translations = {
     'landing.audience.mobile': { bn: 'মোবাইল দোকান', en: 'Mobile shop' },
     'landing.audience.supershop': { bn: 'সুপারশপ', en: 'Supershop' },
 
+    'landing.navFeatures': { bn: 'ফিচার', en: 'Features' },
+    'landing.navHowItWorks': { bn: 'কীভাবে কাজ করে', en: 'How it works' },
+    'landing.navPricing': { bn: 'মূল্য', en: 'Pricing' },
+
+    'landing.howItWorksTitle': { bn: 'শুরু করা সহজ', en: 'Getting started is simple' },
+    'landing.howItWorksSub': { bn: 'মাত্র কয়েক মিনিটে আপনার দোকান রেডি', en: 'Your shop is ready in just a few minutes' },
+    'landing.step.1': { bn: 'সাইন আপ করুন', en: 'Sign up' },
+    'landing.step.1desc': { bn: 'মোবাইল নম্বর দিয়ে ফ্রি অ্যাকাউন্ট খুলুন, কার্ড লাগবে না', en: 'Create a free account with your phone number — no card needed' },
+    'landing.step.2': { bn: 'দোকান সেট করুন', en: 'Set up your shop' },
+    'landing.step.2desc': { bn: 'ব্যবসার ধরন বেছে নিন, পণ্য যোগ করুন', en: 'Pick your business type and add your products' },
+    'landing.step.3': { bn: 'বিক্রি শুরু করুন', en: 'Start selling' },
+    'landing.step.3desc': { bn: 'POS দিয়ে বিক্রি করুন, স্টক অটো আপডেট হবে', en: 'Sell through the POS — stock updates itself' },
+    'landing.step.4': { bn: 'ব্যবসা বাড়ান', en: 'Grow with confidence' },
+    'landing.step.4desc': { bn: 'রিপোর্ট দেখে বুঝুন কোথায় লাভ, কোথায় নজর দিতে হবে', en: 'See your reports and know exactly where you stand' },
+
+    'landing.showcaseTitle': { bn: 'আসল অ্যাপ, আসল স্ক্রিন', en: 'The real app, real screens' },
+    'landing.showcaseSub': { bn: 'যা বলছি, তা সরাসরি দেখুন', en: "See exactly what we're talking about" },
+    'landing.showcase.pos': { bn: 'দ্রুত বিক্রি (POS)', en: 'Quick sale (POS)' },
+    'landing.showcase.stock': { bn: 'স্টক ও পণ্য', en: 'Stock & products' },
+    'landing.showcase.reports': { bn: 'লাভ-ক্ষতি রিপোর্ট', en: 'Profit & loss report' },
+
+    'landing.testimonialsTitle': { bn: 'ব্যবহারকারীরা যা বলেন', en: 'What shop owners say' },
+    'landing.testimonialsSub': { bn: 'আমাদের প্রথম দোকানদারদের মতামত শীঘ্রই এখানে যুক্ত হবে', en: "Our first shop owners' feedback is coming here soon" },
+    'landing.testimonialsComingSoon': { bn: '✨ শীঘ্রই আসছে — আমাদের ব্যবহারকারীদের আসল মতামত', en: '✨ Coming soon — real feedback from our users' },
+
+    'landing.pricingTitle': { bn: 'মূল্য', en: 'Pricing' },
+    'landing.pricingCardTitle': { bn: 'আপনার দোকানের জন্য নমনীয় মূল্য', en: 'Flexible pricing for your shop' },
+    'landing.pricingCardBody': { bn: 'দোকানের ধরন ও প্রয়োজন অনুযায়ী প্যাকেজ সাজানো যায় — ১৪ দিন সম্পূর্ণ ফ্রি ট্রায়াল দিয়ে শুরু করুন, তারপর আমাদের সাথে যোগাযোগ করে মূল্য জেনে নিন।', en: 'Packages can be shaped around your shop\'s type and needs — start with a full 14-day free trial, then contact us to find out pricing.' },
+    'landing.pricingCta': { bn: 'যোগাযোগ করুন', en: 'Contact us' },
+
     // ---- login ----
     'login.title': { bn: 'লগইন', en: 'Log in' },
     'login.tagline': { bn: 'Zaylotix POS — দোকান পরিচালনার সহজ সমাধান', en: 'Zaylotix POS — the easy way to run your shop' },

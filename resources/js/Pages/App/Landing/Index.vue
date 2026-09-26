@@ -1,5 +1,6 @@
 <script setup>
 import { Head, Link } from '@inertiajs/vue3';
+import { onMounted, onBeforeUnmount } from 'vue';
 import ZaylotixMark from '@/Components/ZaylotixMark.vue';
 import { useI18n } from '@/composables/useI18n';
 
@@ -91,6 +92,39 @@ const AUDIENCE = [
     { icon: 'mobile', label: 'landing.audience.mobile' },
     { icon: 'supershop', label: 'landing.audience.supershop' },
 ];
+
+const STEPS = [
+    { n: 1, title: 'landing.step.1', desc: 'landing.step.1desc' },
+    { n: 2, title: 'landing.step.2', desc: 'landing.step.2desc' },
+    { n: 3, title: 'landing.step.3', desc: 'landing.step.3desc' },
+    { n: 4, title: 'landing.step.4', desc: 'landing.step.4desc' },
+];
+
+const SHOWCASE = [
+    { img: '/images/landing/shot-pos.png', caption: 'landing.showcase.pos' },
+    { img: '/images/landing/shot-stock.png', caption: 'landing.showcase.stock' },
+    { img: '/images/landing/shot-reports.png', caption: 'landing.showcase.reports' },
+];
+
+// Scroll-triggered reveal — same IntersectionObserver idiom already used by
+// Pos/Index.vue's own lazy-render observer, so no new animation library is
+// introduced just for this page.
+let revealObserver = null;
+onMounted(() => {
+    const els = document.querySelectorAll('.reveal');
+    revealObserver = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('is-visible');
+                revealObserver.unobserve(entry.target);
+            }
+        }
+    }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
+    els.forEach((el) => revealObserver.observe(el));
+});
+onBeforeUnmount(() => {
+    revealObserver?.disconnect();
+});
 </script>
 
 <template>
@@ -103,6 +137,11 @@ const AUDIENCE = [
         <div class="landing-nav">
             <div class="landing-nav-inner">
                 <div class="landing-nav-brand"><ZaylotixMark :size="26" /> Zaylotix</div>
+                <div class="landing-nav-links">
+                    <a href="#features">{{ t('landing.navFeatures') }}</a>
+                    <a href="#how-it-works">{{ t('landing.navHowItWorks') }}</a>
+                    <a href="#pricing">{{ t('landing.navPricing') }}</a>
+                </div>
                 <div class="landing-nav-cta">
                     <Link :href="route('login')" class="btn ghost sm">{{ t('landing.loginBtn') }}</Link>
                     <Link :href="route('signup')" class="btn sm">{{ t('landing.signupBtn') }}</Link>
@@ -112,28 +151,37 @@ const AUDIENCE = [
 
         <div class="landing-inner">
             <header class="landing-hero">
-                <ZaylotixMark :size="64" />
-                <div class="landing-pill">{{ t('landing.tagline') }}</div>
-                <h1>{{ t('landing.heroTitle') }}</h1>
-                <p>{{ t('landing.heroSubtitle') }}</p>
+                <div class="landing-hero-grid">
+                    <div class="landing-hero-copy">
+                        <ZaylotixMark :size="64" />
+                        <div class="landing-pill">{{ t('landing.tagline') }}</div>
+                        <h1>{{ t('landing.heroTitle') }}</h1>
+                        <p>{{ t('landing.heroSubtitle') }}</p>
 
-                <div class="landing-cta">
-                    <Link :href="route('signup')" class="btn lg">{{ t('landing.signupBtn') }}</Link>
-                    <Link :href="route('login')" class="btn ghost lg light">{{ t('landing.loginBtn') }}</Link>
-                    <a v-if="whatsappUrl" :href="whatsappUrl" target="_blank" rel="noopener" class="btn wa lg">
-                        <span class="licon" v-html="ICON_PATHS.whatsapp"></span> {{ t('landing.whatsappBtn') }}
-                    </a>
-                </div>
+                        <div class="landing-cta">
+                            <Link :href="route('signup')" class="btn lg">{{ t('landing.signupBtn') }}</Link>
+                            <Link :href="route('login')" class="btn ghost lg light">{{ t('landing.loginBtn') }}</Link>
+                            <a v-if="whatsappUrl" :href="whatsappUrl" target="_blank" rel="noopener" class="btn wa lg">
+                                <span class="licon" v-html="ICON_PATHS.whatsapp"></span> {{ t('landing.whatsappBtn') }}
+                            </a>
+                        </div>
 
-                <div class="landing-stat-row">
-                    <div v-for="s in STATS" :key="s.label" class="landing-stat">
-                        <b>{{ s.n }}</b>
-                        <span>{{ t(s.label) }}</span>
+                        <div class="landing-stat-row">
+                            <div v-for="s in STATS" :key="s.label" class="landing-stat">
+                                <b>{{ s.n }}</b>
+                                <span>{{ t(s.label) }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="landing-hero-visual">
+                        <div class="phone-mock">
+                            <img :src="SHOWCASE[0].img" :alt="t(SHOWCASE[0].caption)" loading="eager" />
+                        </div>
                     </div>
                 </div>
             </header>
 
-            <section class="landing-section">
+            <section id="features" class="landing-section reveal">
                 <h2>{{ t('landing.featuresTitle') }}</h2>
                 <p class="landing-section-sub">{{ t('landing.featuresSub') }}</p>
                 <div class="landing-pillars">
@@ -149,7 +197,32 @@ const AUDIENCE = [
                 </div>
             </section>
 
-            <section class="landing-section">
+            <section id="how-it-works" class="landing-section reveal">
+                <h2>{{ t('landing.howItWorksTitle') }}</h2>
+                <p class="landing-section-sub">{{ t('landing.howItWorksSub') }}</p>
+                <div class="landing-steps">
+                    <div v-for="s in STEPS" :key="s.n" class="landing-step">
+                        <div class="landing-step-num">{{ s.n }}</div>
+                        <b>{{ t(s.title) }}</b>
+                        <span>{{ t(s.desc) }}</span>
+                    </div>
+                </div>
+            </section>
+
+            <section id="showcase" class="landing-section reveal">
+                <h2>{{ t('landing.showcaseTitle') }}</h2>
+                <p class="landing-section-sub">{{ t('landing.showcaseSub') }}</p>
+                <div class="landing-showcase">
+                    <div v-for="s in SHOWCASE" :key="s.img" class="landing-showcase-item">
+                        <div class="phone-mock sm">
+                            <img :src="s.img" :alt="t(s.caption)" loading="lazy" />
+                        </div>
+                        <span>{{ t(s.caption) }}</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="landing-section reveal">
                 <h2>{{ t('landing.extrasTitle') }}</h2>
                 <p class="landing-section-sub">{{ t('landing.extrasSub') }}</p>
                 <div class="landing-extras">
@@ -160,7 +233,7 @@ const AUDIENCE = [
                 </div>
             </section>
 
-            <section class="landing-section">
+            <section class="landing-section reveal">
                 <h2>{{ t('landing.platformTitle') }}</h2>
                 <div class="landing-platform">
                     <div v-for="p in PLATFORM" :key="p.title" class="landing-platform-card" :class="'ac-' + p.accent">
@@ -171,7 +244,7 @@ const AUDIENCE = [
                 </div>
             </section>
 
-            <section class="landing-section">
+            <section class="landing-section reveal">
                 <h2>{{ t('landing.whyTitle') }}</h2>
                 <div class="landing-why">
                     <div v-for="w in WHY" :key="w.title" class="landing-why-item">
@@ -186,13 +259,39 @@ const AUDIENCE = [
                 </div>
             </section>
 
-            <section class="landing-section">
+            <section class="landing-section reveal">
                 <h2>{{ t('landing.audienceTitle') }}</h2>
                 <div class="landing-audience">
                     <div v-for="a in AUDIENCE" :key="a.label" class="landing-audience-pill">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" v-html="ICON_PATHS[a.icon]"></svg>
                         {{ t(a.label) }}
                     </div>
+                </div>
+            </section>
+
+            <section class="landing-section reveal">
+                <h2>{{ t('landing.testimonialsTitle') }}</h2>
+                <p class="landing-section-sub">{{ t('landing.testimonialsSub') }}</p>
+                <div class="landing-testimonials">
+                    <div v-for="i in 3" :key="i" class="landing-testimonial-ghost">
+                        <div class="gavatar"></div>
+                        <div class="gline" style="width: 85%"></div>
+                        <div class="gline" style="width: 65%"></div>
+                        <div class="gline" style="width: 45%"></div>
+                    </div>
+                </div>
+                <div class="landing-testimonials-note">{{ t('landing.testimonialsComingSoon') }}</div>
+            </section>
+
+            <section id="pricing" class="landing-section reveal">
+                <h2>{{ t('landing.pricingTitle') }}</h2>
+                <div class="landing-pricing-card">
+                    <b>{{ t('landing.pricingCardTitle') }}</b>
+                    <p>{{ t('landing.pricingCardBody') }}</p>
+                    <a v-if="whatsappUrl" :href="whatsappUrl" target="_blank" rel="noopener" class="btn wa lg">
+                        <span class="licon" v-html="ICON_PATHS.whatsapp"></span> {{ t('landing.pricingCta') }}
+                    </a>
+                    <Link v-else :href="route('signup')" class="btn lg">{{ t('landing.pricingCta') }}</Link>
                 </div>
             </section>
 

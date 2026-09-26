@@ -558,6 +558,11 @@ body {
 }
 .landing-hero { margin-bottom: 40px; }
 .landing-closing { margin-top: 44px; }
+/* stacked on phone (copy, then the phone-mockup screenshot below it); becomes
+   a real two-column hero once there's room, matching the plan's "phone
+   mockup on the right, stacked below on mobile" layout */
+.landing-hero-grid { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.landing-hero-visual { width: 100%; }
 .landing-pill { display: inline-block; margin: 16px 0 4px; font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #fff; background: rgba(255, 255, 255, .16); border: 1px solid rgba(255, 255, 255, .3); border-radius: 999px; padding: 6px 15px; }
 .landing-hero h1, .landing-closing h2 { font-family: var(--font-display); font-size: 30px; font-weight: 700; letter-spacing: -.5px; line-height: 1.15; margin: 16px 0 10px; color: #fff; }
 .landing-hero p, .landing-closing p { font-size: 14.5px; color: rgba(255, 255, 255, .88); line-height: 1.7; max-width: 560px; margin: 0 auto; }
@@ -654,7 +659,73 @@ body {
        the way a real SaaS marketing hero does */
     .landing-hero h1 { font-size: 44px; }
     .landing-closing h2 { font-size: 34px; }
+    .landing-hero-grid { flex-direction: row; text-align: left; gap: 48px; }
+    .landing-hero-copy { flex: 1 1 auto; }
+    .landing-hero-copy .landing-pill, .landing-hero-copy p, .landing-hero-copy .landing-cta, .landing-hero-copy .landing-stat-row { margin-left: 0; justify-content: flex-start; }
+    .landing-hero-visual { flex: 0 0 auto; width: auto; }
+    .landing-hero-visual .phone-mock { margin-top: 0; }
 }
+
+/* nav anchor links (ফিচার/কীভাবে/মূল্য) — desktop/tablet only. On a phone
+   this is a single scrolling page anyway (a visitor just scrolls down to
+   find these), and the compact mobile nav's own tap-target space is
+   already spoken for by Login/Signup; a hamburger menu just for 3 links
+   would be more UI than this page needs. */
+.landing-nav-links { display: none; align-items: center; gap: 24px; }
+.landing-nav-links a { font-size: 13.5px; font-weight: 650; color: var(--mut); text-decoration: none; transition: color .15s ease; }
+.landing-nav-links a:hover { color: var(--purple); }
+@media (min-width: 700px) { .landing-nav-links { display: flex; } }
+
+/* jumping to a section from the nav shouldn't tuck its heading behind the
+   sticky nav bar */
+#features, #how-it-works, #showcase, #pricing { scroll-margin-top: 66px; }
+
+/* scroll-triggered reveal — IntersectionObserver in Landing/Index.vue adds
+   .is-visible once a .reveal element enters the viewport; kept to a plain
+   opacity+translateY fade, not a bouncy/scale entrance, per the "premium,
+   not heavy" brief. Respects reduced-motion. */
+.reveal { opacity: 0; transform: translateY(22px); transition: opacity .7s ease, transform .7s ease; }
+.reveal.is-visible { opacity: 1; transform: translateY(0); }
+@media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } }
+
+/* phone mockup — pure CSS frame, no image-editing/mockup-generator
+   dependency. Holds a real app screenshot (public/images/landing/*.png). */
+.phone-mock { position: relative; width: 240px; max-width: 74vw; margin: 30px auto 0; background: #0B0B0F; border-radius: 34px; padding: 9px; box-shadow: 0 26px 60px rgba(45, 15, 90, .28), 0 4px 14px rgba(0, 0, 0, .18); }
+.phone-mock::before { content: ''; position: absolute; top: 9px; left: 50%; transform: translateX(-50%); width: 60px; height: 5px; border-radius: 4px; background: rgba(255, 255, 255, .22); z-index: 1; }
+.phone-mock img { display: block; width: 100%; border-radius: 25px; }
+.phone-mock.sm { width: 100%; max-width: 210px; margin-top: 0; }
+
+/* how it works — numbered steps, gold to match the page's own existing
+   CTA-button accent (not a new color introduced just for this) */
+.landing-steps { display: grid; grid-template-columns: 1fr; gap: 20px; }
+.landing-step { text-align: center; padding: 4px; }
+.landing-step-num { width: 42px; height: 42px; margin: 0 auto 12px; border-radius: 50%; background: var(--goldSoft); color: var(--gold2); display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 700; font-size: 17px; }
+.landing-step b { display: block; font-size: 14.5px; margin-bottom: 5px; color: var(--ink); }
+.landing-step span { display: block; font-size: 12.8px; color: var(--mut); line-height: 1.6; }
+@media (min-width: 700px) { .landing-steps { grid-template-columns: repeat(4, 1fr); } }
+
+/* screenshot showcase */
+.landing-showcase { display: grid; grid-template-columns: 1fr; gap: 34px; }
+.landing-showcase-item { text-align: center; }
+.landing-showcase-item b { display: block; margin-top: 14px; font-size: 13.5px; color: var(--ink); }
+@media (min-width: 700px) { .landing-showcase { grid-template-columns: repeat(3, 1fr); align-items: start; } }
+
+/* testimonials — honestly-labeled placeholder, never fabricated quotes.
+   Dashed "ghost" cards read as "coming soon", not as broken/empty content. */
+.landing-testimonials { display: grid; grid-template-columns: 1fr; gap: 14px; margin-bottom: 16px; }
+.landing-testimonial-ghost { background: var(--panel); border: 1.5px dashed var(--line2); border-radius: var(--r); padding: 20px; opacity: .6; }
+.landing-testimonial-ghost .gline { height: 9px; border-radius: 6px; background: var(--line); margin-bottom: 9px; }
+.landing-testimonial-ghost .gline.w60 { width: 55%; }
+.landing-testimonial-ghost .gline.w80 { width: 85%; }
+.landing-testimonial-ghost .gavatar { width: 30px; height: 30px; border-radius: 50%; background: var(--line); margin-top: 14px; }
+.landing-testimonials-note { display: block; width: fit-content; margin: 0 auto; text-align: center; font-size: 12.5px; font-weight: 700; color: var(--mut); background: var(--panel2); border-radius: 999px; padding: 9px 18px; }
+@media (min-width: 700px) { .landing-testimonials { grid-template-columns: repeat(3, 1fr); } }
+
+/* pricing/contact — no fabricated plan cards (no tiers exist yet), one
+   honest "flexible pricing, talk to us" card instead */
+.landing-pricing-card { max-width: 480px; margin: 0 auto; text-align: center; background: linear-gradient(165deg, var(--goldSoft), var(--panel) 65%); border: 1px solid #F3D9A8; border-radius: var(--r2); padding: 34px 26px; box-shadow: var(--sh); }
+.landing-pricing-card b { display: block; font-family: var(--font-display); font-size: 19px; margin-bottom: 8px; color: var(--ink); }
+.landing-pricing-card p { font-size: 13.5px; color: var(--mut); line-height: 1.7; margin-bottom: 20px; }
 
 /* same align-items: safe center fix as #login above — same overflow-clipping risk on a tall step. */
 #onboarding { position: fixed; inset: 0; z-index: 100; overflow-y: auto; background: radial-gradient(600px 340px at 85% -6%, rgba(242, 106, 27, .10), transparent), radial-gradient(560px 400px at -8% 106%, rgba(31, 164, 99, .14), transparent), var(--bg); display: flex; align-items: center; align-items: safe center; justify-content: center; padding: 24px 18px; }
