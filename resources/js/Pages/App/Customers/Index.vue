@@ -6,11 +6,19 @@ import Sheet from '@/Components/Sheet.vue';
 import HowToHint from '@/Components/HowToHint.vue';
 import { useToast } from '@/composables/useToast';
 import { useI18n } from '@/composables/useI18n';
+import { usePermissions } from '@/composables/usePermissions';
 import { reportClientError } from '@/support/reportClientError';
 
 const props = defineProps({ customers: Array });
 const { toast } = useToast();
 const { t } = useI18n();
+const { hasPerm } = usePermissions();
+// this single page/route only requires the `customers` permission to open
+// (see routes/web.php), but actually collecting a due or reading payment
+// history is a separate `due` grant (PaymentController routes) — a staff
+// with `customers` but not `due` must not see those actions at all, not
+// just have them fail server-side when tapped
+const canDue = computed(() => hasPerm('due'));
 const hasLoyaltyPoints = computed(() => (usePage().props.features || []).includes('loyalty_points'));
 
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
@@ -157,12 +165,12 @@ function sendOffer() {
         <template v-if="withDue.length">
             <div class="sechead"><h2>{{ t('due.collectToday') }}</h2></div>
             <div v-for="c in withDue" :key="c.id">
-                <div class="row" :style="selected[c.id] ? 'border-color:var(--gold);background:var(--goldSoft)' : ''" @click="selectMode ? toggleSelect(c.id) : openHistory(c)">
+                <div class="row" :style="selected[c.id] ? 'border-color:var(--gold);background:var(--goldSoft)' : ''" @click="selectMode ? toggleSelect(c.id) : (canDue && openHistory(c))">
                     <div class="ava" :style="selected[c.id] ? 'background:var(--gold);color:#fff;border-color:var(--gold)' : ''">{{ selectMode && selected[c.id] ? '✓' : c.name[0] }}</div>
                     <div class="mid"><b>{{ c.name }}</b><span>📞 {{ c.phone }}<template v-if="hasLoyaltyPoints"> • ⭐ {{ c.loyalty_points }}</template></span></div>
                     <div class="end"><b class="pill rose">{{ money(c.due) }}</b></div>
                 </div>
-                <div v-if="!selectMode" class="btnrow" style="margin:-4px 0 12px 0;padding-left:54px">
+                <div v-if="!selectMode && canDue" class="btnrow" style="margin:-4px 0 12px 0;padding-left:54px">
                     <button class="btn sm" style="flex:1" @click="openCollect(c)">{{ t('due.collectMoney') }}</button>
                     <button class="btn wa sm" style="flex:1" @click="remindWA(c)">{{ t('due.waReminder') }}</button>
                 </div>
@@ -171,7 +179,7 @@ function sendOffer() {
 
         <template v-if="cleared.length">
             <div class="sechead"><h2>{{ t('due.allCustomers') }}</h2></div>
-            <div v-for="c in cleared" :key="c.id" class="row" :style="selected[c.id] ? 'border-color:var(--gold);background:var(--goldSoft)' : ''" @click="selectMode ? toggleSelect(c.id) : openHistory(c)">
+            <div v-for="c in cleared" :key="c.id" class="row" :style="selected[c.id] ? 'border-color:var(--gold);background:var(--goldSoft)' : ''" @click="selectMode ? toggleSelect(c.id) : (canDue && openHistory(c))">
                 <div class="ava" :style="selected[c.id] ? 'background:var(--gold);color:#fff;border-color:var(--gold)' : ''">{{ selectMode && selected[c.id] ? '✓' : c.name[0] }}</div>
                 <div class="mid"><b>{{ c.name }}</b><span>📞 {{ c.phone || t('due.noNumber') }} • {{ t('due.totalBought') }} {{ money(c.total_spent) }}<template v-if="hasLoyaltyPoints"> • ⭐ {{ c.loyalty_points }}</template></span></div>
                 <div class="end"><span class="pill mint">{{ t('due.paid') }}</span></div>

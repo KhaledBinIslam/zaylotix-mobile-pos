@@ -8,6 +8,7 @@ import Sheet from '@/Components/Sheet.vue';
 import { useToast } from '@/composables/useToast';
 import { useI18n } from '@/composables/useI18n';
 import { useOfflineSync } from '@/composables/useOfflineSync';
+import { usePermissions } from '@/composables/usePermissions';
 
 const props = defineProps({ active: { type: String, default: 'home' } });
 
@@ -36,8 +37,7 @@ function switchBranch(event) {
 }
 const platformLogoUrl = computed(() => page.props.platformLogoUrl);
 const user = computed(() => page.props.auth?.user);
-const isOwner = computed(() => user.value?.role === 'owner');
-const hasPerm = (key) => isOwner.value || (user.value?.permissions || []).includes(key);
+const { hasPerm, isOwner } = usePermissions();
 const hasFeature = (key) => (page.props.features || []).includes(key);
 // same signal Stock/Index.vue uses to swap "পণ্য" (product) for "খাবার/মেনু"
 // (food/menu) wording on the Stock nav links — see that file's own comment.

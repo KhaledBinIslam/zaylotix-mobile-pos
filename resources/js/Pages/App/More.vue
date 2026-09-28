@@ -5,6 +5,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import { useI18n } from '@/composables/useI18n';
 import { useToast } from '@/composables/useToast';
+import { usePermissions } from '@/composables/usePermissions';
 import { reportClientError } from '@/support/reportClientError';
 
 const { toast } = useToast();
@@ -14,8 +15,7 @@ const props = defineProps({ shop: Object, products: Array, suppliers: Array });
 const page = usePage();
 const features = computed(() => page.props.features || []);
 const user = computed(() => page.props.auth?.user);
-const isOwner = computed(() => user.value?.role === 'owner');
-const hasPerm = (key) => isOwner.value || (user.value?.permissions || []).includes(key);
+const { hasPerm, isOwner } = usePermissions();
 // Deliberately the shop's actual business type, NOT just the
 // restaurant_tables feature flag — see AppLayout.vue's isRestaurant for why
 // the flag alone is wrong (it can be granted to a non-restaurant shop, e.g.
