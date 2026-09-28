@@ -35,6 +35,15 @@ const suggestedFee = computed(() =>
 const feeManuallyEdited = ref(false);
 watch(suggestedFee, (v) => { if (!feeManuallyEdited.value) form.monthly_fee = v; });
 
+// Bug found live: picking a business type re-ran this watcher and wiped
+// out ANY features the admin had already hand-ticked/unticked, every
+// single time — including switching business type a second time after
+// customizing the list. Same "stop clobbering once the admin has touched
+// it" guard as feeManuallyEdited above, so re-picking business type only
+// ever pre-fills an untouched list, never silently overwrites a
+// deliberately customized one.
+const featuresManuallyTouched = ref(false);
+
 // live "which published package does this match" readout, same as Edit.vue
 const featureLabel = (key) => props.features.find((f) => f.key === key)?.label_bn || key;
 const packageMatch = computed(() => matchPackage(form.features));
@@ -51,6 +60,7 @@ watch(() => form.plan, (plan) => {
 // new shop, and keeps a small mudir dokan from starting out with a cluttered
 // purchase-ledger/stock-count toolkit it'll never touch.
 watch(() => form.business_type_id, (id) => {
+    if (featuresManuallyTouched.value) return;
     const type = props.businessTypes.find((t) => t.id === id);
     form.features = type?.default_features ? [...type.default_features] : [];
 });
@@ -206,7 +216,7 @@ const featuresByCategory = (list) => {
                         <div class="text-xs font-bold uppercase text-gray-400 mb-1.5">{{ cat }}</div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             <label v-for="f in list" :key="f.id" class="flex items-start gap-2 text-sm p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
-                                <input type="checkbox" :value="f.key" v-model="form.features" class="mt-0.5">
+                                <input type="checkbox" :value="f.key" v-model="form.features" class="mt-0.5" @change="featuresManuallyTouched = true">
                                 <span>
                                     <span class="font-medium block">
                                         {{ f.label_en }} <span class="text-gray-400">({{ f.label_bn }})</span>
