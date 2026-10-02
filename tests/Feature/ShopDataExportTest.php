@@ -92,11 +92,41 @@ class ShopDataExportTest extends TestCase
         $order = \App\Models\TableOrder::create(['shop_id' => $shop->id, 'restaurant_table_id' => $table->id, 'status' => 'open', 'opened_at' => now()]);
         \App\Models\TableOrderItem::create(['shop_id' => $shop->id, 'table_order_id' => $order->id, 'product_name' => 'DumpedOrderItem', 'qty' => 1, 'price' => 2, 'cost' => 1]);
 
+        // Production-readiness audit: the exact same hand-maintained-list
+        // drift this test already regression-guards against once (see the
+        // docblock above) happened again — ~20 more tables added since were
+        // silently missing. Same pattern: create one row per table, assert
+        // its data actually made it into the dump.
+        $loan = \App\Models\Loan::create(['shop_id' => $shop->id, 'party_name' => 'DumpedLoanParty', 'type' => 'given', 'principal' => 500, 'outstanding' => 500, 'method' => 'cash', 'date' => now()->toDateString()]);
+        \App\Models\LoanPayment::create(['shop_id' => $shop->id, 'loan_id' => $loan->id, 'amount' => 50, 'method' => 'cash', 'date' => now()->toDateString()]);
+        $partner = \App\Models\Partner::create(['shop_id' => $shop->id, 'name' => 'DumpedPartnerName', 'ownership_percent' => 50, 'invested_amount' => 1000, 'joined_date' => now()->toDateString()]);
+        \App\Models\PartnerTransaction::create(['shop_id' => $shop->id, 'partner_id' => $partner->id, 'type' => 'investment', 'amount' => 100, 'method' => 'cash', 'date' => now()->toDateString()]);
+        \App\Models\CashTransaction::create(['shop_id' => $shop->id, 'user_id' => $owner->id, 'type' => 'deposit', 'amount' => 20, 'note' => 'DumpedCashNote', 'date' => now()->toDateString()]);
+        $employee = \App\Models\Employee::create(['shop_id' => $shop->id, 'name' => 'DumpedEmployeeName', 'salary_type' => 'monthly', 'basic_salary' => 5000, 'joining_date' => now()->toDateString(), 'status' => 'active']);
+        \App\Models\Attendance::create(['shop_id' => $shop->id, 'employee_id' => $employee->id, 'date' => now()->toDateString(), 'status' => 'present']);
+        \App\Models\SalaryAdvance::create(['shop_id' => $shop->id, 'employee_id' => $employee->id, 'amount' => 100, 'outstanding' => 100, 'method' => 'cash', 'date' => now()->toDateString()]);
+        \App\Models\SalaryPayment::create(['shop_id' => $shop->id, 'employee_id' => $employee->id, 'month' => now()->format('Y-m'), 'basic_salary' => 5000, 'net_paid' => 5000, 'method' => 'cash', 'paid_date' => now()->toDateString()]);
+        \App\Models\Reservation::create(['shop_id' => $shop->id, 'name' => 'DumpedReservationName', 'reservation_at' => now()->addDay(), 'guest_count' => 2, 'status' => 'reserved']);
+        \App\Models\WorkPeriod::create(['shop_id' => $shop->id, 'opened_by' => $owner->id, 'opened_at' => now(), 'opening_cash' => 500, 'cash_balance_at_open' => 500]);
+        $ingredient = \App\Models\Ingredient::create(['shop_id' => $shop->id, 'name' => 'DumpedIngredientName', 'unit' => 'kg', 'stock' => 10, 'cost' => 50]);
+        \App\Models\ProductRecipe::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'ingredient_id' => $ingredient->id, 'qty_per_unit' => 0.1]);
+        $preparation = \App\Models\Preparation::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'product_name' => 'DumpedPreparationName', 'qty' => 5]);
+        \App\Models\PreparationItem::create(['shop_id' => $shop->id, 'preparation_id' => $preparation->id, 'ingredient_id' => $ingredient->id, 'ingredient_name' => 'DumpedPrepIngredient', 'qty_consumed' => 1]);
+        $sale = \App\Models\Sale::create(['shop_id' => $shop->id, 'invoice_no' => 'DUMPED-INV-1', 'date' => now()->toDateString(), 'time' => '10:00:00', 'subtotal' => 100, 'total' => 100, 'profit' => 10, 'payment_mode' => 'cash']);
+        \App\Models\SaleRating::create(['shop_id' => $shop->id, 'sale_id' => $sale->id, 'stars' => 5, 'comment' => 'DumpedRatingComment']);
+        \App\Models\GatewayPayment::create(['shop_id' => $shop->id, 'provider' => 'bkash', 'reference' => 'DumpedGatewayRef', 'amount' => 100, 'status' => 'completed', 'checkout_payload' => []]);
+        \App\Models\WhatsappBulkLog::create(['shop_id' => $shop->id, 'user_id' => $owner->id, 'send_type' => 'text', 'message' => 'DumpedWaBulkMessage', 'recipients_count' => 1]);
+        \App\Models\WhatsappMessageTemplate::create(['shop_id' => $shop->id, 'label' => 'DumpedWaTemplateLabel', 'send_type' => 'text', 'message' => 'hi']);
+
         $dump = \App\Support\ShopSqlDump::generate($shop->fresh());
 
         foreach ([
             'Dumped Supplier', 'Dumped activity line', 'DumpedBatch', 'DumpedVariantSize',
             'DumpedSerialImei', 'DumpedTableName', 'DumpedOrderItem',
+            'DumpedLoanParty', 'DumpedPartnerName', 'DumpedCashNote', 'DumpedEmployeeName',
+            'DumpedReservationName', 'DumpedIngredientName', 'DumpedPreparationName',
+            'DumpedPrepIngredient', 'DumpedRatingComment', 'DumpedGatewayRef',
+            'DumpedWaBulkMessage', 'DumpedWaTemplateLabel',
         ] as $needle) {
             $this->assertStringContainsString($needle, $dump, "SQL dump is missing data from: {$needle}");
         }
@@ -112,6 +142,10 @@ class ShopDataExportTest extends TestCase
         foreach ([
             'Suppliers', 'ActivityLog', 'ProductBatches', 'ProductVariants',
             'ProductSerials', 'SalePayments', 'RestaurantTables', 'TableOrders', 'TableOrderItems',
+            'Loans', 'LoanPayments', 'Partners', 'PartnerTransactions', 'CashTransactions',
+            'Employees', 'Attendances', 'SalaryAdvances', 'SalaryPayments', 'Reservations',
+            'WorkPeriods', 'Ingredients', 'ProductRecipes', 'Preparations', 'PreparationItems',
+            'SaleRatings', 'StockTransfers', 'GatewayPayments', 'WhatsappBulkLogs', 'WhatsappMessageTemplates',
         ] as $expected) {
             $this->assertContains($expected, $titles, "Excel export is missing a sheet for: {$expected}");
         }

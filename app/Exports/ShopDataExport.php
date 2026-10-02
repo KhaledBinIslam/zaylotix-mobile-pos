@@ -54,6 +54,29 @@ class ShopDataExport implements WithMultipleSheets
             'TableOrderItems' => ['table_order_id', 'product_name', 'qty', 'price', 'cost', 'served_at'],
             'HeldCarts' => ['label', 'cart_data', 'created_at'],
             'Promotions' => ['name', 'type', 'active', 'code', 'discount_type', 'discount_value', 'min_purchase', 'usage_limit', 'buy_product_id', 'buy_qty', 'get_product_id', 'get_qty', 'get_discount_percent', 'used_count', 'starts_at', 'expires_at'],
+            'Loans' => ['party_name', 'phone', 'type', 'principal', 'outstanding', 'method', 'note', 'date'],
+            'LoanPayments' => ['loan_id', 'amount', 'method', 'date'],
+            'Partners' => ['name', 'phone', 'ownership_percent', 'invested_amount', 'withdrawn_amount', 'joined_date'],
+            'PartnerTransactions' => ['partner_id', 'type', 'amount', 'method', 'note', 'date'],
+            'CashTransactions' => ['user_id', 'type', 'amount', 'from_label', 'to_label', 'note', 'date'],
+            'Employees' => ['name', 'phone', 'designation', 'salary_type', 'basic_salary', 'joining_date', 'status'],
+            'Attendances' => ['employee_id', 'date', 'status'],
+            'SalaryAdvances' => ['employee_id', 'amount', 'outstanding', 'method', 'note', 'date'],
+            'SalaryPayments' => ['employee_id', 'month', 'basic_salary', 'present_days', 'absent_days', 'attendance_deduction', 'bonus', 'advance_deduction', 'net_paid', 'method', 'paid_date'],
+            'Reservations' => ['restaurant_table_id', 'name', 'phone', 'reservation_at', 'guest_count', 'note', 'advance', 'status'],
+            'WorkPeriods' => ['opened_by', 'opened_at', 'opening_cash', 'cash_balance_at_open', 'closed_at', 'closing_cash', 'cash_balance_at_close', 'variance'],
+            'Ingredients' => ['name', 'unit', 'stock', 'cost', 'reorder_point'],
+            'ProductRecipes' => ['product_id', 'ingredient_id', 'qty_per_unit'],
+            'Preparations' => ['product_id', 'product_name', 'qty', 'created_by'],
+            'PreparationItems' => ['preparation_id', 'ingredient_id', 'ingredient_name', 'qty_consumed'],
+            'SaleRatings' => ['sale_id', 'stars', 'comment'],
+            'StockTransfers' => ['from_shop_id', 'to_shop_id', 'from_product_id', 'to_product_id', 'product_name', 'qty', 'user_id'],
+            'GatewayPayments' => ['provider', 'sale_id', 'user_id', 'amount', 'status', 'reference'],
+            'WhatsappBulkLogs' => ['user_id', 'send_type', 'template_name', 'message', 'recipients_count', 'sent_count', 'failed_count'],
+            'WhatsappMessageTemplates' => ['label', 'send_type', 'template_name', 'language_code', 'message'],
+            // PaymentGatewayCredentials/WhatsappCredentials deliberately
+            // excluded — encrypted:array blobs tied to this install's own
+            // APP_KEY, not meaningful (or safe) to hand to the shop owner
         ];
 
         $models = [
@@ -85,6 +108,26 @@ class ShopDataExport implements WithMultipleSheets
             'TableOrderItems' => \App\Models\TableOrderItem::class,
             'HeldCarts' => \App\Models\HeldCart::class,
             'Promotions' => \App\Models\Promotion::class,
+            'Loans' => \App\Models\Loan::class,
+            'LoanPayments' => \App\Models\LoanPayment::class,
+            'Partners' => \App\Models\Partner::class,
+            'PartnerTransactions' => \App\Models\PartnerTransaction::class,
+            'CashTransactions' => \App\Models\CashTransaction::class,
+            'Employees' => \App\Models\Employee::class,
+            'Attendances' => \App\Models\Attendance::class,
+            'SalaryAdvances' => \App\Models\SalaryAdvance::class,
+            'SalaryPayments' => \App\Models\SalaryPayment::class,
+            'Reservations' => \App\Models\Reservation::class,
+            'WorkPeriods' => \App\Models\WorkPeriod::class,
+            'Ingredients' => \App\Models\Ingredient::class,
+            'ProductRecipes' => \App\Models\ProductRecipe::class,
+            'Preparations' => \App\Models\Preparation::class,
+            'PreparationItems' => \App\Models\PreparationItem::class,
+            'SaleRatings' => \App\Models\SaleRating::class,
+            'StockTransfers' => \App\Models\StockTransfer::class,
+            'GatewayPayments' => \App\Models\GatewayPayment::class,
+            'WhatsappBulkLogs' => \App\Models\WhatsappBulkLog::class,
+            'WhatsappMessageTemplates' => \App\Models\WhatsappMessageTemplate::class,
         ];
 
         $result = [];

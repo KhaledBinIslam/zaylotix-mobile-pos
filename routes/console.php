@@ -32,3 +32,19 @@ Schedule::call(fn () => Artisan::call('zaylotix:expire-subscriptions'))->dailyAt
 Schedule::call(fn () => Artisan::call('zaylotix:low-stock-alerts'))->dailyAt('09:00');
 Schedule::call(fn () => Artisan::call('zaylotix:expiry-alerts'))->dailyAt('09:00');
 Schedule::call(fn () => Artisan::call('zaylotix:backup'))->dailyAt('02:00');
+
+// Production-readiness audit: this app's QUEUE_CONNECTION=database has
+// been configured since early on but nothing was ever actually dispatched
+// to it -- GenerateShopBackupJob (a shop owner's own self-service data
+// backup) is the first real job. A normal long-running `php artisan
+// queue:work` daemon isn't an option on this host (same exec/proc_open
+// restriction documented above), so this rides the exact cron hit that's
+// already confirmed firing every minute for the five jobs above --
+// `queue:work` run via Artisan::call() never shells out either, it just
+// processes whatever's due in-process and exits once the queue is empty
+// (--stop-when-empty) or after 50s (--max-time), whichever comes first.
+Schedule::call(fn () => Artisan::call('queue:work', [
+    '--stop-when-empty' => true,
+    '--max-time' => 50,
+    '--tries' => 1,
+]))->everyMinute();

@@ -31,6 +31,15 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(120)->by($request->user()?->id ?: $request->ip());
         });
 
+        // Login (web/API/admin) all throttle via a 5-attempt/IP+account
+        // RateLimiter check of their own — signup had no equivalent at all,
+        // meaning unlimited shop/account creation attempts from one IP.
+        // Not a credential-guessing risk like login, but an unthrottled
+        // resource-exhaustion/spam-shop-creation one.
+        RateLimiter::for('signup', function (Request $request) {
+            return Limit::perHour(5)->by($request->ip());
+        });
+
         // Behind a reverse proxy in production, requests arrive over plain
         // HTTP internally — without this, generated URLs (redirects, asset
         // links, Storage::url) come back as http:// even on a live https://

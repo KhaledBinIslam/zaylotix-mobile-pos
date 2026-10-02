@@ -40,6 +40,8 @@ class HeldCartController extends Controller
     /** Returns the held cart's data as JSON (consumed via fetch, not a full Inertia visit) and removes it — resuming puts it back in the active cart, so it's no longer "held". */
     public function resume(HeldCart $heldCart)
     {
+        $this->authorize('view', $heldCart);
+
         $data = $heldCart->cart_data;
         $heldCart->delete();
 
@@ -48,6 +50,8 @@ class HeldCartController extends Controller
 
     public function destroy(HeldCart $heldCart)
     {
+        $this->authorize('delete', $heldCart);
+
         $heldCart->delete();
 
         return back()->with('success', 'হোল্ড করা বিল মুছে ফেলা হয়েছে।');

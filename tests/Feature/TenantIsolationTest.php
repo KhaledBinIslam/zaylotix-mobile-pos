@@ -3,7 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\Customer;
+use App\Models\HeldCart;
 use App\Models\Product;
+use App\Models\Purchase;
 use App\Models\Sale;
 use App\Support\Tenancy;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -114,5 +116,46 @@ class TenantIsolationTest extends TestCase
 
         $customer = Customer::first();
         $this->assertSame($shopA->id, $customer->shop_id);
+    }
+
+    /**
+     * Production-readiness audit: PurchaseController::markReceived had no
+     * explicit $this->authorize() call, relying solely on Purchase's
+     * TenantScope global scope — this locks in that a cross-shop id still
+     * 404s now that a PurchasePolicy check backs it up too.
+     */
+    public function test_shop_user_cannot_mark_another_shops_purchase_received(): void
+    {
+        [$shopA, $ownerA] = $this->createShopWithOwner();
+        [$shopB] = $this->createShopWithOwner();
+
+        $foreignPurchase = Purchase::create([
+            'shop_id' => $shopB->id, 'amount' => 300, 'method' => 'cash', 'status' => 'pending',
+            'date' => now()->toDateString(),
+        ]);
+
+        $response = $this->actingAs($ownerA, 'web')->post("/app/purchases/{$foreignPurchase->id}/receive");
+
+        $response->assertStatus(404);
+        $this->assertSame('pending', $foreignPurchase->fresh()->status);
+    }
+
+    /**
+     * Same audit finding for HeldCartController::resume/destroy — both
+     * previously had zero explicit authorization, relying on the global
+     * scope alone.
+     */
+    public function test_shop_user_cannot_resume_or_delete_another_shops_held_cart(): void
+    {
+        [$shopA, $ownerA] = $this->createShopWithOwner();
+        [$shopB] = $this->createShopWithOwner();
+
+        $foreignCart = HeldCart::create([
+            'shop_id' => $shopB->id, 'label' => 'B-Cart', 'cart_data' => ['cart' => [['id' => 1, 'qty' => 1]]],
+        ]);
+
+        $this->actingAs($ownerA, 'web')->post("/app/pos/held-carts/{$foreignCart->id}/resume")->assertStatus(404);
+        $this->actingAs($ownerA, 'web')->delete("/app/pos/held-carts/{$foreignCart->id}")->assertStatus(404);
+        $this->assertNotNull($foreignCart->fresh());
     }
 }

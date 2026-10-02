@@ -80,7 +80,18 @@ class GatewayWebhookController extends Controller
                 ->first();
 
         if (! $payment) {
-            Log::warning('Gateway webhook for unknown payment', ['provider' => $provider, 'query' => $request->query(), 'body' => $request->post()]);
+            // audit fix: this used to log the raw query/body wholesale —
+            // gateways can include a customer's phone/MSISDN in these
+            // payloads, which has no business sitting in plaintext logs.
+            // Keep only the handful of fields actually useful for tracing
+            // an unmatched webhook.
+            Log::warning('Gateway webhook for unknown payment', [
+                'provider' => $provider,
+                'reference' => $reference,
+                'paymentID' => $request->input('paymentID'),
+                'order_id' => $request->input('order_id'),
+                'status' => $request->input('status') ?? $request->input('status_code'),
+            ]);
 
             return ['body' => ['ok' => false], 'status' => 404, 'reference' => $reference, 'redirect_route' => 'app.pos'];
         }

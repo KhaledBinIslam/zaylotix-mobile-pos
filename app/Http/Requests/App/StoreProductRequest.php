@@ -33,7 +33,13 @@ class StoreProductRequest extends FormRequest
             'new_category_name' => ['nullable', 'string', 'max:255'],
             'unit_id' => ['nullable', Rule::exists('units', 'id')->where('shop_id', Tenancy::id())],
             'new_unit_name' => ['nullable', 'string', 'max:255'],
-            'barcode' => ['nullable', 'string', 'max:64'],
+            // duplicate-prevention audit fix: two products in the same shop
+            // could previously share a barcode (nothing enforced it) — a
+            // real risk since the POS/barcode-scan search resolves by this
+            // value. Scoped per shop and ignores the product being edited;
+            // existing duplicate rows (if any already exist) are untouched,
+            // only new/renamed duplicates going forward are blocked.
+            'barcode' => ['nullable', 'string', 'max:64', Rule::unique('products', 'barcode')->where('shop_id', Tenancy::id())->ignore($this->route('product'))],
             'sold_by_weight' => ['nullable', 'boolean'],
             'weight_unit' => ['required_if:sold_by_weight,1', 'nullable', 'in:kg,litre'],
             'cost' => ['required', 'numeric', 'min:0'],

@@ -108,24 +108,29 @@ class BackupController extends Controller
         Artisan::call('zaylotix:backup');
 
         $config = config("database.connections.{$connection}");
-        $tmpPath = tempnam(sys_get_temp_dir(), 'zaylotix-restore-').'.sql';
-        file_put_contents($tmpPath, $disk->get($path));
 
-        $command = sprintf(
-            'mysql -h%s -P%s -u%s %s %s < %s',
-            escapeshellarg($config['host']),
-            escapeshellarg((string) $config['port']),
-            escapeshellarg($config['username']),
-            $config['password'] ? '-p'.escapeshellarg($config['password']) : '',
-            escapeshellarg($config['database']),
-            escapeshellarg($tmpPath)
-        );
-
-        exec($command, $output, $exitCode);
-        @unlink($tmpPath);
-
-        if ($exitCode !== 0) {
-            Log::error('Database restore failed', ['file' => $filename, 'exit_code' => $exitCode]);
+        // Deliberately NOT shelling out to the `mysql` CLI (as this used to)
+        // — this host's production hosting has exec()/shell_exec()/
+        // proc_open() all disabled, the exact same constraint that made
+        // zaylotix:backup silently fail every night until it was rewritten
+        // around a pure-PHP dumper (see BackupDatabase's own comment). This
+        // shelled-out restore would fail the identical way, making the
+        // platform's one disaster-recovery path non-functional. A second
+        // PDO connection with MYSQL_ATTR_MULTI_STATEMENTS lets the mysql
+        // client library itself parse/run the whole dump in one call,
+        // without a shell or a hand-rolled SQL statement splitter.
+        try {
+            $dsn = sprintf(
+                'mysql:host=%s;port=%s;dbname=%s;charset=%s',
+                $config['host'], $config['port'], $config['database'], $config['charset'] ?? 'utf8mb4'
+            );
+            $pdo = new \PDO($dsn, $config['username'], $config['password'] ?? '', [
+                \PDO::MYSQL_ATTR_MULTI_STATEMENTS => true,
+                \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+            ]);
+            $pdo->exec($disk->get($path));
+        } catch (\Throwable $e) {
+            Log::error('Database restore failed', ['file' => $filename, 'error' => $e->getMessage()]);
 
             return back()->withErrors(['restore' => 'রিস্টোর ব্যর্থ হয়েছে — সার্ভার লগ দেখুন। বর্তমান ডাটার একটি নতুন সেফটি ব্যাকআপ নেওয়া হয়েছে।']);
         }

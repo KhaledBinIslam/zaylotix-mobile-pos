@@ -58,6 +58,30 @@ class ShopSqlDump
         'promotions',          // -> products (buy_product_id, get_product_id)
         'quotations',           // -> customers, sales
         'quotation_items',      // -> quotations, products
+        'loans',
+        'loan_payments',        // -> loans
+        'partners',
+        'partner_transactions', // -> partners
+        'cash_transactions',    // -> users, already dumped above
+        'employees',
+        'attendances',          // -> employees
+        'salary_advances',      // -> employees
+        'salary_payments',      // -> employees
+        'reservations',         // -> restaurant_tables, already dumped above
+        'work_periods',         // -> users, already dumped above
+        'ingredients',
+        'product_recipes',      // -> products, ingredients
+        'preparations',         // -> products
+        'preparation_items',    // -> preparations, ingredients
+        'sale_ratings',         // -> sales, already dumped above
+        'stock_transfers',      // -> products, shops (FK checks are off during import, so a sibling branch's shop/product id not in this dump is fine)
+        'gateway_payments',     // -> users, sales, already dumped above
+        'whatsapp_bulk_logs',
+        'whatsapp_message_templates',
+        // payment_gateway_credentials and whatsapp_credentials are
+        // deliberately NOT included here — both hold `encrypted:array`
+        // blobs tied to this install's own APP_KEY, meaningless (and an
+        // unnecessary exposure) in a file the shop could hand to anyone
     ];
 
     public static function generate(Shop $shop): string

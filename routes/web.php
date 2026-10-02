@@ -35,6 +35,7 @@ use App\Http\Controllers\App\NotificationController;
 use App\Http\Controllers\App\OnboardingController;
 use App\Http\Controllers\App\PaymentController;
 use App\Http\Controllers\App\PaymentGatewayController;
+use App\Http\Controllers\App\ShopBackupController;
 use App\Http\Controllers\App\StockHistoryController;
 use App\Http\Controllers\App\StockTransferController;
 use App\Http\Controllers\App\SubscriptionRenewalController;
@@ -100,7 +101,10 @@ Route::middleware('guest')->group(function () {
     Route::get('login', [LoginController::class, 'create'])->name('login');
     Route::post('login', [LoginController::class, 'store'])->name('login.store');
     Route::get('signup', [SignupController::class, 'create'])->name('signup');
-    Route::post('signup', [SignupController::class, 'store'])->name('signup.store');
+    // security-audit fix: signup had no rate limiting at all (unlike
+    // login's own 5-attempt/IP+account RateLimiter) — unlimited shop/
+    // account creation attempts were possible from a single IP
+    Route::post('signup', [SignupController::class, 'store'])->middleware('throttle:signup')->name('signup.store');
 });
 
 // Public — no auth. A customer scanning the QR code printed on their paper
@@ -372,6 +376,16 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::post('staff', [StaffController::class, 'store'])->name('staff.store');
         Route::put('staff/{staff}', [StaffController::class, 'update'])->name('staff.update');
         Route::delete('staff/{staff}', [StaffController::class, 'destroy'])->name('staff.destroy');
+    });
+
+    // owner's own self-service full-data backup (production-readiness
+    // audit) — deliberately owner-only, not perm:export, since it includes
+    // every customer's phone/due history
+    Route::middleware('owner')->group(function () {
+        Route::get('shop-backups', [ShopBackupController::class, 'index'])->name('shopBackups.index');
+        Route::post('shop-backups', [ShopBackupController::class, 'store'])->name('shopBackups.store');
+        Route::get('shop-backups/{shopBackup}/download', [ShopBackupController::class, 'download'])->name('shopBackups.download');
+        Route::delete('shop-backups/{shopBackup}', [ShopBackupController::class, 'destroy'])->name('shopBackups.destroy');
     });
 
     // activity log — owner-only (a cashier reviewing an audit trail of

@@ -94,6 +94,8 @@ class PurchaseController extends Controller
     /** The goods (and money, for cash/bank) actually arrive now — applies the same effects store() would have applied immediately for a 'received' purchase. */
     public function markReceived(Purchase $purchase)
     {
+        $this->authorize('update', $purchase);
+
         DB::transaction(function () use ($purchase) {
             // locked and re-checked here, not just by the route firing once —
             // a double-tapped "mark received" button (or a client retry after
