@@ -342,6 +342,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
 
     Route::middleware(['perm:export', 'feature:export'])->group(function () {
         Route::get('export/{kind}', [ExportController::class, 'download'])->name('export');
+        Route::get('export-all', [ExportController::class, 'downloadAll'])->name('export.all');
     });
 
     Route::middleware('perm:settings')->group(function () {

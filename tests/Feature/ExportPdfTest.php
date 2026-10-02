@@ -51,4 +51,27 @@ class ExportPdfTest extends TestCase
         $response->assertOk();
         $this->assertStringContainsString('spreadsheetml', $response->headers->get('Content-Type'));
     }
+
+    public function test_export_all_combines_every_report_into_one_workbook(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'export');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 10, 'price' => 20, 'stock' => 5]);
+        Sale::create([
+            'shop_id' => $shop->id, 'invoice_no' => 'INV-1', 'date' => now()->toDateString(), 'time' => now()->toTimeString(),
+            'subtotal' => 20, 'total' => 20, 'profit' => 10, 'payment_mode' => 'cash',
+        ]);
+
+        $response = $this->actingAs($owner, 'web')->get('/app/export-all');
+
+        $response->assertOk();
+        $this->assertStringContainsString('spreadsheetml', $response->headers->get('Content-Type'));
+    }
+
+    public function test_export_all_requires_the_export_feature(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+
+        $this->actingAs($owner, 'web')->get('/app/export-all')->assertForbidden();
+    }
 }

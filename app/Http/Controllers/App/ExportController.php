@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\App;
 
+use App\Exports\AllReportsExport;
 use App\Exports\ArrayExport;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
@@ -46,6 +47,22 @@ class ExportController extends Controller
         $ext = $format === ExcelFormat::CSV ? 'csv' : 'xlsx';
 
         return Excel::download(new ArrayExport($rows), "{$name}.{$ext}", $format);
+    }
+
+    /** Every report above, combined into one workbook (one sheet each) — requested so nobody has to download each report separately for what they need. Excel only; a single PDF/CSV can't hold multiple sheets. */
+    public function downloadAll()
+    {
+        $sheets = [
+            self::TITLES['sales'] => $this->salesRows(),
+            self::TITLES['stock'] => $this->stockRows(),
+            self::TITLES['due'] => $this->dueRows(),
+            self::TITLES['exp'] => $this->expenseRows(),
+            self::TITLES['damage'] => $this->damageRows(),
+            self::TITLES['return'] => $this->returnRows(),
+            self::TITLES['pl'] => $this->plRows(),
+        ];
+
+        return Excel::download(new AllReportsExport($sheets), 'sob-report-eksathe.xlsx');
     }
 
     private function downloadPdf(array $rows, string $name, string $title)

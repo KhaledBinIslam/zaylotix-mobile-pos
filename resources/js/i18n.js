@@ -738,6 +738,8 @@ export const translations = {
     'count.pieces': { bn: 'পিস', en: 'pcs' },
     'count.submit': { bn: '✅ সব মিলিয়ে দিন', en: '✅ Reconcile all' },
     'export.sheetTitle': { bn: '📤 ডাটা এক্সপোর্ট', en: '📤 Data Export' },
+    'export.downloadAll': { bn: '🗂️ সব একসাথে ডাউনলোড (Excel)', en: '🗂️ Download everything (Excel)' },
+    'export.downloadAllSub': { bn: 'একটা ফাইলে সব কয়টা রিপোর্ট, আলাদা শীটে', en: 'Every report below, in one file as separate sheets' },
     'export.sales': { bn: 'বিক্রির হিসাব', en: 'Sales report' },
     'export.stock': { bn: 'স্টক তালিকা', en: 'Stock list' },
     'export.due': { bn: 'বাকির খাতা', en: 'Due ledger' },
