@@ -18,7 +18,9 @@ use Inertia\Inertia;
  * "everything since I started using the software" copy the production-
  * readiness audit's brief asked for, scoped to exactly one shop. Owner-
  * only (not gated by perm:export) because it includes every customer's
- * phone/due history — too sensitive for a staff grant.
+ * phone/due history — too sensitive for a staff grant. Also gated behind
+ * the `shop_backup` feature (routes/web.php) — an Ultimate-tier,
+ * admin-granted capability, not given to every shop by default.
  */
 class ShopBackupController extends Controller
 {

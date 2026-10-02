@@ -57,6 +57,11 @@ class FeatureSeeder extends Seeder
             // reports — looking back at what happened
             ['key' => 'reports', 'label_bn' => 'বিক্রয় রিপোর্ট ও লাভ-ক্ষতি', 'label_en' => 'Sales reports & P&L', 'category' => 'reports', 'description' => 'Daily/weekly/monthly sales, profit, and loss statement.'],
             ['key' => 'export', 'label_bn' => 'ডাটা এক্সপোর্ট', 'label_en' => 'Data export (Excel/CSV)', 'category' => 'reports', 'description' => 'Download sales, stock, due, expense, and P&L data as spreadsheet files.'],
+            // Ultimate-tier only, per Khaled's explicit request — distinct
+            // from 'export' above (shaped report exports): this is the
+            // shop's complete raw dataset, SQL or Excel, generated in the
+            // background (see App\Jobs\GenerateShopBackupJob)
+            ['key' => 'shop_backup', 'label_bn' => 'নিজস্ব ডেটা ব্যাকআপ (SQL/Excel)', 'label_en' => 'Self-service data backup (SQL/Excel)', 'category' => 'reports', 'description' => "Download a complete copy of everything the shop has recorded, as a SQL file or Excel workbook, generated in the background."],
 
             // staff — who else can use the shop's account
             ['key' => 'cashier_management', 'label_bn' => 'ক্যাশিয়ার যোগ করার সুবিধা', 'label_en' => 'Add staff accounts', 'category' => 'staff', 'description' => 'Let the shop owner add staff accounts (up to the shop\'s staff_limit — see Shop edit), each with its own owner-chosen access checklist.'],

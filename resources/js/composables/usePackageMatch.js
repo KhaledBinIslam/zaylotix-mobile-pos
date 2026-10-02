@@ -25,7 +25,7 @@ export const PACKAGES = {
         core: [
             'memo_print', 'memo_whatsapp', 'unit_conversion', 'weight_based_selling', 'accounts', 'partners', 'expenses', 'reports',
             'barcode_printing', 'purchases', 'returns', 'stock_count', 'damages', 'restaurant_tables', 'export', 'cashier_management',
-            'vat', 'activity_log', 'suppliers', 'low_stock_alerts', 'wholesale_pricing', 'hr_payroll', 'promotions', 'loyalty_points', 'quotations', 'ingredient_tracking',
+            'vat', 'activity_log', 'suppliers', 'low_stock_alerts', 'wholesale_pricing', 'hr_payroll', 'promotions', 'loyalty_points', 'quotations', 'ingredient_tracking', 'shop_backup',
         ],
     },
 };

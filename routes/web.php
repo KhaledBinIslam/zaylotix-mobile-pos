@@ -380,8 +380,10 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
 
     // owner's own self-service full-data backup (production-readiness
     // audit) — deliberately owner-only, not perm:export, since it includes
-    // every customer's phone/due history
-    Route::middleware('owner')->group(function () {
+    // every customer's phone/due history. Also an Ultimate-tier admin-
+    // granted feature, same as every other premium capability, per
+    // Khaled's explicit request — not given to every shop by default.
+    Route::middleware(['owner', 'feature:shop_backup'])->group(function () {
         Route::get('shop-backups', [ShopBackupController::class, 'index'])->name('shopBackups.index');
         Route::post('shop-backups', [ShopBackupController::class, 'store'])->name('shopBackups.store');
         Route::get('shop-backups/{shopBackup}/download', [ShopBackupController::class, 'download'])->name('shopBackups.download');

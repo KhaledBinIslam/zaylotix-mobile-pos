@@ -19,6 +19,7 @@ class ShopBackupTest extends TestCase
     {
         Bus::fake();
         [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'shop_backup');
 
         $response = $this->actingAs($owner, 'web')->post('/app/shop-backups', ['format' => 'sql']);
 
@@ -30,9 +31,20 @@ class ShopBackupTest extends TestCase
         Bus::assertDispatched(GenerateShopBackupJob::class, fn ($job) => $job->shopBackup->is($backup));
     }
 
+    public function test_owner_cannot_reach_shop_backup_routes_without_the_feature_granted(): void
+    {
+        // shop_backup is Ultimate-tier, admin-granted — an owner on a
+        // lower package must not reach it just by being the owner
+        [$shop, $owner] = $this->createShopWithOwner();
+
+        $this->actingAs($owner, 'web')->get('/app/shop-backups')->assertForbidden();
+        $this->actingAs($owner, 'web')->post('/app/shop-backups', ['format' => 'sql'])->assertForbidden();
+    }
+
     public function test_staff_cannot_reach_shop_backup_routes(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'shop_backup');
         $staff = \App\Models\User::create([
             'shop_id' => $shop->id, 'name' => 'Cashier', 'phone' => '01799999999',
             'password' => 'password', 'role' => 'staff', 'permissions' => ['pos'], 'lang' => 'bn',
@@ -67,6 +79,7 @@ class ShopBackupTest extends TestCase
     {
         Storage::fake('local');
         [$shopA, $ownerA] = $this->createShopWithOwner();
+        $this->grantFeature($shopA, 'shop_backup');
         [$shopB] = $this->createShopWithOwner();
 
         $foreignBackup = ShopBackup::create([

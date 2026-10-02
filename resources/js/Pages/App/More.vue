@@ -462,7 +462,7 @@ onMounted(() => {
         <Link v-if="isOwner && features.includes('activity_log')" :href="route('app.activity')" class="row">
             <div class="ava">📋</div><div class="mid"><b>{{ t('nav.activity') }}</b><span>{{ t('activity.subtitle') }}</span></div><div class="end">›</div>
         </Link>
-        <Link v-if="isOwner" :href="route('app.shopBackups.index')" class="row">
+        <Link v-if="isOwner && features.includes('shop_backup')" :href="route('app.shopBackups.index')" class="row">
             <div class="ava">🗄️</div><div class="mid"><b>{{ t('backup.title') }}</b><span>{{ t('backup.subtitle') }}</span></div><div class="end">›</div>
         </Link>
         <Link :href="route('app.help')" class="row">
