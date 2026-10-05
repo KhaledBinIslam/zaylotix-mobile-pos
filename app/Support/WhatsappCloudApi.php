@@ -64,6 +64,24 @@ class WhatsappCloudApi
         ]);
     }
 
+    /**
+     * Same 24-hour window constraint as sendText(). $imageUrl must be a
+     * publicly reachable URL (Meta fetches it server-side) — the caller
+     * uploads the image to this app's own public disk first and passes
+     * that URL, rather than this class handling Meta's separate resumable
+     * media-upload endpoint, which a simple link-based image message
+     * doesn't need.
+     */
+    public function sendImage(array $credentials, string $toPhone, string $imageUrl, string $caption = ''): array
+    {
+        return $this->send($credentials, [
+            'messaging_product' => 'whatsapp',
+            'to' => $this->normalizePhone($toPhone),
+            'type' => 'image',
+            'image' => ['link' => $imageUrl, ...($caption !== '' ? ['caption' => $caption] : [])],
+        ]);
+    }
+
     private function send(array $credentials, array $payload): array
     {
         $phoneNumberId = $credentials['phone_number_id'] ?? null;

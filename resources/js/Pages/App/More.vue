@@ -390,7 +390,7 @@ onMounted(() => {
 
         <template v-if="hasPerm('customers')">
             <div class="sechead"><h2>{{ t('more.sectionCustomers') }}</h2></div>
-            <Link :href="route('app.customers')" class="row">
+            <Link :href="route('app.customerList.index')" class="row">
                 <div class="ava">👥</div><div class="mid"><b>{{ t('more.customerList') }}</b><span>{{ t('more.customerListSub') }}</span></div><div class="end">›</div>
             </Link>
         </template>

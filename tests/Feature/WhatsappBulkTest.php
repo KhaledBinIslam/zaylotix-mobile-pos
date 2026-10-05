@@ -91,6 +91,29 @@ class WhatsappBulkTest extends TestCase
         $this->assertSame(0, $log->failed_count);
     }
 
+    public function test_send_with_an_image_uploads_it_and_uses_sendimage_not_sendtext(): void
+    {
+        [$shop, $owner] = $this->shopWithWhatsapp();
+        $customer = Customer::create(['shop_id' => $shop->id, 'name' => 'Karim', 'phone' => '01700000001']);
+
+        Http::fake(['graph.facebook.com/*' => Http::response(['messages' => [['id' => 'wamid.1']]], 200)]);
+        \Illuminate\Support\Facades\Storage::fake('public');
+        $image = UploadedFile::fake()->image('offer.jpg');
+
+        $this->actingAs($owner, 'web')->post('/app/whatsapp-bulk/send', [
+            'send_type' => 'text', 'message' => 'নতুন অফার দেখুন', 'customer_ids' => [$customer->id], 'image' => $image,
+        ])->assertRedirect();
+
+        $log = WhatsappBulkLog::first();
+        $this->assertSame(1, $log->sent_count);
+        Http::assertSent(function ($request) {
+            return str_contains($request->url(), 'graph.facebook.com')
+                && $request['type'] === 'image'
+                && isset($request['image']['link'])
+                && $request['image']['caption'] === 'নতুন অফার দেখুন';
+        });
+    }
+
     public function test_send_skips_customers_without_a_phone(): void
     {
         [$shop, $owner] = $this->shopWithWhatsapp();

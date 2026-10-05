@@ -7,6 +7,7 @@ use App\Http\Controllers\App\ActivityLogController;
 use App\Http\Controllers\App\BarcodeLabelController;
 use App\Http\Controllers\App\BranchController;
 use App\Http\Controllers\App\CustomerController;
+use App\Http\Controllers\App\CustomerListController;
 use App\Http\Controllers\App\DamageController;
 use App\Http\Controllers\App\ExpenseController;
 use App\Http\Controllers\App\ExportController;
@@ -260,6 +261,15 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
     Route::middleware('perm:customers')->group(function () {
         Route::get('customers', [CustomerController::class, 'index'])->name('customers');
         Route::post('customers', [CustomerController::class, 'store'])->name('customers.store');
+
+        // plain customer-browsing tool, deliberately separate from the
+        // due-ledger page above — reported live: "customer list" in the
+        // menu shouldn't land on a page titled/framed as "due ledger"
+        Route::get('customer-list', [CustomerListController::class, 'index'])->name('customerList.index');
+    });
+
+    Route::middleware(['perm:export', 'feature:export'])->group(function () {
+        Route::get('customer-list/export', [CustomerListController::class, 'exportSelected'])->name('customerList.exportSelected');
     });
 
     Route::middleware('perm:due')->group(function () {

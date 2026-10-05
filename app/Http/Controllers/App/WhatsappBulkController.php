@@ -11,6 +11,7 @@ use App\Support\Tenancy;
 use App\Support\WhatsappCloudApi;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -218,6 +219,10 @@ class WhatsappBulkController extends Controller
             'message' => ['required_if:send_type,text', 'nullable', 'string', 'max:1000'],
             'customer_ids' => ['required', 'array', 'min:1'],
             'customer_ids.*' => ['integer'],
+            // image attach only makes sense for a free-form 'text' send —
+            // a template's layout/media slot (if it has one) is whatever
+            // was approved in Meta Business Manager, this app can't change it
+            'image' => ['nullable', 'image', 'max:2048', 'mimes:jpg,jpeg,png,webp'],
         ]);
 
         $shopId = Tenancy::id();
@@ -231,14 +236,26 @@ class WhatsappBulkController extends Controller
             abort(422, 'কোনো বৈধ মোবাইল নম্বরসহ কাস্টমার বাছাই করা হয়নি।');
         }
 
+        // Meta fetches the image from this URL server-side, so it has to be
+        // a public one — uploaded to the same disk/path shape product
+        // photos already use, not a Meta media-upload round trip this app
+        // doesn't otherwise need.
+        $imageUrl = null;
+        if ($data['send_type'] === 'text' && $request->hasFile('image')) {
+            $path = $request->file('image')->store('whatsapp-bulk-media', 'public');
+            $imageUrl = Storage::disk('public')->url($path);
+        }
+
         $api = new WhatsappCloudApi;
         $sent = 0;
         $failed = 0;
 
         foreach ($customers as $customer) {
-            $result = $data['send_type'] === 'template'
-                ? $api->sendTemplate($credential->credentials, $customer->phone, $data['template_name'], $data['language_code'] ?? 'bn', [$customer->name])
-                : $api->sendText($credential->credentials, $customer->phone, $data['message']);
+            $result = match (true) {
+                $data['send_type'] === 'template' => $api->sendTemplate($credential->credentials, $customer->phone, $data['template_name'], $data['language_code'] ?? 'bn', [$customer->name]),
+                $imageUrl !== null => $api->sendImage($credential->credentials, $customer->phone, $imageUrl, $data['message'] ?? ''),
+                default => $api->sendText($credential->credentials, $customer->phone, $data['message']),
+            };
 
             $result['ok'] ? $sent++ : $failed++;
         }

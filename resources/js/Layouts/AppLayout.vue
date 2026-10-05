@@ -248,6 +248,7 @@ const sidebarGroups = computed(() => [
             { key: 'cds', label: t('nav.cds'), href: route('app.cds.index'), icon: 'monitor', on: props.active === 'cds', show: hasPerm('pos') && isRestaurant.value && hasFeature('restaurant_tables') },
             { key: 'sales', label: t('nav.salesHistory'), href: route('app.sales'), icon: 'receipt', on: props.active === 'sales', show: hasPerm('sales_history') },
             { key: 'due', label: t('nav.dueFull'), href: route('app.customers'), icon: 'invoice', on: props.active === 'due', show: hasPerm('customers') },
+            { key: 'customerList', label: t('customerList.title'), href: route('app.customerList.index'), icon: 'users', on: props.active === 'customerList', show: hasPerm('customers') },
             { key: 'promotions', label: t('nav.promotions'), href: route('app.promotions.index'), icon: 'gift', on: props.active === 'promotions', show: hasPerm('promotions') && hasFeature('promotions') },
             { key: 'quotations', label: t('nav.quotations'), href: route('app.quotations.index'), icon: 'clipboard', on: props.active === 'quotations', show: hasPerm('pos') && hasFeature('quotations') },
         ],
