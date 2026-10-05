@@ -78,8 +78,7 @@ const nav = computed(() => [
             </div>
 
             <div class="p-4 border-t text-center text-[11px] text-gray-400">
-                A <a href="https://zaylotix.com/" target="_blank" class="font-semibold" style="color:#7C3AED">Zaylotix</a> product<br>
-                Owner: <a href="https://khaledbinislam.com/" target="_blank" class="font-semibold text-gray-600">Khaled Bin Islam</a>
+                A <a href="https://zaylotix.com/" target="_blank" class="font-semibold" style="color:#7C3AED">Zaylotix</a> product
             </div>
         </aside>
 

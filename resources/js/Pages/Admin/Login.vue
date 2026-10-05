@@ -34,8 +34,7 @@ function submit() {
             </form>
 
             <div class="text-center text-xs text-gray-400 mt-6">
-                A <a href="https://zaylotix.com/" target="_blank" class="font-semibold" style="color:#7C3AED">Zaylotix</a> product ·
-                Owner: <a href="https://khaledbinislam.com/" target="_blank" class="font-semibold text-gray-600">Khaled Bin Islam</a>
+                A <a href="https://zaylotix.com/" target="_blank" class="font-semibold" style="color:#7C3AED">Zaylotix</a> product
             </div>
         </div>
     </div>
