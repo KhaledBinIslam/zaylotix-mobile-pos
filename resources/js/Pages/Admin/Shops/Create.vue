@@ -2,7 +2,7 @@
 import { Head, useForm, Link } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
-import { matchPackage } from '@/composables/usePackageMatch';
+import { matchPackage, tierPrice } from '@/composables/usePackageMatch';
 
 const props = defineProps({ businessTypes: Array, features: Array });
 
@@ -23,12 +23,19 @@ const form = useForm({
     staff_limit: null,
 });
 
-// sum of every ticked feature's own price — a starting point for what this
-// shop's subscription is actually worth, not a locked number; the admin can
-// still hand-edit monthly_fee below (real pricing involves negotiation)
-const suggestedFee = computed(() =>
-    props.features.filter((f) => form.features.includes(f.key)).reduce((sum, f) => sum + Number(f.monthly_price || 0), 0)
-);
+// live "which published package does this match" readout, same as Edit.vue
+const featureLabel = (key) => props.features.find((f) => f.key === key)?.label_bn || key;
+const packageMatch = computed(() => matchPackage(form.features));
+
+// Monthly fee follows the MATCHED PACKAGE's full price, not a running sum
+// of only what's ticked — ticking even one Ultimate-only feature prices
+// the whole shop at Ultimate, the same way the flyer sells it, matching
+// Khaled's explicit "Feature → Required Package → Package Price → Monthly
+// Rent" flow. The price itself isn't a new hardcoded number: it's the sum
+// of that tier's own feature list's existing monthly_price values (set on
+// the admin Features screen), so editing a feature's price there is the
+// one place package pricing is ever changed.
+const suggestedFee = computed(() => tierPrice(packageMatch.value.tier, props.features));
 // only auto-fills monthly_fee while the admin hasn't typed their own number
 // yet — once they touch it, ticking more features stops silently
 // overwriting what they entered
@@ -43,10 +50,6 @@ watch(suggestedFee, (v) => { if (!feeManuallyEdited.value) form.monthly_fee = v;
 // ever pre-fills an untouched list, never silently overwrites a
 // deliberately customized one.
 const featuresManuallyTouched = ref(false);
-
-// live "which published package does this match" readout, same as Edit.vue
-const featureLabel = (key) => props.features.find((f) => f.key === key)?.label_bn || key;
-const packageMatch = computed(() => matchPackage(form.features));
 
 // switching plan re-suggests the expiry date (admin can still hand-edit it
 // afterward) — e.g. picking Trial always proposes "7 days from today"
@@ -164,7 +167,7 @@ const featuresByCategory = (list) => {
                 <div>
                     <label class="text-sm font-medium text-gray-600">
                         Monthly fee (৳)
-                        <span class="text-xs font-normal text-violet-600">— suggested from ticked features below: ৳{{ suggestedFee }}</span>
+                        <span class="text-xs font-normal text-violet-600">— {{ packageMatch.label ? `${packageMatch.label} package price: ৳${suggestedFee}` : 'suggested once a package is matched below' }}</span>
                     </label>
                     <input v-model.number="form.monthly_fee" type="number" min="0" class="mt-1 w-full rounded-lg border-gray-300" @input="feeManuallyEdited = true">
                     <div v-if="form.errors.monthly_fee" class="text-rose-600 text-xs mt-1">{{ form.errors.monthly_fee }}</div>

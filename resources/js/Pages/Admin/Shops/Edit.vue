@@ -2,7 +2,7 @@
 import { Head, useForm, Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
-import { matchPackage } from '@/composables/usePackageMatch';
+import { matchPackage, tierPrice } from '@/composables/usePackageMatch';
 
 const props = defineProps({ shop: Object, businessTypes: Array, features: Array, shopFeatureKeys: Array, branches: { type: Array, default: null } });
 
@@ -40,18 +40,19 @@ const form = useForm({
 const expiryIsPast = computed(() => form.subscription_expiry && new Date(form.subscription_expiry) < new Date(new Date().toDateString()));
 const willAutoExtend = computed(() => form.status === 'active' && expiryIsPast.value);
 
-// reference only here (unlike Create.vue, this never auto-overwrites
-// monthly_fee — an existing shop's price is already a deliberate, possibly
-// negotiated number, not something a checkbox should silently change)
-const suggestedFee = computed(() =>
-    props.features.filter((f) => form.features.includes(f.key)).reduce((sum, f) => sum + Number(f.monthly_price || 0), 0)
-);
-
 // live "which of our 3 published packages does this ticked set look like"
 // readout, per Khaled's own pricing flyer — so admin doesn't have to
 // eyeball-compare the checklist against a screenshot every time
 const featureLabel = (key) => props.features.find((f) => f.key === key)?.label_bn || key;
 const packageMatch = computed(() => matchPackage(form.features));
+
+// the matched tier's full package price (same derivation as Create.vue —
+// sum of that tier's own feature list's existing monthly_price values, not
+// a new hardcoded number). Reference only here (unlike Create.vue, this
+// never auto-overwrites monthly_fee — an existing shop's price is already
+// a deliberate, possibly negotiated number, not something a checkbox
+// should silently change)
+const suggestedFee = computed(() => tierPrice(packageMatch.value.tier, props.features));
 
 function submit() {
     form.put(route('admin.shops.update', props.shop.id));
@@ -160,7 +161,7 @@ const recommendedFeatureKeys = () => {
                 <div>
                     <label class="text-sm font-medium text-gray-600">
                         Monthly fee (৳)
-                        <span class="text-xs font-normal text-violet-600">— ticked features currently add up to ৳{{ suggestedFee }}</span>
+                        <span class="text-xs font-normal text-violet-600">— {{ packageMatch.label ? `${packageMatch.label} package price: ৳${suggestedFee}` : 'no package matched by ticked features' }}</span>
                     </label>
                     <input v-model.number="form.monthly_fee" type="number" min="0" class="mt-1 w-full rounded-lg border-gray-300">
                     <div v-if="form.errors.monthly_fee" class="text-rose-600 text-xs mt-1">{{ form.errors.monthly_fee }}</div>

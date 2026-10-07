@@ -1,31 +1,30 @@
 // Encodes the 3 published packages (Starter/Business/Ultimate) as feature-key
 // sets, straight off Khaled's pricing flyer, so the admin shop form can tell
 // him live "this ticked feature-set = Business" instead of him having to
-// eyeball-compare a checklist against a screenshot every time. serial_tracking
-// and prescription_records are deliberately left OUT of Ultimate's "core" set
-// below -- the flyer lists them as an either/or depending on business type
-// (mobile shop vs pharmacy), so requiring BOTH would make a legitimate
-// Ultimate grocery/mobile-only shop never match. They still count as
-// Ultimate-tier features for pricing purposes, just not required for the
-// match itself.
+// eyeball-compare a checklist against a screenshot every time. The flyer's
+// 32 bullets (10 Starter, +10 Business, +12 Ultimate) map onto real
+// `features` table keys 1:1, 'pos' (selling itself, the flyer's Starter
+// item #1) included -- it's purely a package-pricing bookkeeping entry,
+// not the actual access gate (that's still the staff `pos` permission,
+// unaffected by any of this).
 export const PACKAGES = {
     starter: {
         label: 'Starter',
-        core: ['memo_print', 'memo_whatsapp', 'unit_conversion', 'weight_based_selling', 'accounts', 'partners', 'expenses', 'reports'],
+        core: ['pos', 'memo_whatsapp', 'memo_print', 'weight_based_selling', 'reports', 'expenses', 'accounts', 'quotations', 'cashier_management', 'export'],
     },
     business: {
         label: 'Business',
         core: [
-            'memo_print', 'memo_whatsapp', 'unit_conversion', 'weight_based_selling', 'accounts', 'partners', 'expenses', 'reports',
-            'barcode_printing', 'purchases', 'returns', 'stock_count', 'damages', 'restaurant_tables', 'export', 'cashier_management',
+            'pos', 'memo_whatsapp', 'memo_print', 'weight_based_selling', 'reports', 'expenses', 'accounts', 'quotations', 'cashier_management', 'export',
+            'barcode_printing', 'unit_conversion', 'purchases', 'returns', 'damages', 'stock_count', 'restaurant_tables', 'product_variants', 'whatsapp_bulk', 'activity_log',
         ],
     },
     ultimate: {
         label: 'Ultimate',
         core: [
-            'memo_print', 'memo_whatsapp', 'unit_conversion', 'weight_based_selling', 'accounts', 'partners', 'expenses', 'reports',
-            'barcode_printing', 'purchases', 'returns', 'stock_count', 'damages', 'restaurant_tables', 'export', 'cashier_management',
-            'vat', 'activity_log', 'suppliers', 'low_stock_alerts', 'wholesale_pricing', 'hr_payroll', 'promotions', 'loyalty_points', 'quotations', 'ingredient_tracking', 'shop_backup',
+            'pos', 'memo_whatsapp', 'memo_print', 'weight_based_selling', 'reports', 'expenses', 'accounts', 'quotations', 'cashier_management', 'export',
+            'barcode_printing', 'unit_conversion', 'purchases', 'returns', 'damages', 'stock_count', 'restaurant_tables', 'product_variants', 'whatsapp_bulk', 'activity_log',
+            'promotions', 'loyalty_points', 'hr_payroll', 'vat', 'suppliers', 'low_stock_alerts', 'batch_tracking', 'serial_tracking', 'prescription_records', 'wholesale_pricing', 'ingredient_tracking', 'partners',
         ],
     },
 };
@@ -69,4 +68,20 @@ export function matchPackage(tickedKeys) {
         missingForNext: nextTier ? nextOnly.filter((k) => !ticked.has(k)) : [],
         nextLabel: nextTier ? PACKAGES[nextTier].label : null,
     };
+}
+
+/**
+ * A package's monthly price, derived purely from the SAME per-feature
+ * `monthly_price` values already set on the admin Features screen -- not a
+ * separate hardcoded number. Summing a tier's own full core list (not just
+ * whatever happens to be ticked) means "this shop is on Ultimate" always
+ * prices as the whole Ultimate package, the same way the printed flyer
+ * sells it, regardless of which subset of it this particular shop actually
+ * uses day to day.
+ */
+export function tierPrice(tier, features) {
+    if (!tier || !PACKAGES[tier]) return 0;
+    const priceByKey = Object.fromEntries(features.map((f) => [f.key, Number(f.monthly_price || 0)]));
+
+    return PACKAGES[tier].core.reduce((sum, key) => sum + (priceByKey[key] || 0), 0);
 }
