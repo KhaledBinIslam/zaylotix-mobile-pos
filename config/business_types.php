@@ -16,6 +16,16 @@
  * staff — starts with the fuller operational + accountability set. Same
  * underlying product either way; admin can always grant more later via
  * Admin/Shops/{shop}/edit as the shop grows.
+ *
+ * Bug found live: every single type below unconditionally included
+ * 'partners' (just bundled alongside accounts/expenses/reports as generic
+ * "financial basics", not a deliberate per-type choice) — once the pricing
+ * flyer update moved 'partners' into Ultimate's own feature set (see
+ * usePackageMatch.js), picking ANY business type on the Create Shop form
+ * immediately matched "Ultimate" before the admin had touched a single
+ * checkbox. Removed it everywhere; a shop that genuinely needs multi-owner
+ * profit-share tracking still gets it granted explicitly, same as any
+ * other Ultimate-tier feature.
  */
 
 return [
@@ -29,7 +39,7 @@ return [
         'features' => [
             'memo_print', 'memo_whatsapp', 'unit_conversion', 'weight_based_selling', 'wholesale_pricing', 'barcode_printing',
             'purchases', 'suppliers', 'damages', 'returns', 'stock_count', 'low_stock_alerts',
-            'batch_tracking', 'accounts', 'partners', 'expenses', 'reports', 'export', 'vat',
+            'batch_tracking', 'accounts', 'expenses', 'reports', 'export', 'vat',
             'cashier_management', 'activity_log',
         ],
         'categories' => [
@@ -63,7 +73,7 @@ return [
         // purchase ledger or stock-count reconciliation to run day to day;
         // loose-selling from a box (unit_conversion) is the one thing even
         // the smallest shop here actually uses constantly
-        'features' => ['memo_print', 'memo_whatsapp', 'unit_conversion', 'weight_based_selling', 'accounts', 'partners', 'expenses', 'reports'],
+        'features' => ['memo_print', 'memo_whatsapp', 'unit_conversion', 'weight_based_selling', 'accounts', 'expenses', 'reports'],
         'categories' => [
             ['name' => 'মুদি', 'name_en' => 'Grocery', 'emoji' => '🛒'],
             ['name' => 'তেল-ঘি', 'name_en' => 'Oil & Ghee', 'emoji' => '🫒'],
@@ -94,7 +104,7 @@ return [
         // features (damages, low-stock alerts) are less relevant
         'features' => [
             'memo_print', 'memo_whatsapp', 'barcode_printing', 'purchases', 'returns', 'stock_count', 'product_variants',
-            'accounts', 'partners', 'expenses', 'reports', 'export', 'cashier_management',
+            'accounts', 'expenses', 'reports', 'export', 'cashier_management',
         ],
         'categories' => [
             ['name' => 'শার্ট', 'name_en' => 'Shirts', 'emoji' => '👔'],
@@ -125,7 +135,7 @@ return [
         // product edit screen simply never rendered for a pharmacy shop.
         'features' => [
             'memo_print', 'memo_whatsapp', 'barcode_printing', 'unit_conversion', 'purchases', 'suppliers', 'damages', 'returns',
-            'stock_count', 'low_stock_alerts', 'batch_tracking', 'prescription_records', 'wholesale_pricing', 'accounts', 'partners', 'expenses', 'reports', 'export', 'vat',
+            'stock_count', 'low_stock_alerts', 'batch_tracking', 'prescription_records', 'wholesale_pricing', 'accounts', 'expenses', 'reports', 'export', 'vat',
             'cashier_management', 'activity_log',
         ],
         'categories' => [
@@ -151,7 +161,7 @@ return [
         // full purchase/damage tracking matter more here than in a grocery
         'features' => [
             'memo_print', 'memo_whatsapp', 'barcode_printing', 'purchases', 'damages', 'returns', 'stock_count',
-            'low_stock_alerts', 'serial_tracking', 'accounts', 'partners', 'expenses', 'reports', 'export', 'vat',
+            'low_stock_alerts', 'serial_tracking', 'accounts', 'expenses', 'reports', 'export', 'vat',
             'cashier_management', 'activity_log',
         ],
         'categories' => [
@@ -176,7 +186,7 @@ return [
         // activity_log/suppliers by default, admin can add if the shop grows
         'features' => [
             'memo_print', 'memo_whatsapp', 'barcode_printing', 'purchases', 'damages', 'returns',
-            'stock_count', 'low_stock_alerts', 'batch_tracking', 'accounts', 'partners', 'expenses', 'reports',
+            'stock_count', 'low_stock_alerts', 'batch_tracking', 'accounts', 'expenses', 'reports',
         ],
         'categories' => [
             ['name' => 'স্কিন কেয়ার', 'name_en' => 'Skin care', 'emoji' => '🧴'],
@@ -198,7 +208,7 @@ return [
         'fields' => [],
         // catch-all for a shop that doesn't fit a specific type — stays
         // conservative like grocery, admin adjusts once they know the shop
-        'features' => ['memo_print', 'memo_whatsapp', 'accounts', 'partners', 'expenses', 'reports'],
+        'features' => ['memo_print', 'memo_whatsapp', 'accounts', 'expenses', 'reports'],
         'categories' => [
             ['name' => 'সাধারণ', 'name_en' => 'General', 'emoji' => '📦'],
             ['name' => 'অন্যান্য', 'name_en' => 'Other', 'emoji' => '🗂️'],
@@ -225,7 +235,7 @@ return [
         // those aren't how a restaurant's menu items work
         'features' => [
             'memo_print', 'memo_whatsapp', 'restaurant_tables', 'purchases', 'damages', 'low_stock_alerts',
-            'accounts', 'partners', 'expenses', 'reports', 'export', 'vat', 'cashier_management', 'activity_log',
+            'accounts', 'expenses', 'reports', 'export', 'vat', 'cashier_management', 'activity_log',
         ],
         'categories' => [
             ['name' => 'ভাত-তরকারি', 'name_en' => 'Rice & Curry', 'emoji' => '🍛'],
