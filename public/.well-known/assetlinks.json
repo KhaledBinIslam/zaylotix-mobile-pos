@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.zaylotix.pos",
+      "sha256_cert_fingerprints": [
+        "55:C8:FE:BD:80:B5:41:96:03:0D:58:12:0A:6D:BC:67:FD:5C:BE:8F:A7:81:ED:5E:BC:46:DD:92:96:C9:96:A0"
+      ]
+    }
+  }
+]

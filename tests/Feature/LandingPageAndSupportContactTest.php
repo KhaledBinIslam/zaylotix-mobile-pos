@@ -6,6 +6,7 @@ use App\Models\Admin;
 use App\Models\BusinessType;
 use App\Models\SiteSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\File;
 use Tests\Concerns\CreatesShops;
 use Tests\TestCase;
 
@@ -104,13 +105,19 @@ class LandingPageAndSupportContactTest extends TestCase
         $this->assertSame('8801979894356', SiteSetting::current()->whatsapp_contact);
     }
 
-    public function test_landing_page_has_no_app_download_links_until_admin_sets_a_play_store_url_or_apk_exists(): void
+    /**
+     * The Play Store link only appears once the admin pastes it in; the APK
+     * link is independent of that setting — it just reflects whether
+     * public/downloads/zaylotix-pos.apk (committed as part of the TWA build)
+     * exists on disk.
+     */
+    public function test_landing_page_has_no_play_store_link_until_admin_sets_one(): void
     {
         $response = $this->get('/');
 
         $response->assertOk()->assertInertia(fn ($page) => $page
             ->where('playStoreUrl', null)
-            ->where('apkAvailable', false)
+            ->where('apkAvailable', File::exists(public_path('downloads/zaylotix-pos.apk')))
         );
     }
 
