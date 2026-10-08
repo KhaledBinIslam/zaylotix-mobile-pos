@@ -50,6 +50,21 @@ class SiteSettingController extends Controller
         return back()->with('success', 'WhatsApp নম্বর সংরক্ষণ করা হয়েছে।');
     }
 
+    /**
+     * The landing page's "App Download" section's Play Store button — left
+     * blank until Khaled has actually created the Play Console listing.
+     */
+    public function updatePlayStoreUrl(Request $request)
+    {
+        $data = $request->validate([
+            'play_store_url' => ['nullable', 'string', 'max:500', 'url'],
+        ]);
+
+        SiteSetting::current()->update($data);
+
+        return back()->with('success', 'Play Store লিংক সংরক্ষণ করা হয়েছে।');
+    }
+
     public function update(Request $request)
     {
         $request->validate([

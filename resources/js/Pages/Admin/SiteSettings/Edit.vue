@@ -9,6 +9,7 @@ const preview = ref(null);
 const form = useForm({ logo: null });
 const reminderForm = useForm({ reminder_days: props.setting.reminder_days });
 const whatsappForm = useForm({ whatsapp_contact: props.setting.whatsapp_contact });
+const playStoreForm = useForm({ play_store_url: props.setting.play_store_url });
 
 function saveReminderDays() {
     reminderForm.patch(route('admin.siteSettings.reminderDays'), { preserveScroll: true });
@@ -16,6 +17,10 @@ function saveReminderDays() {
 
 function saveWhatsappContact() {
     whatsappForm.patch(route('admin.siteSettings.whatsappContact'), { preserveScroll: true });
+}
+
+function savePlayStoreUrl() {
+    playStoreForm.patch(route('admin.siteSettings.playStoreUrl'), { preserveScroll: true });
 }
 
 function pickFile(e) {
@@ -99,6 +104,20 @@ function remove() {
                 </button>
             </div>
             <div v-if="whatsappForm.errors.whatsapp_contact" class="text-rose-600 text-xs mt-2">{{ whatsappForm.errors.whatsapp_contact }}</div>
+        </div>
+
+        <div class="bg-white border rounded-xl p-6 max-w-lg mt-6">
+            <h2 class="font-semibold text-gray-900 mb-1">App Download — Play Store Link</h2>
+            <p class="text-sm text-gray-500 mb-4">The landing page's "App Download" section's Play Store button. Leave blank until the Play Console listing actually exists — the button stays hidden until this is filled in.</p>
+
+            <label class="block text-sm font-medium text-gray-700 mb-1">Play Store URL</label>
+            <div class="flex items-center gap-2">
+                <input v-model="playStoreForm.play_store_url" placeholder="https://play.google.com/store/apps/details?id=com.zaylotix.pos" class="border rounded-lg px-3 py-2 text-sm w-full">
+                <button class="px-4 py-2 rounded-lg [background:#7C3AED] text-white font-semibold text-sm shrink-0" :disabled="playStoreForm.processing" @click="savePlayStoreUrl">
+                    {{ playStoreForm.processing ? 'Saving...' : 'Save' }}
+                </button>
+            </div>
+            <div v-if="playStoreForm.errors.play_store_url" class="text-rose-600 text-xs mt-2">{{ playStoreForm.errors.play_store_url }}</div>
         </div>
     </AdminLayout>
 </template>

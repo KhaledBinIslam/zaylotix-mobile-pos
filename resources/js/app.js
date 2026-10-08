@@ -5,10 +5,17 @@ import { createInertiaApp, router } from '@inertiajs/vue3';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { createApp, h } from 'vue';
 import { ZiggyVue } from '../../vendor/tightenco/ziggy';
+import { isInApp } from './composables/useInApp';
 import { useToast } from './composables/useToast';
 import { reportClientError } from './support/reportClientError';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
+
+// Runs once, as early as possible, so every page component's own
+// `isInApp()` call (no args, just reads the cached result) is already
+// settled before anything renders — see useInApp.js for the 3-signal
+// detection this performs.
+isInApp();
 
 // A plain Inertia form submission (router.post/useForm().post, used all over
 // this app — e.g. Restaurant Order.vue's "বিল করুন") had no feedback at all

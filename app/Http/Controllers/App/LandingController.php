@@ -5,6 +5,7 @@ namespace App\Http\Controllers\App;
 use App\Http\Controllers\Controller;
 use App\Models\SiteSetting;
 use Inertia\Inertia;
+use Illuminate\Support\Facades\File;
 
 /**
  * The public "/" page for a guest — a proper intro (what Zaylotix is, what
@@ -21,6 +22,11 @@ class LandingController extends Controller
     {
         return Inertia::render('App/Landing/Index', [
             'whatsappContact' => SiteSetting::current()->whatsapp_contact,
+            'playStoreUrl' => SiteSetting::current()->play_store_url,
+            // The signed .apk only shows up once the TWA build (a separate,
+            // local, Bubblewrap step) actually drops it here — no dead link
+            // in the meantime.
+            'apkAvailable' => File::exists(public_path('downloads/zaylotix-pos.apk')),
         ]);
     }
 }

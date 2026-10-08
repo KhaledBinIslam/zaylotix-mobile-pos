@@ -409,6 +409,11 @@ export const translations = {
     'landing.pricingCardBody': { bn: 'দোকানের ধরন ও প্রয়োজন অনুযায়ী প্যাকেজ সাজানো যায় — ১৪ দিন সম্পূর্ণ ফ্রি ট্রায়াল দিয়ে শুরু করুন, তারপর আমাদের সাথে যোগাযোগ করে মূল্য জেনে নিন।', en: 'Packages can be shaped around your shop\'s type and needs — start with a full 14-day free trial, then contact us to find out pricing.' },
     'landing.pricingCta': { bn: 'যোগাযোগ করুন', en: 'Contact us' },
 
+    'landing.appDownloadTitle': { bn: 'অ্যাপ ডাউনলোড করুন', en: 'Download the app' },
+    'landing.appDownloadSub': { bn: 'ব্রাউজার ছাড়াই সরাসরি অ্যাপ দিয়ে Zaylotix POS চালান', en: 'Run Zaylotix POS straight from an app — no browser needed' },
+    'landing.appDownloadPlayStore': { bn: 'Play Store থেকে নামান', en: 'Get it on Play Store' },
+    'landing.appDownloadApk': { bn: 'APK সরাসরি ডাউনলোড করুন', en: 'Download APK directly' },
+
     // ---- login ----
     'login.title': { bn: 'লগইন', en: 'Log in' },
     'login.tagline': { bn: 'Zaylotix POS — দোকান পরিচালনার সহজ সমাধান', en: 'Zaylotix POS — the easy way to run your shop' },

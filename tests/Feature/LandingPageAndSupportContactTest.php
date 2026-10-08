@@ -103,4 +103,47 @@ class LandingPageAndSupportContactTest extends TestCase
 
         $this->assertSame('8801979894356', SiteSetting::current()->whatsapp_contact);
     }
+
+    public function test_landing_page_has_no_app_download_links_until_admin_sets_a_play_store_url_or_apk_exists(): void
+    {
+        $response = $this->get('/');
+
+        $response->assertOk()->assertInertia(fn ($page) => $page
+            ->where('playStoreUrl', null)
+            ->where('apkAvailable', false)
+        );
+    }
+
+    public function test_admin_can_set_the_play_store_url(): void
+    {
+        $admin = $this->superAdmin();
+
+        $response = $this->actingAs($admin, 'admin')->patch('/admin/site-settings/play-store-url', [
+            'play_store_url' => 'https://play.google.com/store/apps/details?id=com.zaylotix.pos',
+        ]);
+        $response->assertSessionDoesntHaveErrors()->assertRedirect();
+
+        $this->assertSame('https://play.google.com/store/apps/details?id=com.zaylotix.pos', SiteSetting::current()->play_store_url);
+    }
+
+    public function test_landing_page_passes_through_the_admin_set_play_store_url(): void
+    {
+        SiteSetting::current()->update(['play_store_url' => 'https://play.google.com/store/apps/details?id=com.zaylotix.pos']);
+
+        $page = $this->get('/');
+
+        $page->assertOk()->assertInertia(fn ($assert) => $assert
+            ->where('playStoreUrl', 'https://play.google.com/store/apps/details?id=com.zaylotix.pos')
+        );
+    }
+
+    public function test_play_store_url_must_be_a_valid_url(): void
+    {
+        $admin = $this->superAdmin();
+
+        $response = $this->actingAs($admin, 'admin')->patch('/admin/site-settings/play-store-url', [
+            'play_store_url' => 'not-a-url',
+        ]);
+        $response->assertSessionHasErrors('play_store_url');
+    }
 }

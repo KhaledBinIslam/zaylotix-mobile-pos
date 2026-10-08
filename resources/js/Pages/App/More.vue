@@ -4,11 +4,19 @@ import { ref, computed, onMounted } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import { useI18n } from '@/composables/useI18n';
+import { isInApp } from '@/composables/useInApp';
 import { useToast } from '@/composables/useToast';
 import { usePermissions } from '@/composables/usePermissions';
 import { reportClientError } from '@/support/reportClientError';
 
 const { toast } = useToast();
+
+// Opened inside the Android app — hide Zaylotix's own subscription-renewal
+// payment flow (Play policy: no in-app purchase flow that bypasses Play
+// Billing, this collects payment manually via bKash/SSLCommerz directly to
+// Zaylotix). The shop's OWN customer-facing gateway settings/checkout are
+// unaffected — different thing entirely.
+const inApp = isInApp();
 
 const props = defineProps({ shop: Object, products: Array, suppliers: Array });
 
@@ -371,7 +379,7 @@ onMounted(() => {
             <Link v-if="isOwner && branches" :href="route('app.stockTransfers.index')" class="row">
                 <div class="ava">🚚</div><div class="mid"><b>{{ t('more.stockTransfer') }}</b><span>{{ t('more.stockTransferSub') }}</span></div><div class="end">›</div>
             </Link>
-            <button v-if="isOwner" class="row" style="width:100%;text-align:left;border:none;background:none;cursor:pointer" @click="openRenewalSheet">
+            <button v-if="isOwner && !inApp" class="row" style="width:100%;text-align:left;border:none;background:none;cursor:pointer" @click="openRenewalSheet">
                 <div class="ava">💳</div><div class="mid"><b>{{ t('renewal.menuTitle') }}</b><span>{{ t('renewal.menuSub') }}</span></div><div class="end">›</div>
             </button>
             <Link v-if="hasPerm('sales_history')" :href="route('app.sales')" class="row">
@@ -866,7 +874,7 @@ onMounted(() => {
             <button class="btn" :disabled="workPeriodForm.processing" @click="submitOpenShift">{{ workPeriodForm.processing ? '...' : t('workPeriod.startButton') }}</button>
         </Sheet>
 
-        <Sheet v-model="renewalSheet" :title="t('renewal.sheetTitle')">
+        <Sheet v-if="!inApp" v-model="renewalSheet" :title="t('renewal.sheetTitle')">
             <template v-if="renewalPolling">
                 <div class="empty" style="padding:20px 0"><div class="big">⏳</div>{{ t('renewal.checkingStatus') }}</div>
             </template>

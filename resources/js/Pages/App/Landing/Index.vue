@@ -3,9 +3,17 @@ import { Head, Link } from '@inertiajs/vue3';
 import { onMounted, onBeforeUnmount } from 'vue';
 import ZaylotixMark from '@/Components/ZaylotixMark.vue';
 import { useI18n } from '@/composables/useI18n';
+import { isInApp } from '@/composables/useInApp';
 
-const props = defineProps({ whatsappContact: String });
+const props = defineProps({ whatsappContact: String, playStoreUrl: String, apkAvailable: Boolean });
 const { t } = useI18n();
+
+// Opened inside the Android app itself — hide Zaylotix's own pricing/
+// contact-to-buy section (Play policy: no in-app purchase flow that
+// bypasses Play Billing, payment here is manual) and the "download the
+// app" section (pointless to tell someone already inside the app to
+// download it).
+const inApp = isInApp();
 
 // digits only, with country code (see SiteSettingController::updateWhatsappContact) —
 // wa.me needs no '+' prefix. No admin-set number yet = button simply doesn't render,
@@ -140,7 +148,7 @@ onBeforeUnmount(() => {
                 <div class="landing-nav-links">
                     <a href="#features">{{ t('landing.navFeatures') }}</a>
                     <a href="#how-it-works">{{ t('landing.navHowItWorks') }}</a>
-                    <a href="#pricing">{{ t('landing.navPricing') }}</a>
+                    <a v-if="!inApp" href="#pricing">{{ t('landing.navPricing') }}</a>
                 </div>
                 <div class="landing-nav-cta">
                     <Link :href="route('login')" class="btn ghost sm">{{ t('landing.loginBtn') }}</Link>
@@ -283,7 +291,7 @@ onBeforeUnmount(() => {
                 <div class="landing-testimonials-note">{{ t('landing.testimonialsComingSoon') }}</div>
             </section>
 
-            <section id="pricing" class="landing-section reveal">
+            <section v-if="!inApp" id="pricing" class="landing-section reveal">
                 <h2>{{ t('landing.pricingTitle') }}</h2>
                 <div class="landing-pricing-card">
                     <b>{{ t('landing.pricingCardTitle') }}</b>
@@ -292,6 +300,19 @@ onBeforeUnmount(() => {
                         <span class="licon" v-html="ICON_PATHS.whatsapp"></span> {{ t('landing.pricingCta') }}
                     </a>
                     <Link v-else :href="route('signup')" class="btn lg">{{ t('landing.pricingCta') }}</Link>
+                </div>
+            </section>
+
+            <section v-if="!inApp && (playStoreUrl || apkAvailable)" class="landing-section reveal">
+                <h2>{{ t('landing.appDownloadTitle') }}</h2>
+                <p class="landing-section-sub">{{ t('landing.appDownloadSub') }}</p>
+                <div class="landing-cta">
+                    <a v-if="playStoreUrl" :href="playStoreUrl" target="_blank" rel="noopener" class="btn lg">
+                        <span class="licon" v-html="ICON_PATHS.android"></span> {{ t('landing.appDownloadPlayStore') }}
+                    </a>
+                    <a v-if="apkAvailable" href="/downloads/zaylotix-pos.apk" class="btn ghost lg">
+                        <span class="licon" v-html="ICON_PATHS.devices"></span> {{ t('landing.appDownloadApk') }}
+                    </a>
                 </div>
             </section>
 
