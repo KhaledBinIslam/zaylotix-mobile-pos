@@ -433,6 +433,7 @@ function sendKotWA() {
 
 const cancelOrder = () => {
     if (!confirm(t('restaurant.cancelOrderConfirm'))) return;
+    try { sessionStorage.removeItem(BILL_RECOVERY_KEY); } catch { /* ignore */ }
     router.post(route('app.restaurant.orders.cancel', props.order.id));
 };
 
@@ -470,6 +471,62 @@ watch([customerPhone, customerName], ([phone, name]) => {
     if (phone.trim() || name.trim()) showCustomerInfo.value = true;
 });
 watch(payMode, (mode) => { if (mode === 'credit') showCustomerInfo.value = true; });
+
+// Snapshot the in-progress bill draft to sessionStorage and restore it on
+// mount — same mechanism and root cause as Pos/Index.vue's own
+// CART_RECOVERY_KEY (see its comment): Inertia's global popstate handler
+// forces a full remount of this component whenever a hardware back press
+// closes the bill sheet (or any other Sheet here), which would otherwise
+// silently reset the discount/payment method/customer info/split-bill
+// selection a cashier had just entered. Keyed by this order's id so a
+// stale draft from a DIFFERENT, already-billed order can never leak into
+// a new one.
+const BILL_RECOVERY_KEY = 'zaylotix_restaurant_bill_recovery_' + props.order.id;
+// Deliberately does NOT persist billSheet (the sheet's own open/closed
+// state) itself — only the draft's actual content. Whether to reopen the
+// sheet on restore is re-derived from that content instead (see
+// onMounted below), the same way Pos/Index.vue infers "reopen cartOpen"
+// from cart.value.length rather than tracking cartOpen separately. Tracking
+// the open/closed flag directly was tried first and raced: Sheet.vue's own
+// popstate handler flips it to false SYNCHRONOUSLY the instant back is
+// pressed, on the OLD component instance, before Inertia's own (async)
+// popstate handling gets around to actually remounting this component and
+// reading the snapshot back — so that transient "closing" write clobbered
+// the good snapshot a moment before the remount's onMounted() could ever
+// consume it.
+function saveBillDraftForRecovery() {
+    try {
+        sessionStorage.setItem(BILL_RECOVERY_KEY, JSON.stringify({
+            discount: discount.value, payMode: payMode.value,
+            customerPhone: customerPhone.value, customerName: customerName.value,
+            splitMode: splitMode.value, selectedItemIds: selectedItemIds.value,
+        }));
+    } catch { /* storage unavailable */ }
+}
+onMounted(() => {
+    let saved;
+    try { saved = JSON.parse(sessionStorage.getItem(BILL_RECOVERY_KEY)); } catch { saved = null; }
+    if (!saved) return;
+    sessionStorage.removeItem(BILL_RECOVERY_KEY);
+    discount.value = saved.discount || 0;
+    payMode.value = saved.payMode || 'cash';
+    customerPhone.value = saved.customerPhone || '';
+    customerName.value = saved.customerName || '';
+    splitMode.value = saved.splitMode || false;
+    // drop any selected id whose item no longer exists (billed/removed since) — same
+    // defensive filtering as Pos/Index.vue's own cart-recovery restore
+    selectedItemIds.value = (saved.selectedItemIds || []).filter((id) => props.order.items.some((it) => it.id === id));
+    // Reopen the bill sheet if the restored draft actually has something a
+    // cashier would want to see again — re-derived from content, not a
+    // separately-tracked open/closed flag (see saveBillDraftForRecovery's
+    // comment for why). Restoring these values into the refs is invisible
+    // if the sheet showing them stays closed.
+    if (saved.discount > 0 || saved.payMode !== 'cash' || saved.customerPhone || saved.customerName || selectedItemIds.value.length) {
+        billSheet.value = true;
+    }
+});
+watch([discount, payMode, customerPhone, customerName, splitMode, selectedItemIds], saveBillDraftForRecovery, { deep: true });
+
 const billBaseTotal = computed(() => (splitMode.value ? splitSubtotal.value : liveOrderTotal.value));
 // complimentary forces the server to charge nothing (discount = subtotal,
 // see TableOrderController::bill()) — the displayed total must reflect that
@@ -541,6 +598,7 @@ async function submitBill() {
             const data = await res.json().catch(() => ({}));
             splitMode.value = false;
             selectedItemIds.value = [];
+            try { sessionStorage.removeItem(BILL_RECOVERY_KEY); } catch { /* ignore */ }
             if (data.sale_id) {
                 router.visit(route('app.sales.show', { sale: data.sale_id, autoprint: 1 }));
             } else {
@@ -564,26 +622,46 @@ async function submitBill() {
 }
 
 // --- table transfer / merge ---
-const tableActionSheet = ref(false);
 const tableActionMode = ref('transfer'); // 'transfer' this order away, or 'merge' another table's order into this one
 const tableActionTargetId = ref('');
 function submitTableAction() {
     if (!tableActionTargetId.value) return;
     if (tableActionMode.value === 'transfer') {
         router.post(route('app.restaurant.tables.transfer', props.order.table_id), { to_table_id: tableActionTargetId.value }, {
-            onSuccess: () => (tableActionSheet.value = false),
+            onSuccess: () => (moreSheet.value = false),
         });
     } else {
         router.post(route('app.restaurant.tables.merge', props.order.table_id), { from_table_id: tableActionTargetId.value }, {
-            onSuccess: () => (tableActionSheet.value = false),
+            onSuccess: () => (moreSheet.value = false),
         });
     }
 }
 
 // transfer/merge/cancel are rare, one-off actions — tucked behind a single
 // header button instead of sitting in the main scroll flow, so they're
-// still reachable in one tap but never push the everyday fields further down
+// still reachable in one tap but never push the everyday fields further down.
+// One Sheet, not two: its content switches between the menu and the
+// transfer/merge form via moreSheetView, the Sheet's own open/closed
+// `moreSheet` boolean never toggles for that switch. Root-caused live when
+// this used two separate <Sheet>s instead: closing one sheet and opening
+// another in the same synchronous tick raced Sheet.vue's own
+// `history.back()` (called when a sheet closes, so a later hardware back
+// press doesn't have to consume an orphaned entry — see Sheet.vue) against
+// the second sheet's `history.pushState()`. `back()` only actually
+// resolves a tick later; by then the second sheet had already pushed a
+// fresh entry, so the pending back() popped THAT one instead, firing a
+// popstate that closed the sheet that was supposed to stay open and (via
+// Inertia's own popstate handling) remounted this whole page — "ট্রান্সফার/
+// মার্জ চাপলে sheet-ই খোলে না", no console error, since nothing here ever
+// threw. Never toggling `moreSheet` for this switch sidesteps the race
+// entirely instead of trying to out-time it.
 const moreSheet = ref(false);
+const moreSheetView = ref('menu'); // 'menu' | 'tableAction'
+function openTableActionSheet(mode) {
+    tableActionMode.value = mode;
+    tableActionTargetId.value = '';
+    moreSheetView.value = 'tableAction';
+}
 
 // another device could add/remove items on the same table order
 const { pollReload } = usePollingReload();
@@ -608,7 +686,7 @@ onBeforeUnmount(() => {
                 <div class="pgttl">{{ displayName }}</div>
                 <div class="pgsub">{{ t('restaurant.orderTitle') }} • {{ money(liveOrderTotal) }}</div>
             </div>
-            <button class="btn ghost sm" style="width:auto;padding:8px 14px;flex:0 0 auto" @click="moreSheet = true">⋯ {{ t('common.more') }}</button>
+            <button class="btn ghost sm" style="width:auto;padding:8px 14px;flex:0 0 auto" @click="moreSheetView = 'menu'; moreSheet = true">⋯ {{ t('common.more') }}</button>
         </div>
 
         <div class="lg:flex lg:gap-6 lg:items-start">
@@ -884,26 +962,29 @@ onBeforeUnmount(() => {
 
         <!-- table move/merge + cancel — rare actions, reachable in one tap from
              the header's ⋯ button instead of sitting in the everyday scroll flow -->
-        <Sheet v-model="moreSheet" :title="t('common.more')">
-            <button v-if="freeTables.length" class="btn ghost" style="margin-bottom:10px" @click="moreSheet = false; tableActionMode = 'transfer'; tableActionTargetId = ''; tableActionSheet = true">🔀 {{ t('restaurant.transferTable') }}</button>
-            <button v-if="otherOccupiedTables.length" class="btn ghost" style="margin-bottom:10px" @click="moreSheet = false; tableActionMode = 'merge'; tableActionTargetId = ''; tableActionSheet = true">🔗 {{ t('restaurant.mergeTable') }}</button>
-            <button class="btn ghost" style="color:var(--rose);border-color:var(--rose)" @click="moreSheet = false; cancelOrder()">{{ t('restaurant.cancelOrder') }}</button>
-        </Sheet>
-
-        <!-- table transfer / merge -->
-        <Sheet v-model="tableActionSheet" :title="tableActionMode === 'transfer' ? t('restaurant.transferTable') : t('restaurant.mergeTable')">
-            <div class="field">
-                <label>{{ tableActionMode === 'transfer' ? t('restaurant.transferToLabel') : t('restaurant.mergeFromLabel') }}</label>
-                <select v-model="tableActionTargetId">
-                    <option value="">{{ t('damage.selectPlaceholder') }}</option>
-                    <option v-for="t2 in (tableActionMode === 'transfer' ? freeTables : otherOccupiedTables)" :key="t2.id" :value="t2.id">{{ t2.name }}</option>
-                </select>
-            </div>
-            <div style="font-size:12px;color:var(--dim);margin-bottom:14px">
-                {{ tableActionMode === 'transfer' ? t('restaurant.transferHint') : t('restaurant.mergeHint') }}
-            </div>
-            <button class="btn" :disabled="!tableActionTargetId" @click="submitTableAction">{{ t('stock.save') }}</button>
-            <button class="btn ghost" style="margin-top:10px" @click="tableActionSheet = false">{{ t('common.cancel') }}</button>
+        <!-- more menu + table transfer/merge — one Sheet, content switches
+             via moreSheetView instead of handing off to a second <Sheet>;
+             see openTableActionSheet()'s comment for why that matters -->
+        <Sheet v-model="moreSheet" :title="moreSheetView === 'menu' ? t('common.more') : (tableActionMode === 'transfer' ? t('restaurant.transferTable') : t('restaurant.mergeTable'))">
+            <template v-if="moreSheetView === 'menu'">
+                <button v-if="freeTables.length" class="btn ghost" style="margin-bottom:10px" @click="openTableActionSheet('transfer')">🔀 {{ t('restaurant.transferTable') }}</button>
+                <button v-if="otherOccupiedTables.length" class="btn ghost" style="margin-bottom:10px" @click="openTableActionSheet('merge')">🔗 {{ t('restaurant.mergeTable') }}</button>
+                <button class="btn ghost" style="color:var(--rose);border-color:var(--rose)" @click="moreSheet = false; cancelOrder()">{{ t('restaurant.cancelOrder') }}</button>
+            </template>
+            <template v-else>
+                <div class="field">
+                    <label>{{ tableActionMode === 'transfer' ? t('restaurant.transferToLabel') : t('restaurant.mergeFromLabel') }}</label>
+                    <select v-model="tableActionTargetId">
+                        <option value="">{{ t('damage.selectPlaceholder') }}</option>
+                        <option v-for="t2 in (tableActionMode === 'transfer' ? freeTables : otherOccupiedTables)" :key="t2.id" :value="t2.id">{{ t2.name }}</option>
+                    </select>
+                </div>
+                <div style="font-size:12px;color:var(--dim);margin-bottom:14px">
+                    {{ tableActionMode === 'transfer' ? t('restaurant.transferHint') : t('restaurant.mergeHint') }}
+                </div>
+                <button class="btn" :disabled="!tableActionTargetId" @click="submitTableAction">{{ t('stock.save') }}</button>
+                <button class="btn ghost" style="margin-top:10px" @click="moreSheetView = 'menu'">{{ t('common.cancel') }}</button>
+            </template>
         </Sheet>
     </AppLayout>
 </template>

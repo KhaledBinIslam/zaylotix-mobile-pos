@@ -127,6 +127,20 @@ onMounted(() => {
     if (cart.value.length) { cartOpen.value = true; toast(t('pos.cartRestored')); }
 });
 
+// Keep a snapshot continuously, not just right before the CSRF-reload
+// above — reported live: an Android hardware back press while any sheet
+// (cart, weight-entry, held-cart, ...) was open silently emptied the whole
+// cart even though the URL never changed and nothing visibly navigated.
+// Root cause: Sheet.vue pushes one throwaway history entry so back closes
+// just the sheet, but Inertia's OWN global popstate handler reacts to that
+// same event too and always restores with `preserveState: false`, which
+// remounts this component from scratch — wiping every plain ref. That
+// remount runs the exact same onMounted() above, so as long as a fresh
+// snapshot is already waiting in sessionStorage, the restore here recovers
+// it exactly the same way it already does for the CSRF case, with no
+// separate fix needed for the back-button path itself.
+watch([cart, discount, couponCode, customerPhone, customerName, payMode, splitMode, splitAmounts, prescriptionNote, prescriptionConfirmed], saveCartForRecovery, { deep: true });
+
 const filtered = computed(() => props.products.filter((p) =>
     (!q.value
         || p.name.toLowerCase().includes(q.value.toLowerCase())
@@ -405,16 +419,32 @@ const total = computed(() => Math.max(0, subtotal.value - effectiveDiscount.valu
 const splitTendered = computed(() => ['cash', 'bkash', 'nagad'].reduce((s, m) => s + (Number(splitAmounts.value[m]) || 0), 0));
 const splitRemainder = computed(() => Math.max(0, Math.round((total.value - splitTendered.value) * 100) / 100));
 
-// Prefill cash with the current total when entering split mode (one-time
-// copy, not a binding, so the cashier can still edit it down); clear on
-// exit so a stale amount doesn't resurface next time it's toggled on.
+// Prefill cash with the current total when entering split mode, and KEEP
+// it tracking the total (e.g. the overall discount changing after the
+// fact) as long as the cashier hasn't actually typed into that field
+// themselves — reported: changing the discount after opening split mode
+// left cash showing the pre-discount amount, since this used to be a
+// one-time copy only applied at the moment split mode was toggled on.
+// Clears on exit so a stale amount doesn't resurface next time it's
+// toggled on.
+const splitCashAutofilled = ref(false);
 function toggleSplitMode() {
     splitMode.value = !splitMode.value;
     if (splitMode.value) {
         splitAmounts.value = { cash: total.value || '', bkash: '', nagad: '' };
+        splitCashAutofilled.value = true;
     } else {
         splitAmounts.value = { cash: '', bkash: '', nagad: '' };
+        splitCashAutofilled.value = false;
     }
+}
+watch(total, (newTotal) => {
+    if (splitMode.value && splitCashAutofilled.value) {
+        splitAmounts.value.cash = newTotal || '';
+    }
+});
+function onSplitCashInput() {
+    splitCashAutofilled.value = false;
 }
 
 function buildPayments() {
@@ -1257,7 +1287,7 @@ useKeyboardShortcuts({
                         <div style="display:flex;gap:8px;margin-bottom:6px">
                             <div style="flex:1">
                                 <label style="font-size:12px">{{ t('pay.cash') }}</label>
-                                <input v-model.number="splitAmounts.cash" type="number" inputmode="numeric" placeholder="0" min="0">
+                                <input v-model.number="splitAmounts.cash" type="number" inputmode="numeric" placeholder="0" min="0" @input="onSplitCashInput">
                             </div>
                             <div style="flex:1">
                                 <label style="font-size:12px">{{ t('pay.bkash') }}</label>

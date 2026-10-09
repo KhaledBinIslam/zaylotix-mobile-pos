@@ -1,6 +1,6 @@
 <script setup>
 import { Head, router, usePage } from '@inertiajs/vue3';
-import { ref, computed, watch, nextTick } from 'vue';
+import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import HowToHint from '@/Components/HowToHint.vue';
@@ -249,19 +249,68 @@ const customerPhone = ref('');
 const customerName = ref('');
 const customerLookup = ref(null);
 
+// Snapshot the in-progress cart to sessionStorage and restore it on mount
+// — mirrors Pos/Index.vue's own CART_RECOVERY_KEY mechanism (see its
+// comment for the full root-cause writeup: Inertia's global popstate
+// handler forces a full remount of this component, wiping every plain
+// ref, whenever a hardware back press closes a Sheet — not just here, but
+// Clothing/Pos.vue never had any recovery at all, so that remount used to
+// lose the cart outright instead of just needing this restore.
+const CART_RECOVERY_KEY = 'zaylotix_clothing_pos_cart_recovery';
+function saveCartForRecovery() {
+    try {
+        sessionStorage.setItem(CART_RECOVERY_KEY, JSON.stringify({
+            cart: cart.value, discount: discount.value,
+            customerPhone: customerPhone.value, customerName: customerName.value, payMode: payMode.value,
+            splitMode: splitMode.value, splitAmounts: splitAmounts.value,
+        }));
+    } catch { /* storage unavailable */ }
+}
+onMounted(() => {
+    let saved;
+    try { saved = JSON.parse(sessionStorage.getItem(CART_RECOVERY_KEY)); } catch { saved = null; }
+    if (!saved) return;
+    sessionStorage.removeItem(CART_RECOVERY_KEY);
+    cart.value = (saved.cart || []).filter((l) => productOf(l.product_id));
+    discount.value = saved.discount || 0;
+    customerPhone.value = saved.customerPhone || '';
+    customerName.value = saved.customerName || '';
+    payMode.value = saved.payMode || 'cash';
+    splitMode.value = saved.splitMode || false;
+    splitAmounts.value = saved.splitAmounts || { cash: '', bkash: '', nagad: '' };
+    if (cart.value.length) { cartOpen.value = true; toast(t('pos.cartRestored')); }
+});
+watch([cart, discount, customerPhone, customerName, payMode, splitMode, splitAmounts], saveCartForRecovery, { deep: true });
+
 const splitTendered = computed(() => ['cash', 'bkash', 'nagad'].reduce((s, m) => s + (Number(splitAmounts.value[m]) || 0), 0));
 const splitRemainder = computed(() => Math.max(0, Math.round((total.value - splitTendered.value) * 100) / 100));
 
-// Prefill cash with the current total when entering split mode (one-time
-// copy, not a binding, so the cashier can still edit it down); clear on
-// exit so a stale amount doesn't resurface next time it's toggled on.
+// Prefill cash with the current total when entering split mode, and KEEP
+// it tracking the total (e.g. the overall discount changing after the
+// fact) as long as the cashier hasn't actually typed into that field
+// themselves — reported: changing the discount after opening split mode
+// left cash showing the pre-discount amount, since this used to be a
+// one-time copy only applied at the moment split mode was toggled on.
+// Clears on exit so a stale amount doesn't resurface next time it's
+// toggled on.
+const splitCashAutofilled = ref(false);
 function toggleSplitMode() {
     splitMode.value = !splitMode.value;
     if (splitMode.value) {
         splitAmounts.value = { cash: total.value || '', bkash: '', nagad: '' };
+        splitCashAutofilled.value = true;
     } else {
         splitAmounts.value = { cash: '', bkash: '', nagad: '' };
+        splitCashAutofilled.value = false;
     }
+}
+watch(total, (newTotal) => {
+    if (splitMode.value && splitCashAutofilled.value) {
+        splitAmounts.value.cash = newTotal || '';
+    }
+});
+function onSplitCashInput() {
+    splitCashAutofilled.value = false;
 }
 
 function buildPayments() {
@@ -691,7 +740,7 @@ function sendMemoWA() {
 
                     <div v-else style="margin-top:6px">
                         <div style="display:flex;gap:8px;margin-bottom:6px">
-                            <div style="flex:1"><label style="font-size:12px">{{ t('pay.cash') }}</label><input v-model.number="splitAmounts.cash" type="number" inputmode="numeric" placeholder="0" min="0"></div>
+                            <div style="flex:1"><label style="font-size:12px">{{ t('pay.cash') }}</label><input v-model.number="splitAmounts.cash" type="number" inputmode="numeric" placeholder="0" min="0" @input="onSplitCashInput"></div>
                             <div style="flex:1"><label style="font-size:12px">{{ t('pay.bkash') }}</label><input v-model.number="splitAmounts.bkash" type="number" inputmode="numeric" placeholder="0" min="0"></div>
                             <div style="flex:1"><label style="font-size:12px">{{ t('pay.nagad') }}</label><input v-model.number="splitAmounts.nagad" type="number" inputmode="numeric" placeholder="0" min="0"></div>
                         </div>
