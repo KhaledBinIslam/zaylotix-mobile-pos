@@ -62,6 +62,12 @@ class ProductVariantTest extends TestCase
         $this->assertEquals(7, $medium->fresh()->stock); // 10 - 3
         $this->assertEquals(5, $large->fresh()->stock); // untouched
         $this->assertEquals(12, $product->fresh()->stock); // 15 - 3
+        // $medium has no price of its own (null) — must fall back to the
+        // parent product's ৳400, never bill at ৳0. The client never sends a
+        // price at all (see CheckoutRequest — no items.*.price rule exists),
+        // so this is purely a server-side computation to get right.
+        $this->assertEquals(1200.0, (float) $response->json('sale.total')); // 400 * 3
+        $this->assertEquals(400.0, (float) \App\Models\SaleItem::first()->price);
     }
 
     public function test_a_variant_priced_differently_than_the_parent_is_used_at_checkout(): void
@@ -265,5 +271,54 @@ class ProductVariantTest extends TestCase
 
         $response->assertSessionHasErrors('size');
         $this->assertSame(0, ProductVariant::count());
+    }
+
+    /**
+     * The POS/Clothing variant pickers used to show "৳0" for a variant with
+     * no price of its own (Number(null) !== Number(p.price) read as "this
+     * variant has a different price") — a display bug only, confirmed by
+     * the checkout tests above never billing at ৳0, but Khaled asked for a
+     * read-only live audit regardless. This proves the command actually
+     * finds a real ৳0 sale_item when one genuinely exists.
+     */
+    public function test_zero_price_sales_command_finds_a_genuinely_zero_priced_variant_sale(): void
+    {
+        [$shop] = $this->createShopWithOwner();
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 200, 'price' => 400, 'stock' => 5]);
+        $variant = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => 'M', 'stock' => 5]);
+        $sale = \App\Models\Sale::create([
+            'shop_id' => $shop->id, 'invoice_no' => 'INV-1', 'date' => now()->toDateString(), 'time' => now()->toTimeString(),
+            'subtotal' => 0, 'total' => 0, 'profit' => 0, 'payment_mode' => 'cash',
+        ]);
+        \App\Models\SaleItem::create([
+            'shop_id' => $shop->id, 'sale_id' => $sale->id, 'product_id' => $product->id, 'product_variant_id' => $variant->id,
+            'product_name' => $product->name, 'variant_label' => 'M', 'unit_factor' => 1, 'qty' => 1, 'price' => 0, 'discount' => 0, 'cost' => 200,
+        ]);
+
+        $this->artisan('variants:zero-price-sales')
+            ->expectsOutputToContain('INV-1')
+            ->expectsOutputToContain('1টা লাইন')
+            ->assertExitCode(0);
+    }
+
+    /**
+     * Both this and the zero-price command above run outside any
+     * authenticated request (no Tenancy::id()) — ProductVariant/Sale/etc.
+     * all carry their own BelongsToTenant global scope, which a relation's
+     * OWN internal query doesn't drop just because the outer query called
+     * withoutGlobalScopes(). A first draft of this command used
+     * Product::whereHas('variants')/with('variants') and silently found
+     * nothing at all in that context; this pins the real detection.
+     */
+    public function test_stock_mismatch_command_finds_a_genuine_mismatch(): void
+    {
+        [$shop] = $this->createShopWithOwner();
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Desynced Shirt', 'cost' => 200, 'price' => 400, 'stock' => 99]);
+        ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => 'M', 'stock' => 5]);
+
+        $this->artisan('variants:stock-mismatch')
+            ->expectsOutputToContain('Desynced Shirt')
+            ->expectsOutputToContain('1টা পণ্যে mismatch')
+            ->assertExitCode(0);
     }
 }

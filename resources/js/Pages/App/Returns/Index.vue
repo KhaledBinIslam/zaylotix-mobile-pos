@@ -106,9 +106,9 @@ function variantPrice(row) {
     if (!p) return 0;
     if (row.product_variant_id) {
         const v = p.variants.find((v) => v.id === Number(row.product_variant_id));
-        return v ? v.price : p.price;
+        return (v?.price ?? p.price) ?? 0;
     }
-    return p.price;
+    return p.price ?? 0;
 }
 const newItemsTotal = computed(() => newItems.value.reduce((sum, row) => sum + variantPrice(row) * Number(row.qty || 0), 0));
 

@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\Shop;
 use Illuminate\Console\Command;
 
@@ -15,6 +16,15 @@ use Illuminate\Console\Command;
  * ProductVariant row, so any branch that ever transferred a variant product
  * is very likely to show up here. Never writes anything — Khaled decides how
  * (or whether) to reconcile each one found.
+ *
+ * Deliberately avoids Product::whereHas('variants')/with('variants') — both
+ * ProductVariant AND Sale/SalesReturn/etc. carry their own BelongsToTenant
+ * global scope, which a relation's own internal query does NOT automatically
+ * drop just because the OUTER query called withoutGlobalScopes(). Running
+ * this from `php artisan` (no authenticated tenant, Tenancy::id() is null)
+ * meant whereHas('variants') silently matched nothing at all — confirmed
+ * live: a planted 99-vs-5 mismatch reported "none found" until this was
+ * rewritten to query ProductVariant directly, itself withoutGlobalScopes().
  */
 class VariantsStockMismatch extends Command
 {
@@ -24,20 +34,28 @@ class VariantsStockMismatch extends Command
 
     public function handle(): int
     {
+        $variantSums = ProductVariant::withoutGlobalScopes()
+            ->selectRaw('product_id, SUM(stock) as total')
+            ->groupBy('product_id')
+            ->pluck('total', 'product_id');
+
+        if ($variantSums->isEmpty()) {
+            $this->info('কোনো variant পণ্যই নেই — চেক করার কিছু নেই।');
+
+            return self::SUCCESS;
+        }
+
+        $products = Product::withoutGlobalScopes()->whereIn('id', $variantSums->keys())->get(['id', 'shop_id', 'name', 'stock']);
+        $shopNames = Shop::withoutGlobalScopes()->whereIn('id', $products->pluck('shop_id')->unique())->pluck('name', 'id');
+
         $rows = [];
-
-        $products = Product::withoutGlobalScopes()
-            ->whereHas('variants')
-            ->with(['variants', 'shop:id,name'])
-            ->get();
-
         foreach ($products as $product) {
-            $variantSum = (float) $product->variants->sum('stock');
+            $variantSum = (float) $variantSums->get($product->id, 0);
             $productStock = (float) $product->stock;
 
             if (abs($variantSum - $productStock) > 0.001) {
                 $rows[] = [
-                    $product->shop?->name ?? "shop#{$product->shop_id}",
+                    $shopNames->get($product->shop_id, "shop#{$product->shop_id}"),
                     $product->name,
                     $product->id,
                     number_format($productStock, 3),

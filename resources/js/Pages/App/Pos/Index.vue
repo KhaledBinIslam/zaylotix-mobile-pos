@@ -1091,7 +1091,7 @@ useKeyboardShortcuts({
                                 :style="v.stock <= 0 ? 'opacity:.45' : (hasLowStockAlerts && variantStockLevel(v) === 'low' ? 'color:var(--gold2);font-weight:700;border-color:var(--gold2)' : '')"
                                 @click="addToCart(p.id, null, { productVariantId: v.id })"
                             >
-                                {{ variantLabel(v) }}<span v-if="Number(v.price) !== Number(p.price)"> {{ money(v.price) }}</span> {{ v.stock > 0 ? `(${v.stock})${hasLowStockAlerts && variantStockLevel(v) === 'low' ? ' ⚠' : ''}` : `— ${t('pos.outOfStock')}` }}
+                                {{ variantLabel(v) }}<span v-if="v.price != null && Number(v.price) !== Number(p.price)"> {{ money(v.price) }}</span> {{ v.stock > 0 ? `(${v.stock})${hasLowStockAlerts && variantStockLevel(v) === 'low' ? ' ⚠' : ''}` : `— ${t('pos.outOfStock')}` }}
                             </button>
                         </div>
                     </div>

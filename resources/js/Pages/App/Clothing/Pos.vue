@@ -662,7 +662,7 @@ function sendMemoWA() {
                         style="font-size:14px;padding:10px 16px"
                         @click="pickVariant(v)"
                     >
-                        {{ variantLabel(v) }}<span v-if="Number(v.price) !== Number(variantSheetProduct.price)"> {{ money(v.price) }}</span>
+                        {{ variantLabel(v) }}<span v-if="v.price != null && Number(v.price) !== Number(variantSheetProduct.price)"> {{ money(v.price) }}</span>
                         {{ v.stock > 0 ? `(${v.stock})${hasLowStockAlerts && stockLevel(v.stock, v.reorder_point) === 'low' ? ' ⚠' : ''}` : `— ${t('pos.outOfStock')}` }}
                     </button>
                 </div>
