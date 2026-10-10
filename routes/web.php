@@ -313,7 +313,10 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
     });
 
     Route::middleware(['perm:returns', 'feature:returns'])->group(function () {
+        Route::get('returns', [ReturnController::class, 'index'])->name('returns.index');
         Route::post('returns', [ReturnController::class, 'store'])->name('returns.store');
+        Route::get('returns/lookup', [ReturnController::class, 'lookup'])->name('returns.lookup');
+        Route::post('returns/process', [ReturnController::class, 'process'])->name('returns.process');
     });
 
     Route::middleware(['perm:stock_count', 'feature:stock_count'])->group(function () {

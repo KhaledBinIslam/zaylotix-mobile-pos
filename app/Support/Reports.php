@@ -21,14 +21,26 @@ class Reports
     {
         $inRange = fn ($query) => $query->whereDate('date', '>=', $from)->whereDate('date', '<=', $to);
 
-        $sales = $inRange(Sale::query())->get();
+        // An exchange's replacement item is its own Sale (sale_type =
+        // 'exchange') so it can't double-count the ORIGINAL sale it's
+        // swapping against — it's excluded from the headline bill count and
+        // revenue here, but its real profit impact (which can be positive
+        // or negative, e.g. swapping for a cheaper item) still has to land
+        // in $grossProfit, or an exchange's own cost of goods would vanish
+        // from net profit entirely.
+        $sales = $inRange(Sale::query())->where('sale_type', '!=', 'exchange')->get();
         $salesAmt = (float) $sales->sum('total');
         $grossProfit = (float) $sales->sum('profit');
         $cogs = $salesAmt - $grossProfit;
 
+        $exchangeSales = $inRange(Sale::query())->where('sale_type', 'exchange')->get();
+        $exchangeProfit = (float) $exchangeSales->sum('profit');
+        $grossProfit += $exchangeProfit;
+        $cogs += (float) $exchangeSales->sum('total') - $exchangeProfit; // the exchange's own cost of goods issued, kept in cogs even though its revenue isn't in $salesAmt
+
         $exp = (float) $inRange(Expense::query())->sum('amount');
         $dmg = (float) $inRange(Damage::query())->sum('loss');
-        $ret = (float) $inRange(SalesReturn::query())->sum('refund');
+        $ret = (float) self::returnImpact($inRange(SalesReturn::query())->get());
 
         // Sum each sale's own stored `vat` (set at checkout time from the
         // shop's VAT mode/rate *then*), never re-derive it from the range
@@ -46,6 +58,21 @@ class Reports
     }
 
     /**
+     * A return's true profit hit is only the (refund − cost) portion — the
+     * returned stock goes back to inventory (or, if damaged, is already
+     * counted as a Damage loss), so subtracting the FULL refund from net
+     * profit double-counts the cost of goods that were never actually lost.
+     * Old rows (saved before the `cost` column existed) have cost = NULL —
+     * those keep subtracting the full refund exactly as this report always
+     * did, since there's no sale_item link left to recompute their real
+     * cost from; Khaled can decide later whether to backfill them.
+     */
+    private static function returnImpact($returns): float
+    {
+        return (float) $returns->sum(fn (SalesReturn $r) => $r->cost === null ? (float) $r->refund : (float) $r->refund - (float) $r->cost);
+    }
+
+    /**
      * Same shape as rangeStats(), but across every shop_id in a multi-branch
      * business at once -- explicitly bypasses the tenant scope (Sale/Expense/
      * Damage/SalesReturn are all normally scoped to just Tenancy::id(), one
@@ -58,13 +85,15 @@ class Reports
             ->whereDate('date', '>=', $from)->whereDate('date', '<=', $to);
 
         $sales = $inRange(Sale::query())->get();
-        $salesAmt = (float) $sales->sum('total');
-        $grossProfit = (float) $sales->sum('profit');
-        $cogs = $salesAmt - $grossProfit;
+        $countedSales = $sales->where('sale_type', '!=', 'exchange');
+        $exchangeSales = $sales->where('sale_type', 'exchange');
+        $salesAmt = (float) $countedSales->sum('total');
+        $grossProfit = (float) $countedSales->sum('profit') + (float) $exchangeSales->sum('profit');
+        $cogs = $salesAmt - (float) $countedSales->sum('profit') + ((float) $exchangeSales->sum('total') - (float) $exchangeSales->sum('profit'));
 
         $exp = (float) $inRange(Expense::query())->sum('amount');
         $dmg = (float) $inRange(Damage::query())->sum('loss');
-        $ret = (float) $inRange(SalesReturn::query())->sum('refund');
+        $ret = (float) self::returnImpact($inRange(SalesReturn::query())->get());
         $vat = (float) $sales->sum('vat');
         $net = $grossProfit - $exp - $dmg - $ret;
 

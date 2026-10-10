@@ -76,6 +76,15 @@ class SalesController extends Controller
             $saleModel = Sale::with(['items', 'payments'])->findOrFail($sale);
             $this->authorize('delete', $saleModel);
 
+            // A sale that already has a return/exchange against it can't be
+            // voided — SaleReversal would re-credit stock/cash for the FULL
+            // original sale on top of what the return already gave back,
+            // double-crediting both. Void the return first isn't possible
+            // either (no undo for a return yet), so this is simply blocked.
+            if (\App\Models\SalesReturn::where('sale_id', $saleModel->id)->exists()) {
+                abort(422, 'এই বিলে ইতিমধ্যে রিটার্ন/এক্সচেঞ্জ করা হয়েছে — এটা আর বাতিল করা যাবে না।');
+            }
+
             SaleReversal::reverse($saleModel, $lockedShop);
 
             $saleModel->update([

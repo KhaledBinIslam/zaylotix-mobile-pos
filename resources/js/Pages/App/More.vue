@@ -509,6 +509,9 @@ onMounted(() => {
             <button v-if="hasPerm('damages') && features.includes('damages')" class="row" style="width:100%;text-align:left" @click="damageSheet = true">
                 <div class="ava">🗑️</div><div class="mid"><b>{{ t('more.damageTitle') }}</b><span>{{ t('more.damageSub') }}</span></div><div class="end">›</div>
             </button>
+            <Link v-if="hasPerm('returns') && features.includes('returns')" :href="route('app.returns.index')" class="row">
+                <div class="ava">🔁</div><div class="mid"><b>{{ t('more.returnInvoiceTitle') }}</b><span>{{ t('more.returnInvoiceSub') }}</span></div><div class="end">›</div>
+            </Link>
             <button v-if="hasPerm('returns') && features.includes('returns')" class="row" style="width:100%;text-align:left" @click="returnSheet = true">
                 <div class="ava">↩️</div><div class="mid"><b>{{ t('more.returnTitle') }}</b><span>{{ t('more.returnSub') }}</span></div><div class="end">›</div>
             </button>

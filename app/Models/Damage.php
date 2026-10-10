@@ -9,7 +9,7 @@ class Damage extends Model
 {
     use BelongsToTenant;
 
-    protected $fillable = ['shop_id', 'product_id', 'product_batch_id', 'qty', 'reason', 'loss', 'date'];
+    protected $fillable = ['shop_id', 'product_id', 'product_variant_id', 'product_batch_id', 'qty', 'reason', 'loss', 'date'];
 
     protected function casts(): array
     {
@@ -22,6 +22,11 @@ class Damage extends Model
     public function product()
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function variant()
+    {
+        return $this->belongsTo(ProductVariant::class, 'product_variant_id');
     }
 
     public function batch()

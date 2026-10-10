@@ -28,9 +28,13 @@ class HomeController extends Controller
         $weekAgo = now()->subDays(6)->toDateString();
         $monthAgo = now()->subDays(29)->toDateString();
 
-        $todaySales = Sale::whereDate('date', $today)->get();
-        $weekSales = Sale::whereDate('date', '>=', $weekAgo)->get();
-        $monthSales = Sale::whereDate('date', '>=', $monthAgo)->get();
+        // sale_type != 'exchange' — an exchange's replacement item is its
+        // own Sale row (see ReturnController::createExchangeSale) so it must
+        // not inflate "today's bill count"/revenue on top of the original
+        // sale it's swapping against.
+        $todaySales = Sale::whereDate('date', $today)->where('sale_type', '!=', 'exchange')->get();
+        $weekSales = Sale::whereDate('date', '>=', $weekAgo)->where('sale_type', '!=', 'exchange')->get();
+        $monthSales = Sale::whereDate('date', '>=', $monthAgo)->where('sale_type', '!=', 'exchange')->get();
         // 'untracked'/'toggle' restaurant items (see Product::STOCK_MODE_*)
         // have no reorder concept — a cooked dish's stock isn't a count to
         // run low on, and a "sold out today" toggle isn't a purchasing

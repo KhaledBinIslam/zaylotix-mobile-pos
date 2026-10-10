@@ -18,7 +18,7 @@ class Shop extends Model
         'subscription_start', 'subscription_expiry',
         'cash_balance', 'bank_balance', 'capital',
         'vat_mode', 'vat_rate', 'turnover_rate', 'invoice_counter', 'service_charge_rate',
-        'loyalty_earn_rate', 'loyalty_point_value', 'onboarded_at',
+        'loyalty_earn_rate', 'loyalty_point_value', 'return_window_days', 'onboarded_at',
     ];
 
     protected $appends = ['logo_url', 'business_type_slug'];
