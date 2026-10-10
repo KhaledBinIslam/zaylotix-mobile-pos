@@ -155,12 +155,13 @@ class ExportController extends Controller
 
         return [
             ['Item', 'Amount'],
-            ['Total Sales', $stats['salesAmt']],
+            ['Gross Sales', $stats['grossSales']],
+            ['Returns', $stats['returnsTotal']],
+            ['Net Sales', $stats['salesAmt']],
             ['Cost of Goods', $stats['cogs']],
             ['Gross Profit', $stats['grossProfit']],
             ['Expenses', $stats['exp']],
             ['Damage/Wastage', $stats['dmg']],
-            ['Returns', $stats['ret']],
             ['VAT', $stats['vat']],
             ['Net Profit', $stats['net']],
         ];

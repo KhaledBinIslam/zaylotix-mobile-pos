@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Customer;
 use App\Models\Damage;
 use App\Models\Product;
+use App\Models\ProductBatch;
 use App\Models\ProductVariant;
 use App\Models\Sale;
 use App\Models\SaleItem;
@@ -372,7 +373,10 @@ class ReturnExchangeTest extends TestCase
 
         $stats = Reports::rangeStats(now()->toDateString(), now()->toDateString());
 
-        $this->assertEquals(60.0, $stats['ret']);
+        // the full refund shows as its own "returns" line (cost recovery
+        // happens in cogs, not here) — net profit is still only hit for the
+        // refund-minus-cost portion
+        $this->assertEquals(100.0, $stats['returnsTotal']);
         $this->assertEquals(500 - 60, $stats['net']);
     }
 
@@ -390,8 +394,8 @@ class ReturnExchangeTest extends TestCase
 
         $stats = Reports::rangeStats(now()->toDateString(), now()->toDateString());
 
-        $this->assertEquals(100.0, $stats['ret']); // unchanged old behavior
-        $this->assertEquals(500 - 100, $stats['net']);
+        $this->assertEquals(100.0, $stats['returnsTotal']);
+        $this->assertEquals(500 - 100, $stats['net']); // unchanged old behavior — nothing recovered in cogs since cost is unknown
     }
 
     public function test_exchange_sale_does_not_inflate_todays_bill_count_or_revenue(): void
@@ -416,5 +420,207 @@ class ReturnExchangeTest extends TestCase
         $after = Reports::rangeStats(now()->toDateString(), now()->toDateString());
 
         $this->assertEquals($before['count'], $after['count']); // the exchange sale itself isn't counted as a new bill
+    }
+
+    /**
+     * Bug fix: refundDuePortion is computed from the ORIGINAL sale's due-at-
+     * checkout, but the customer may have since paid that off. Before the
+     * fix, max(0, due - refundDuePortion) silently clamped to 0 and the
+     * money simply vanished from both books — it must fall back to cash.
+     */
+    public function test_refund_shortfall_falls_back_to_cash_when_due_was_already_settled(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
+        $this->grantFeature($shop, 'returns');
+        $customer = Customer::create(['shop_id' => $shop->id, 'name' => 'Karim', 'phone' => '01711111111', 'due' => 0]);
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 50, 'price' => 100, 'stock' => 3]);
+        // original sale was fully on credit (due-at-checkout = 200), but the
+        // customer has since paid every bit of it off — due is 0 right now
+        $sale = $this->makeSale($shop->id, ['customer_id' => $customer->id, 'payment_mode' => 'credit']);
+        $item = $this->makeItem($sale, $product);
+
+        $response = $this->actingAs($owner, 'web')->postJson('/app/returns/process', [
+            'sale_id' => $sale->id,
+            'action' => 'refund',
+            'lines' => [['sale_item_id' => $item->id, 'qty' => 1, 'condition' => 'resalable']],
+        ]);
+
+        $response->assertOk();
+        $this->assertEquals(0.0, (float) $customer->fresh()->due); // stays 0 — nothing left to deduct
+        $this->assertEquals(900.0, (float) $shop->fresh()->cash_balance); // 1000 - 100, the shortfall correctly falls back to cash
+        $this->assertEquals(100.0, $response->json('refund_cash_portion'));
+        $this->assertEquals(0.0, $response->json('refund_due_portion'));
+    }
+
+    /**
+     * Khaled's exact worked example: sell a ৳150 item (cost ৳60), exchange it
+     * for a ৳100 item (cost ৳50) — net profit must land at ৳50, and net sales
+     * (gross sales minus the full return, plus the exchange's own revenue)
+     * must land at ৳100. Checked via Reports::rangeStats() directly and via
+     * the Home endpoint (which now calls the exact same function) — Export's
+     * P&L sheet uses this identical Reports::rangeStats() call too (see
+     * ExportController::plRows), so there's no separate number to drift;
+     * this also pins that the export endpoint still renders with the new
+     * stats shape.
+     */
+    public function test_exchange_profit_and_net_sales_are_consistent_across_reports_home_and_export(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
+        $this->grantFeature($shop, 'returns');
+        $this->grantFeature($shop, 'export');
+        $oldProduct = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt 150', 'cost' => 60, 'price' => 150, 'stock' => 3]);
+        $newProduct = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt 100', 'cost' => 50, 'price' => 100, 'stock' => 3]);
+        $sale = $this->makeSale($shop->id, ['subtotal' => 150, 'total' => 150, 'profit' => 90]);
+        $item = $this->makeItem($sale, $oldProduct, ['qty' => 1, 'price' => 150, 'cost' => 60]);
+
+        $this->actingAs($owner, 'web')->postJson('/app/returns/process', [
+            'sale_id' => $sale->id,
+            'action' => 'exchange',
+            'lines' => [['sale_item_id' => $item->id, 'qty' => 1, 'condition' => 'resalable']],
+            'new_items' => [['product_id' => $newProduct->id, 'qty' => 1]],
+        ])->assertOk();
+
+        \App\Support\Tenancy::set($shop->id);
+        $stats = Reports::rangeStats(now()->toDateString(), now()->toDateString());
+        $this->assertEquals(250.0, $stats['grossSales']); // 150 original + 100 exchange
+        $this->assertEquals(150.0, $stats['returnsTotal']);
+        $this->assertEquals(100.0, $stats['salesAmt']); // net sales: 250 - 150
+        $this->assertEquals(50.0, $stats['cogs']); // (60+50) total cost - 60 recovered from the returned item
+        $this->assertEquals(50.0, $stats['grossProfit']);
+        $this->assertEquals(50.0, $stats['net']);
+
+        $this->actingAs($owner, 'web')->get('/app/home')->assertInertia(fn ($page) => $page
+            ->where('todaySale', 100) // JSON round-trips a whole-number float as an int
+            ->where('billsToday', 1) // only the original retail sale counts as a bill, the exchange doesn't
+        );
+
+        $this->actingAs($owner, 'web')->get('/app/export/pl?format=pdf')->assertOk();
+    }
+
+    /**
+     * Batch stock now restores proportionally for a partial return instead
+     * of only on a full-line return — walking the FEFO allocation list in
+     * reverse (the last, latest batch drawn during the sale first). Two
+     * separate partial returns of the same line must never double-restore
+     * or leave units unaccounted for.
+     */
+    public function test_partial_return_restores_batch_stock_in_reverse_allocation_order_across_two_returns(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
+        $this->grantFeature($shop, 'returns');
+        $this->grantFeature($shop, 'batch_tracking');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Paracetamol', 'cost' => 5, 'price' => 10, 'stock' => 0]);
+        $batchA = ProductBatch::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'batch_no' => 'A', 'qty' => 0, 'cost' => 5]);
+        $batchB = ProductBatch::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'batch_no' => 'B', 'qty' => 0, 'cost' => 5]);
+        $sale = $this->makeSale($shop->id);
+        // the original sale drew 3 units from batch A (FEFO, drawn first)
+        // then 2 from batch B (drawn last) — 5 units total, none on hand now
+        $item = $this->makeItem($sale, $product, [
+            'qty' => 5, 'price' => 10, 'cost' => 5,
+            'batch_allocations' => [['batch_id' => $batchA->id, 'qty' => 3], ['batch_id' => $batchB->id, 'qty' => 2]],
+        ]);
+
+        // first partial return: 2 units — must come back into batch B (the
+        // LAST one drawn), not batch A, even though A is listed first
+        $this->actingAs($owner, 'web')->postJson('/app/returns/process', [
+            'sale_id' => $sale->id,
+            'action' => 'refund',
+            'lines' => [['sale_item_id' => $item->id, 'qty' => 2, 'condition' => 'resalable']],
+        ])->assertOk();
+
+        $this->assertEquals(0, (float) $batchA->fresh()->qty);
+        $this->assertEquals(2, (float) $batchB->fresh()->qty);
+
+        // second partial return: 2 more — batch B's own allocation (2 units)
+        // is already fully accounted for by the first return, so this spills
+        // into batch A instead, never double-restoring B
+        $this->actingAs($owner, 'web')->postJson('/app/returns/process', [
+            'sale_id' => $sale->id,
+            'action' => 'refund',
+            'lines' => [['sale_item_id' => $item->id, 'qty' => 2, 'condition' => 'resalable']],
+        ])->assertOk();
+
+        $this->assertEquals(2, (float) $batchA->fresh()->qty);
+        $this->assertEquals(2, (float) $batchB->fresh()->qty); // unchanged this round
+        $this->assertEquals(4, (float) $product->fresh()->stock); // 2 + 2 units back on hand
+    }
+
+    /** The memo (print + WhatsApp) needs the exchange's new item(s) and the signed price difference — both must come back in the JSON response, not just the bare exchange sale total. */
+    public function test_exchange_response_includes_new_items_and_signed_net_settlement_for_the_memo(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
+        $this->grantFeature($shop, 'returns');
+        $oldProduct = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt L', 'cost' => 60, 'price' => 150, 'stock' => 3]);
+        $newProduct = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt M', 'cost' => 50, 'price' => 100, 'stock' => 3]);
+        $sale = $this->makeSale($shop->id, ['subtotal' => 150, 'total' => 150]);
+        $item = $this->makeItem($sale, $oldProduct, ['qty' => 1, 'price' => 150, 'cost' => 60]);
+
+        $response = $this->actingAs($owner, 'web')->postJson('/app/returns/process', [
+            'sale_id' => $sale->id,
+            'action' => 'exchange',
+            'lines' => [['sale_item_id' => $item->id, 'qty' => 1, 'condition' => 'resalable']],
+            'new_items' => [['product_id' => $newProduct->id, 'qty' => 1]],
+        ]);
+
+        $response->assertOk();
+        $this->assertEquals('Shirt M', $response->json('exchange_sale.items.0.product_name'));
+        $this->assertEquals(-50.0, (float) $response->json('exchange_sale.net_settlement')); // shop gave ৳50 back (150 credit - 100 new item)
+    }
+
+    /** The exchange "new item" picker's camera/hardware scanner looks products up here — it must never ship cost/margin the way PosController::barcode() does (see presentProductForPicker). */
+    public function test_returns_barcode_lookup_resolves_a_product_and_excludes_cost(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'returns');
+        Product::create(['shop_id' => $shop->id, 'name' => 'Soap', 'cost' => 55, 'price' => 90, 'stock' => 10, 'barcode' => '1234567890']);
+
+        $response = $this->actingAs($owner, 'web')->get('/app/returns/barcode/1234567890');
+
+        $response->assertOk()->assertJson(['found' => true]);
+        $this->assertArrayNotHasKey('cost', $response->json('product'));
+    }
+
+    /** A variant's own barcode is more specific than the product's — same precedence as POS's scanner. */
+    public function test_returns_barcode_lookup_resolves_the_specific_variant_first(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'returns');
+        $this->grantFeature($shop, 'product_variants');
+        $shirt = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 400, 'price' => 650, 'stock' => 0]);
+        $variant = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $shirt->id, 'size' => 'M', 'color' => 'Blue', 'barcode' => 'SHIRT-M-BLUE', 'stock' => 10]);
+
+        $response = $this->actingAs($owner, 'web')->get('/app/returns/barcode/SHIRT-M-BLUE');
+
+        $response->assertOk()->assertJson(['found' => true, 'variant_id' => $variant->id]);
+        $this->assertArrayNotHasKey('cost', $response->json('product'));
+    }
+
+    /** Sales/Show.vue's "ফেরত / এক্সচেঞ্জ" button sends ?sale_id= straight here instead of making the cashier re-type/re-scan the invoice they're already looking at. */
+    public function test_lookup_by_sale_id_jumps_straight_to_that_invoice(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'returns');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 50, 'price' => 100, 'stock' => 3]);
+        $sale = $this->makeSale($shop->id);
+        $this->makeItem($sale, $product);
+
+        $response = $this->actingAs($owner, 'web')->get('/app/returns/lookup?sale_id='.$sale->id);
+
+        $response->assertOk()->assertJson(['sales' => [['id' => $sale->id, 'invoice_no' => $sale->invoice_no]]]);
+    }
+
+    /** Same tenant scope as the text search — a sale_id belonging to another shop must come back empty, not someone else's invoice. */
+    public function test_lookup_by_sale_id_cannot_reach_another_shops_sale(): void
+    {
+        [$shopA] = $this->createShopWithOwner();
+        [$shopB, $ownerB] = $this->createShopWithOwner();
+        $this->grantFeature($shopB, 'returns');
+        $product = Product::create(['shop_id' => $shopA->id, 'name' => 'Shirt', 'cost' => 50, 'price' => 100, 'stock' => 3]);
+        $sale = $this->makeSale($shopA->id);
+        $this->makeItem($sale, $product);
+
+        $response = $this->actingAs($ownerB, 'web')->get('/app/returns/lookup?sale_id='.$sale->id);
+
+        $response->assertOk()->assertJson(['sales' => []]);
     }
 }

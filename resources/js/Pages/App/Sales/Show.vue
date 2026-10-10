@@ -1,12 +1,14 @@
 <script setup>
-import { Head, router, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { computed, onMounted, ref } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useI18n } from '@/composables/useI18n';
 import { useToast } from '@/composables/useToast';
+import { usePermissions } from '@/composables/usePermissions';
 
 const props = defineProps({ sale: Object });
 const { toast } = useToast();
+const { hasPerm } = usePermissions();
 
 const page = usePage();
 const shop = computed(() => page.props.shop);
@@ -218,6 +220,10 @@ const ratingUrl = computed(() => props.sale.rating_url);
             <div style="font-size:12px;color:var(--rose);font-weight:700;margin-bottom:4px">℞ {{ t('sales.prescriptionNoteLabel') }}</div>
             <div style="font-size:13px;white-space:pre-wrap">{{ sale.prescription_note }}</div>
         </div>
+
+        <Link v-if="hasPerm('returns') && features.includes('returns') && !sale.voided_at" :href="route('app.returns.index', { sale_id: sale.id })" class="no-print btn ghost" style="margin-top:16px;display:block;text-align:center">
+            ↩️ {{ t('sales.returnExchangeButton') }}
+        </Link>
 
         <button v-if="isOwner && !sale.voided_at" class="no-print btn ghost" style="margin-top:16px;color:var(--rose);border-color:var(--rose)" @click="voidSale">
             {{ t('sales.voidButton') }}

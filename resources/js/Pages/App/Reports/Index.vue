@@ -113,12 +113,13 @@ function heatColor(count) {
         </div>
 
         <div class="card" style="margin-bottom:14px">
-            <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line)"><span style="color:var(--mut)">{{ t('rep.sales') }}</span><b style="color:var(--green)">+{{ money(stats.salesAmt) }}</b></div>
+            <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line)"><span style="color:var(--mut)">{{ t('rep.grossSales') }}</span><b style="color:var(--green)">+{{ money(stats.grossSales) }}</b></div>
+            <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line)"><span style="color:var(--mut)">{{ t('rep.returns') }}</span><b style="color:var(--rose)">−{{ money(stats.returnsTotal) }}</b></div>
+            <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line)"><span style="color:var(--mut)">{{ t('rep.netSales') }}</span><b>{{ money(stats.salesAmt) }}</b></div>
             <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line)"><span style="color:var(--mut)">{{ t('rep.cogs') }}</span><b style="color:var(--mut)">−{{ money(stats.cogs) }}</b></div>
             <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line)"><span style="color:var(--mut)">{{ t('rep.grossProfit') }}</span><b style="color:var(--green)">{{ money(stats.grossProfit) }}</b></div>
             <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line)"><span style="color:var(--mut)">{{ t('rep.expenses') }}</span><b style="color:var(--rose)">−{{ money(stats.exp) }}</b></div>
             <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line)"><span style="color:var(--mut)">{{ t('rep.damage') }}</span><b style="color:var(--rose)">−{{ money(stats.dmg) }}</b></div>
-            <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line)"><span style="color:var(--mut)">{{ t('rep.returns') }}</span><b style="color:var(--rose)">−{{ money(stats.ret) }}</b></div>
             <div style="display:flex;justify-content:space-between;padding:10px 0 2px;font-size:18px;font-weight:850"><span>{{ t('rep.netProfitLabel') }}</span><b :style="{ color: stats.net >= 0 ? 'var(--green)' : 'var(--rose)' }">{{ money(stats.net) }}</b></div>
         </div>
 

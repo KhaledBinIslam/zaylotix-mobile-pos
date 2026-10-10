@@ -21,26 +21,41 @@ class Reports
     {
         $inRange = fn ($query) => $query->whereDate('date', '>=', $from)->whereDate('date', '<=', $to);
 
-        // An exchange's replacement item is its own Sale (sale_type =
-        // 'exchange') so it can't double-count the ORIGINAL sale it's
-        // swapping against — it's excluded from the headline bill count and
-        // revenue here, but its real profit impact (which can be positive
-        // or negative, e.g. swapping for a cheaper item) still has to land
-        // in $grossProfit, or an exchange's own cost of goods would vanish
-        // from net profit entirely.
-        $sales = $inRange(Sale::query())->where('sale_type', '!=', 'exchange')->get();
-        $salesAmt = (float) $sales->sum('total');
-        $grossProfit = (float) $sales->sum('profit');
-        $cogs = $salesAmt - $grossProfit;
+        // Gross sales includes an exchange's own replacement-item Sale
+        // (sale_type='exchange') — it's a real sale of real goods, it's only
+        // excluded from the *bill count*/visits/loyalty below ($countedSales),
+        // never from revenue or profit.
+        $allSales = $inRange(Sale::query())->get();
+        $countedSales = $allSales->where('sale_type', '!=', 'exchange');
 
-        $exchangeSales = $inRange(Sale::query())->where('sale_type', 'exchange')->get();
-        $exchangeProfit = (float) $exchangeSales->sum('profit');
-        $grossProfit += $exchangeProfit;
-        $cogs += (float) $exchangeSales->sum('total') - $exchangeProfit; // the exchange's own cost of goods issued, kept in cogs even though its revenue isn't in $salesAmt
+        $grossSales = (float) $allSales->sum('total');
+        $totalCostIssued = $grossSales - (float) $allSales->sum('profit');
+
+        [$returnsTotal, $costRecovered] = self::returnTotals($inRange(SalesReturn::query())->get());
+
+        // Net sales = gross sales minus whatever was actually handed back
+        // (a plain refund or the "give back" half of an exchange) — a
+        // returned sale's original revenue was never really kept, so this
+        // is shown net rather than leaving the headline figure inflated by
+        // money that went back out.
+        $salesAmt = $grossSales - $returnsTotal;
+        // Cost of a returned item comes back out of COGS the moment it's
+        // credited back, whether it was resalable (back on the shelf) or
+        // damaged (written off) — either way that cost was already expensed
+        // once as part of the original sale. A damaged return's actual
+        // loss still shows up correctly below via its own Damage entry (see
+        // ReturnController::process) hitting $dmg; recovering its cost here
+        // too is what keeps that from being a double subtraction rather than
+        // creating one — the same cost figure feeds both places by
+        // construction. Old return rows (saved before the `cost` column
+        // existed) contribute 0 here, so their full refund stays subtracted
+        // from net sales with nothing recovered — same as this report has
+        // always treated them.
+        $cogs = $totalCostIssued - $costRecovered;
+        $grossProfit = $salesAmt - $cogs;
 
         $exp = (float) $inRange(Expense::query())->sum('amount');
         $dmg = (float) $inRange(Damage::query())->sum('loss');
-        $ret = (float) self::returnImpact($inRange(SalesReturn::query())->get());
 
         // Sum each sale's own stored `vat` (set at checkout time from the
         // shop's VAT mode/rate *then*), never re-derive it from the range
@@ -48,28 +63,22 @@ class Reports
         // switches vat_mode or turnover_rate would otherwise see every past
         // report/export silently recalculate under the new rule and stop
         // matching what was actually charged on those invoices.
-        $vat = (float) $sales->sum('vat');
+        $vat = (float) $countedSales->sum('vat');
 
-        $net = $grossProfit - $exp - $dmg - $ret;
+        $net = $grossProfit - $exp - $dmg;
 
-        return compact('salesAmt', 'cogs', 'grossProfit', 'exp', 'dmg', 'ret', 'vat', 'net') + [
-            'count' => $sales->count(),
+        return compact('grossSales', 'returnsTotal', 'salesAmt', 'cogs', 'grossProfit', 'exp', 'dmg', 'vat', 'net') + [
+            'count' => $countedSales->count(),
         ];
     }
 
-    /**
-     * A return's true profit hit is only the (refund − cost) portion — the
-     * returned stock goes back to inventory (or, if damaged, is already
-     * counted as a Damage loss), so subtracting the FULL refund from net
-     * profit double-counts the cost of goods that were never actually lost.
-     * Old rows (saved before the `cost` column existed) have cost = NULL —
-     * those keep subtracting the full refund exactly as this report always
-     * did, since there's no sale_item link left to recompute their real
-     * cost from; Khaled can decide later whether to backfill them.
-     */
-    private static function returnImpact($returns): float
+    /** [total refund given, total cost recovered (known-cost rows only)] over a set of SalesReturn rows — the two building blocks rangeStats()/combinedRangeStats() need to show returns as their own line without double-counting a damaged return's cost against its own Damage entry. */
+    private static function returnTotals($returns): array
     {
-        return (float) $returns->sum(fn (SalesReturn $r) => $r->cost === null ? (float) $r->refund : (float) $r->refund - (float) $r->cost);
+        $returnsTotal = (float) $returns->sum('refund');
+        $costRecovered = (float) $returns->sum(fn (SalesReturn $r) => $r->cost === null ? 0.0 : (float) $r->cost);
+
+        return [$returnsTotal, $costRecovered];
     }
 
     /**
@@ -84,29 +93,33 @@ class Reports
         $inRange = fn ($query) => $query->withoutGlobalScopes()->whereIn('shop_id', $shopIds)
             ->whereDate('date', '>=', $from)->whereDate('date', '<=', $to);
 
-        $sales = $inRange(Sale::query())->get();
-        $countedSales = $sales->where('sale_type', '!=', 'exchange');
-        $exchangeSales = $sales->where('sale_type', 'exchange');
-        $salesAmt = (float) $countedSales->sum('total');
-        $grossProfit = (float) $countedSales->sum('profit') + (float) $exchangeSales->sum('profit');
-        $cogs = $salesAmt - (float) $countedSales->sum('profit') + ((float) $exchangeSales->sum('total') - (float) $exchangeSales->sum('profit'));
+        $allSales = $inRange(Sale::query())->get();
+        $countedSales = $allSales->where('sale_type', '!=', 'exchange');
+
+        $grossSales = (float) $allSales->sum('total');
+        $totalCostIssued = $grossSales - (float) $allSales->sum('profit');
+
+        [$returnsTotal, $costRecovered] = self::returnTotals($inRange(SalesReturn::query())->get());
+
+        $salesAmt = $grossSales - $returnsTotal;
+        $cogs = $totalCostIssued - $costRecovered;
+        $grossProfit = $salesAmt - $cogs;
 
         $exp = (float) $inRange(Expense::query())->sum('amount');
         $dmg = (float) $inRange(Damage::query())->sum('loss');
-        $ret = (float) self::returnImpact($inRange(SalesReturn::query())->get());
-        $vat = (float) $sales->sum('vat');
-        $net = $grossProfit - $exp - $dmg - $ret;
+        $vat = (float) $countedSales->sum('vat');
+        $net = $grossProfit - $exp - $dmg;
 
         $shopNames = Shop::withoutGlobalScopes()->whereIn('id', $shopIds)->pluck('name', 'id');
-        $byBranch = $sales->groupBy('shop_id')->map(fn ($group, $shopId) => [
+        $byBranch = $allSales->groupBy('shop_id')->map(fn ($group, $shopId) => [
             'shop_name' => $shopNames->get($shopId, '—'),
             'count' => $group->count(),
             'total' => round((float) $group->sum('total'), 2),
             'profit' => round((float) $group->sum('profit'), 2),
         ])->sortByDesc('total')->values()->all();
 
-        return compact('salesAmt', 'cogs', 'grossProfit', 'exp', 'dmg', 'ret', 'vat', 'net', 'byBranch') + [
-            'count' => $sales->count(),
+        return compact('grossSales', 'returnsTotal', 'salesAmt', 'cogs', 'grossProfit', 'exp', 'dmg', 'vat', 'net', 'byBranch') + [
+            'count' => $countedSales->count(),
         ];
     }
 

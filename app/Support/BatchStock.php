@@ -105,4 +105,54 @@ class BatchStock
             ProductBatch::whereKey($allocation['batch_id'])->lockForUpdate()->increment('qty', $allocation['qty']);
         }
     }
+
+    /**
+     * Restores a partial return proportionally across the original FEFO
+     * allocation, batch by batch — there's no per-unit breakdown recorded
+     * inside one allocation entry, so an exact split isn't possible, but
+     * walking the allocation list in reverse (the last, latest-expiry batch
+     * drawn during the sale first) and taking whole amounts from each one in
+     * turn gets every unit back into *some* real batch it could plausibly
+     * have come from, keeping products.stock and SUM(batches.qty) in sync
+     * without ever crediting more than one batch fractionally.
+     *
+     * $alreadyRestored lets this be called again for a second partial return
+     * of the same line — it skips that much from the end of the allocation
+     * list (what a prior call already put back) before restoring the new
+     * amount from where that left off, so two partial returns of one line
+     * never restore the same unit twice.
+     *
+     * @param  array<int, array{batch_id: int, qty: int}>|null  $allocations
+     */
+    public static function restorePartial(?array $allocations, float $alreadyRestored, float $returnQty): void
+    {
+        if (empty($allocations) || $returnQty <= 0) {
+            return;
+        }
+
+        $toSkip = $alreadyRestored;
+        $toRestore = $returnQty;
+
+        foreach (array_reverse($allocations) as $allocation) {
+            if ($toRestore <= 0) {
+                break;
+            }
+
+            $available = (float) $allocation['qty'];
+
+            if ($toSkip > 0) {
+                $skipHere = min($toSkip, $available);
+                $available -= $skipHere;
+                $toSkip -= $skipHere;
+            }
+
+            if ($available <= 0) {
+                continue;
+            }
+
+            $restoreHere = min($toRestore, $available);
+            ProductBatch::whereKey($allocation['batch_id'])->lockForUpdate()->increment('qty', $restoreHere);
+            $toRestore -= $restoreHere;
+        }
+    }
 }

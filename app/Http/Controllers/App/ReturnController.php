@@ -29,25 +29,56 @@ class ReturnController extends Controller
     {
         $shop = Shop::findOrFail(Tenancy::id());
 
-        // Only what the exchange's "new item" picker needs — deliberately
-        // no `cost`/`profit`, same reasoning as BarcodeLabelController: a
-        // cashier granted `returns` but not `stock`/cost-visibility must
-        // never have margin data shipped to their browser just because this
-        // page needs a product list for picking a replacement item.
         $products = Product::with(['variants' => fn ($q) => $q->orderBy('size')->orderBy('color')])
             ->get(['id', 'name', 'price', 'stock', 'barcode'])
-            ->map(fn (Product $p) => [
-                'id' => $p->id, 'name' => $p->name, 'price' => (float) $p->price, 'stock' => (float) $p->stock, 'barcode' => $p->barcode,
-                'variants' => $p->variants->map(fn (ProductVariant $v) => [
-                    'id' => $v->id, 'size' => $v->size, 'color' => $v->color, 'label' => $v->label(),
-                    'price' => $v->effectivePrice(), 'stock' => $v->stock, 'barcode' => $v->barcode,
-                ]),
-            ]);
+            ->map(fn (Product $p) => $this->presentProductForPicker($p));
 
         return \Inertia\Inertia::render('App/Returns/Index', [
             'returnWindowDays' => $shop->return_window_days,
             'products' => $products,
         ]);
+    }
+
+    /**
+     * Barcode lookup for the exchange "new item" picker's scanner (camera +
+     * hardware) — same matching precedence as PosController::barcode()
+     * (a variant's own barcode first, since it's more specific), but
+     * returns the same cost-free shape as index()'s products prop. Never
+     * reuse PosController::barcode() directly here — it returns the full
+     * Product model including cost/margin, which this page deliberately
+     * never ships to the browser (see presentProductForPicker).
+     */
+    public function barcodeLookup(string $barcode)
+    {
+        $variant = ProductVariant::with(['product.variants' => fn ($q) => $q->orderBy('size')->orderBy('color')])->where('barcode', $barcode)->first();
+        if ($variant) {
+            return response()->json(['found' => true, 'product' => $this->presentProductForPicker($variant->product), 'variant_id' => $variant->id]);
+        }
+
+        $product = Product::with(['variants' => fn ($q) => $q->orderBy('size')->orderBy('color')])->where('barcode', $barcode)->first();
+        if (! $product) {
+            return response()->json(['found' => false], 404);
+        }
+
+        return response()->json(['found' => true, 'product' => $this->presentProductForPicker($product)]);
+    }
+
+    /**
+     * Only what the exchange's "new item" picker needs — deliberately no
+     * `cost`/`profit`, same reasoning as BarcodeLabelController: a cashier
+     * granted `returns` but not `stock`/cost-visibility must never have
+     * margin data shipped to their browser just because this page needs a
+     * product list for picking a replacement item.
+     */
+    private function presentProductForPicker(Product $p): array
+    {
+        return [
+            'id' => $p->id, 'name' => $p->name, 'price' => (float) $p->price, 'stock' => (float) $p->stock, 'barcode' => $p->barcode,
+            'variants' => $p->variants->map(fn (ProductVariant $v) => [
+                'id' => $v->id, 'size' => $v->size, 'color' => $v->color, 'label' => $v->label(),
+                'price' => $v->effectivePrice(), 'stock' => $v->stock, 'barcode' => $v->barcode,
+            ]),
+        ];
     }
 
     /**
@@ -129,15 +160,27 @@ class ReturnController extends Controller
      * invoice number (partial match), customer phone (exact), or a scanned
      * product/variant barcode. Tenant scoping on Sale/SaleItem already makes
      * this impossible to use to find another shop's invoice.
+     *
+     * `sale_id` is the direct-link variant — Sales/Show.vue's own "ফেরত /
+     * এক্সচেঞ্জ" button sends the sale it's already looking at straight here
+     * instead of making the cashier re-type/re-scan the invoice they're
+     * already looking at. Still goes through the normal tenant scope, so it
+     * 404s exactly like a text search would for another shop's sale.
      */
     public function lookup(Request $request)
     {
+        $shop = Shop::findOrFail(Tenancy::id());
+
+        if ($saleId = $request->get('sale_id')) {
+            $sale = Sale::with(['customer', 'items'])->find($saleId);
+
+            return response()->json(['sales' => $sale ? [$this->presentSale($sale, $shop)] : []]);
+        }
+
         $q = trim((string) $request->get('q', ''));
         if ($q === '') {
             return response()->json(['sales' => []]);
         }
-
-        $shop = Shop::findOrFail(Tenancy::id());
 
         $sales = Sale::query()
             ->where(function ($query) use ($q) {
@@ -279,16 +322,19 @@ class ReturnController extends Controller
                     } else {
                         Product::whereKey($item->product_id)->lockForUpdate()->increment('stock', $returnQty * (float) $item->unit_factor);
 
-                        // Batch/serial bookkeeping only restores when the
-                        // WHOLE line is being returned — batch_allocations
-                        // has no per-unit breakdown to split proportionally
-                        // for a partial-qty return, so a partial return of a
-                        // batch/serial-tracked line still correctly restores
-                        // products.stock above, just without re-crediting a
-                        // specific batch's own qty or flipping a serial back
-                        // to in_stock.
+                        // Batch stock restores proportionally for a partial
+                        // return too (see BatchStock::restorePartial) —
+                        // $priorBatchRestored is whatever an earlier partial
+                        // return of this same line already put back, so two
+                        // partial returns of one line never double-restore.
+                        $priorBatchRestored = (float) SalesReturn::where('sale_item_id', $item->id)->where('condition', 'resalable')->sum('qty');
+                        BatchStock::restorePartial($item->batch_allocations, $priorBatchRestored, $returnQty);
+
+                        // A serial-tracked item is always sold one at a time
+                        // (qty=1) — there's no such thing as a genuinely
+                        // partial return of it, so only flip it back to
+                        // in_stock when the whole line comes back.
                         if (abs($returnQty - (float) $item->qty) < 0.0001) {
-                            BatchStock::restore($item->batch_allocations);
                             SerialStock::restore($item->product_serial_id);
                         }
                     }
@@ -336,18 +382,30 @@ class ReturnController extends Controller
 
             $isExchange = $data['action'] === 'exchange' && ! empty($data['new_items']);
             $exchangeSale = null;
+            $dueApplied = 0.0;
 
             if ($isExchange) {
                 $exchangeSale = $this->createExchangeSale($data, $shopId, $userId, $lockedShop, $customer, $totalRefund, $sale);
+                $exchangeSale->load('items'); // the memo needs to list what was given (see Returns/Index.vue), same as Sales/Show.vue already loads items for a sale's own detail page
             } else {
+                // refundDuePortion is the share of THIS refund attributable to
+                // money the shop never actually collected at checkout time —
+                // but by the time of the return, the customer may have since
+                // paid some or all of that due down already. Only reduce due
+                // by what's actually still outstanding; whatever refund
+                // portion can't be absorbed there (because due has already
+                // been settled) must still go out as cash, or that money
+                // simply vanishes from both books.
                 if ($refundDuePortion > 0 && $customer) {
-                    $customer->due = max(0, (float) $customer->due - $refundDuePortion);
+                    $dueApplied = min($refundDuePortion, (float) $customer->due);
+                    $customer->due = (float) $customer->due - $dueApplied;
                 }
-                if ($refundCashPortion != 0) {
+                $cashOut = round($refundCashPortion + ($refundDuePortion - $dueApplied), 2);
+                if ($cashOut != 0) {
                     // deliberately allowed to go negative, same reasoning as
                     // the original store() flow — a refund bigger than
                     // cash-on-hand is a real shortfall that must stay visible
-                    $lockedShop->cash_balance = (float) $lockedShop->cash_balance - $refundCashPortion;
+                    $lockedShop->cash_balance = (float) $lockedShop->cash_balance - $cashOut;
                 }
             }
 
@@ -374,7 +432,7 @@ class ReturnController extends Controller
                     'cost' => $row['cost'],
                     'condition' => $row['condition'],
                     'type' => $isExchange ? 'exchange' : 'return',
-                    'applied_to_due' => $refundDuePortion > 0,
+                    'applied_to_due' => $dueApplied > 0,
                     'loyalty_points_deducted' => $pointsDeducted,
                     'phone' => $customer?->phone,
                     'date' => now()->toDateString(),
@@ -388,13 +446,19 @@ class ReturnController extends Controller
                 ['refund' => round($totalRefund, 2), 'cost' => round($totalCost, 2)]
             );
 
+            $sale->setRelation('customer', $customer); // avoids a second query — already locked/fetched above; the memo/WhatsApp button needs the phone number
+
             return [
                 'sale' => $sale,
                 'returns' => $createdReturns,
                 'exchange_sale' => $exchangeSale,
                 'total_refund' => round($totalRefund, 2),
-                'refund_due_portion' => round($refundDuePortion, 2),
-                'refund_cash_portion' => round($refundCashPortion, 2),
+                // what actually happened to the money, not the original
+                // (pre-shortfall-correction) estimate — see the due/cash
+                // split above. An exchange settles entirely through its own
+                // new sale's due/cash handling instead, so these are 0 there.
+                'refund_due_portion' => $isExchange ? 0.0 : round($dueApplied, 2),
+                'refund_cash_portion' => $isExchange ? 0.0 : round($cashOut, 2),
                 'points_deducted' => $pointsDeducted,
             ];
         });
@@ -568,6 +632,12 @@ class ReturnController extends Controller
                 'amount' => $payment['amount'],
             ]);
         }
+
+        // Not a DB column — set on the model purely so the memo can show the
+        // price difference and what the customer actually paid/received,
+        // without the frontend having to re-derive it from new_items_total
+        // minus credit (which it can't do authoritatively anyway).
+        $exchangeSale->net_settlement = $netSettlement;
 
         // An exchange isn't a new customer visit, and shouldn't earn fresh
         // loyalty points (see the points-deduction on the return side above)

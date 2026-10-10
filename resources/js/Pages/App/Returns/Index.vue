@@ -1,16 +1,31 @@
 <script setup>
 import { Head, usePage } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import Sheet from '@/Components/Sheet.vue';
 import { useI18n } from '@/composables/useI18n';
+import { useHardwareScanner } from '@/composables/useHardwareScanner';
+import { useToast } from '@/composables/useToast';
 import { fetchWithSessionRetry } from '@/support/fetchWithSessionRetry';
 
 const props = defineProps({ returnWindowDays: Number, products: Array });
 const { t } = useI18n();
+const { toast } = useToast();
 const page = usePage();
 const isOwner = computed(() => page.props.auth?.user?.role === 'owner');
+const features = computed(() => page.props.features || []);
+const hasMemoWhatsapp = computed(() => features.value.includes('memo_whatsapp'));
+const shop = computed(() => page.props.shop || {});
 
 const money = (n) => '৳' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+
+// qty comes back either as a decimal-cast model string ("1.000") or a plain
+// number depending on which endpoint produced it — always show it trimmed
+// of insignificant trailing zeros (1, not 1.000; 0.5, not 0.500).
+const qty = (n) => {
+    const num = Number(n || 0);
+    return Number.isInteger(num) ? String(num) : String(parseFloat(num.toFixed(3)));
+};
 
 function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]')?.content || '';
@@ -97,6 +112,123 @@ function variantPrice(row) {
 }
 const newItemsTotal = computed(() => newItems.value.reduce((sum, row) => sum + variantPrice(row) * Number(row.qty || 0), 0));
 
+// --- exchange: scan to add a new item (camera + hardware), same barcode
+// precedence as POS (a variant's own barcode is checked first) but looked
+// up via returns.barcode, never pos.barcode — that endpoint ships full
+// product cost, which this page deliberately never sends to the browser
+// (see ReturnController::presentProductForPicker).
+function addScannedItem(productId, variantId) {
+    const existing = newItems.value.find((r) => Number(r.product_id) === productId && (variantId ? Number(r.product_variant_id) === variantId : !r.product_variant_id));
+    if (existing) {
+        existing.qty = Number(existing.qty || 0) + 1;
+    } else {
+        newItems.value.push({ product_id: productId, product_variant_id: variantId || '', qty: 1 });
+    }
+}
+
+let lastScanCode = '';
+let lastScanAt = 0;
+async function handleScan(decodedText, onFeedback) {
+    const now = Date.now();
+    if (decodedText === lastScanCode && now - lastScanAt < 1500) return;
+    lastScanCode = decodedText;
+    lastScanAt = now;
+    if (navigator.vibrate) navigator.vibrate(40);
+    const code = decodedText.trim();
+
+    for (const p of props.products) {
+        const v = p.variants?.find((variant) => variant.barcode === code);
+        if (v) {
+            addScannedItem(p.id, v.id);
+            onFeedback('✅ ' + p.name + ' (' + v.label + ')');
+            return;
+        }
+    }
+
+    const product = props.products.find((p) => p.barcode === code);
+    if (product) {
+        if (product.variants?.length) {
+            onFeedback('❌ ' + product.name + ' — সাইজ/রং বাছাই করুন');
+            return;
+        }
+        addScannedItem(product.id, null);
+        onFeedback('✅ ' + product.name);
+        return;
+    }
+
+    try {
+        const res = await fetch(route('app.returns.barcode', code), { headers: { Accept: 'application/json' } });
+        const data = await res.json();
+        if (data.found) {
+            props.products.push(data.product);
+            if (data.variant_id) {
+                const v = data.product.variants?.find((variant) => variant.id === data.variant_id);
+                addScannedItem(data.product.id, data.variant_id);
+                onFeedback('✅ ' + data.product.name + (v ? ' (' + v.label + ')' : ''));
+            } else if (data.product.variants?.length) {
+                onFeedback('❌ ' + data.product.name + ' — সাইজ/রং বাছাই করুন');
+            } else {
+                addScannedItem(data.product.id, null);
+                onFeedback('✅ ' + data.product.name);
+            }
+        } else {
+            onFeedback('❌ পণ্য পাওয়া যায়নি: ' + decodedText);
+        }
+    } catch (e) {
+        onFeedback('❌ পণ্য পাওয়া যায়নি: ' + decodedText);
+    }
+}
+
+// hardware (USB/Bluetooth keyboard-wedge) scanner — only live while the
+// exchange "new item" step is actually on screen, so a fast barcode scan
+// can't get misread as typed text into the invoice search box or anywhere else
+useHardwareScanner((code) => handleScan(code, (msg) => toast(msg)), () => action.value === 'exchange' && !!selectedSale.value);
+
+// camera scanner
+const scannerOpen = ref(false);
+const scanHint = ref('');
+let html5Qrcode = null;
+async function openScanner() {
+    scannerOpen.value = true;
+    scanHint.value = 'ক্যামেরার সামনে বারকোড ধরুন';
+    try {
+        const { Html5Qrcode } = await import('html5-qrcode');
+        html5Qrcode = new Html5Qrcode('returns-reader', { verbose: false });
+        await html5Qrcode.start(
+            { facingMode: 'environment' },
+            { fps: 12, qrbox: { width: 260, height: 200 } },
+            (text) => handleScan(text, (msg) => (scanHint.value = msg)),
+            () => {},
+        );
+    } catch (e) {
+        toast('❌ ক্যামেরা পাওয়া যায়নি');
+        closeScanner();
+    }
+}
+async function closeScanner() {
+    scannerOpen.value = false;
+    if (html5Qrcode) {
+        try { await html5Qrcode.stop(); html5Qrcode.clear(); } catch (e) { /* already stopped */ }
+        html5Qrcode = null;
+    }
+}
+onBeforeUnmount(() => { if (html5Qrcode) html5Qrcode.stop().catch(() => {}); });
+
+// Sales/Show.vue's "ফেরত / এক্সচেঞ্জ" button lands here with ?sale_id=123 —
+// jump straight to that sale instead of making the cashier re-type/re-scan
+// the invoice they were already looking at.
+onMounted(async () => {
+    const saleId = new URLSearchParams(window.location.search).get('sale_id');
+    if (!saleId) return;
+    try {
+        const res = await fetch(route('app.returns.lookup') + '?sale_id=' + encodeURIComponent(saleId), {
+            headers: { Accept: 'application/json' },
+        });
+        const data = await res.json();
+        if (data.sales?.[0]) selectSale(data.sales[0]);
+    } catch (e) { /* non-critical — cashier can still search manually */ }
+});
+
 const estimatedRefund = computed(() => {
     // client-side estimate only, for display before submit — the server
     // recomputes this authoritatively from the locked sale/sale_item rows
@@ -173,6 +305,28 @@ async function submit() {
 function printMemo() {
     window.print();
 }
+
+function sendMemoWA() {
+    const r = resultSummary.value;
+    if (!r) return;
+    const phone = r.sale.customer?.phone || '';
+    const num = phone ? '88' + phone.replace(/\D/g, '').replace(/^88/, '') : '';
+    const shopName = shop.value?.name || 'Zaylotix POS';
+
+    let lines = `*${shopName}*\n${'─'.repeat(16)}\nআসল ইনভয়েস: ${r.sale.invoice_no}\n${'─'.repeat(16)}\nযা ফেরত নেওয়া হলো:\n`;
+    lines += r.returns.map((ret) => `${ret.condition === 'resalable' ? '✅' : '🗑️'} ${qty(ret.qty)} ইউনিট — ${money(ret.refund)}`).join('\n');
+    lines += `\nমোট ফেরত: ${money(r.total_refund)}`;
+
+    if (r.exchange_sale) {
+        lines += `\n${'─'.repeat(16)}\nযা দেওয়া হলো:\n`;
+        lines += (r.exchange_sale.items || []).map((it) => `🔄 ${it.product_name}${it.variant_label ? ' (' + it.variant_label + ')' : ''} — ${qty(it.qty)} × ${money(it.price)}`).join('\n');
+        const net = Number(r.exchange_sale.net_settlement || 0);
+        lines += `\nদামের পার্থক্য: ${net > 0 ? 'আপনি দিয়েছেন ' + money(net) : net < 0 ? 'আপনি পেয়েছেন ' + money(Math.abs(net)) : 'কোনো পার্থক্য নেই'}`;
+    }
+
+    lines += `\n\nধন্যবাদ 🙏`;
+    window.open('https://wa.me/' + num + '?text=' + encodeURIComponent(lines), '_blank');
+}
 </script>
 
 <template>
@@ -224,7 +378,7 @@ function printMemo() {
                 <div v-for="item in selectedSale.items" :key="item.id" class="row" style="width:100%">
                     <div class="mid" style="flex:1">
                         <b>{{ item.product_name }}</b><span v-if="item.variant_label">{{ item.variant_label }}</span>
-                        <span>{{ money(item.price) }} × {{ item.qty }} • {{ t('returns.returnableQty') }}: {{ item.returnable_qty }}</span>
+                        <span>{{ money(item.price) }} × {{ qty(item.qty) }} • {{ t('returns.returnableQty') }}: {{ qty(item.returnable_qty) }}</span>
                     </div>
                     <template v-if="item.returnable_qty > 0 && lineState[item.id]">
                         <div style="display:flex;gap:8px;align-items:center">
@@ -268,7 +422,10 @@ function printMemo() {
                             </div>
                         </div>
                     </div>
-                    <button class="btn ghost" style="margin-top:8px" @click="addNewItemRow">{{ t('returns.addNewItem') }}</button>
+                    <div style="display:flex;gap:8px;margin-top:8px">
+                        <button class="btn ghost" style="flex:1" @click="addNewItemRow">{{ t('returns.addNewItem') }}</button>
+                        <button class="btn ghost" style="width:auto;padding:0 16px" @click="openScanner">📷 স্ক্যান</button>
+                    </div>
 
                     <div class="card" style="margin-top:12px;background:var(--surface2)">
                         <div>নতুন আইটেমের মূল্য: {{ money(newItemsTotal) }}</div>
@@ -301,21 +458,41 @@ function printMemo() {
         <div v-else class="card" id="returnMemo">
             <div style="text-align:center;font-weight:800;font-size:18px">{{ t('returns.success') }}</div>
             <div style="margin-top:10px">আসল ইনভয়েস: <b>{{ resultSummary.sale.invoice_no }}</b></div>
+            <div style="margin-top:6px;font-weight:700">যা ফেরত নেওয়া হলো:</div>
             <div v-for="r in resultSummary.returns" :key="r.id">
-                {{ r.condition === 'resalable' ? '✅' : '🗑️' }} {{ r.qty }} ইউনিট — {{ money(r.refund) }}
+                {{ r.condition === 'resalable' ? '✅' : '🗑️' }} {{ qty(r.qty) }} ইউনিট — {{ money(r.refund) }}
             </div>
             <div style="margin-top:8px;font-weight:700">{{ t('returns.totalRefund') }}: {{ money(resultSummary.total_refund) }}
                 <span v-if="resultSummary.refund_due_portion > 0" style="color:var(--mut);font-size:12px">{{ t('returns.appliedToDue') }}</span>
             </div>
-            <div v-if="resultSummary.exchange_sale" style="margin-top:8px">
-                {{ t('returns.newInvoice') }}: <b>{{ resultSummary.exchange_sale.invoice_no }}</b> — {{ money(resultSummary.exchange_sale.total) }}
-            </div>
+            <template v-if="resultSummary.exchange_sale">
+                <div style="margin-top:8px;font-weight:700">যা দেওয়া হলো:</div>
+                <div v-for="(it, idx) in resultSummary.exchange_sale.items" :key="idx">
+                    🔄 {{ it.product_name }}{{ it.variant_label ? ' ('+it.variant_label+')' : '' }} — {{ qty(it.qty) }} × {{ money(it.price) }}
+                </div>
+                <div style="margin-top:4px">নতুন ইনভয়েস: <b>{{ resultSummary.exchange_sale.invoice_no }}</b> — {{ money(resultSummary.exchange_sale.total) }}</div>
+                <div style="margin-top:4px;font-weight:700">
+                    দামের পার্থক্য:
+                    {{ resultSummary.exchange_sale.net_settlement > 0
+                        ? 'কাস্টমার দিয়েছেন ' + money(resultSummary.exchange_sale.net_settlement)
+                        : resultSummary.exchange_sale.net_settlement < 0
+                            ? 'কাস্টমার পেয়েছেন ' + money(Math.abs(resultSummary.exchange_sale.net_settlement))
+                            : 'কোনো পার্থক্য নেই' }}
+                </div>
+            </template>
             <div v-if="resultSummary.points_deducted" style="margin-top:6px;color:var(--mut);font-size:13px">লয়্যালটি পয়েন্ট কমানো হয়েছে: {{ resultSummary.points_deducted }}</div>
 
             <div class="no-print" style="margin-top:16px;display:flex;gap:10px">
                 <button class="btn" @click="printMemo">{{ t('returns.print') }}</button>
+                <button v-if="hasMemoWhatsapp" class="btn wa" @click="sendMemoWA">📤 WhatsApp</button>
                 <button class="btn ghost" @click="resultSummary = null">{{ t('common.close') || 'বন্ধ' }}</button>
             </div>
         </div>
+
+        <Sheet v-model="scannerOpen" title="বারকোড স্ক্যান করুন">
+            <div id="returns-reader" style="width:100%;border-radius:12px;overflow:hidden"></div>
+            <div style="text-align:center;margin-top:10px;font-size:13px;color:var(--mut)">{{ scanHint }}</div>
+            <button class="btn ghost" style="margin-top:10px" @click="closeScanner">{{ t('common.cancel') }}</button>
+        </Sheet>
     </AppLayout>
 </template>

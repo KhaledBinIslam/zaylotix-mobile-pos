@@ -316,6 +316,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::get('returns', [ReturnController::class, 'index'])->name('returns.index');
         Route::post('returns', [ReturnController::class, 'store'])->name('returns.store');
         Route::get('returns/lookup', [ReturnController::class, 'lookup'])->name('returns.lookup');
+        Route::get('returns/barcode/{barcode}', [ReturnController::class, 'barcodeLookup'])->name('returns.barcode');
         Route::post('returns/process', [ReturnController::class, 'process'])->name('returns.process');
     });
 
