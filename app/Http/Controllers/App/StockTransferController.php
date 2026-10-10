@@ -4,6 +4,7 @@ namespace App\Http\Controllers\App;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\Shop;
 use App\Models\StockTransfer;
 use App\Support\Activity;
@@ -12,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 /**
@@ -50,9 +52,29 @@ class StockTransferController extends Controller
             ->orderBy('id')
             ->get(['id', 'name', 'area', 'is_warehouse']);
 
+        // Only what the transfer form needs to show per-variant stock —
+        // never cost/profit, same reasoning as ReturnController::
+        // presentProductForPicker (this list already excluded cost before
+        // variants were added here, kept that way).
+        $products = Product::with(['variants' => fn ($q) => $q->orderBy('size')->orderBy('color')])
+            ->withCount(['batches', 'serials'])
+            ->orderBy('name')
+            ->get(['id', 'name', 'emoji', 'barcode', 'stock', 'sold_by_weight'])
+            ->map(fn (Product $p) => [
+                'id' => $p->id, 'name' => $p->name, 'emoji' => $p->emoji, 'barcode' => $p->barcode,
+                'stock' => (float) $p->stock, 'sold_by_weight' => $p->sold_by_weight,
+                // batch/serial-tracked products can't transfer yet (see
+                // store()) — the form disables/explains instead of letting
+                // a cashier hit a confusing server error
+                'batch_or_serial_tracked' => $p->batches_count > 0 || $p->serials_count > 0,
+                'variants' => $p->variants->map(fn (ProductVariant $v) => [
+                    'id' => $v->id, 'size' => $v->size, 'color' => $v->color, 'label' => $v->label(), 'stock' => (float) $v->stock, 'barcode' => $v->barcode,
+                ]),
+            ]);
+
         return Inertia::render('App/StockTransfers/Index', [
             'siblings' => $siblings,
-            'products' => Product::orderBy('name')->get(['id', 'name', 'emoji', 'barcode', 'stock', 'sold_by_weight']),
+            'products' => $products,
             'recentTransfers' => StockTransfer::withoutGlobalScopes()
                 ->where('from_shop_id', $shopId)->orWhere('to_shop_id', $shopId)
                 ->with(['fromShop:id,name', 'toShop:id,name', 'user:id,name'])
@@ -60,6 +82,13 @@ class StockTransferController extends Controller
         ]);
     }
 
+    /**
+     * `lines` replaces the old single `qty` field — a plain product sends
+     * one line with no variant_id (unchanged behavior); a variant product
+     * sends one line per size/color actually being moved, each with its own
+     * qty, so the form can show (and this can validate against) each
+     * variant's own current stock rather than one combined number.
+     */
     public function store(Request $request)
     {
         abort_unless(Auth::guard('web')->user()?->role === 'owner', 403);
@@ -67,7 +96,9 @@ class StockTransferController extends Controller
         $data = $request->validate([
             'to_shop_id' => ['required', 'integer'],
             'product_id' => ['required', Rule::exists('products', 'id')->where('shop_id', Tenancy::id())],
-            'qty' => ['required', 'numeric', 'min:0.001'],
+            'lines' => ['required', 'array', 'min:1'],
+            'lines.*.product_variant_id' => ['nullable', 'integer'],
+            'lines.*.qty' => ['required', 'numeric', 'min:0.001'],
         ]);
 
         $shopId = Tenancy::id();
@@ -84,14 +115,27 @@ class StockTransferController extends Controller
             $sourceProduct = Product::whereKey($data['product_id'])->lockForUpdate()->first();
             abort_if(! $sourceProduct, 404, 'পণ্যটি পাওয়া যায়নি।');
 
-            if (! $sourceProduct->sold_by_weight && floor($data['qty']) != $data['qty']) {
-                abort(422, "{$sourceProduct->name}-এর পরিমাণ পূর্ণ সংখ্যা হতে হবে।");
-            }
-            if ($sourceProduct->stock < $data['qty']) {
-                abort(422, "পর্যাপ্ত স্টক নেই: {$sourceProduct->name} (আছে {$sourceProduct->stock})।");
+            // Batch/IMEI-serial transfer isn't built yet — blocking with a
+            // clear message here (rather than silently desyncing batch/
+            // serial bookkeeping the way variant stock used to) until that's
+            // a dedicated piece of work.
+            if ($sourceProduct->batches()->exists() || $sourceProduct->serials()->exists()) {
+                abort(422, "{$sourceProduct->name} ব্যাচ/সিরিয়াল ট্র্যাক করা পণ্য — এই ধরনের পণ্য এখনো শাখার মধ্যে ট্রান্সফার করা যায় না।");
             }
 
-            $sourceProduct->decrement('stock', $data['qty']);
+            $hasVariants = $sourceProduct->variants()->exists();
+            $lines = collect($data['lines']);
+
+            if ($hasVariants && $lines->contains(fn ($l) => empty($l['product_variant_id']))) {
+                throw ValidationException::withMessages(['lines' => "{$sourceProduct->name}-এর সাইজ/রং আছে — একটা নির্দিষ্ট ভ্যারিয়েন্ট না বেছে ট্রান্সফার করা যাবে না।"]);
+            }
+            if (! $hasVariants && ($lines->count() > 1 || $lines->contains(fn ($l) => ! empty($l['product_variant_id'])))) {
+                throw ValidationException::withMessages(['lines' => "{$sourceProduct->name}-এর কোনো ভ্যারিয়েন্ট নেই।"]);
+            }
+
+            if (! $sourceProduct->sold_by_weight && $lines->contains(fn ($l) => floor($l['qty']) != $l['qty'])) {
+                abort(422, "{$sourceProduct->name}-এর পরিমাণ পূর্ণ সংখ্যা হতে হবে।");
+            }
 
             // matched exactly like CatalogSync — barcode first, then name —
             // and auto-created on the destination if this is the first time
@@ -111,21 +155,79 @@ class StockTransferController extends Controller
                     'stock' => 0,
                 ]);
             }
-            $destProduct->increment('stock', $data['qty']);
 
-            $transfer = StockTransfer::create([
-                'shop_id' => $sourceShop->id,
-                'from_shop_id' => $sourceShop->id,
-                'to_shop_id' => $destShop->id,
-                'from_product_id' => $sourceProduct->id,
-                'to_product_id' => $destProduct->id,
-                'product_name' => $sourceProduct->name,
-                'qty' => $data['qty'],
-                'user_id' => Auth::guard('web')->id(),
-            ]);
+            $totalQty = 0.0;
+            $lineSummaries = [];
 
-            Activity::log('stockTransfer.create', "{$sourceProduct->name} — {$data['qty']} ইউনিট '{$sourceShop->name}' থেকে '{$destShop->name}'-এ পাঠানো হয়েছে।", $transfer, [
-                'qty' => $data['qty'], 'to_shop' => $destShop->name,
+            foreach ($lines as $line) {
+                $qty = (float) $line['qty'];
+                $totalQty += $qty;
+
+                if (! empty($line['product_variant_id'])) {
+                    $sourceVariant = ProductVariant::whereKey($line['product_variant_id'])->lockForUpdate()->first();
+                    if (! $sourceVariant || $sourceVariant->product_id !== $sourceProduct->id) {
+                        throw ValidationException::withMessages(['lines' => 'এই ভ্যারিয়েন্টটি সঠিক নয়।']);
+                    }
+                    if ($sourceVariant->stock < $qty) {
+                        throw ValidationException::withMessages(['lines' => "পর্যাপ্ত স্টক নেই: {$sourceProduct->name} ({$sourceVariant->label()}) — আছে {$sourceVariant->stock}।"]);
+                    }
+
+                    $sourceVariant->decrement('stock', $qty);
+                    $sourceProduct->decrement('stock', $qty);
+
+                    // same matching precedence as the plain-product match
+                    // above — barcode first (if the variant has one), else
+                    // size+color
+                    $destVariant = ProductVariant::withoutGlobalScopes()->where('shop_id', $destShop->id)->where('product_id', $destProduct->id)
+                        ->where(fn ($q) => filled($sourceVariant->barcode)
+                            ? $q->where('barcode', $sourceVariant->barcode)->orWhere(fn ($q2) => $q2->where('size', $sourceVariant->size)->where('color', $sourceVariant->color))
+                            : $q->where('size', $sourceVariant->size)->where('color', $sourceVariant->color))
+                        ->lockForUpdate()->first();
+
+                    if (! $destVariant) {
+                        $destVariant = ProductVariant::create([
+                            'shop_id' => $destShop->id, 'product_id' => $destProduct->id,
+                            'size' => $sourceVariant->size, 'color' => $sourceVariant->color, 'barcode' => $sourceVariant->barcode,
+                            'price' => $sourceVariant->price, 'cost' => $sourceVariant->cost,
+                            'stock' => 0,
+                        ]);
+                    }
+                    $destVariant->increment('stock', $qty);
+                    $destProduct->increment('stock', $qty);
+
+                    $lineSummaries[] = [
+                        'from_product_variant_id' => $sourceVariant->id, 'to_product_variant_id' => $destVariant->id,
+                        'variant_label' => $sourceVariant->label(), 'qty' => $qty,
+                    ];
+                } else {
+                    if ($sourceProduct->stock < $qty) {
+                        throw ValidationException::withMessages(['lines' => "পর্যাপ্ত স্টক নেই: {$sourceProduct->name} (আছে {$sourceProduct->stock})।"]);
+                    }
+                    $sourceProduct->decrement('stock', $qty);
+                    $destProduct->increment('stock', $qty);
+
+                    $lineSummaries[] = ['from_product_variant_id' => null, 'to_product_variant_id' => null, 'variant_label' => null, 'qty' => $qty];
+                }
+            }
+
+            foreach ($lineSummaries as $summary) {
+                StockTransfer::create([
+                    'shop_id' => $sourceShop->id,
+                    'from_shop_id' => $sourceShop->id,
+                    'to_shop_id' => $destShop->id,
+                    'from_product_id' => $sourceProduct->id,
+                    'to_product_id' => $destProduct->id,
+                    'from_product_variant_id' => $summary['from_product_variant_id'],
+                    'to_product_variant_id' => $summary['to_product_variant_id'],
+                    'product_name' => $sourceProduct->name,
+                    'variant_label' => $summary['variant_label'],
+                    'qty' => $summary['qty'],
+                    'user_id' => Auth::guard('web')->id(),
+                ]);
+            }
+
+            Activity::log('stockTransfer.create', "{$sourceProduct->name} — {$totalQty} ইউনিট '{$sourceShop->name}' থেকে '{$destShop->name}'-এ পাঠানো হয়েছে।", $sourceProduct, [
+                'qty' => $totalQty, 'to_shop' => $destShop->name,
             ]);
         });
 

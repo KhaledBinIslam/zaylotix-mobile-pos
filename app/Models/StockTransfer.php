@@ -9,7 +9,10 @@ class StockTransfer extends Model
 {
     use BelongsToTenant;
 
-    protected $fillable = ['shop_id', 'from_shop_id', 'to_shop_id', 'from_product_id', 'to_product_id', 'product_name', 'qty', 'user_id'];
+    protected $fillable = [
+        'shop_id', 'from_shop_id', 'to_shop_id', 'from_product_id', 'to_product_id', 'product_name', 'qty', 'user_id',
+        'from_product_variant_id', 'to_product_variant_id', 'variant_label',
+    ];
 
     protected function casts(): array
     {
@@ -29,5 +32,15 @@ class StockTransfer extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function fromVariant()
+    {
+        return $this->belongsTo(ProductVariant::class, 'from_product_variant_id');
+    }
+
+    public function toVariant()
+    {
+        return $this->belongsTo(ProductVariant::class, 'to_product_variant_id');
     }
 }
