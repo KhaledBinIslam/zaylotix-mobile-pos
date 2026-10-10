@@ -2,7 +2,7 @@
 
 namespace App\Http\Middleware;
 
-use App\Models\Shop;
+use App\Support\Tenancy;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -13,10 +13,15 @@ class CheckSubscriptionActive
     public function handle(Request $request, Closure $next): Response
     {
         $user = Auth::guard('web')->user();
-        // query fresh rather than $user->shop — avoids ever acting on a stale
-        // cached relation if the same user model outlives a status change
-        // within one process (e.g. queued jobs, long-lived workers).
-        $shop = $user ? Shop::find($user->shop_id) : null;
+        // Tenancy::shop() — not $user->shop_id — so an owner who has
+        // switched into a branch (see BranchController::switch) gets that
+        // BRANCH's own subscription checked, not their home shop's. Each
+        // branch bills independently (its own subscription_expiry, set by
+        // admin at creation — see Admin\ShopController::createBranch), so a
+        // branch whose own subscription has lapsed must be enforced even
+        // while the owner's home shop is still perfectly active. Always a
+        // fresh query (never a cached relation), same as before.
+        $shop = $user ? Tenancy::shop() : null;
 
         if (! $shop || ! $shop->isActive()) {
             // A background poll (see usePollingReload — Order/Pos/Stock/
