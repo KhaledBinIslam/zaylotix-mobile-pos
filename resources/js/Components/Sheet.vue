@@ -1,6 +1,7 @@
 <script setup>
 import { watch, onBeforeUnmount } from 'vue';
 import { useI18n } from '@/composables/useI18n';
+import { sheetOpened, sheetClosed } from '@/composables/useSheetHistoryDepth';
 
 const { t } = useI18n();
 
@@ -21,10 +22,30 @@ const emit = defineEmits(['update:modelValue']);
 // landing somewhere the cashier didn't expect (reported: back button
 // "takes you to the wrong screen", and on some screens looking like there
 // was no working back button at all). Standard fix for a modal in an SPA:
-// push one throwaway history entry while the sheet is open so back has
-// something to consume first, and pop it back off ourselves if the sheet
-// gets closed any other way (✕/scrim/save) so a second back press isn't
-// needed to actually leave the page.
+// push one throwaway history entry while a sheet is open so back has
+// something to consume first, and pop it back off ourselves if it gets
+// closed any other way (✕/scrim/save) so a second back press isn't needed
+// to actually leave the page.
+//
+// The push/pop bookkeeping itself lives in useSheetHistoryDepth.js, NOT
+// as plain `let`s here — a `<script setup>` block compiles its top-level
+// code INSIDE setup(), so a `let` declared right here is actually
+// per-component-instance, not shared, even though it reads like ordinary
+// module-level state. That mistake (this file's own first attempt at this
+// fix) is exactly why the depth counter didn't work: the cart sheet and
+// the receipt sheet, as two separate <Sheet> instances, each had their
+// OWN depth/ownership variables, so the receipt sheet's "I'm opening" never
+// saw the cart sheet's "I'm closing" that happened moments earlier in the
+// same tick. A real .js module's top-level bindings ARE singleton-shared
+// by every importer, which is what this needs. See that file's own
+// comment for the full root-cause writeup (the actual "বিল হচ্ছে না"
+// report): a checkout success handler closes the cart sheet and opens the
+// receipt sheet in the same synchronous tick, and firing a REAL
+// history.back() for that — a genuine browser navigation — triggers a
+// popstate Inertia's own global handler also reacts to with
+// `preserveState: false`, remounting the whole page and wiping every
+// local ref (the cart, the about-to-open receipt) before the receipt
+// sheet ever got a chance to render.
 let closedByPopstate = false;
 function onPopState() {
     closedByPopstate = true;
@@ -32,14 +53,11 @@ function onPopState() {
 }
 watch(() => props.modelValue, (open) => {
     if (open) {
-        // spread the current (Inertia-owned) state first so its own
-        // popstate handler still finds what it expects there - we're only
-        // adding a marker on top, never replacing what Inertia already put
-        history.pushState({ ...history.state, zaylotixSheet: true }, '');
+        sheetOpened();
         window.addEventListener('popstate', onPopState);
     } else {
         window.removeEventListener('popstate', onPopState);
-        if (!closedByPopstate && history.state?.zaylotixSheet) history.back();
+        sheetClosed(closedByPopstate);
         closedByPopstate = false;
     }
 });
