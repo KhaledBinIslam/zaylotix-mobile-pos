@@ -1,6 +1,6 @@
 <script setup>
-import { Head } from '@inertiajs/vue3';
-import { ref, nextTick, watch } from 'vue';
+import { Head, router } from '@inertiajs/vue3';
+import { ref, nextTick, watch, computed } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useI18n } from '@/composables/useI18n';
 
@@ -9,8 +9,19 @@ const { t } = useI18n();
 
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 
-const q = ref('');
-const selected = ref({}); // { productId: copies }
+// prefilled from ?q=... — the 🏷️ shortcut next to a variant's stock-in
+// button on the Stock page links here with the product's own name, so
+// printing a label for stock that JUST arrived doesn't need re-typing a
+// search by hand
+const q = ref(new URLSearchParams(window.location.search).get('q') || '');
+// keyed 'p:<productId>' for a plain product, or 'v:<variantId>' for one of
+// its variants — a single flat map is simpler to reason about than nesting
+// selection state inside props.products itself
+const selected = ref({}); // { key: copies }
+
+function variantLabel(v) {
+    return [v.size, v.color].filter(Boolean).join(', ');
+}
 
 // 'both' (regular + discount, struck-through/bold pair — the old always-on
 // behavior), 'single' (just one price — discount price if the product has
@@ -21,19 +32,43 @@ const selected = ref({}); // { productId: copies }
 const priceMode = ref(localStorage.getItem('zx_barcode_price_mode') || 'both');
 watch(priceMode, (v) => localStorage.setItem('zx_barcode_price_mode', v));
 
-function toggle(p) {
-    if (selected.value[p.id]) delete selected.value[p.id];
-    else selected.value[p.id] = 1;
+function toggleProduct(p) {
+    const key = 'p:' + p.id;
+    if (selected.value[key]) delete selected.value[key];
+    else selected.value[key] = 1;
+}
+function toggleVariant(v) {
+    if (!v.barcode) return; // generate one first — see generateBarcode()
+    const key = 'v:' + v.id;
+    if (selected.value[key]) delete selected.value[key];
+    else selected.value[key] = 1;
+}
+/** One tap selects every variant of a product that already has a barcode (1 copy each) — the common "just arrived, print the whole size/color run" case. Variants still missing a barcode are skipped; generate those individually first. */
+function selectAllVariants(p) {
+    const allSelected = p.variants.every((v) => !v.barcode || selected.value['v:' + v.id]);
+    p.variants.forEach((v) => {
+        const key = 'v:' + v.id;
+        if (!v.barcode) return;
+        if (allSelected) delete selected.value[key];
+        else selected.value[key] = 1;
+    });
 }
 
-const filtered = () => props.products.filter((p) =>
+function generateBarcode(v) {
+    router.patch(route('app.productVariants.generateBarcode', v.id), {}, { preserveScroll: true, preserveState: true });
+}
+
+const filtered = computed(() => props.products.filter((p) =>
     !q.value
     || p.name.toLowerCase().includes(q.value.toLowerCase())
     || p.name_en?.toLowerCase().includes(q.value.toLowerCase())
     || (p.barcode || '').includes(q.value)
-);
+    || p.variants?.some((v) => (v.barcode || '').includes(q.value))
+));
 
-const labels = ref([]); // flattened list of {product, copyIndex} for print view
+const totalCopies = computed(() => Object.values(selected.value).reduce((a, b) => a + b, 0));
+
+const labels = ref([]); // flattened list of {name, variantLabel, barcode, price, discount_price} for print view
 const printing = ref(false);
 
 // One tap does select → build → print — a shop owner printing a barcode
@@ -45,9 +80,19 @@ const printing = ref(false);
 async function printSelected() {
     const list = [];
     for (const p of props.products) {
-        const copies = selected.value[p.id];
-        if (!copies) continue;
-        for (let i = 0; i < copies; i++) list.push(p);
+        const productCopies = selected.value['p:' + p.id];
+        if (productCopies) {
+            for (let i = 0; i < productCopies; i++) {
+                list.push({ name: p.name, variantLabel: '', barcode: p.barcode, price: p.price, discount_price: p.discount_price });
+            }
+        }
+        for (const v of p.variants || []) {
+            const copies = selected.value['v:' + v.id];
+            if (!copies) continue;
+            for (let i = 0; i < copies; i++) {
+                list.push({ name: p.name, variantLabel: variantLabel(v), barcode: v.barcode, price: v.price ?? p.price, discount_price: null });
+            }
+        }
     }
     if (!list.length) return;
     labels.value = list;
@@ -98,22 +143,51 @@ function closePrint() {
             </div>
         </div>
 
-        <div v-for="p in filtered()" :key="p.id" class="row" @click="toggle(p)" :class="{ incart: selected[p.id] }" :style="selected[p.id] ? 'border-color:var(--gold);background:var(--goldSoft)' : ''">
-            <div class="ava">{{ p.emoji }}</div>
-            <div class="mid">
-                <b>{{ p.name }}</b>
-                <span>{{ p.barcode || t('bc.noBarcode') }} • {{ money(p.price) }}<span v-if="p.discount_price"> → {{ money(p.discount_price) }}</span></span>
+        <div v-for="p in filtered" :key="p.id" class="card" style="padding:0;margin-bottom:8px;overflow:hidden">
+            <!-- plain (non-variant) product row — unchanged from before -->
+            <div v-if="!p.variants?.length" class="row" @click="toggleProduct(p)" :class="{ incart: selected['p:' + p.id] }" :style="selected['p:' + p.id] ? 'border:none;background:var(--goldSoft)' : 'border:none'">
+                <div class="ava">{{ p.emoji }}</div>
+                <div class="mid">
+                    <b>{{ p.name }}</b>
+                    <span>{{ p.barcode || t('bc.noBarcode') }} • {{ money(p.price) }}<span v-if="p.discount_price"> → {{ money(p.discount_price) }}</span></span>
+                </div>
+                <div class="end" @click.stop>
+                    <input v-if="selected['p:' + p.id]" v-model.number="selected['p:' + p.id]" type="number" min="1" style="width:60px;padding:6px;text-align:center">
+                </div>
             </div>
-            <div class="end" @click.stop>
-                <input v-if="selected[p.id]" v-model.number="selected[p.id]" type="number" min="1" style="width:60px;padding:6px;text-align:center">
-            </div>
+
+            <!-- variant product — every size/color shown underneath, each with its own barcode/copies -->
+            <template v-else>
+                <div class="row" style="border:none;background:var(--surface2, var(--card))">
+                    <div class="ava">{{ p.emoji }}</div>
+                    <div class="mid">
+                        <b>{{ p.name }}</b>
+                        <span>{{ t('bc.variantCount', { n: p.variants.length }) }}</span>
+                    </div>
+                    <div class="end" @click.stop>
+                        <button class="btn sm ghost" style="width:auto;padding:6px 10px" @click="selectAllVariants(p)">{{ t('bc.selectAllVariants') }}</button>
+                    </div>
+                </div>
+                <div v-for="v in p.variants" :key="v.id" class="row" style="border-top:1px solid var(--line);padding-left:20px" :class="{ incart: selected['v:' + v.id] }" :style="selected['v:' + v.id] ? 'background:var(--goldSoft)' : ''" @click="toggleVariant(v)">
+                    <div class="ava" style="font-size:16px">🏷️</div>
+                    <div class="mid">
+                        <b>{{ variantLabel(v) }}</b>
+                        <span v-if="v.barcode">{{ v.barcode }} • {{ money(v.price ?? p.price) }}</span>
+                        <span v-else style="color:var(--rose)">{{ t('bc.noBarcode') }}</span>
+                    </div>
+                    <div class="end" @click.stop>
+                        <button v-if="!v.barcode" class="btn sm ghost" style="width:auto;padding:6px 10px" @click="generateBarcode(v)">{{ t('bc.generateBarcode') }}</button>
+                        <input v-else-if="selected['v:' + v.id]" v-model.number="selected['v:' + v.id]" type="number" min="1" style="width:60px;padding:6px;text-align:center">
+                    </div>
+                </div>
+            </template>
         </div>
-        <div v-if="!filtered().length" class="empty"><div class="big">🏷️</div>{{ t('bc.noProducts') }}</div>
+        <div v-if="!filtered.length" class="empty"><div class="big">🏷️</div>{{ t('bc.noProducts') }}</div>
 
         <div style="height:78px"></div>
         <div class="posbar">
-            <button class="btn" :disabled="!Object.keys(selected).length" @click="printSelected">
-                {{ t('bc.print') }} ({{ Object.values(selected).reduce((a, b) => a + b, 0) }})
+            <button class="btn" :disabled="!totalCopies" @click="printSelected">
+                {{ t('bc.print') }} ({{ totalCopies }})
             </button>
         </div>
 
@@ -131,6 +205,7 @@ function closePrint() {
                             <div class="label-shop">{{ shop?.name }}</div>
                         </div>
                         <div class="label-name">{{ p.name }}</div>
+                        <div v-if="p.variantLabel" class="label-variant">{{ p.variantLabel }}</div>
                         <svg :id="'barcode-svg-' + i"></svg>
                         <div v-if="priceMode !== 'none'" class="label-price">
                             <template v-if="priceMode === 'both' && p.discount_price">
@@ -154,6 +229,7 @@ function closePrint() {
 .label-logo { width: 9px; height: 9px; object-fit: contain; flex: 0 0 auto; }
 .label-shop { font-size: 7px; font-weight: 700; color: #444; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .label-name { font-size: 9px; font-weight: 700; margin-bottom: 1px; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.label-variant { font-size: 8px; font-weight: 600; color: #333; margin-bottom: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* the price line used to sit right at (sometimes past) the fixed 25mm
    label's bottom edge — with .label-card's overflow:hidden that meant the
    price could get silently clipped off print, invisible with no error.

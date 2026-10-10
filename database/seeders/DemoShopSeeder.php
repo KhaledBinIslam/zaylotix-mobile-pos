@@ -395,7 +395,12 @@ class DemoShopSeeder extends Seeder
             match ($typeSlug) {
                 'pharmacy' => ['memo_whatsapp', 'memo_print', 'unit_conversion', 'purchases', 'damages', 'stock_count', 'accounts', 'expenses', 'reports', 'vat', 'cashier_management'], // strip -> tablet breakdown, strict expiry/stock discipline
                 'mobile' => ['memo_whatsapp', 'memo_print', 'barcode_printing', 'purchases', 'returns', 'accounts', 'expenses', 'reports', 'cashier_management'], // IMEI/barcode scanning, warranty returns
-                'clothing' => ['memo_whatsapp', 'memo_print', 'product_variants', 'purchases', 'returns', 'accounts', 'expenses', 'reports', 'cashier_management'], // color/size variant picker
+                // barcode_printing was missing here even though a clothing/
+                // shoe shop is the canonical per-variant-barcode use case
+                // (config/business_types.php's own default feature set for
+                // this type already includes it — this demo shop's
+                // hand-maintained list had just drifted out of sync with it)
+                'clothing' => ['memo_whatsapp', 'memo_print', 'barcode_printing', 'product_variants', 'purchases', 'returns', 'accounts', 'expenses', 'reports', 'cashier_management'], // color/size variant picker
                 // biggest format, needs the full toolkit — restaurant_tables
                 // excluded, see the matching comment in groceryFlagship() above
                 'supershop' => Feature::where('key', '!=', 'restaurant_tables')->pluck('key')->all(),

@@ -6,8 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Support\Activity;
+use App\Support\Tenancy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 /**
  * A variant (size/color) has its own independent stock — unlike product_units
@@ -26,11 +28,16 @@ class ProductVariantController extends Controller
         $data = $request->validate([
             'size' => ['nullable', 'string', 'max:50'],
             'color' => ['nullable', 'string', 'max:50'],
-            'barcode' => ['nullable', 'string', 'max:64'],
+            // scoped by shop_id, not a bare unique — see the migration
+            // that added this constraint for why (two unrelated shops
+            // reusing the same simple code is their own business)
+            'barcode' => ['nullable', 'string', 'max:64', Rule::unique('product_variants', 'barcode')->where('shop_id', Tenancy::id())],
             'stock' => ['required', 'integer', 'min:0'],
             'reorder_point' => ['nullable', 'integer', 'min:0'],
             'price' => ['nullable', 'numeric', 'min:0'],
             'cost' => ['nullable', 'numeric', 'min:0'],
+        ], [
+            'barcode.unique' => 'এই বারকোড এই দোকানে আরেকটা ভ্যারিয়েন্টে আগেই ব্যবহার হয়েছে।',
         ]);
 
         if (empty($data['size']) && empty($data['color'])) {
@@ -144,10 +151,12 @@ class ProductVariantController extends Controller
         $data = $request->validate([
             'size' => ['nullable', 'string', 'max:50'],
             'color' => ['nullable', 'string', 'max:50'],
-            'barcode' => ['nullable', 'string', 'max:64'],
+            'barcode' => ['nullable', 'string', 'max:64', Rule::unique('product_variants', 'barcode')->where('shop_id', Tenancy::id())->ignore($productVariant->id)],
             'reorder_point' => ['nullable', 'integer', 'min:0'],
             'price' => ['nullable', 'numeric', 'min:0'],
             'cost' => ['nullable', 'numeric', 'min:0'],
+        ], [
+            'barcode.unique' => 'এই বারকোড এই দোকানে আরেকটা ভ্যারিয়েন্টে আগেই ব্যবহার হয়েছে।',
         ]);
 
         if (empty($data['size']) && empty($data['color'])) {

@@ -256,6 +256,11 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
 
     Route::middleware(['perm:barcode_labels', 'feature:barcode_printing'])->group(function () {
         Route::get('barcode-labels', [BarcodeLabelController::class, 'index'])->name('barcodeLabels.index');
+        // gated by barcode_labels, not stock — printing a label for a
+        // variant that happens to be missing one is part of the SAME job
+        // this page already does, not a stock-editing action
+        Route::patch('product-variants/{productVariant}/barcode/generate', [BarcodeLabelController::class, 'generateVariantBarcode'])
+            ->middleware('feature:product_variants')->name('productVariants.generateBarcode');
     });
 
     Route::middleware('perm:customers')->group(function () {

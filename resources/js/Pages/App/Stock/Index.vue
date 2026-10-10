@@ -771,6 +771,8 @@ useKeyboardShortcuts({
                         <div style="display:flex;gap:6px;margin-top:6px">
                             <input v-model="variantStockInQty[v.id]" type="number" :placeholder="t('stock.stockIn')" style="width:90px">
                             <button class="btn sm ghost" @click="stockInVariant(v)">+</button>
+                            <!-- new stock just landed here — printing its label shouldn't need navigating away and re-searching for the same product by hand -->
+                            <Link :href="route('app.barcodeLabels.index') + '?q=' + encodeURIComponent(editing.name)" class="btn sm ghost" style="text-decoration:none">🏷️</Link>
                         </div>
                     </div>
                     <button class="btn sm rose" @click="removeVariant(v)">✕</button>

@@ -1268,6 +1268,9 @@ export const translations = {
     'bc.priceModeBoth': { bn: 'নিয়মিত + ছাড়', en: 'Regular + discount' },
     'bc.priceModeSingle': { bn: 'শুধু একটি দাম', en: 'Single price' },
     'bc.priceModeNone': { bn: 'দাম নেই', en: 'No price' },
+    'bc.variantCount': { bn: '{n}টা ভ্যারিয়েন্ট', en: '{n} variants' },
+    'bc.selectAllVariants': { bn: 'সব ভ্যারিয়েন্ট', en: 'All variants' },
+    'bc.generateBarcode': { bn: '+ বারকোড বানান', en: '+ Generate barcode' },
 
     // ---- cash/bank ledger ----
     'cl.title': { bn: 'ক্যাশ/ব্যাংক লেনদেন', en: 'Cash/Bank Ledger' },
