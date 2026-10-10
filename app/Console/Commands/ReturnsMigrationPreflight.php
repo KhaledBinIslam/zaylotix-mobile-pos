@@ -28,10 +28,7 @@ class ReturnsMigrationPreflight extends Command
         $this->line("returns টেবিলে মোট সারি: {$returnsCount}");
 
         $qtyColumn = DB::selectOne("SHOW COLUMNS FROM returns WHERE Field = 'qty'");
-        $this->line('returns.qty কলামের বর্তমান টাইপ: '.($qtyColumn->Type ?? 'unknown'));
-
-        $maxQty = DB::table('returns')->max('qty');
-        $this->line('returns.qty সর্বোচ্চ মান (migration এর পর এটাই decimal হবে): '.($maxQty ?? 'N/A'));
+        $this->line('returns.qty কলামের বর্তমান টাইপ: '.($qtyColumn->Type ?? 'unknown').' (এই migration ব্যাচে qty টাইপ বদলানো হচ্ছে না — আগের weight-based-selling migration এ এটা আগেই decimal হয়ে গেছে)');
 
         $this->newLine();
 
@@ -52,7 +49,7 @@ class ReturnsMigrationPreflight extends Command
         $this->line("damages টেবিলে মোট সারি: {$damagesCount}, product_variant_id কলাম আগে থেকে আছে কিনা: ".($hasVariantCol ? 'হ্যাঁ (migration আগেই চলেছে)' : 'না'));
 
         $this->newLine();
-        $this->info('এই কমান্ড শুধু রিপোর্ট দেখিয়েছে, কিছু পরিবর্তন করেনি। returns.qty কলাম change করার আগে DB ব্যাকআপ নিয়ে নিন।');
+        $this->info('এই কমান্ড শুধু রিপোর্ট দেখিয়েছে, কিছু পরিবর্তন করেনি। migrate চালানোর আগে DB ব্যাকআপ নিয়ে রাখা ভালো অভ্যাস।');
 
         return self::SUCCESS;
     }
