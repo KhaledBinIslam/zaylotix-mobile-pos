@@ -17,8 +17,8 @@ class Quotation extends Model
     protected function casts(): array
     {
         return [
-            'date' => 'date',
-            'valid_until' => 'date',
+            'date' => 'date:Y-m-d',
+            'valid_until' => 'date:Y-m-d',
             'subtotal' => 'decimal:2',
             'discount' => 'decimal:2',
             'total' => 'decimal:2',

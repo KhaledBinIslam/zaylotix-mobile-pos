@@ -22,7 +22,7 @@ class SalaryPayment extends Model
             'bonus' => 'decimal:2',
             'advance_deduction' => 'decimal:2',
             'net_paid' => 'decimal:2',
-            'paid_date' => 'date',
+            'paid_date' => 'date:Y-m-d',
         ];
     }
 

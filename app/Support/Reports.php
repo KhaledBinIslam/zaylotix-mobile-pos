@@ -189,23 +189,13 @@ class Reports
 
     public static function topProducts(string $from, string $to, int $limit = 20)
     {
-        return SaleItem::whereHas('sale', fn ($q) => $q->whereDate('date', '>=', $from)->whereDate('date', '<=', $to))
-            ->selectRaw('product_name, SUM(qty) as qty_sold, SUM(qty * price - discount) as revenue, SUM((price - cost) * qty - discount) as profit')
-            ->groupBy('product_name')
-            ->orderByDesc('qty_sold')
-            ->limit($limit)
-            ->get();
+        return self::productStats($from, $to)->sortByDesc('qty_sold')->take($limit)->values();
     }
 
     /** The mirror of topProducts — slowest-moving items in the range, so an owner can spot dead stock instead of only ever seeing what's selling well. Only ever includes a product that sold at least once in the range; a product with zero sales isn't "slow", it's simply unsold, and belongs on the stock/low-stock views instead. */
     public static function bottomProducts(string $from, string $to, int $limit = 20)
     {
-        return SaleItem::whereHas('sale', fn ($q) => $q->whereDate('date', '>=', $from)->whereDate('date', '<=', $to))
-            ->selectRaw('product_name, SUM(qty) as qty_sold, SUM(qty * price - discount) as revenue, SUM((price - cost) * qty - discount) as profit')
-            ->groupBy('product_name')
-            ->orderBy('qty_sold')
-            ->limit($limit)
-            ->get();
+        return self::productStats($from, $to)->sortBy('qty_sold')->take($limit)->values();
     }
 
     /** Per-product profit/margin — Khaled's explicit request: topProducts()/
@@ -218,18 +208,60 @@ class Reports
      *  so an owner can see which products are actually worth stocking. */
     public static function productProfitReport(string $from, string $to)
     {
-        return SaleItem::whereHas('sale', fn ($q) => $q->whereDate('date', '>=', $from)->whereDate('date', '<=', $to))
+        return self::productStats($from, $to)->sortByDesc('profit')->take(200)->values()->map(function ($row) {
+            $revenue = (float) $row->revenue;
+            $row->margin_pct = $revenue > 0 ? round(((float) $row->profit / $revenue) * 100, 1) : 0;
+
+            return $row;
+        });
+    }
+
+    /**
+     * The shared base for topProducts/bottomProducts/productProfitReport —
+     * per-product qty/revenue/profit from sale_items, with every
+     * invoice-linked return (sale_item_id set — the old no-receipt flow has
+     * no sale_item to attribute a name from) in the same range netted out.
+     * Without this, a fully-refunded sale still showed as "sold" here even
+     * though Reports::rangeStats()'s own P&L had already zeroed it out —
+     * this keeps sum(profit) across every row here identical to
+     * rangeStats()'s $grossProfit for the same range (same identity:
+     * grossProfit = sum(sale profit) − returnImpact(all returns), just
+     * distributed per product instead of summed once).
+     */
+    private static function productStats(string $from, string $to): \Illuminate\Support\Collection
+    {
+        $rows = SaleItem::whereHas('sale', fn ($q) => $q->whereDate('date', '>=', $from)->whereDate('date', '<=', $to))
             ->selectRaw('product_name, SUM(qty) as qty_sold, SUM(qty * price - discount) as revenue, SUM((price - cost) * qty - discount) as profit')
             ->groupBy('product_name')
-            ->orderByDesc('profit')
-            ->limit(200)
             ->get()
-            ->map(function ($row) {
-                $revenue = (float) $row->revenue;
-                $row->margin_pct = $revenue > 0 ? round(((float) $row->profit / $revenue) * 100, 1) : 0;
+            ->keyBy('product_name');
 
-                return $row;
-            });
+        $returns = SalesReturn::whereNotNull('sale_item_id')
+            ->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)
+            ->with('saleItem:id,product_name')
+            ->get()
+            ->filter(fn (SalesReturn $r) => $r->saleItem !== null)
+            ->groupBy(fn (SalesReturn $r) => $r->saleItem->product_name);
+
+        foreach ($returns as $productName => $group) {
+            $qtyImpact = (float) $group->sum('qty');
+            $revenueImpact = (float) $group->sum('refund');
+            $profitImpact = (float) $group->sum(fn (SalesReturn $r) => $r->cost === null ? (float) $r->refund : (float) $r->refund - (float) $r->cost);
+
+            if (! $rows->has($productName)) {
+                // the original sale fell outside this range (e.g. returned
+                // today against last week's sale) — still has to show up,
+                // negative, or the product-sum-vs-P&L identity above breaks
+                $rows->put($productName, (object) ['product_name' => $productName, 'qty_sold' => 0, 'revenue' => 0, 'profit' => 0]);
+            }
+
+            $row = $rows->get($productName);
+            $row->qty_sold = (float) $row->qty_sold - $qtyImpact;
+            $row->revenue = round((float) $row->revenue - $revenueImpact, 2);
+            $row->profit = round((float) $row->profit - $profitImpact, 2);
+        }
+
+        return $rows->values();
     }
 
     /** Retail vs wholesale split — how much of the range's revenue/profit came from each sale_type (see the wholesale_pricing migration). */
@@ -304,16 +336,35 @@ class Reports
     /** Revenue/qty per product category over the range — a line item with no category (or a since-deleted product) falls into a single "uncategorized" bucket rather than being silently dropped. */
     public static function categoryReport(string $from, string $to): array
     {
-        return SaleItem::whereHas('sale', fn ($q) => $q->whereDate('date', '>=', $from)->whereDate('date', '<=', $to))
+        $byCategory = SaleItem::whereHas('sale', fn ($q) => $q->whereDate('date', '>=', $from)->whereDate('date', '<=', $to))
             ->with('product.category')
             ->get()
             ->groupBy(fn (SaleItem $i) => $i->product?->category?->name ?: 'অশ্রেণীবদ্ধ')
             ->map(fn ($group) => [
                 'qty' => (float) $group->sum('qty'),
-                'revenue' => round((float) $group->sum(fn (SaleItem $i) => $i->qty * $i->price - $i->discount), 2),
-            ])
-            ->sortByDesc('revenue')
-            ->all();
+                'revenue' => (float) $group->sum(fn (SaleItem $i) => $i->qty * $i->price - $i->discount),
+            ]);
+
+        // same reasoning as productStats() — a return's refund/qty must
+        // come back out of its category's total too, or a fully-refunded
+        // sale keeps inflating that category after the P&L already zeroed
+        // it out.
+        $returnsByCategory = SalesReturn::whereNotNull('sale_item_id')
+            ->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)
+            ->with('saleItem.product.category')
+            ->get()
+            ->filter(fn (SalesReturn $r) => $r->saleItem !== null)
+            ->groupBy(fn (SalesReturn $r) => $r->saleItem->product?->category?->name ?: 'অশ্রেণীবদ্ধ');
+
+        foreach ($returnsByCategory as $category => $group) {
+            $existing = $byCategory->get($category, ['qty' => 0, 'revenue' => 0]);
+            $byCategory->put($category, [
+                'qty' => $existing['qty'] - (float) $group->sum('qty'),
+                'revenue' => round($existing['revenue'] - (float) $group->sum('refund'), 2),
+            ]);
+        }
+
+        return $byCategory->sortByDesc('revenue')->all();
     }
 
     /**
@@ -433,7 +484,7 @@ class Reports
                     'invoice_no' => $r->sale?->invoice_no,
                     'stars' => $r->stars,
                     'comment' => $r->comment,
-                    'date' => $r->sale?->date,
+                    'date' => $r->sale?->date?->toDateString(),
                 ])->values(),
         ];
     }

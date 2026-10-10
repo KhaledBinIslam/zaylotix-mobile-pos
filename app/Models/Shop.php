@@ -28,8 +28,8 @@ class Shop extends Model
         return [
             'hardware_scanner_enabled' => 'boolean',
             'is_warehouse' => 'boolean',
-            'subscription_start' => 'date',
-            'subscription_expiry' => 'date',
+            'subscription_start' => 'date:Y-m-d',
+            'subscription_expiry' => 'date:Y-m-d',
             'cash_balance' => 'decimal:2',
             'bank_balance' => 'decimal:2',
             'capital' => 'decimal:2',

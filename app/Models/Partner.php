@@ -17,7 +17,7 @@ class Partner extends Model
             'ownership_percent' => 'decimal:2',
             'invested_amount' => 'decimal:2',
             'withdrawn_amount' => 'decimal:2',
-            'joined_date' => 'date',
+            'joined_date' => 'date:Y-m-d',
         ];
     }
 

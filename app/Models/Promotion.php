@@ -23,8 +23,8 @@ class Promotion extends Model
             'discount_value' => 'decimal:2',
             'min_purchase' => 'decimal:2',
             'get_discount_percent' => 'decimal:2',
-            'starts_at' => 'date',
-            'expires_at' => 'date',
+            'starts_at' => 'date:Y-m-d',
+            'expires_at' => 'date:Y-m-d',
         ];
     }
 

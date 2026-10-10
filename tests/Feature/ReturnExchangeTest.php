@@ -623,4 +623,66 @@ class ReturnExchangeTest extends TestCase
 
         $response->assertOk()->assertJson(['sales' => []]);
     }
+
+    /**
+     * Khaled's exact bug report: P&L showed ৳0 net profit (fully refunded,
+     * resalable, cost recovered) but topProducts/productProfitReport still
+     * showed "1 sold, ৳90 profit" — the per-product reports never knew
+     * about the return at all. category/top/bottom must all net it out too.
+     */
+    public function test_product_wise_reports_exclude_returned_qty_revenue_and_profit(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
+        $this->grantFeature($shop, 'returns');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Test Shirt', 'cost' => 60, 'price' => 150, 'stock' => 3]);
+        $sale = $this->makeSale($shop->id, ['subtotal' => 150, 'total' => 150, 'profit' => 90]);
+        $item = $this->makeItem($sale, $product, ['qty' => 1, 'price' => 150, 'cost' => 60]);
+
+        $this->actingAs($owner, 'web')->postJson('/app/returns/process', [
+            'sale_id' => $sale->id,
+            'action' => 'refund',
+            'lines' => [['sale_item_id' => $item->id, 'qty' => 1, 'condition' => 'resalable']],
+        ])->assertOk();
+
+        $from = $to = now()->toDateString();
+        $top = Reports::topProducts($from, $to);
+        $bottom = Reports::bottomProducts($from, $to);
+        $profitReport = Reports::productProfitReport($from, $to);
+        $category = Reports::categoryReport($from, $to);
+
+        $this->assertEquals(0.0, (float) $top->firstWhere('product_name', 'Test Shirt')->qty_sold);
+        $this->assertEquals(0.0, (float) $top->firstWhere('product_name', 'Test Shirt')->revenue);
+        $this->assertEquals(0.0, (float) $top->firstWhere('product_name', 'Test Shirt')->profit);
+        $this->assertEquals(0.0, (float) $bottom->firstWhere('product_name', 'Test Shirt')->profit);
+        $this->assertEquals(0.0, (float) $profitReport->firstWhere('product_name', 'Test Shirt')->profit);
+        $this->assertEquals(0.0, (float) $category['অশ্রেণীবদ্ধ']['revenue']);
+    }
+
+    /** Sum of every product's profit must reconcile exactly with Reports::rangeStats()'s own $grossProfit, in a scenario with a mix of a kept sale and a partially-refunded one — not just the simple single-sale case. */
+    public function test_product_wise_profit_sum_reconciles_with_gross_profit(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
+        $this->grantFeature($shop, 'returns');
+        $kept = Product::create(['shop_id' => $shop->id, 'name' => 'Pants', 'cost' => 40, 'price' => 100, 'stock' => 5]);
+        $returned = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 50, 'price' => 100, 'stock' => 5]);
+
+        $saleA = $this->makeSale($shop->id, ['subtotal' => 100, 'total' => 100, 'profit' => 60]);
+        $this->makeItem($saleA, $kept, ['qty' => 1, 'price' => 100, 'cost' => 40]);
+
+        $saleB = $this->makeSale($shop->id, ['subtotal' => 200, 'total' => 200, 'profit' => 100]);
+        $itemB = $this->makeItem($saleB, $returned, ['qty' => 2, 'price' => 100, 'cost' => 50]);
+
+        $this->actingAs($owner, 'web')->postJson('/app/returns/process', [
+            'sale_id' => $saleB->id,
+            'action' => 'refund',
+            'lines' => [['sale_item_id' => $itemB->id, 'qty' => 1, 'condition' => 'resalable']],
+        ])->assertOk();
+
+        $from = $to = now()->toDateString();
+        \App\Support\Tenancy::set($shop->id);
+        $stats = Reports::rangeStats($from, $to);
+        $productSumProfit = Reports::productProfitReport($from, $to)->sum('profit');
+
+        $this->assertEqualsWithDelta((float) $stats['grossProfit'], (float) $productSumProfit, 0.01);
+    }
 }

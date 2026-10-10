@@ -15,7 +15,7 @@ class Damage extends Model
     {
         return [
             'loss' => 'decimal:2',
-            'date' => 'date',
+            'date' => 'date:Y-m-d',
         ];
     }
 

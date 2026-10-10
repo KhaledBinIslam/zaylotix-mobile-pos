@@ -41,7 +41,7 @@ class Product extends Model
             // count) casts to the same precision so nothing rounds
             // differently at different points in the same number's life
             'stock' => 'decimal:3',
-            'expiry_date' => 'date',
+            'expiry_date' => 'date:Y-m-d',
             'requires_prescription' => 'boolean',
             'sold_by_weight' => 'boolean',
         ];

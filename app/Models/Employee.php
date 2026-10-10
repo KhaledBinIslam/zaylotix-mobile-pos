@@ -15,7 +15,7 @@ class Employee extends Model
     {
         return [
             'basic_salary' => 'decimal:2',
-            'joining_date' => 'date',
+            'joining_date' => 'date:Y-m-d',
         ];
     }
 

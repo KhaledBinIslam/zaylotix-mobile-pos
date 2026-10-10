@@ -24,7 +24,7 @@ class SalesReturn extends Model
             'refund' => 'decimal:2',
             'cost' => 'decimal:2',
             'applied_to_due' => 'boolean',
-            'date' => 'date',
+            'date' => 'date:Y-m-d',
         ];
     }
 

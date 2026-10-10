@@ -17,7 +17,7 @@ class Payment extends Model
             'amount' => 'decimal:2',
             'due_before' => 'decimal:2',
             'due_after' => 'decimal:2',
-            'date' => 'date',
+            'date' => 'date:Y-m-d',
         ];
     }
 

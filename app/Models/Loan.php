@@ -16,7 +16,7 @@ class Loan extends Model
         return [
             'principal' => 'decimal:2',
             'outstanding' => 'decimal:2',
-            'date' => 'date',
+            'date' => 'date:Y-m-d',
         ];
     }
 

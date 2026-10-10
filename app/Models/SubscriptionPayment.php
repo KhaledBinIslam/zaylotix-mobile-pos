@@ -16,8 +16,8 @@ class SubscriptionPayment extends Model
     {
         return [
             'amount' => 'decimal:2',
-            'paid_on' => 'date',
-            'next_due' => 'date',
+            'paid_on' => 'date:Y-m-d',
+            'next_due' => 'date:Y-m-d',
         ];
     }
 
