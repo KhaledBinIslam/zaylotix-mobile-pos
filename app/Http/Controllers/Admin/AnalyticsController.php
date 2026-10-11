@@ -26,7 +26,13 @@ class AnalyticsController extends Controller
         $weekAgo = now()->subDays(6)->toDateString();
         $monthAgo = now()->subDays(29)->toDateString();
 
+        // Demo/trial/internal shops aren't the paid book of business — every
+        // revenue/shop-count figure below is restricted to this id list so
+        // a seeded demo shop or an in-progress trial never inflates them.
+        $paidShopIds = Shop::withoutGlobalScopes()->paidAccounts()->pluck('id');
+
         $mostActiveShops = Sale::withoutGlobalScopes()
+            ->whereIn('shop_id', $paidShopIds)
             ->whereDate('date', '>=', $monthAgo)
             ->whereNull('voided_at')
             ->selectRaw('shop_id, COUNT(*) as sale_count, SUM(total) as total_revenue')
@@ -45,36 +51,40 @@ class AnalyticsController extends Controller
                 ];
             });
 
-        $totalShops = Shop::withoutGlobalScopes()->count();
-        $featureAdoption = Feature::where('is_active', true)->orderBy('category')->get()->map(fn (Feature $f) => [
-            'key' => $f->key,
-            'label' => $f->label_en,
-            'category' => $f->category,
-            'shop_count' => $f->shops()->count(),
-            'percent' => $totalShops ? round($f->shops()->count() / $totalShops * 100, 1) : 0,
-        ]);
+        $totalShops = $paidShopIds->count();
+        $featureAdoption = Feature::where('is_active', true)->orderBy('category')->get()->map(function (Feature $f) use ($paidShopIds, $totalShops) {
+            $shopCount = $f->shops()->whereIn('shops.id', $paidShopIds)->count();
+
+            return [
+                'key' => $f->key,
+                'label' => $f->label_en,
+                'category' => $f->category,
+                'shop_count' => $shopCount,
+                'percent' => $totalShops ? round($shopCount / $totalShops * 100, 1) : 0,
+            ];
+        });
 
         // signups per week for the last 8 weeks — a quick growth-trend glance
-        $signupTrend = collect(range(7, 0))->map(function ($weeksAgo) {
+        $signupTrend = collect(range(7, 0))->map(function ($weeksAgo) use ($paidShopIds) {
             $start = now()->subWeeks($weeksAgo)->startOfWeek()->toDateString();
             $end = now()->subWeeks($weeksAgo)->endOfWeek()->toDateString();
 
             return [
                 'week_of' => $start,
-                'count' => Shop::withoutGlobalScopes()->whereDate('created_at', '>=', $start)->whereDate('created_at', '<=', $end)->count(),
+                'count' => Shop::withoutGlobalScopes()->whereIn('id', $paidShopIds)->whereDate('created_at', '>=', $start)->whereDate('created_at', '<=', $end)->count(),
             ];
         });
 
-        $activeShopsToday = Sale::withoutGlobalScopes()->whereDate('date', $today)->whereNull('voided_at')->distinct('shop_id')->count('shop_id');
-        $activeShopsWeek = Sale::withoutGlobalScopes()->whereDate('date', '>=', $weekAgo)->whereNull('voided_at')->distinct('shop_id')->count('shop_id');
+        $activeShopsToday = Sale::withoutGlobalScopes()->whereIn('shop_id', $paidShopIds)->whereDate('date', $today)->whereNull('voided_at')->distinct('shop_id')->count('shop_id');
+        $activeShopsWeek = Sale::withoutGlobalScopes()->whereIn('shop_id', $paidShopIds)->whereDate('date', '>=', $weekAgo)->whereNull('voided_at')->distinct('shop_id')->count('shop_id');
 
         return Inertia::render('Admin/Analytics/Index', [
             'shopUsage' => $this->shopUsage(),
             'stats' => [
-                'salesToday' => (float) Sale::withoutGlobalScopes()->whereDate('date', $today)->whereNull('voided_at')->sum('total'),
-                'billsToday' => Sale::withoutGlobalScopes()->whereDate('date', $today)->whereNull('voided_at')->count(),
-                'salesWeek' => (float) Sale::withoutGlobalScopes()->whereDate('date', '>=', $weekAgo)->whereNull('voided_at')->sum('total'),
-                'salesMonth' => (float) Sale::withoutGlobalScopes()->whereDate('date', '>=', $monthAgo)->whereNull('voided_at')->sum('total'),
+                'salesToday' => (float) Sale::withoutGlobalScopes()->whereIn('shop_id', $paidShopIds)->whereDate('date', $today)->whereNull('voided_at')->sum('total'),
+                'billsToday' => Sale::withoutGlobalScopes()->whereIn('shop_id', $paidShopIds)->whereDate('date', $today)->whereNull('voided_at')->count(),
+                'salesWeek' => (float) Sale::withoutGlobalScopes()->whereIn('shop_id', $paidShopIds)->whereDate('date', '>=', $weekAgo)->whereNull('voided_at')->sum('total'),
+                'salesMonth' => (float) Sale::withoutGlobalScopes()->whereIn('shop_id', $paidShopIds)->whereDate('date', '>=', $monthAgo)->whereNull('voided_at')->sum('total'),
                 'totalShops' => $totalShops,
                 'activeShopsToday' => $activeShopsToday,
                 'activeShopsWeek' => $activeShopsWeek,

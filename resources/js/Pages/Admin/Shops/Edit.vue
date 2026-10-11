@@ -25,7 +25,7 @@ const form = useForm({
     area: props.shop.area, owner_name: props.shop.owner_name,
     support_contact_name: props.shop.support_contact_name, support_contact_phone: props.shop.support_contact_phone,
     business_type_id: props.shop.business_type_id, sales_mode: props.shop.sales_mode,
-    plan: props.shop.plan, monthly_fee: props.shop.monthly_fee, staff_limit: props.shop.staff_limit, status: props.shop.status, lang: props.shop.lang,
+    plan: props.shop.plan, account_type: props.shop.account_type, monthly_fee: props.shop.monthly_fee, staff_limit: props.shop.staff_limit, status: props.shop.status, lang: props.shop.lang,
     subscription_start: props.shop.subscription_start, subscription_expiry: props.shop.subscription_expiry,
     features: [...props.shopFeatureKeys],
 });
@@ -146,6 +146,20 @@ const recommendedFeatureKeys = () => {
                         <option value="bn">বাংলা</option><option value="en">English</option>
                     </select>
                 </div>
+            </div>
+
+            <div>
+                <label class="text-sm font-medium text-gray-600">
+                    Account type
+                    <span class="text-xs font-normal text-gray-400">— only "Paid" counts toward Dashboard & Analytics revenue/shop-count figures</span>
+                </label>
+                <select v-model="form.account_type" class="mt-1 w-full rounded-lg border-gray-300">
+                    <option value="paid">Paid — real paying customer</option>
+                    <option value="trial">Trial — prospective signup</option>
+                    <option value="demo">Demo — showcase only, excluded from all stats</option>
+                    <option value="internal">Internal — Khaled's own ops use</option>
+                </select>
+                <div v-if="form.errors.account_type" class="text-rose-600 text-xs mt-1">{{ form.errors.account_type }}</div>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">

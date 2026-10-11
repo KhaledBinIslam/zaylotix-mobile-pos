@@ -31,6 +31,7 @@ class ShopController extends Controller
                 'phone' => $shop->phone,
                 'business_type' => $shop->businessType?->label_bn,
                 'plan' => $shop->plan,
+                'account_type' => $shop->account_type,
                 'monthly_fee' => (float) $shop->monthly_fee,
                 'status' => $shop->status,
                 'sales_mode' => $shop->sales_mode,
@@ -71,6 +72,7 @@ class ShopController extends Controller
                 'sales_mode' => $data['sales_mode'],
                 'lang' => $data['lang'],
                 'plan' => $data['plan'],
+                'account_type' => $data['account_type'] ?? 'paid',
                 'monthly_fee' => $data['monthly_fee'] ?? null,
                 'staff_limit' => $data['staff_limit'] ?? null,
                 'status' => 'active',
@@ -112,6 +114,7 @@ class ShopController extends Controller
         $data = $request->validated();
         $featureKeys = $data['features'] ?? [];
         unset($data['features']);
+        $data['account_type'] ??= $shop->account_type;
 
         // same "Active should actually mean active" fix as toggleStatus()
         // — picking Active in this form's dropdown without also moving the
@@ -186,6 +189,7 @@ class ShopController extends Controller
                 'owner_name' => $shop->owner_name,
                 'sales_mode' => $shop->sales_mode,
                 'lang' => $shop->lang,
+                'account_type' => $shop->account_type, // a branch shares its main shop's classification
                 'status' => 'active',
             ]);
 

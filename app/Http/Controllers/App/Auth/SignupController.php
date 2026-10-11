@@ -54,6 +54,7 @@ class SignupController extends Controller
                 'sales_mode' => 'both',
                 'lang' => 'bn',
                 'plan' => 'trial',
+                'account_type' => 'trial',
                 'status' => 'active',
                 'subscription_start' => now()->toDateString(),
                 // same 14-day trial the admin flow and demo shops use —

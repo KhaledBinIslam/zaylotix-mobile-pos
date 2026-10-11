@@ -30,6 +30,7 @@ class UpdateShopRequest extends FormRequest
             'business_type_id' => ['required', 'exists:business_types,id'],
             'sales_mode' => ['required', 'in:scan,manual,both'],
             'plan' => ['required', 'in:trial,monthly,yearly'],
+            'account_type' => ['nullable', 'in:demo,trial,paid,internal'],
             'monthly_fee' => ['nullable', 'numeric', 'min:0'],
             // null = fall back to StaffController::DEFAULT_STAFF_CAP (Business default) —
             // set explicitly to raise/lower a specific shop's cashier cap regardless of package

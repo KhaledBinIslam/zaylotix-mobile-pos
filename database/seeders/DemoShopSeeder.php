@@ -112,6 +112,7 @@ class DemoShopSeeder extends Seeder
             'sales_mode' => 'both',
             'lang' => 'bn',
             'plan' => 'trial',
+            'account_type' => 'demo',
             'status' => 'active',
             'staff_limit' => 10, // demo shops showcase the full app, not the Business-tier default cap
             'subscription_start' => now()->toDateString(),
@@ -194,6 +195,7 @@ class DemoShopSeeder extends Seeder
             'sales_mode' => 'both',
             'lang' => 'bn',
             'plan' => 'yearly',
+            'account_type' => 'demo',
             'status' => 'active',
             'staff_limit' => 10, // demo shops showcase the full app, not the Business-tier default cap
             'subscription_start' => now()->subMonths(2)->toDateString(),
@@ -380,6 +382,7 @@ class DemoShopSeeder extends Seeder
             'sales_mode' => 'both',
             'lang' => 'bn',
             'plan' => 'trial',
+            'account_type' => 'demo',
             'status' => 'active',
             'staff_limit' => 10, // demo shops showcase the full app, not the Business-tier default cap
             'subscription_start' => now()->toDateString(),

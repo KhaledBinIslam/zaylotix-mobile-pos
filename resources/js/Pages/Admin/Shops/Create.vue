@@ -14,7 +14,7 @@ const addDays = (days) => new Date(Date.now() + days * 86400000).toISOString().s
 
 const form = useForm({
     name: '', name_en: '', phone: '', area: '', owner_name: '',
-    business_type_id: '', sales_mode: 'both', plan: 'trial', lang: 'bn',
+    business_type_id: '', sales_mode: 'both', plan: 'trial', account_type: 'paid', lang: 'bn',
     subscription_start: new Date().toISOString().slice(0, 10),
     subscription_expiry: addDays(PLAN_DAYS.trial),
     owner_password: '1234',
@@ -161,6 +161,20 @@ const featuresByCategory = (list) => {
                     <input v-model="form.subscription_expiry" type="date" class="mt-1 w-full rounded-lg border-gray-300">
                     <div v-if="form.errors.subscription_expiry" class="text-rose-600 text-xs mt-1">{{ form.errors.subscription_expiry }}</div>
                 </div>
+            </div>
+
+            <div>
+                <label class="text-sm font-medium text-gray-600">
+                    Account type
+                    <span class="text-xs font-normal text-gray-400">— only "Paid" counts toward Dashboard & Analytics revenue/shop-count figures</span>
+                </label>
+                <select v-model="form.account_type" class="mt-1 w-full rounded-lg border-gray-300">
+                    <option value="paid">Paid — real paying customer</option>
+                    <option value="trial">Trial — prospective signup</option>
+                    <option value="demo">Demo — showcase only, excluded from all stats</option>
+                    <option value="internal">Internal — Khaled's own ops use</option>
+                </select>
+                <div v-if="form.errors.account_type" class="text-rose-600 text-xs mt-1">{{ form.errors.account_type }}</div>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -14,7 +14,7 @@ class Shop extends Model
     // happens via ShopPolicy (owner can only see their own; admin sees all).
     protected $fillable = [
         'parent_shop_id', 'is_warehouse', 'business_type_id', 'name', 'name_en', 'phone', 'kitchen_whatsapp', 'payment_timing', 'kitchen_print_order', 'area', 'owner_name', 'support_contact_name', 'support_contact_phone', 'logo_path', 'receipt_footer', 'bin_no',
-        'sales_mode', 'hardware_scanner_enabled', 'lang', 'plan', 'monthly_fee', 'staff_limit', 'status',
+        'sales_mode', 'hardware_scanner_enabled', 'lang', 'plan', 'account_type', 'monthly_fee', 'staff_limit', 'status',
         'subscription_start', 'subscription_expiry',
         'cash_balance', 'bank_balance', 'capital',
         'vat_mode', 'vat_rate', 'turnover_rate', 'invoice_counter', 'service_charge_rate',
@@ -133,6 +133,17 @@ class Shop extends Model
         }
 
         return $data;
+    }
+
+    /**
+     * Demo/trial/internal shops exist on the platform (showcasing it,
+     * prospective signups, Khaled's own ops shops) but aren't real paying
+     * customers — Dashboard/Analytics revenue and shop-count figures use
+     * this scope so they only ever reflect the paid book of business.
+     */
+    public function scopePaidAccounts($query)
+    {
+        return $query->where('account_type', 'paid');
     }
 
     public function isActive(): bool

@@ -1,11 +1,20 @@
 <script setup>
 import { Head, Link, router } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 
 const props = defineProps({ shops: Array });
 
-const totalMrr = computed(() => props.shops.filter((s) => s.is_active).reduce((sum, s) => sum + Number(s.monthly_fee || 0), 0));
+const accountTypeLabel = { demo: 'Demo', trial: 'Trial', paid: 'Paid', internal: 'Internal' };
+const accountTypeBadge = { demo: 'bg-amber-100 text-amber-700', trial: 'bg-sky-100 text-sky-700', paid: 'bg-emerald-100 text-emerald-700', internal: 'bg-gray-200 text-gray-700' };
+
+const accountTypeFilter = ref('all');
+const filteredShops = computed(() => accountTypeFilter.value === 'all' ? props.shops : props.shops.filter((s) => s.account_type === accountTypeFilter.value));
+
+// MRR/active-shop count already only reflect paid accounts server-side
+// (Shop::paidAccounts()), same as Dashboard/Analytics — keep this card
+// consistent even while the table itself is filtered to another type.
+const totalMrr = computed(() => props.shops.filter((s) => s.is_active && s.account_type === 'paid').reduce((sum, s) => sum + Number(s.monthly_fee || 0), 0));
 
 function toggle(shop) {
     const action = shop.status === 'active' ? 'deactivate' : 'activate';
@@ -25,9 +34,18 @@ function impersonate(shop) {
         <div class="flex items-center justify-between mb-6">
             <div>
                 <h1 class="text-2xl font-bold">Shops</h1>
-                <p class="text-sm text-gray-500 mt-1">Active MRR: <span class="font-semibold text-emerald-700">৳{{ totalMrr.toLocaleString('en-IN') }}</span>/month across {{ shops.filter(s => s.is_active).length }} active shops</p>
+                <p class="text-sm text-gray-500 mt-1">Active MRR: <span class="font-semibold text-emerald-700">৳{{ totalMrr.toLocaleString('en-IN') }}</span>/month across {{ shops.filter(s => s.is_active && s.account_type === 'paid').length }} paid active shops</p>
             </div>
-            <Link :href="route('admin.shops.create')" class="px-4 py-2 rounded-lg [background:#7C3AED] text-white font-semibold text-sm">+ New shop</Link>
+            <div class="flex items-center gap-3">
+                <select v-model="accountTypeFilter" class="border rounded-lg px-3 py-2 text-sm">
+                    <option value="all">All account types</option>
+                    <option value="paid">Paid</option>
+                    <option value="trial">Trial</option>
+                    <option value="demo">Demo</option>
+                    <option value="internal">Internal</option>
+                </select>
+                <Link :href="route('admin.shops.create')" class="px-4 py-2 rounded-lg [background:#7C3AED] text-white font-semibold text-sm">+ New shop</Link>
+            </div>
         </div>
 
         <div class="bg-white border rounded-xl overflow-x-auto">
@@ -36,6 +54,7 @@ function impersonate(shop) {
                     <tr>
                         <th class="text-left px-4 py-3">Shop</th>
                         <th class="text-left px-4 py-3">Type</th>
+                        <th class="text-left px-4 py-3">Account</th>
                         <th class="text-left px-4 py-3">Plan</th>
                         <th class="text-left px-4 py-3">Fee (৳/mo)</th>
                         <th class="text-left px-4 py-3">Sales mode</th>
@@ -45,12 +64,15 @@ function impersonate(shop) {
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-for="s in shops" :key="s.id" class="border-t hover:bg-gray-50">
+                    <tr v-for="s in filteredShops" :key="s.id" class="border-t hover:bg-gray-50">
                         <td class="px-4 py-3">
                             <Link :href="route('admin.shops.show', s.id)" class="font-medium text-gray-900 hover:text-violet-700 hover:underline" title="Export/delete data for this shop">{{ s.name }}</Link>
                             <div class="text-xs text-gray-500">{{ s.phone }}</div>
                         </td>
                         <td class="px-4 py-3">{{ s.business_type }}</td>
+                        <td class="px-4 py-3">
+                            <span class="px-2 py-1 rounded-full text-xs font-semibold" :class="accountTypeBadge[s.account_type]">{{ accountTypeLabel[s.account_type] }}</span>
+                        </td>
                         <td class="px-4 py-3 capitalize">{{ s.plan }}</td>
                         <td class="px-4 py-3">{{ s.monthly_fee ? '৳' + s.monthly_fee.toLocaleString('en-IN') : '—' }}</td>
                         <td class="px-4 py-3 capitalize">{{ s.sales_mode }}</td>
