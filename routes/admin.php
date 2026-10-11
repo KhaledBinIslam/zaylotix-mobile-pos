@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminUserController;
+use App\Http\Controllers\Admin\AmbassadorController;
 use App\Http\Controllers\Admin\AnalyticsController;
 use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\BackupController;
@@ -112,5 +113,15 @@ Route::middleware('admin')->group(function () {
         Route::post('admins', [AdminUserController::class, 'store'])->name('admins.store');
         Route::put('admins/{admin}', [AdminUserController::class, 'update'])->name('admins.update');
         Route::delete('admins/{admin}', [AdminUserController::class, 'destroy'])->name('admins.destroy');
+
+        // sales-agent/commission tracking -- Khaled's own explicit ask that
+        // this stays invisible to a 'support' admin, unlike most of this file
+        Route::get('ambassadors', [AmbassadorController::class, 'index'])->name('ambassadors.index');
+        Route::post('ambassadors', [AmbassadorController::class, 'store'])->name('ambassadors.store');
+        Route::get('ambassadors/{ambassador}', [AmbassadorController::class, 'show'])->name('ambassadors.show');
+        Route::put('ambassadors/{ambassador}', [AmbassadorController::class, 'update'])->name('ambassadors.update');
+        Route::get('ambassadors/{ambassador}/export', [AmbassadorController::class, 'export'])->name('ambassadors.export');
+        Route::post('ambassadors/{ambassador}/mark-paid', [AmbassadorController::class, 'markPaid'])->name('ambassadors.markPaid');
+        Route::post('shops/{shop}/ambassador', [AmbassadorController::class, 'assignToShop'])->name('shops.ambassador');
     });
 });

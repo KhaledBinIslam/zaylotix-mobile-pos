@@ -1,0 +1,198 @@
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Exports\ArraySheetExport;
+use App\Http\Controllers\Controller;
+use App\Models\Ambassador;
+use App\Models\AmbassadorCommission;
+use App\Models\Shop;
+use App\Support\AdminActivity;
+use App\Support\AmbassadorCommissionService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
+use Inertia\Inertia;
+use Maatwebsite\Excel\Facades\Excel;
+
+/**
+ * Super-admin-only (see routes/admin.php) — sales-agent/ambassador tracking.
+ * Every commission row is written exclusively through
+ * AmbassadorCommissionService, never directly here.
+ */
+class AmbassadorController extends Controller
+{
+    public function index()
+    {
+        $ambassadors = Ambassador::withCount(['broughtShops', 'currentShops'])
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Ambassador $a) => [
+                'id' => $a->id,
+                'name' => $a->name,
+                'phone' => $a->phone,
+                'email' => $a->email,
+                'one_time_bonus' => (float) $a->one_time_bonus,
+                'recurring_percent' => (float) $a->recurring_percent,
+                'status' => $a->status,
+                'brought_shops_count' => $a->brought_shops_count,
+                'current_shops_count' => $a->current_shops_count,
+                'unpaid_total' => (float) $a->commissions()->where('status', 'unpaid')->sum('amount'),
+                'brought_this_month' => $a->broughtShops()->whereDate('created_at', '>=', now()->startOfMonth())->count(),
+            ]);
+
+        return Inertia::render('Admin/Ambassadors/Index', ['ambassadors' => $ambassadors]);
+    }
+
+    public function store(Request $request)
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:20'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'note' => ['nullable', 'string', 'max:1000'],
+            'one_time_bonus' => ['required', 'numeric', 'min:0'],
+            'recurring_percent' => ['required', 'numeric', 'min:0', 'max:100'],
+        ]);
+
+        $ambassador = Ambassador::create($data);
+        AdminActivity::log('ambassador.create', "Added ambassador '{$ambassador->name}'.", $ambassador);
+
+        return back()->with('success', "Ambassador '{$ambassador->name}' added.");
+    }
+
+    public function update(Request $request, Ambassador $ambassador)
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:20'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'note' => ['nullable', 'string', 'max:1000'],
+            'one_time_bonus' => ['required', 'numeric', 'min:0'],
+            'recurring_percent' => ['required', 'numeric', 'min:0', 'max:100'],
+            'status' => ['required', 'in:active,inactive'],
+        ]);
+
+        $ambassador->update($data);
+        AdminActivity::log('ambassador.update', "Updated ambassador '{$ambassador->name}'.", $ambassador);
+
+        return back()->with('success', 'Ambassador updated.');
+    }
+
+    public function show(Ambassador $ambassador)
+    {
+        $broughtShops = $ambassador->broughtShops()->withoutGlobalScopes()->get(['id', 'name', 'phone', 'created_at']);
+        $currentShops = $ambassador->currentShops()->withoutGlobalScopes()->get(['shops.id', 'shops.name', 'shops.phone']);
+
+        $commissions = $ambassador->commissions()
+            ->with(['shop' => fn ($q) => $q->withoutGlobalScopes()])
+            ->orderByDesc('id')
+            ->get();
+
+        // grouped by month (one_time rows carry no month -- bucketed under
+        // the month they were actually created instead, so every taka owed
+        // still shows up somewhere in the monthly report)
+        $monthly = $commissions->groupBy(fn (AmbassadorCommission $c) => $c->month ?? $c->created_at->format('Y-m'))
+            ->map(function ($rows, $month) {
+                return [
+                    'month' => $month,
+                    'one_time_count' => $rows->where('type', 'one_time')->count(),
+                    'one_time_amount' => (float) $rows->where('type', 'one_time')->sum('amount'),
+                    'recurring_amount' => (float) $rows->where('type', 'recurring')->sum('amount'),
+                    'total' => (float) $rows->sum('amount'),
+                    'unpaid' => (float) $rows->where('status', 'unpaid')->sum('amount'),
+                    'paid' => (float) $rows->where('status', 'paid')->sum('amount'),
+                ];
+            })
+            ->sortByDesc('month')
+            ->values();
+
+        return Inertia::render('Admin/Ambassadors/Show', [
+            'ambassador' => $ambassador,
+            'broughtShops' => $broughtShops,
+            'currentShops' => $currentShops,
+            'commissions' => $commissions,
+            'monthly' => $monthly,
+            'allShops' => Shop::withoutGlobalScopes()->whereNull('parent_shop_id')->orderBy('name')->get(['id', 'name', 'phone']),
+        ]);
+    }
+
+    /** Set from a shop's own Edit page (Admin/Shops/Edit.vue) — handles both "who brought this shop" (one-time, set-once) and "who's currently responsible" (recurring, reassignable) in one request. */
+    public function assignToShop(Request $request, Shop $shop)
+    {
+        $data = $request->validate([
+            'brought_by_ambassador_id' => ['nullable', 'exists:ambassadors,id'],
+            'current_ambassador_id' => ['nullable', 'exists:ambassadors,id'],
+        ]);
+
+        $previousBroughtBy = $shop->brought_by_ambassador_id;
+        if (array_key_exists('brought_by_ambassador_id', $data) && $data['brought_by_ambassador_id'] != $previousBroughtBy) {
+            $shop->update(['brought_by_ambassador_id' => $data['brought_by_ambassador_id']]);
+            AmbassadorCommissionService::handleBroughtByChange($shop, $previousBroughtBy, $data['brought_by_ambassador_id']);
+        }
+
+        // only touch the "currently assigned" assignment when this request
+        // actually included that field -- a request that only sends
+        // brought_by_ambassador_id (e.g. from a future "mark as brought by"
+        // shortcut) must never silently unassign the existing one
+        if (array_key_exists('current_ambassador_id', $data)) {
+            $currentAmbassador = $data['current_ambassador_id'] ? Ambassador::find($data['current_ambassador_id']) : null;
+            AmbassadorCommissionService::assign($shop, $currentAmbassador);
+        }
+
+        AdminActivity::log('ambassador.assignShop', "Updated ambassador assignment for shop '{$shop->name}'.", $shop);
+
+        return back()->with('success', 'Ambassador assignment updated.');
+    }
+
+    public function markPaid(Request $request, Ambassador $ambassador)
+    {
+        $data = $request->validate([
+            'month' => ['nullable', 'string'],
+            'commission_ids' => ['nullable', 'array'],
+            'commission_ids.*' => ['integer', 'exists:ambassador_commissions,id'],
+        ]);
+
+        $query = $ambassador->commissions()->where('status', 'unpaid');
+        if (! empty($data['commission_ids'])) {
+            $query->whereIn('id', $data['commission_ids']);
+        } elseif (! empty($data['month'])) {
+            // avoid DATE_FORMAT (MySQL-only, breaks on SQLite in tests) --
+            // a plain created_at range works identically on both
+            $start = \Illuminate\Support\Carbon::createFromFormat('Y-m', $data['month'])->startOfMonth();
+            $end = $start->copy()->endOfMonth();
+            $query->where(fn ($q) => $q->where('month', $data['month'])->orWhere(fn ($q2) => $q2->whereNull('month')->whereBetween('created_at', [$start, $end])));
+        } else {
+            return back()->with('error', 'কোন মাস বা কমিশন নির্বাচন করা হয়নি।');
+        }
+
+        $count = $query->update(['status' => 'paid', 'paid_at' => now(), 'paid_by_admin_id' => Auth::guard('admin')->id()]);
+
+        AdminActivity::log('ambassador.markPaid', "Marked {$count} commission row(s) paid for '{$ambassador->name}'.", $ambassador);
+
+        return back()->with('success', "{$count}টা কমিশন রেকর্ড paid হিসেবে মার্ক করা হলো।");
+    }
+
+    public function export(Ambassador $ambassador)
+    {
+        $rows = $ambassador->commissions()
+            ->with(['shop' => fn ($q) => $q->withoutGlobalScopes()])
+            ->orderByDesc('id')
+            ->get()
+            ->map(fn (AmbassadorCommission $c) => [
+                $c->shop?->name ?? '—',
+                $c->type,
+                $c->month ?? $c->created_at->format('Y-m'),
+                (float) $c->amount,
+                $c->status,
+                $c->paid_at?->toDateString() ?? '—',
+            ])->all();
+
+        $filename = Str::slug($ambassador->name).'-commissions-'.now()->format('Y-m-d').'.xlsx';
+
+        return Excel::download(
+            new ArraySheetExport($ambassador->name, ['Shop', 'Type', 'Month', 'Amount', 'Status', 'Paid on'], $rows),
+            $filename
+        );
+    }
+}

@@ -12,6 +12,7 @@ use App\Support\AdminActivity;
 use App\Support\ShopProvisioner;
 use App\Support\Tenancy;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
@@ -98,6 +99,11 @@ class ShopController extends Controller
             'default_features' => \App\Support\FeatureRecommendations::forBusinessType($t->slug),
         ]);
 
+        // Ambassador tracking is super-admin-only (Khaled's explicit ask) --
+        // a 'support' admin editing a shop never even receives this data,
+        // not just a hidden section, in case the page is ever viewed via devtools.
+        $isSuperAdmin = Auth::guard('admin')->user()?->isSuperAdmin();
+
         return Inertia::render('Admin/Shops/Edit', [
             'shop' => $shop,
             'businessTypes' => $businessTypes,
@@ -106,6 +112,8 @@ class ShopController extends Controller
             // only a main shop (parent_shop_id null) can have branches of
             // its own -- a branch's edit page just never shows this section
             'branches' => $shop->parent_shop_id ? null : $shop->branches()->get(['id', 'name', 'area', 'status', 'is_warehouse', 'created_at']),
+            'ambassadors' => $isSuperAdmin ? \App\Models\Ambassador::where('status', 'active')->orderBy('name')->get(['id', 'name']) : null,
+            'currentAmbassadorId' => $isSuperAdmin ? $shop->currentAmbassador()?->id : null,
         ]);
     }
 

@@ -13,7 +13,7 @@ class Shop extends Model
     // Shop itself is NOT tenant-scoped (it *is* the tenant) — access control
     // happens via ShopPolicy (owner can only see their own; admin sees all).
     protected $fillable = [
-        'parent_shop_id', 'is_warehouse', 'business_type_id', 'name', 'name_en', 'phone', 'kitchen_whatsapp', 'payment_timing', 'kitchen_print_order', 'area', 'owner_name', 'support_contact_name', 'support_contact_phone', 'logo_path', 'receipt_footer', 'bin_no',
+        'parent_shop_id', 'brought_by_ambassador_id', 'is_warehouse', 'business_type_id', 'name', 'name_en', 'phone', 'kitchen_whatsapp', 'payment_timing', 'kitchen_print_order', 'area', 'owner_name', 'support_contact_name', 'support_contact_phone', 'logo_path', 'receipt_footer', 'bin_no',
         'sales_mode', 'hardware_scanner_enabled', 'lang', 'plan', 'account_type', 'monthly_fee', 'staff_limit', 'status',
         'subscription_start', 'subscription_expiry',
         'cash_balance', 'bank_balance', 'capital',
@@ -87,6 +87,25 @@ class Shop extends Model
     public function subscriptionPayments()
     {
         return $this->hasMany(SubscriptionPayment::class);
+    }
+
+    /** Credited with bringing this shop onto the platform (one-time bonus) — may differ from who's currently assigned (recurring %), see AmbassadorShopAssignment. */
+    public function broughtByAmbassador()
+    {
+        return $this->belongsTo(Ambassador::class, 'brought_by_ambassador_id');
+    }
+
+    public function ambassadorAssignments()
+    {
+        return $this->hasMany(AmbassadorShopAssignment::class);
+    }
+
+    /** The ambassador currently responsible for this shop's recurring commission, if any. */
+    public function currentAmbassador(): ?Ambassador
+    {
+        $assignment = $this->ambassadorAssignments()->whereNull('unassigned_at')->with('ambassador')->first();
+
+        return $assignment?->ambassador;
     }
 
     public function features(): BelongsToMany

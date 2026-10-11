@@ -39,6 +39,7 @@ const nav = computed(() => [
     { key: 'activityLog', label: 'Activity Log', icon: '📋', route: 'admin.activityLog.index', show: true },
     { key: 'systemHealth', label: 'System Health', icon: '🩺', route: 'admin.systemHealth.index', show: true },
     { key: 'admins', label: 'Admin Accounts', icon: '🔑', route: 'admin.admins.index', show: isSuperAdmin.value },
+    { key: 'ambassadors', label: 'Ambassadors', icon: '🤝', route: 'admin.ambassadors.index', show: isSuperAdmin.value },
     { key: 'siteSettings', label: 'Site Settings', icon: '🖼️', route: 'admin.siteSettings.edit', show: isSuperAdmin.value },
     { key: 'faqs', label: 'FAQs', icon: '❓', route: 'admin.faqs.index', show: isSuperAdmin.value },
     { key: 'screenGuides', label: 'Screen Guides', icon: '📖', route: 'admin.screenGuides.index', show: isSuperAdmin.value },

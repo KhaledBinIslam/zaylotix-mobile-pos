@@ -4,7 +4,21 @@ import { computed } from 'vue';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import { matchPackage, tierPrice } from '@/composables/usePackageMatch';
 
-const props = defineProps({ shop: Object, businessTypes: Array, features: Array, shopFeatureKeys: Array, branches: { type: Array, default: null } });
+const props = defineProps({
+    shop: Object, businessTypes: Array, features: Array, shopFeatureKeys: Array, branches: { type: Array, default: null },
+    ambassadors: { type: Array, default: null }, currentAmbassadorId: { type: Number, default: null },
+});
+
+// separate from the main shop form above -- posts to its own endpoint
+// (AmbassadorController::assignToShop) so saving ambassador assignment
+// never risks touching plan/features/etc, and vice versa
+const ambassadorForm = useForm({
+    brought_by_ambassador_id: props.shop.brought_by_ambassador_id,
+    current_ambassador_id: props.currentAmbassadorId,
+});
+function saveAmbassador() {
+    ambassadorForm.post(route('admin.shops.ambassador', props.shop.id));
+}
 
 // only present when `shop` itself is a main shop (parent_shop_id null) --
 // see ShopController::edit(). Billing fields mirror the main form above
@@ -230,6 +244,35 @@ const recommendedFeatureKeys = () => {
 
             <button class="w-full py-3 rounded-lg [background:#7C3AED] text-white font-bold" :disabled="form.processing">
                 {{ form.processing ? 'Saving...' : 'Save changes' }}
+            </button>
+        </form>
+
+        <form v-if="ambassadors" @submit.prevent="saveAmbassador" class="bg-white border rounded-xl p-6 max-w-2xl mt-6 space-y-3">
+            <h2 class="text-lg font-bold">🤝 Ambassador</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="text-sm font-medium text-gray-600">
+                        Brought by
+                        <span class="text-xs font-normal text-gray-400">— one-time bonus, set once (correcting later won't create a second bonus)</span>
+                    </label>
+                    <select v-model="ambassadorForm.brought_by_ambassador_id" class="mt-1 w-full rounded-lg border-gray-300">
+                        <option :value="null">— none —</option>
+                        <option v-for="a in ambassadors" :key="a.id" :value="a.id">{{ a.name }}</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-gray-600">
+                        Currently assigned
+                        <span class="text-xs font-normal text-gray-400">— drives recurring %, reassignable anytime</span>
+                    </label>
+                    <select v-model="ambassadorForm.current_ambassador_id" class="mt-1 w-full rounded-lg border-gray-300">
+                        <option :value="null">— none —</option>
+                        <option v-for="a in ambassadors" :key="a.id" :value="a.id">{{ a.name }}</option>
+                    </select>
+                </div>
+            </div>
+            <button class="px-4 py-2 rounded-lg [background:#7C3AED] text-white text-sm font-bold" :disabled="ambassadorForm.processing">
+                {{ ambassadorForm.processing ? 'Saving...' : 'Save ambassador' }}
             </button>
         </form>
 

@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Models\Admin;
+use App\Models\SubscriptionPayment;
+use App\Observers\SubscriptionPaymentObserver;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -22,6 +24,11 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Vite::prefetch(concurrency: 3);
+
+        // Generates an ambassador's recurring commission row from whichever
+        // path recorded the payment (admin manual entry, bKash/SSLCommerz
+        // auto-renewal webhook) -- see AmbassadorCommissionService.
+        SubscriptionPayment::observe(SubscriptionPaymentObserver::class);
 
         // Blanket ceiling on the mobile/PWA API (checkout, product lookups,
         // barcode scans, background polling) — generous enough for a busy
