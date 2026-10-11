@@ -126,8 +126,26 @@ class ShopController extends Controller
 
         $shop->update($data);
 
+        $beforeIds = $shop->features()->pluck('features.id');
         $ids = Feature::whereIn('key', $featureKeys)->pluck('id');
         $shop->features()->sync($ids);
+
+        // A feature newly granted to a MAIN shop (never a branch editing its
+        // own features — those stay independently customizable after
+        // createBranch()'s one-time copy, same as the rest of this class's
+        // branch-divergence design) propagates to every branch automatically
+        // — Khaled's explicit ask, so a branch never silently misses a
+        // feature just because nobody remembered to tick it there too.
+        // Deliberately one-directional: a feature REMOVED from the main shop
+        // is never auto-removed from a branch, in case that branch still
+        // genuinely needs it for its own reasons.
+        $newlyGranted = $ids->diff($beforeIds);
+        if (! $shop->parent_shop_id && $newlyGranted->isNotEmpty()) {
+            $branches = Shop::withoutGlobalScopes()->where('parent_shop_id', $shop->id)->get();
+            foreach ($branches as $branch) {
+                $branch->features()->syncWithoutDetaching($newlyGranted);
+            }
+        }
 
         AdminActivity::log('shop.update', "Updated shop '{$shop->name}'.", $shop);
 
