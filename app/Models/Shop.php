@@ -13,7 +13,7 @@ class Shop extends Model
     // Shop itself is NOT tenant-scoped (it *is* the tenant) — access control
     // happens via ShopPolicy (owner can only see their own; admin sees all).
     protected $fillable = [
-        'parent_shop_id', 'brought_by_ambassador_id', 'is_warehouse', 'business_type_id', 'name', 'name_en', 'phone', 'kitchen_whatsapp', 'payment_timing', 'kitchen_print_order', 'area', 'owner_name', 'support_contact_name', 'support_contact_phone', 'logo_path', 'receipt_footer', 'bin_no',
+        'parent_shop_id', 'brought_by_ambassador_id', 'is_warehouse', 'business_type_id', 'name', 'name_en', 'phone', 'email', 'website', 'kitchen_whatsapp', 'payment_timing', 'kitchen_print_order', 'area', 'owner_name', 'support_contact_name', 'support_contact_phone', 'logo_path', 'receipt_footer', 'bin_no', 'trade_license_no', 'tin_no', 'memo_settings', 'label_settings',
         'sales_mode', 'hardware_scanner_enabled', 'lang', 'plan', 'account_type', 'monthly_fee', 'staff_limit', 'status',
         'subscription_start', 'subscription_expiry',
         'cash_balance', 'bank_balance', 'capital',
@@ -23,11 +23,53 @@ class Shop extends Model
 
     protected $appends = ['logo_url', 'business_type_slug'];
 
+    /** Every key a shop's memo_settings/label_settings JSON blob can hold, and what a brand-new (or still-null) shop sees today -- see memoSettings()/labelSettings(). */
+    public const MEMO_SETTINGS_DEFAULTS = [
+        'show_email' => false,
+        'show_website' => false,
+        'show_bin' => true, // preserves the pre-existing "show BIN automatically once set" behavior
+        'show_trade_license' => false,
+        'show_tin' => false,
+        'show_cashier' => false,
+        'show_customer_phone' => false,
+        'show_payment_method' => false,
+        'show_tendered_change' => false,
+        'show_vat_inclusive_note' => false,
+        'show_exchange_policy' => false,
+        'exchange_policy_text' => null,
+        'paper_width' => '58mm', // '58mm' | '80mm' | 'a4' -- preserves the pre-existing fixed 58mm print size
+    ];
+
+    public const LABEL_SETTINGS_DEFAULTS = [
+        'size' => '38x25', // '38x25' | '50x25' | '40x30' | 'custom'
+        'custom_width_mm' => null,
+        'custom_height_mm' => null,
+        'per_row' => 2, // preserves the pre-existing 2-per-row grid
+        'show_shop_name' => true,
+        'show_product_name' => true,
+        'show_variant' => true,
+        'price_mode' => 'both', // 'both' | 'single' | 'none' -- preserves the pre-existing default
+        'show_barcode_number' => true,
+    ];
+
+    /** Merges saved overrides onto MEMO_SETTINGS_DEFAULTS -- a null/partial memo_settings (every shop before this feature shipped) resolves to exactly today's printed memo, nothing more. */
+    public function memoSettings(): array
+    {
+        return array_merge(self::MEMO_SETTINGS_DEFAULTS, $this->memo_settings ?? []);
+    }
+
+    public function labelSettings(): array
+    {
+        return array_merge(self::LABEL_SETTINGS_DEFAULTS, $this->label_settings ?? []);
+    }
+
     protected function casts(): array
     {
         return [
             'hardware_scanner_enabled' => 'boolean',
             'is_warehouse' => 'boolean',
+            'memo_settings' => 'array',
+            'label_settings' => 'array',
             'subscription_start' => 'date:Y-m-d',
             'subscription_expiry' => 'date:Y-m-d',
             'cash_balance' => 'decimal:2',
@@ -150,6 +192,14 @@ class Shop extends Model
         if (! $user || ! $user->hasPermission('accounts')) {
             unset($data['cash_balance'], $data['bank_balance'], $data['capital'], $data['monthly_fee']);
         }
+
+        // resolved (defaults-merged) versions, not the raw possibly-null/
+        // partial JSON column -- every consumer of the shared `shop` prop
+        // (memo print, label print, the settings page itself) reads these
+        // two keys and never needs to know about MEMO_SETTINGS_DEFAULTS/
+        // LABEL_SETTINGS_DEFAULTS itself.
+        $data['memo_settings'] = $this->memoSettings();
+        $data['label_settings'] = $this->labelSettings();
 
         return $data;
     }

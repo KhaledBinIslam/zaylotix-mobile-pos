@@ -369,6 +369,10 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::patch('settings/receipt-footer', [SettingController::class, 'updateReceiptFooter'])->name('settings.receiptFooter');
         Route::patch('settings/bin', [SettingController::class, 'updateBinNo'])->name('settings.binNo');
         Route::patch('settings/hardware-scanner', [SettingController::class, 'updateHardwareScanner'])->name('settings.hardwareScanner');
+        Route::patch('settings/business-info', [SettingController::class, 'updateBusinessInfo'])->name('settings.businessInfo');
+        Route::patch('settings/memo', [SettingController::class, 'updateMemoSettings'])->name('settings.memo');
+        Route::patch('settings/label', [SettingController::class, 'updateLabelSettings'])->name('settings.label');
+        Route::get('receipt-label-settings', [SettingController::class, 'receiptLabelEdit'])->name('settings.receiptLabel');
 
         Route::middleware('feature:vat')->group(function () {
             Route::patch('settings/vat', [SettingController::class, 'updateVat'])->name('settings.vat');

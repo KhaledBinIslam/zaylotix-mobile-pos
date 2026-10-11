@@ -28,6 +28,7 @@ export const translations = {
     'nav.expenses': { bn: 'খরচ', en: 'Expenses' },
     'nav.export': { bn: 'ডাটা এক্সপোর্ট', en: 'Data Export' },
     'nav.barcode': { bn: 'বারকোড লেবেল', en: 'Barcode Labels' },
+    'nav.receiptLabelSettings': { bn: 'মেমো ও লেবেল সেটিংস', en: 'Receipt & Label Settings' },
     'nav.purchase': { bn: 'ক্রয়/স্টক কেনা', en: 'Purchases' },
     'nav.damage': { bn: 'ক্ষতি/নষ্ট পণ্য', en: 'Damages' },
     'nav.return': { bn: 'বিক্রয় ফেরত', en: 'Sales Returns' },
@@ -554,6 +555,7 @@ export const translations = {
     'more.whatsappLoadFailed': { bn: 'WhatsApp সংযোগের তথ্য লোড করা যায়নি — আবার চেষ্টা করুন।', en: 'Could not load WhatsApp connection info — please try again.' },
     'more.salesHistorySub': { bn: 'মেমো নম্বর খুঁজুন, নিজের বিক্রি দেখুন', en: 'Search by invoice, view your own sales' },
     'more.barcodeSub': { bn: 'দাম সহ বারকোড লেবেল', en: 'Barcode labels with price' },
+    'more.receiptLabelSettingsSub': { bn: 'মেমো আর লেবেলে কী দেখাবে ঠিক করুন', en: 'Choose what the memo and label show' },
     'more.sectionCustomers': { bn: '👥 কাস্টমার', en: '👥 Customers' },
     'more.customerList': { bn: 'কাস্টমার তালিকা', en: 'Customer list' },
     'more.customerListSub': { bn: 'বাছাই করে WhatsApp পাঠান বা এক্সপোর্ট করুন', en: 'Select customers to WhatsApp or export' },
@@ -1310,6 +1312,9 @@ export const translations = {
     'bc.variantCount': { bn: '{n}টা ভ্যারিয়েন্ট', en: '{n} variants' },
     'bc.selectAllVariants': { bn: 'সব ভ্যারিয়েন্ট', en: 'All variants' },
     'bc.generateBarcode': { bn: '+ বারকোড বানান', en: '+ Generate barcode' },
+    'bc.labelSettingsLink': { bn: 'লেবেল সেটিংস বদলান', en: 'Change label settings' },
+    'bc.perRow': { bn: 'সারি', en: 'row' },
+    'bc.preview': { bn: '👁️ প্রিভিউ দেখুন', en: '👁️ Preview' },
 
     // ---- cash/bank ledger ----
     'cl.title': { bn: 'ক্যাশ/ব্যাংক লেনদেন', en: 'Cash/Bank Ledger' },

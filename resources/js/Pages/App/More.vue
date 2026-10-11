@@ -388,6 +388,9 @@ onMounted(() => {
             <Link v-if="hasPerm('barcode_labels') && features.includes('barcode_printing')" :href="route('app.barcodeLabels.index')" class="row">
                 <div class="ava">🏷️</div><div class="mid"><b>{{ t('nav.barcode') }}</b><span>{{ t('more.barcodeSub') }}</span></div><div class="end">›</div>
             </Link>
+            <Link v-if="hasPerm('settings')" :href="route('app.settings.receiptLabel')" class="row">
+                <div class="ava">🧾</div><div class="mid"><b>{{ t('nav.receiptLabelSettings') }}</b><span>{{ t('more.receiptLabelSettingsSub') }}</span></div><div class="end">›</div>
+            </Link>
             <Link v-if="hasPerm('promotions') && features.includes('promotions')" :href="route('app.promotions.index')" class="row">
                 <div class="ava">🎁</div><div class="mid"><b>{{ t('nav.promotions') }}</b><span>{{ t('promotion.subtitle') }}</span></div><div class="end">›</div>
             </Link>

@@ -2,6 +2,7 @@
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { computed, onMounted, ref } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import ReceiptMemo from '@/Components/ReceiptMemo.vue';
 import { useI18n } from '@/composables/useI18n';
 import { useToast } from '@/composables/useToast';
 import { usePermissions } from '@/composables/usePermissions';
@@ -36,12 +37,52 @@ function voidSale() {
     });
 }
 
+// Mirrors ReceiptMemo.vue's printed memo field-for-field (same
+// memo_settings toggles) — previously this built its own much shorter
+// text (shop name, items, total only), so a customer's WhatsApp copy and
+// their printed copy showed different information.
 function sendMemoWA() {
     const s = props.sale;
+    const settings = shop.value?.memo_settings || {};
     const phone = s.customer?.phone || '';
     const num = phone ? '88' + phone.replace(/\D/g, '').replace(/^88/, '') : '';
-    const lines = s.items.map((l) => `${l.product_name}${(l.unit_label || l.variant_label) ? ' (' + (l.unit_label || l.variant_label) + ')' : ''}  ${l.qty}×${l.price} = ${money(l.price * l.qty)}`).join('\n');
-    const text = `*${shop.value?.name || 'Zaylotix POS'}*\n${'─'.repeat(16)}\nমেমো: ${s.invoice_no}\n${'─'.repeat(16)}\n${lines}\n${'─'.repeat(16)}\n*মোট: ${money(s.total)}*\n\nধন্যবাদ 🙏`;
+
+    const headerLines = [`*${shop.value?.name || 'Zaylotix POS'}*`];
+    if (shop.value?.phone) headerLines.push(`📞 ${shop.value.phone}${shop.value?.area ? ' • ' + shop.value.area : ''}`);
+    if (settings.show_email && shop.value?.email) headerLines.push(`✉️ ${shop.value.email}`);
+    if (settings.show_website && shop.value?.website) headerLines.push(`🌐 ${shop.value.website}`);
+    if (settings.show_bin && shop.value?.bin_no && s.vat > 0) headerLines.push(`BIN: ${shop.value.bin_no}`);
+    if (settings.show_trade_license && shop.value?.trade_license_no) headerLines.push(`Trade License: ${shop.value.trade_license_no}`);
+    if (settings.show_tin && shop.value?.tin_no) headerLines.push(`TIN: ${shop.value.tin_no}`);
+    if (settings.show_cashier && s.user?.name) headerLines.push(`বিক্রেতা: ${s.user.name}`);
+
+    const customerLine = `কাস্টমার: ${s.customer?.name || 'নগদ কাস্টমার'}${settings.show_customer_phone && s.customer?.phone ? ' • ' + s.customer.phone : ''}`;
+
+    const lines = s.items.map((l) => `${l.product_name}${(l.unit_label || l.variant_label) ? ' (' + (l.unit_label || l.variant_label) + ')' : ''}  ${l.qty}×${l.price} = ${money(l.price * l.qty - (l.discount || 0))}${l.discount > 0 ? ' (ছাড় −' + money(l.discount) + ')' : ''}`).join('\n');
+
+    const totals = [`Subtotal: ${money(s.subtotal)}`];
+    if (s.discount > 0) totals.push(`ছাড়: − ${money(s.discount)}`);
+    if (s.service_charge > 0) totals.push(`${t('pos.serviceCharge')}: + ${money(s.service_charge)}`);
+    if (s.vat > 0) totals.push(`VAT${settings.show_vat_inclusive_note ? ' (দামের মধ্যে অন্তর্ভুক্ত)' : ''}: ${money(s.vat)}`);
+    totals.push(`*মোট: ${money(s.total)}*`);
+
+    const tendered = (s.payments || []).reduce((sum, p) => sum + Number(p.amount), 0);
+    const change = Math.max(0, tendered - Number(s.total));
+    const due = dueRemainder.value;
+    if (settings.show_payment_method) totals.push(`পেমেন্ট: ${payModeLabel.value[s.payment_mode]}`);
+    if (settings.show_tendered_change && tendered > 0) totals.push(`দিয়েছেন: ${money(tendered)}`);
+    if (settings.show_tendered_change && change > 0) totals.push(`ফেরত: ${money(change)}`);
+    if (due > 0) totals.push(`বাকি বিল: ${money(due)}`);
+
+    const footerLines = [shop.value?.receipt_footer || 'ধন্যবাদ! আবার আসবেন 🙏'];
+    if (settings.show_exchange_policy && settings.exchange_policy_text) footerLines.push(settings.exchange_policy_text);
+
+    const divider = '─'.repeat(16);
+    const text = [
+        ...headerLines, divider, `মেমো: ${s.invoice_no} • ${s.date} ${s.time}`, customerLine, divider,
+        lines, divider, ...totals, '', ...footerLines,
+    ].join('\n');
+
     window.open('https://wa.me/' + num + '?text=' + encodeURIComponent(text), '_blank');
 }
 
@@ -56,6 +97,7 @@ const kotFirst = computed(() => (shop.value?.kitchen_print_order || 'kitchen_fir
 const kotRecapStyle = computed(() => ({ order: kotFirst.value ? 1 : 2, pageBreakAfter: kotFirst.value ? 'always' : 'auto' }));
 const memoStyle = computed(() => (tableOrder.value ? { order: kotFirst.value ? 2 : 1, pageBreakAfter: kotFirst.value ? 'auto' : 'always' } : {}));
 const kitchenWaNumber = computed(() => shop.value?.kitchen_whatsapp || '');
+const paperClass = computed(() => 'paper-' + (shop.value?.memo_settings?.paper_width || '58mm').replace('mm', ''));
 function sendKotWA() {
     const num = '88' + kitchenWaNumber.value.replace(/\D/g, '').replace(/^88/, '');
     const lines = props.sale.items.map((l) => `${l.product_name}  ×${l.qty}`).join('\n');
@@ -72,30 +114,8 @@ function printMemo() {
     window.print();
 }
 
-// CODE128 barcode of this invoice — scanning it (with the same
-// hardware/camera scanner already wired into the POS screen) re-opens this
-// exact page. "INV-" prefixes the id so the POS scan handler can tell this
-// apart from a product barcode before falling back to a product lookup.
+// invoice barcode + rating QR are rendered by ReceiptMemo.vue itself now
 onMounted(async () => {
-    const { default: JsBarcode } = await import('jsbarcode');
-    const el = document.getElementById('sale-barcode-svg');
-    if (el) {
-        try {
-            JsBarcode(el, 'INV-' + props.sale.id, { format: 'CODE128', width: 1.3, height: 30, fontSize: 9, margin: 2 });
-        } catch (e) { /* shouldn't happen — id is always numeric */ }
-    }
-
-    // QR code linking to the public (no-login) rating page for this sale —
-    // a customer scanning this from the paper receipt has no Zaylotix
-    // account, so the target route must not require auth
-    const QRCode = (await import('qrcode')).default;
-    const qrEl = document.getElementById('sale-rating-qr');
-    if (qrEl) {
-        try {
-            await QRCode.toCanvas(qrEl, ratingUrl.value, { width: 90, margin: 1 });
-        } catch (e) { /* non-critical — receipt still works without it */ }
-    }
-
     // ?autoprint=1 — see TableOrderController::bill()'s comment. An earlier
     // version of this actually called window.print() automatically here,
     // via a fixed setTimeout delay, but that produced a BLANK printed page
@@ -116,10 +136,6 @@ onMounted(async () => {
     }
 });
 const justBilled = ref(false);
-// props.sale.rating_url is server-signed (see Sale::ratingUrl()) — never
-// rebuild this from route('rate.show', sale.id) client-side, that would
-// produce an unsigned link the `signed` middleware rejects
-const ratingUrl = computed(() => props.sale.rating_url);
 </script>
 
 <template>
@@ -135,7 +151,7 @@ const ratingUrl = computed(() => props.sale.rating_url);
         </div>
 
         <!-- kitchen ticket + customer memo — only for a sale that came from billing a restaurant table order; printing this page prints both in one go. Which one physically comes off the printer first is owner-configurable (kotFirst, from shops.kitchen_print_order) — done via flex `order` rather than swapping DOM position, since print pagination follows visual/flex order for a single stacked column. -->
-        <div class="print-order-wrap">
+        <div class="print-order-wrap" :class="paperClass">
         <div v-if="tableOrder" id="printable-kot-recap" :style="kotRecapStyle">
             <h3>{{ t('restaurant.kotTitle') }}</h3>
             <div class="rc-sub">
@@ -150,42 +166,11 @@ const ratingUrl = computed(() => props.sale.rating_url);
             <div v-if="tableOrder.kitchen_note" class="rc-note">📝 {{ tableOrder.kitchen_note }}</div>
         </div>
 
-        <div id="printable-memo" class="receipt" :style="memoStyle">
-            <img v-if="shop?.logo_url" :src="shop.logo_url" style="max-width:120px;display:block;margin:0 auto 8px">
-            <h3>{{ shop?.name || 'Zaylotix POS' }}</h3>
-            <div class="rc-sub">
-                📞 {{ shop?.phone }} • {{ shop?.area }}
-                <template v-if="shop?.bin_no && sale.vat > 0"><br>BIN: {{ shop.bin_no }}</template>
-                <br>মেমো — {{ sale.invoice_no }} • {{ sale.date }} {{ sale.time }}
-                <template v-if="tableOrder">
-                    <br>{{ t('restaurant.orderNo', { id: tableOrder.id }) }} • {{ tableOrder.order_source === 'delivery' ? t('restaurant.sourceDelivery') : tableOrder.order_source === 'takeaway' ? t('restaurant.sourceTakeaway') : t('restaurant.sourceDineIn') }}{{ tableOrder.table?.name ? ' — ' + tableOrder.table.name : '' }}
-                    <template v-if="tableOrder.waiter_name"> • {{ tableOrder.waiter_name }}</template>
-                </template>
-            </div>
-            <div style="font-size:11px;color:#666;margin-bottom:6px">কাস্টমার: {{ sale.customer?.name || 'নগদ কাস্টমার' }}</div>
-            <div v-for="l in sale.items" :key="l.id" class="rc-l">
-                <span>{{ l.product_name }}{{ (l.unit_label || l.variant_label) ? ' (' + (l.unit_label || l.variant_label) + ')' : '' }} ×{{ l.qty }}</span><b>{{ money(l.price * l.qty) }}</b>
-            </div>
-            <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:10.5px;color:#555;border-top:1px dashed #999;margin-top:4px;padding-top:4px"><span>Subtotal</span><span>{{ money(sale.subtotal) }}</span></div>
-            <div v-if="sale.discount > 0" class="rc-l"><span>ছাড়{{ sale.coupon_code ? ` (${sale.coupon_code})` : '' }}</span><b>− {{ money(sale.discount) }}</b></div>
-            <div v-if="sale.service_charge > 0" class="rc-l"><span>{{ t('pos.serviceCharge') }}</span><b>+ {{ money(sale.service_charge) }}</b></div>
-            <div v-if="sale.vat > 0" class="rc-l"><span>VAT</span><b>{{ money(sale.vat) }}</b></div>
-            <div class="rc-t"><span>মোট</span><span>{{ money(sale.total) }}</span></div>
-            <div v-if="sale.points_redeemed || sale.points_earned" style="text-align:center;color:#555;margin-top:6px;font-size:10.5px">
-                <span v-if="sale.points_redeemed">{{ t('pos.pointsRedeemedReceipt', { n: sale.points_redeemed }) }} </span>
-                <span v-if="sale.points_earned">{{ t('pos.pointsEarnedReceipt', { n: sale.points_earned }) }}</span>
-            </div>
-            <div style="text-align:center;color:#c0392b;font-weight:700;margin-top:8px;font-size:12px" v-if="dueRemainder > 0">বাকি বিল — {{ money(dueRemainder) }}</div>
-            <div class="rc-f">{{ shop?.receipt_footer || 'ধন্যবাদ! আবার আসবেন 🙏' }}</div>
-            <div style="display:flex;justify-content:center;margin-top:8px"><svg id="sale-barcode-svg"></svg></div>
-            <div style="display:flex;flex-direction:column;align-items:center;margin-top:6px;gap:2px">
-                <canvas id="sale-rating-qr"></canvas>
-                <div style="font-size:9px;color:#666">{{ t('sales.rateHint') }}</div>
-            </div>
-            <div class="rc-brand">
-                <template v-if="platformLogoUrl"><img :src="platformLogoUrl" alt="Zaylotix"></template>
-                <template v-else>A Zaylotix product · zaylotix.com</template>
-            </div>
+        <!-- no .receipt class here — ReceiptMemo.vue is fully self-styled
+             now; the global .receipt/.rc-l/.rc-t/etc rules in app.css would
+             otherwise collide with its own same-named sub-elements -->
+        <div id="printable-memo" :style="memoStyle">
+            <ReceiptMemo :shop="shop" :sale="sale" :platform-logo-url="platformLogoUrl" />
         </div>
         </div>
 
@@ -240,18 +225,37 @@ const ratingUrl = computed(() => props.sale.rating_url);
    full layout space — every sibling still pushed the receipt around and
    padded the printed page with blank area. See BarcodeLabels/Index.vue and
    Pos/Index.vue for the two other places this exact mistake was made.) */
+/* Named @page rules (Chromium-supported — every POS/kiosk browser this app
+   targets is Chromium) so the actual paper size follows the shop's own
+   memo_settings.paper_width choice instead of one fixed 58mm assumption. */
+@page thermal58 { size: 58mm auto; margin: 0; }
+@page thermal80 { size: 80mm auto; margin: 0; }
+@page a4memo { size: A4; margin: 10mm; }
+
 @media print {
-    @page { size: 58mm auto; margin: 0; }
     /* stacks both copies in a single column ordered by the `order` style
        set above (kotRecapStyle/memoStyle) — flex order affects print
        pagination the same way it affects visual layout, so this is how the
        owner's kitchen_print_order preference actually reorders which copy
        comes off the printer first, without duplicating markup */
     .print-order-wrap { display: flex; flex-direction: column; }
-    #printable-memo { width: 58mm; padding: 2mm 3mm; border-radius: 0; font-size: 11px; }
+
+    /* strip the on-screen preview chrome (fixed 280px width, border, grey
+       background — see ReceiptMemo.vue's own default style) so the printed
+       copy fills the real paper width instead */
+    #printable-memo .receipt-memo { width: auto !important; margin: 0 !important; border: none !important; }
+
+    .paper-58 { page: thermal58; }
+    .paper-58 #printable-memo, .paper-58 #printable-kot-recap { width: 58mm; }
+    .paper-80 { page: thermal80; }
+    .paper-80 #printable-memo, .paper-80 #printable-kot-recap { width: 80mm; }
+    .paper-a4 { page: a4memo; }
+    .paper-a4 #printable-memo, .paper-a4 #printable-kot-recap { width: 180mm; }
+
+    #printable-memo { padding: 2mm 3mm; border-radius: 0; font-size: 11px; }
     #printable-memo h3 { font-size: 13px; }
     #printable-kot-recap {
-        width: 58mm; padding: 2mm 3mm; font-family: monospace; font-size: 12px;
+        padding: 2mm 3mm; font-family: monospace; font-size: 12px;
     }
     #printable-kot-recap h3 { font-size: 14px; margin: 0 0 4px; text-align: center; }
     #printable-kot-recap .rc-sub { font-size: 10px; text-align: center; margin-bottom: 6px; }

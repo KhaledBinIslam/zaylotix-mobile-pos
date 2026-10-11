@@ -15,7 +15,8 @@ class BarcodeLabelController extends Controller
     public function index()
     {
         return Inertia::render('App/BarcodeLabels/Index', [
-            // never the raw model, see Shop::toArrayForUser()
+            // never the raw model, see Shop::toArrayForUser() — carries
+            // label_settings (already defaults-merged) alongside shop.name/logo_url
             'shop' => Tenancy::shop()?->toArrayForUser(Auth::guard('web')->user()),
             // explicit column list — `barcode_labels` can be granted to a
             // cashier independently of `stock`, and an unscoped get() would

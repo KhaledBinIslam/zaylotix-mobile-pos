@@ -199,6 +199,13 @@ class ShopController extends Controller
                 'lang' => $shop->lang,
                 'account_type' => $shop->account_type, // a branch shares its main shop's classification
                 'status' => 'active',
+                // company-level identity (same legal entity as the main
+                // shop) + the main shop's memo/label layout choices --
+                // name/area/phone stay branch-specific (already in $data,
+                // never copied from $shop)
+                'email' => $shop->email, 'website' => $shop->website,
+                'bin_no' => $shop->bin_no, 'trade_license_no' => $shop->trade_license_no, 'tin_no' => $shop->tin_no,
+                'memo_settings' => $shop->memo_settings, 'label_settings' => $shop->label_settings,
             ]);
 
             $branch->features()->sync($shop->features()->pluck('features.id'));

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Support\Tenancy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Inertia\Inertia;
 
 class SettingController extends Controller
 {
@@ -147,6 +148,75 @@ class SettingController extends Controller
         Tenancy::shop()->update(['service_charge_rate' => $data['service_charge_rate']]);
 
         return back()->with('success', 'সার্ভিস চার্জ সংরক্ষণ করা হয়েছে।');
+    }
+
+    /** Page with checkbox toggles + a live preview for what the printed memo and barcode label show — see Shop::MEMO_SETTINGS_DEFAULTS/LABEL_SETTINGS_DEFAULTS. */
+    public function receiptLabelEdit()
+    {
+        return Inertia::render('App/Settings/ReceiptLabel');
+    }
+
+    /** Extra shop-identity fields a receipt can optionally print — none of these existed before, so every one is nullable and off by default (see memo_settings' show_* toggles). */
+    public function updateBusinessInfo(Request $request)
+    {
+        $data = $request->validate([
+            'email' => ['nullable', 'email', 'max:255'],
+            'website' => ['nullable', 'string', 'max:255'],
+            'trade_license_no' => ['nullable', 'string', 'max:100'],
+            'tin_no' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        Tenancy::shop()->update(array_map(fn ($v) => $v ?: null, $data));
+
+        return back()->with('success', 'তথ্য সংরক্ষণ করা হয়েছে।');
+    }
+
+    /** Replaces the whole memo_settings blob — the frontend always sends every key (merged with Shop::MEMO_SETTINGS_DEFAULTS), never a partial patch, so there's nothing here to merge server-side. */
+    public function updateMemoSettings(Request $request)
+    {
+        $data = $request->validate([
+            'show_email' => ['required', 'boolean'],
+            'show_website' => ['required', 'boolean'],
+            'show_bin' => ['required', 'boolean'],
+            'show_trade_license' => ['required', 'boolean'],
+            'show_tin' => ['required', 'boolean'],
+            'show_cashier' => ['required', 'boolean'],
+            'show_customer_phone' => ['required', 'boolean'],
+            'show_payment_method' => ['required', 'boolean'],
+            'show_tendered_change' => ['required', 'boolean'],
+            'show_vat_inclusive_note' => ['required', 'boolean'],
+            'show_exchange_policy' => ['required', 'boolean'],
+            'exchange_policy_text' => ['nullable', 'string', 'max:500'],
+            'paper_width' => ['required', 'in:58mm,80mm,a4'],
+        ]);
+
+        Tenancy::shop()->update(['memo_settings' => $data]);
+
+        return back()->with('success', 'মেমো সেটিংস সংরক্ষণ করা হয়েছে।');
+    }
+
+    /** Replaces the whole label_settings blob — see updateMemoSettings()'s comment, same "always full payload" contract. */
+    public function updateLabelSettings(Request $request)
+    {
+        $data = $request->validate([
+            'size' => ['required', 'in:38x25,50x25,40x30,custom'],
+            'custom_width_mm' => ['nullable', 'numeric', 'min:10', 'max:100'],
+            'custom_height_mm' => ['nullable', 'numeric', 'min:10', 'max:100'],
+            'per_row' => ['required', 'integer', 'in:1,2'],
+            'show_shop_name' => ['required', 'boolean'],
+            'show_product_name' => ['required', 'boolean'],
+            'show_variant' => ['required', 'boolean'],
+            'price_mode' => ['required', 'in:both,single,none'],
+            'show_barcode_number' => ['required', 'boolean'],
+        ]);
+
+        if ($data['size'] === 'custom' && (! $data['custom_width_mm'] || ! $data['custom_height_mm'])) {
+            return back()->withErrors(['custom_width_mm' => 'Custom সাইজের জন্য width ও height দুটোই দিতে হবে।']);
+        }
+
+        Tenancy::shop()->update(['label_settings' => $data]);
+
+        return back()->with('success', 'লেবেল সেটিংস সংরক্ষণ করা হয়েছে।');
     }
 
     /** Shop logo, printed on POS receipts and barcode labels once uploaded. */

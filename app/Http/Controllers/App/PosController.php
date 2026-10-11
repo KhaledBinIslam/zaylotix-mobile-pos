@@ -603,7 +603,11 @@ class PosController extends Controller
                 }
             }
 
-            return $sale->load('items', 'customer', 'payments');
+            // 'user' (cashier) added so the just-billed receipt sheet can
+            // show it when memo_settings.show_cashier is on — every other
+            // field that sheet needs (items/customer/payments) was already
+            // loaded here
+            return $sale->load('items', 'customer', 'payments', 'user');
         });
     }
 
