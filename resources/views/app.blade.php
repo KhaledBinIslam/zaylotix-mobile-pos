@@ -8,9 +8,9 @@
         <link rel="manifest" href="/manifest.json">
 
         <title inertia>{{ config('app.name', 'Zaylotix POS') }}</title>
-        <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
-        <link rel="icon" href="/favicon-16.png" sizes="16x16" type="image/png">
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        <link rel="icon" href="/favicon-32.png?v=2" sizes="32x32" type="image/png">
+        <link rel="icon" href="/favicon-16.png?v=2" sizes="16x16" type="image/png">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
 
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.googleapis.com">

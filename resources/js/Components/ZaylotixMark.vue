@@ -13,5 +13,9 @@ defineProps({ size: { type: [Number, String], default: 40 } });
          actually center itself; a block-level img ignores text-align
          entirely and was sitting flush-left instead, the exact bug found
          live on the landing page. -->
-    <img src="/icons/icon-192.png" :width="size" :height="size" alt="Zaylotix" style="display:inline-block">
+    <!-- ?v=2 cache-busts browsers/the service worker after a logo swap --
+         the filename itself never changes, so without this every existing
+         visitor keeps the stale cached image until manually clearing cache.
+         Bump this number any time icon-192.png's actual content changes. -->
+    <img src="/icons/icon-192.png?v=2" :width="size" :height="size" alt="Zaylotix" style="display:inline-block">
 </template>
