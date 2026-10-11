@@ -40,8 +40,15 @@ class Tenancy
         return $user->shop_id;
     }
 
-    /** Two shop ids are in the same business if they share a business-root (a main shop's own id, or its parent_shop_id). */
-    private static function sameBusiness(int $shopId, int $otherId): bool
+    /**
+     * Two shop ids are in the same business if they share a business-root (a
+     * main shop's own id, or its parent_shop_id). Public — used both
+     * internally (id()'s branch-switch check) and by anything that needs to
+     * authorize across a business's branches rather than one exact shop
+     * (e.g. CustomerPolicy, now that Customer rows are shared business-wide —
+     * see Customer::class and BusinessScope).
+     */
+    public static function sameBusiness(int $shopId, int $otherId): bool
     {
         $shop = Shop::withoutGlobalScopes()->find($shopId);
         $other = Shop::withoutGlobalScopes()->find($otherId);
@@ -53,6 +60,26 @@ class Tenancy
         $otherRoot = $other->parent_shop_id ?? $other->id;
 
         return $root === $otherRoot;
+    }
+
+    /** Every shop_id sharing the given shop's business root (itself, its siblings, and its parent) — the set BusinessScope filters a shared model (currently just Customer) to. */
+    public static function businessShopIds(?int $shopId = null): array
+    {
+        $shopId ??= static::id();
+        if (! $shopId) {
+            return [];
+        }
+
+        $shop = Shop::withoutGlobalScopes()->find($shopId);
+        if (! $shop) {
+            return [$shopId];
+        }
+
+        $rootId = $shop->parent_shop_id ?? $shop->id;
+
+        return Shop::withoutGlobalScopes()
+            ->where(fn ($q) => $q->where('id', $rootId)->orWhere('parent_shop_id', $rootId))
+            ->pluck('id')->all();
     }
 
     public static function shop(): ?Shop
