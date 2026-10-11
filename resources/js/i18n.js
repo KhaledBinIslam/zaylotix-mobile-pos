@@ -781,6 +781,7 @@ export const translations = {
     'returns.addNewItem': { bn: '+ নতুন আইটেম যোগ করুন', en: '+ Add new item' },
     'returns.collectPayment': { bn: 'বাড়তি টাকা সংগ্রহ (যদি নতুন আইটেম বেশি দামি হয়)', en: 'Collect extra payment (if the new item costs more)' },
     'returns.windowExpired': { bn: 'ফেরতের সময়সীমা পার হয়ে গেছে।', en: 'The return window has passed.' },
+    'returns.crossBranchHint': { bn: 'এই বিলটি "{shop}" শাখায় বিক্রি হয়েছিল — এখান থেকে ফেরত নিলে স্টক আর টাকা এই শাখা থেকেই হিসাব হবে।', en: 'This bill was sold at "{shop}" — returning it here settles stock and money from this branch.' },
     'returns.ownerOverride': { bn: 'মালিক হিসেবে override করুন', en: 'Override as owner' },
     'returns.submit': { bn: 'নিশ্চিত করুন', en: 'Confirm' },
     'returns.totalRefund': { bn: 'মোট ফেরত', en: 'Total refund' },

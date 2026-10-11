@@ -349,7 +349,7 @@ function sendMemoWA() {
                 <div v-for="sale in results" :key="sale.id" class="row" style="width:100%;text-align:left;cursor:pointer" @click="selectSale(sale)">
                     <div class="ava">🧾</div>
                     <div class="mid">
-                        <b>{{ sale.invoice_no }}</b>
+                        <b>{{ sale.invoice_no }}</b><span v-if="sale.origin_shop_name" style="color:var(--gold2)"> 🏬 {{ sale.origin_shop_name }}</span>
                         <span>{{ sale.date }} • {{ sale.customer?.name || 'ওয়াক-ইন' }} • {{ money(sale.total) }}</span>
                     </div>
                     <div class="end">
@@ -366,6 +366,9 @@ function sendMemoWA() {
                     <button class="btn ghost" style="width:auto;padding:4px 12px;font-size:12px" @click="selectedSale = null">✕</button>
                 </div>
                 <div style="color:var(--mut);font-size:13px;margin-top:4px">{{ selectedSale.date }} • {{ money(selectedSale.total) }} • {{ selectedSale.customer?.name || 'ওয়াক-ইন' }}</div>
+                <div v-if="selectedSale.origin_shop_name" class="card" style="background:var(--goldSoft);margin-top:8px;padding:8px 12px">
+                    🏬 {{ t('returns.crossBranchHint', { shop: selectedSale.origin_shop_name }) }}
+                </div>
 
                 <div v-if="!selectedSale.within_window" class="card" style="background:var(--roseSoft);margin-top:10px">
                     <div style="color:var(--rose);font-weight:700">{{ t('returns.windowExpired') }}</div>

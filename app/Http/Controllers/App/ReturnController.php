@@ -158,21 +158,32 @@ class ReturnController extends Controller
     /**
      * Finds the original bill(s) a counter return/exchange is against — by
      * invoice number (partial match), customer phone (exact), or a scanned
-     * product/variant barcode. Tenant scoping on Sale/SaleItem already makes
-     * this impossible to use to find another shop's invoice.
+     * product/variant barcode. Searches every shop sharing this one's
+     * business root (itself, for a shop with no branches — identical to the
+     * old plain tenant scope there), not just the exact active shop_id — a
+     * branch can take back a sale that happened at a sibling branch (Khaled's
+     * explicit ask: "branch এর বিল অন্য branch এ ফেরত/এক্সচেঞ্জ"). An
+     * unrelated shop outside this business is still completely invisible —
+     * businessShopIds() never reaches past this one's own root.
      *
      * `sale_id` is the direct-link variant — Sales/Show.vue's own "ফেরত /
      * এক্সচেঞ্জ" button sends the sale it's already looking at straight here
      * instead of making the cashier re-type/re-scan the invoice they're
-     * already looking at. Still goes through the normal tenant scope, so it
-     * 404s exactly like a text search would for another shop's sale.
+     * already looking at.
      */
     public function lookup(Request $request)
     {
         $shop = Shop::findOrFail(Tenancy::id());
+        $businessShopIds = Tenancy::businessShopIds($shop->id);
 
+        // Eager-loading 'items' also applies SaleItem's own TenantScope by
+        // default — for a cross-branch sale that would silently come back
+        // empty (the items genuinely belong to the OTHER branch, not the
+        // currently-active one), so it's unscoped explicitly here too.
         if ($saleId = $request->get('sale_id')) {
-            $sale = Sale::with(['customer', 'items'])->find($saleId);
+            $sale = Sale::withoutGlobalScopes()->whereIn('shop_id', $businessShopIds)
+                ->with(['customer', 'items' => fn ($q) => $q->withoutGlobalScopes()])
+                ->find($saleId);
 
             return response()->json(['sales' => $sale ? [$this->presentSale($sale, $shop)] : []]);
         }
@@ -182,14 +193,22 @@ class ReturnController extends Controller
             return response()->json(['sales' => []]);
         }
 
-        $sales = Sale::query()
+        $sales = Sale::withoutGlobalScopes()
+            ->whereIn('shop_id', $businessShopIds)
             ->where(function ($query) use ($q) {
+                // dot-notation whereHas('items.product', ...) only drops
+                // scopes on the FINAL relation in the chain — the
+                // intermediate `items` (SaleItem) hop still carries its own
+                // TenantScope by default, which would silently restrict a
+                // cross-branch barcode scan back down to just the receiving
+                // shop's own items. Chained manually instead so every hop is
+                // explicitly unscoped.
                 $query->where('invoice_no', 'like', "%{$q}%")
                     ->orWhereHas('customer', fn ($c) => $c->where('phone', $q))
-                    ->orWhereHas('items.product', fn ($p) => $p->where('barcode', $q))
-                    ->orWhereHas('items.variant', fn ($v) => $v->where('barcode', $q));
+                    ->orWhereHas('items', fn ($i) => $i->withoutGlobalScopes()->whereHas('product', fn ($p) => $p->withoutGlobalScopes()->where('barcode', $q)))
+                    ->orWhereHas('items', fn ($i) => $i->withoutGlobalScopes()->whereHas('variant', fn ($v) => $v->withoutGlobalScopes()->where('barcode', $q)));
             })
-            ->with(['customer', 'items'])
+            ->with(['customer', 'items' => fn ($q) => $q->withoutGlobalScopes()])
             ->latest('id')
             ->limit(10)
             ->get();
@@ -203,6 +222,7 @@ class ReturnController extends Controller
     {
         $ageDays = (int) \Carbon\Carbon::parse($sale->date)->diffInDays(now());
         $withinWindow = $shop->return_window_days === null || $ageDays <= $shop->return_window_days;
+        $isCrossBranch = $sale->shop_id !== $shop->id;
 
         return [
             'id' => $sale->id,
@@ -213,12 +233,19 @@ class ReturnController extends Controller
             'subtotal' => (float) $sale->subtotal,
             'discount' => (float) $sale->discount,
             'payment_mode' => $sale->payment_mode,
+            // so the cashier can see at a glance this bill was sold at a
+            // sibling branch, not this one, before processing the return
+            'origin_shop_name' => $isCrossBranch ? Shop::withoutGlobalScopes()->find($sale->shop_id)?->name : null,
             'customer' => $sale->customer ? ['id' => $sale->customer->id, 'name' => $sale->customer->name, 'phone' => $sale->customer->phone] : null,
             'within_window' => $withinWindow,
             'window_days' => $shop->return_window_days,
             'age_days' => $ageDays,
             'items' => $sale->items->map(function (SaleItem $item) {
-                $returnedQty = (float) SalesReturn::where('sale_item_id', $item->id)->sum('qty');
+                // business-wide, not shop-scoped — a prior return against
+                // this sale could have been processed at ANY branch (this
+                // one, or a sibling), and all of it counts toward how much
+                // of this line is still returnable
+                $returnedQty = (float) SalesReturn::withoutGlobalScopes()->where('sale_item_id', $item->id)->sum('qty');
 
                 return [
                     'id' => $item->id,
@@ -262,14 +289,23 @@ class ReturnController extends Controller
         ]);
 
         $result = DB::transaction(function () use ($data) {
+            // $shopId is the RECEIVING branch — whichever one is physically
+            // processing this return/exchange right now. $sale may belong
+            // to a SIBLING branch entirely (Khaled's explicit ask: a branch
+            // can take back a sale made elsewhere) — every money/stock
+            // movement below settles against the RECEIVING branch
+            // ($lockedShop), never the sale's own origin shop.
             $shopId = Tenancy::id();
             $userId = Auth::guard('web')->id() ?? Auth::guard('sanctum')->id();
             $lockedShop = Shop::whereKey($shopId)->lockForUpdate()->firstOrFail();
+            $businessShopIds = Tenancy::businessShopIds($shopId);
 
-            $sale = Sale::with('payments')->whereKey($data['sale_id'])->lockForUpdate()->first();
+            $sale = Sale::withoutGlobalScopes()->whereIn('shop_id', $businessShopIds)
+                ->with('payments')->whereKey($data['sale_id'])->lockForUpdate()->first();
             if (! $sale) {
                 abort(404, 'এই বিলটি পাওয়া যায়নি।');
             }
+            $isCrossBranch = $sale->shop_id !== $shopId;
 
             $ageDays = (int) \Carbon\Carbon::parse($sale->date)->diffInDays(now());
             $withinWindow = $lockedShop->return_window_days === null || $ageDays <= $lockedShop->return_window_days;
@@ -281,9 +317,12 @@ class ReturnController extends Controller
                 ]);
             }
 
+            // Customer is already business-wide by design (see Customer::class
+            // / BusinessScope) — works unchanged whether this sale's customer
+            // was first registered at this branch or a sibling one.
             $customer = $sale->customer_id ? Customer::whereKey($sale->customer_id)->lockForUpdate()->first() : null;
 
-            $saleItems = SaleItem::where('sale_id', $sale->id)
+            $saleItems = SaleItem::withoutGlobalScopes()->where('sale_id', $sale->id)
                 ->whereIn('id', collect($data['lines'])->pluck('sale_item_id'))
                 ->lockForUpdate()
                 ->get()
@@ -300,7 +339,10 @@ class ReturnController extends Controller
                 }
 
                 $returnQty = (float) $line['qty'];
-                $alreadyReturned = (float) SalesReturn::where('sale_item_id', $item->id)->sum('qty');
+                // business-wide, not shop-scoped — a prior return against
+                // this line could have already been processed at a sibling
+                // branch, and all of it counts against what's still returnable
+                $alreadyReturned = (float) SalesReturn::withoutGlobalScopes()->where('sale_item_id', $item->id)->sum('qty');
                 $returnable = (float) $item->qty - $alreadyReturned;
 
                 if ($returnQty > $returnable + 0.0001) {
@@ -315,35 +357,61 @@ class ReturnController extends Controller
 
                 $condition = $line['condition'];
 
+                // Batch/IMEI-serial bookkeeping belongs to whichever shop
+                // actually holds those rows — the sale's ORIGIN shop, not
+                // necessarily the one processing the return. Restoring it
+                // into the wrong shop's batches, or decrementing
+                // products.stock at the origin while crediting a totally
+                // different shop's stock, would corrupt both sides' books.
+                // Blocked with a clear message for now, same fallback
+                // StockTransferController already uses for the same reason.
+                if ($isCrossBranch && (! empty($item->batch_allocations) || $item->product_serial_id)) {
+                    throw ValidationException::withMessages([
+                        'lines' => "{$item->product_name}: এটি ব্যাচ/সিরিয়াল ট্র্যাক করা পণ্য — অন্য শাখার বিক্রি হওয়া এই ধরনের পণ্য এখনো ক্রস-ব্র্যাঞ্চ ফেরত নেওয়া যায় না। মূল শাখা থেকে প্রসেস করুন।",
+                    ]);
+                }
+
+                // Same-branch return (the overwhelming majority): the
+                // original product/variant row IS the target, exactly as
+                // before. Cross-branch: resolve (or create, same
+                // barcode-then-name match StockTransfer/CatalogSync already
+                // use) the equivalent row in the RECEIVING shop's own
+                // catalog — stock goes back to whichever branch is actually
+                // taking the return, never the origin shop's inventory.
+                [$targetProduct, $targetVariant] = $this->resolveReceivingProductAndVariant($item, $shopId, $isCrossBranch);
+
                 if ($condition === 'resalable') {
-                    if ($item->product_variant_id) {
-                        ProductVariant::whereKey($item->product_variant_id)->lockForUpdate()->increment('stock', $returnQty);
-                        Product::whereKey($item->product_id)->lockForUpdate()->increment('stock', $returnQty);
+                    if ($targetVariant) {
+                        $targetVariant->increment('stock', $returnQty);
+                        $targetProduct->increment('stock', $returnQty);
                     } else {
-                        Product::whereKey($item->product_id)->lockForUpdate()->increment('stock', $returnQty * (float) $item->unit_factor);
+                        $targetProduct->increment('stock', $returnQty * (float) $item->unit_factor);
 
-                        // Batch stock restores proportionally for a partial
-                        // return too (see BatchStock::restorePartial) —
-                        // $priorBatchRestored is whatever an earlier partial
-                        // return of this same line already put back, so two
-                        // partial returns of one line never double-restore.
-                        $priorBatchRestored = (float) SalesReturn::where('sale_item_id', $item->id)->where('condition', 'resalable')->sum('qty');
-                        BatchStock::restorePartial($item->batch_allocations, $priorBatchRestored, $returnQty);
+                        if (! $isCrossBranch) {
+                            // Batch stock restores proportionally for a
+                            // partial return too (see
+                            // BatchStock::restorePartial) — $priorBatchRestored
+                            // is whatever an earlier partial return of this
+                            // same line already put back, so two partial
+                            // returns of one line never double-restore.
+                            $priorBatchRestored = (float) SalesReturn::withoutGlobalScopes()->where('sale_item_id', $item->id)->where('condition', 'resalable')->sum('qty');
+                            BatchStock::restorePartial($item->batch_allocations, $priorBatchRestored, $returnQty);
 
-                        // A serial-tracked item is always sold one at a time
-                        // (qty=1) — there's no such thing as a genuinely
-                        // partial return of it, so only flip it back to
-                        // in_stock when the whole line comes back.
-                        if (abs($returnQty - (float) $item->qty) < 0.0001) {
-                            SerialStock::restore($item->product_serial_id);
+                            // A serial-tracked item is always sold one at a
+                            // time (qty=1) — there's no such thing as a
+                            // genuinely partial return of it, so only flip it
+                            // back to in_stock when the whole line comes back.
+                            if (abs($returnQty - (float) $item->qty) < 0.0001) {
+                                SerialStock::restore($item->product_serial_id);
+                            }
                         }
                     }
                 } else {
                     Damage::create([
-                        'product_id' => $item->product_id,
-                        'product_variant_id' => $item->product_variant_id,
+                        'product_id' => $targetProduct->id,
+                        'product_variant_id' => $targetVariant?->id,
                         'qty' => $returnQty,
-                        'reason' => 'কাস্টমার ফেরত — বিক্রিযোগ্য না',
+                        'reason' => 'কাস্টমার ফেরত — বিক্রিযোগ্য না'.($isCrossBranch ? ' (অন্য শাখার বিক্রি)' : ''),
                         'loss' => $cost,
                         'date' => now()->toDateString(),
                     ]);
@@ -351,6 +419,8 @@ class ReturnController extends Controller
 
                 $returnRows[] = [
                     'item' => $item,
+                    'target_product_id' => $targetProduct->id,
+                    'target_variant_id' => $targetVariant?->id,
                     'qty' => $returnQty,
                     'refund' => $refund,
                     'cost' => $cost,
@@ -420,8 +490,14 @@ class ReturnController extends Controller
             $createdReturns = [];
             foreach ($returnRows as $row) {
                 $createdReturns[] = SalesReturn::create([
-                    'product_id' => $row['item']->product_id,
-                    'product_variant_id' => $row['item']->product_variant_id,
+                    // the RECEIVING shop's own product/variant row — never
+                    // the original sale_item's product_id/product_variant_id
+                    // directly, which belongs to the sale's origin shop for a
+                    // cross-branch return and would be a meaningless (or
+                    // worse, a coincidentally-real-but-wrong) id in this
+                    // shop's own products table
+                    'product_id' => $row['target_product_id'],
+                    'product_variant_id' => $row['target_variant_id'],
                     'sale_id' => $sale->id,
                     'sale_item_id' => $row['item']->id,
                     'customer_id' => $customer?->id,
@@ -479,6 +555,74 @@ class ReturnController extends Controller
         $cost = round((float) $item->cost * $returnQty, 2);
 
         return [$refund, $cost];
+    }
+
+    /**
+     * Which Product/ProductVariant row in the RECEIVING shop's own catalog a
+     * returned line's stock goes back into. Same shop it was sold at (the
+     * overwhelming majority of returns, including every shop with no
+     * branches at all): identical to the original sale_item's own
+     * product_id/product_variant_id, unchanged. A sibling branch taking back
+     * a sale made elsewhere: matched (barcode first, else name/size+color —
+     * the same precedence CatalogSync/StockTransferController already use),
+     * auto-created at stock 0 if the receiving branch has never carried this
+     * product/variant before.
+     *
+     * @return array{0: Product, 1: ?ProductVariant}
+     */
+    private function resolveReceivingProductAndVariant(SaleItem $item, int $receivingShopId, bool $isCrossBranch): array
+    {
+        if (! $isCrossBranch) {
+            $product = Product::whereKey($item->product_id)->lockForUpdate()->first();
+            $variant = $item->product_variant_id ? ProductVariant::whereKey($item->product_variant_id)->lockForUpdate()->first() : null;
+
+            return [$product, $variant];
+        }
+
+        $originalProduct = Product::withoutGlobalScopes()->whereKey($item->product_id)->first();
+        if (! $originalProduct) {
+            abort(422, 'মূল পণ্যটি আর খুঁজে পাওয়া যাচ্ছে না।');
+        }
+
+        $product = Product::withoutGlobalScopes()->where('shop_id', $receivingShopId)
+            ->where(fn ($q) => filled($originalProduct->barcode)
+                ? $q->where('barcode', $originalProduct->barcode)->orWhere('name', $originalProduct->name)
+                : $q->where('name', $originalProduct->name))
+            ->lockForUpdate()->first();
+
+        if (! $product) {
+            $product = Product::create([
+                'shop_id' => $receivingShopId,
+                'name' => $originalProduct->name, 'name_en' => $originalProduct->name_en,
+                'emoji' => $originalProduct->emoji, 'barcode' => $originalProduct->barcode,
+                'cost' => $originalProduct->cost, 'price' => $originalProduct->price,
+                'sold_by_weight' => $originalProduct->sold_by_weight, 'weight_unit' => $originalProduct->weight_unit,
+                'stock' => 0,
+            ]);
+        }
+
+        $variant = null;
+        if ($item->product_variant_id) {
+            $originalVariant = ProductVariant::withoutGlobalScopes()->whereKey($item->product_variant_id)->first();
+            if ($originalVariant) {
+                $variant = ProductVariant::withoutGlobalScopes()->where('shop_id', $receivingShopId)->where('product_id', $product->id)
+                    ->where(fn ($q) => filled($originalVariant->barcode)
+                        ? $q->where('barcode', $originalVariant->barcode)->orWhere(fn ($q2) => $q2->where('size', $originalVariant->size)->where('color', $originalVariant->color))
+                        : $q->where('size', $originalVariant->size)->where('color', $originalVariant->color))
+                    ->lockForUpdate()->first();
+
+                if (! $variant) {
+                    $variant = ProductVariant::create([
+                        'shop_id' => $receivingShopId, 'product_id' => $product->id,
+                        'size' => $originalVariant->size, 'color' => $originalVariant->color, 'barcode' => $originalVariant->barcode,
+                        'price' => $originalVariant->price, 'cost' => $originalVariant->cost,
+                        'stock' => 0,
+                    ]);
+                }
+            }
+        }
+
+        return [$product, $variant];
     }
 
     /**
