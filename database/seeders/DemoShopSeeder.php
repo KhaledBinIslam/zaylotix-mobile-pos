@@ -81,6 +81,14 @@ class DemoShopSeeder extends Seeder
         $existing = Shop::withoutGlobalScopes()->where('phone', $phone)->first();
         if ($existing) {
             $existing->features()->sync(Feature::whereIn('key', $featureKeys)->pluck('id'));
+            // account_type didn't exist when some demo shops were first seeded
+            // (they migrated in at the column's default, "paid") — this
+            // re-run is exactly this class's own "repair every demo shop"
+            // promise, so bring them in line with $shopAttrs['account_type']
+            // too, not just features.
+            if (($shopAttrs['account_type'] ?? null) && $existing->account_type !== $shopAttrs['account_type']) {
+                $existing->update(['account_type' => $shopAttrs['account_type']]);
+            }
 
             return $existing;
         }
