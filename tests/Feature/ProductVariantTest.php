@@ -321,4 +321,19 @@ class ProductVariantTest extends TestCase
             ->expectsOutputToContain('1টা পণ্যে mismatch')
             ->assertExitCode(0);
     }
+
+    /** Diagnostic for a mismatch variants:stock-mismatch finds — shows variants, transfers, purchases, and activity log for one product so Khaled can see what actually happened before deciding how (or whether) to reconcile it himself. */
+    public function test_stock_history_command_shows_variants_transfers_and_purchases(): void
+    {
+        [$shop] = $this->createShopWithOwner();
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Investigated Shirt', 'cost' => 100, 'price' => 200, 'stock' => 40]);
+        ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => 'M', 'stock' => 28]);
+        \App\Models\Purchase::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'product_variant_id' => null, 'qty' => 12, 'amount' => 1200, 'date' => now()->toDateString(), 'method' => 'cash', 'status' => 'paid']);
+
+        $this->artisan('product:stock-history', ['product_id' => $product->id])
+            ->expectsOutputToContain('Investigated Shirt')
+            ->expectsOutputToContain('28')
+            ->expectsOutputToContain('কোনো variant বলা হয়নি')
+            ->assertExitCode(0);
+    }
 }
