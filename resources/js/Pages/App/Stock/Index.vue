@@ -170,6 +170,13 @@ const editing = ref(null);
 // can write a number that drifts away from that sum (see variant
 // management section below instead)
 const editingHasVariants = computed(() => (editing.value?.variants?.length ?? 0) > 0);
+// A product with stock already on it, but no variant yet, has that stock
+// sitting unattributed to any size/color — the FIRST variant(s) created on
+// it must account for every one of those units (allocate it, or explicitly
+// write off whatever's short as damage), or products.stock silently drifts
+// away from SUM(variants.stock) forever (see ProductVariantController::
+// reconcilePreExistingStock — this is the Salenoir bug).
+const preExistingUnallocatedStock = computed(() => (!editingHasVariants.value && Number(editing.value?.stock) > 0) ? Number(editing.value.stock) : 0);
 const form = useForm({
     name: '', name_en: '', generic_name: '', company: '', shelf_location: '', requires_prescription: false, emoji: '📦', photo: null, remove_photo: false, category_id: '', new_category_name: '',
     unit_id: '', new_unit_name: '', barcode: '', cost: '', price: '', wholesale_price: '', discount_price: '', stock: '',
@@ -305,7 +312,7 @@ function removePackSize(pu) {
 }
 
 // --- variants (size/color) — only relevant with product_variants feature ---
-const variantForm = useForm({ size: '', color: '', barcode: '', stock: '', reorder_point: '', price: '', cost: '' });
+const variantForm = useForm({ size: '', color: '', barcode: '', stock: '', reorder_point: '', price: '', cost: '', write_off_rest: false });
 function addVariant() {
     variantForm.post(route('app.productVariants.store', editing.value.id), {
         preserveScroll: true,
@@ -326,6 +333,8 @@ const gridColors = computed(() => gridColorsInput.value.split(',').map((s) => s.
 const gridSizes = computed(() => gridSizesInput.value.split(',').map((s) => s.trim()).filter(Boolean));
 const gridProcessing = ref(false);
 const gridError = ref('');
+const gridWriteOffRest = ref(false);
+const gridTotal = computed(() => Object.values(gridStock.value).reduce((sum, v) => sum + (Number(v) || 0), 0));
 
 function gridCellKey(color, size) {
     return `${color}|${size}`;
@@ -334,6 +343,7 @@ function openGrid() {
     gridOpen.value = true;
     gridStock.value = {};
     gridError.value = '';
+    gridWriteOffRest.value = false;
 }
 function submitGrid() {
     const colors = gridColors.value.length ? gridColors.value : [''];
@@ -357,15 +367,16 @@ function submitGrid() {
     }
 
     gridProcessing.value = true;
-    router.post(route('app.productVariants.bulkStore', editing.value.id), { variants }, {
+    router.post(route('app.productVariants.bulkStore', editing.value.id), { variants, write_off_rest: gridWriteOffRest.value }, {
         preserveScroll: true,
         onSuccess: () => {
             gridOpen.value = false;
             gridColorsInput.value = '';
             gridSizesInput.value = '';
             gridStock.value = {};
+            gridWriteOffRest.value = false;
         },
-        onError: (errors) => { gridError.value = errors.size || ''; },
+        onError: (errors) => { gridError.value = errors.size || errors.stock || ''; },
         onFinish: () => { gridProcessing.value = false; },
     });
 }
@@ -762,6 +773,10 @@ useKeyboardShortcuts({
             </div>
 
             <div v-if="editing && hasProductVariants" class="hr"></div>
+            <div v-if="editing && hasProductVariants && preExistingUnallocatedStock > 0" class="card" style="background:var(--goldSoft);border-color:var(--gold2);margin-bottom:10px">
+                <b>⚠️ {{ t('stock.preExistingStockTitle') }}</b>
+                <div style="font-size:13px;margin-top:4px">{{ t('stock.preExistingStockHint', { qty: preExistingUnallocatedStock }) }}</div>
+            </div>
             <div v-if="editing && hasProductVariants" class="field">
                 <label>{{ t('stock.variants') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.variantsHint') }}</span></label>
                 <div v-for="v in editing.variants" :key="v.id" class="cart-line" style="align-items:flex-start">
@@ -811,6 +826,15 @@ useKeyboardShortcuts({
                         </table>
                     </div>
 
+                    <template v-if="preExistingUnallocatedStock > 0">
+                        <div style="font-size:12px;margin-top:8px" :style="{ color: gridTotal === preExistingUnallocatedStock ? 'var(--green)' : 'var(--mut)' }">
+                            {{ t('stock.allocatedOf', { allocated: gridTotal, total: preExistingUnallocatedStock }) }}
+                        </div>
+                        <label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:13px">
+                            <input v-model="gridWriteOffRest" type="checkbox">
+                            {{ t('stock.writeOffRestLabel') }}
+                        </label>
+                    </template>
                     <div v-if="gridError" style="color:var(--rose);font-size:12px;margin-top:8px">{{ gridError }}</div>
                     <div style="display:flex;gap:8px;margin-top:10px">
                         <button class="btn sm" style="flex:1" :disabled="gridProcessing" @click="submitGrid">{{ gridProcessing ? '...' : t('stock.gridSubmit') }}</button>
@@ -832,7 +856,11 @@ useKeyboardShortcuts({
                     <input v-model="variantForm.barcode" :placeholder="t('stock.variantBarcodeOptional')">
                     <input v-model="variantForm.reorder_point" type="number" min="0" :placeholder="t('stock.variantReorderOptional')">
                 </div>
-                <div v-if="variantForm.errors.size" style="color:var(--rose);font-size:12px;margin-top:6px">{{ variantForm.errors.size }}</div>
+                <label v-if="preExistingUnallocatedStock > 0" style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:13px">
+                    <input v-model="variantForm.write_off_rest" type="checkbox">
+                    {{ t('stock.writeOffRestLabel') }}
+                </label>
+                <div v-if="variantForm.errors.size || variantForm.errors.stock" style="color:var(--rose);font-size:12px;margin-top:6px">{{ variantForm.errors.size || variantForm.errors.stock }}</div>
                 <button class="btn ghost sm" style="width:100%;margin-top:8px" :disabled="variantForm.processing" @click="addVariant">
                     {{ t('stock.addVariant') }}
                 </button>

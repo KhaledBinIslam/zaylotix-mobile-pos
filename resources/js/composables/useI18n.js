@@ -22,7 +22,12 @@ export function useI18n() {
         let str = entry ? (entry[lang.value] ?? entry.bn) : key;
         if (vars) {
             for (const [k, v] of Object.entries(vars)) {
-                str = str.replace(`{${k}}`, v);
+                // replaceAll, not replace — a string's own author may
+                // reasonably need the same placeholder twice (e.g. "already
+                // X of Y, allocate up to Y"); String.replace() with a plain
+                // string pattern only ever touches the first occurrence,
+                // silently leaving every later one as a literal "{qty}".
+                str = str.replaceAll(`{${k}}`, v);
             }
         }
         return str;

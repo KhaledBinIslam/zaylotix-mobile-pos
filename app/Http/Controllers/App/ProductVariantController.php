@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\App;
 
 use App\Http\Controllers\Controller;
+use App\Models\Damage;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Support\Activity;
@@ -10,6 +11,7 @@ use App\Support\Tenancy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 /**
  * A variant (size/color) has its own independent stock — unlike product_units
@@ -36,6 +38,7 @@ class ProductVariantController extends Controller
             'reorder_point' => ['nullable', 'integer', 'min:0'],
             'price' => ['nullable', 'numeric', 'min:0'],
             'cost' => ['nullable', 'numeric', 'min:0'],
+            'write_off_rest' => ['nullable', 'boolean'],
         ], [
             'barcode.unique' => 'এই বারকোড এই দোকানে আরেকটা ভ্যারিয়েন্টে আগেই ব্যবহার হয়েছে।',
         ]);
@@ -60,6 +63,9 @@ class ProductVariantController extends Controller
         }
 
         DB::transaction(function () use ($product, $data) {
+            $lockedProduct = Product::whereKey($product->id)->lockForUpdate()->first();
+            $isFirstVariant = ! ProductVariant::where('product_id', $lockedProduct->id)->exists();
+
             $variant = ProductVariant::create([
                 'product_id' => $product->id,
                 'size' => $data['size'] ?? null,
@@ -71,7 +77,11 @@ class ProductVariantController extends Controller
                 'cost' => $data['cost'] ?? null,
             ]);
 
-            Product::whereKey($product->id)->increment('stock', $data['stock']);
+            if ($isFirstVariant) {
+                $this->reconcilePreExistingStock($lockedProduct, (float) $data['stock'], (bool) ($data['write_off_rest'] ?? false));
+            } else {
+                Product::whereKey($lockedProduct->id)->increment('stock', $data['stock']);
+            }
 
             Activity::log('product.variant.create', "'{$product->name}'-এ নতুন ভ্যারিয়েন্ট ({$variant->label()}) যোগ করা হয়েছে।", $variant);
         });
@@ -96,6 +106,7 @@ class ProductVariantController extends Controller
             'variants.*.size' => ['nullable', 'string', 'max:50'],
             'variants.*.color' => ['nullable', 'string', 'max:50'],
             'variants.*.stock' => ['required', 'integer', 'min:0'],
+            'write_off_rest' => ['nullable', 'boolean'],
         ]);
 
         if ($product->sold_by_weight) {
@@ -122,7 +133,10 @@ class ProductVariantController extends Controller
             return back()->withErrors(['size' => 'নতুন কোনো ভ্যারিয়েন্ট পাওয়া যায়নি — সবগুলো খালি অথবা আগে থেকেই আছে।']);
         }
 
-        $created = DB::transaction(function () use ($product, $toCreate) {
+        $created = DB::transaction(function () use ($product, $toCreate, $data) {
+            $lockedProduct = Product::whereKey($product->id)->lockForUpdate()->first();
+            $isFirstVariant = ! ProductVariant::where('product_id', $lockedProduct->id)->exists();
+
             $totalStock = 0;
             foreach ($toCreate as $row) {
                 ProductVariant::create([
@@ -134,7 +148,11 @@ class ProductVariantController extends Controller
                 $totalStock += (int) $row['stock'];
             }
 
-            Product::whereKey($product->id)->increment('stock', $totalStock);
+            if ($isFirstVariant) {
+                $this->reconcilePreExistingStock($lockedProduct, (float) $totalStock, (bool) ($data['write_off_rest'] ?? false));
+            } else {
+                Product::whereKey($lockedProduct->id)->increment('stock', $totalStock);
+            }
 
             Activity::log('product.variant.bulkCreate', "'{$product->name}'-এ গ্রিড থেকে ".count($toCreate).'টা নতুন ভ্যারিয়েন্ট যোগ করা হয়েছে।', $product);
 
@@ -142,6 +160,66 @@ class ProductVariantController extends Controller
         });
 
         return back()->with('success', "{$created}টা ভ্যারিয়েন্ট যোগ হয়েছে।");
+    }
+
+    /**
+     * The first variant(s) ever created on a product that already had some
+     * `stock` (added before any size/color existed, or before this product
+     * was ever meant to track variants) must never just ADD the new
+     * variant's stock on top — that's exactly the bug that produced the
+     * Salenoir mismatch (products.stock 40 vs variants summing to 28; the
+     * missing 12 was pre-existing, unallocated stock from before variants
+     * existed). Instead the owner must account for every pre-existing unit:
+     * either the new variant(s) stock sums to exactly the pre-existing
+     * total (it was all this size/color), or whatever's short is explicitly
+     * written off as Damage (genuinely unaccounted-for stock, not silently
+     * discarded) — never left as a silent gap between products.stock and
+     * SUM(variants.stock) with no record of why.
+     */
+    private function reconcilePreExistingStock(Product $lockedProduct, float $allocatedStock, bool $writeOffRest): void
+    {
+        $preExisting = (float) $lockedProduct->stock;
+
+        if ($preExisting <= 0) {
+            // nothing to reconcile — this product never had unallocated
+            // stock, so the new variant(s) just add normally, exactly as
+            // every later (non-first) variant addition already does
+            Product::whereKey($lockedProduct->id)->increment('stock', $allocatedStock);
+
+            return;
+        }
+
+        if ($allocatedStock > $preExisting) {
+            throw ValidationException::withMessages([
+                'stock' => "মোট ভাগ করা স্টক ({$allocatedStock}) আগের স্টকের ({$preExisting}) চেয়ে বেশি হতে পারবে না। আগে স্টক-ইন করে সঠিক সংখ্যা ঠিক করুন, তারপর ভ্যারিয়েন্ট যোগ করুন।",
+            ]);
+        }
+
+        $shortfall = round($preExisting - $allocatedStock, 3);
+
+        if ($shortfall > 0 && ! $writeOffRest) {
+            throw ValidationException::withMessages([
+                'stock' => "এই পণ্যে আগে থেকে {$preExisting} স্টক আছে (কোনো সাইজ/রং ছাড়া) — নতুন ভ্যারিয়েন্ট(গুলো)-এর স্টক মিলিয়ে ঠিক {$preExisting} হতে হবে, অথবা বাকি {$shortfall} 'নষ্ট' হিসেবে ধরার অপশনটা বেছে নিন।",
+            ]);
+        }
+
+        if ($shortfall > 0) {
+            Damage::create([
+                'product_id' => $lockedProduct->id,
+                'qty' => $shortfall,
+                'reason' => 'ভ্যারিয়েন্ট যোগ করার সময় আগের unallocated স্টকের বাকি অংশ নষ্ট/অজানা হিসেবে ধরা হয়েছে',
+                'loss' => $shortfall * (float) $lockedProduct->cost,
+                'date' => now()->toDateString(),
+            ]);
+
+            Product::whereKey($lockedProduct->id)->decrement('stock', $shortfall);
+
+            Activity::log('product.variant.writeOffPreExistingStock', "'{$lockedProduct->name}'-এর আগের unallocated স্টক থেকে {$shortfall} ইউনিট নষ্ট হিসেবে রেকর্ড করা হয়েছে (ভ্যারিয়েন্ট যোগ করার সময়)।", $lockedProduct, ['shortfall' => $shortfall]);
+        }
+
+        // $allocatedStock === $preExisting exactly, or the shortfall was
+        // just written off down to match — either way products.stock is
+        // now already correct and must NOT be incremented again
     }
 
     public function update(Request $request, ProductVariant $productVariant)

@@ -44,6 +44,109 @@ class ProductVariantTest extends TestCase
         $this->assertEquals(15, $product->fresh()->stock);
     }
 
+    /**
+     * The Salenoir bug: a product with pre-existing, un-sized stock (added
+     * before variants existed) got its FIRST variant's stock just ADDED on
+     * top instead of accounting for where the old stock went — products.stock
+     * silently drifted away from SUM(variants.stock) forever. First-ever
+     * variant creation on a product that already has stock must now account
+     * for every pre-existing unit.
+     */
+    public function test_first_variant_on_a_product_with_pre_existing_stock_must_account_for_all_of_it(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'product_variants');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 200, 'price' => 400, 'stock' => 12]);
+
+        // partial allocation (5 of the 12), no write-off flag — rejected
+        $response = $this->actingAs($owner, 'web')->postJson("/app/products/{$product->id}/variants", [
+            'size' => 'M', 'stock' => 5,
+        ]);
+        $response->assertStatus(422);
+        $this->assertEquals(12, $product->fresh()->stock); // untouched
+        $this->assertSame(0, ProductVariant::count()); // the whole request rolled back, not left half-done
+    }
+
+    public function test_first_variant_matching_the_pre_existing_stock_exactly_does_not_double_it(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'product_variants');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 200, 'price' => 400, 'stock' => 12]);
+
+        $this->actingAs($owner, 'web')->post("/app/products/{$product->id}/variants", [
+            'size' => 'M', 'stock' => 12,
+        ])->assertRedirect();
+
+        $this->assertEquals(12, $product->fresh()->stock); // NOT 24 — the 12 was already this variant, not added again
+        $this->assertEquals(12, ProductVariant::first()->stock);
+    }
+
+    public function test_first_variant_short_of_pre_existing_stock_can_write_off_the_rest_as_damage(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'product_variants');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 200, 'price' => 400, 'stock' => 12]);
+
+        $this->actingAs($owner, 'web')->post("/app/products/{$product->id}/variants", [
+            'size' => 'M', 'stock' => 9, 'write_off_rest' => true,
+        ])->assertRedirect();
+
+        $this->assertEquals(9, $product->fresh()->stock); // 12 - 3 written off
+        $this->assertEquals(9, ProductVariant::first()->stock);
+        $damage = \App\Models\Damage::first();
+        $this->assertNotNull($damage);
+        $this->assertEquals(3, (float) $damage->qty);
+        $this->assertEquals(600.0, (float) $damage->loss); // 3 * cost(200)
+    }
+
+    public function test_bulk_grid_first_variants_must_sum_to_pre_existing_stock(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'product_variants');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 200, 'price' => 400, 'stock' => 20]);
+
+        $response = $this->actingAs($owner, 'web')->postJson("/app/products/{$product->id}/variants/bulk", [
+            'variants' => [['size' => 'M', 'stock' => 8], ['size' => 'L', 'stock' => 5]], // sums to 13, not 20
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertEquals(20, $product->fresh()->stock);
+        $this->assertSame(0, ProductVariant::count());
+
+        // same grid, but allocated exactly 20 total — accepted, product.stock unchanged
+        $this->actingAs($owner, 'web')->post("/app/products/{$product->id}/variants/bulk", [
+            'variants' => [['size' => 'M', 'stock' => 8], ['size' => 'L', 'stock' => 12]],
+        ])->assertRedirect();
+        $this->assertEquals(20, $product->fresh()->stock);
+    }
+
+    public function test_allocating_more_than_the_pre_existing_stock_is_rejected(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'product_variants');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 200, 'price' => 400, 'stock' => 10]);
+
+        $response = $this->actingAs($owner, 'web')->postJson("/app/products/{$product->id}/variants", [
+            'size' => 'M', 'stock' => 15, 'write_off_rest' => true, // write-off can't apply to an excess
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertEquals(10, $product->fresh()->stock);
+    }
+
+    /** Once a product's first variant has already established the invariant, a SECOND variant must go back to the normal purely-additive behavior — no reconciliation prompt for it. */
+    public function test_a_second_variant_after_the_first_is_purely_additive_not_reconciled_again(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'product_variants');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 200, 'price' => 400, 'stock' => 10]);
+        $this->actingAs($owner, 'web')->post("/app/products/{$product->id}/variants", ['size' => 'M', 'stock' => 10])->assertRedirect();
+
+        $this->actingAs($owner, 'web')->post("/app/products/{$product->id}/variants", ['size' => 'L', 'stock' => 4])->assertRedirect();
+
+        $this->assertEquals(14, $product->fresh()->stock); // 10 + 4, plain addition, no reconciliation needed
+    }
+
     public function test_checkout_decrements_the_specific_variant_and_the_parent_together(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();
@@ -335,5 +438,40 @@ class ProductVariantTest extends TestCase
             ->expectsOutputToContain('28')
             ->expectsOutputToContain('কোনো variant বলা হয়নি')
             ->assertExitCode(0);
+    }
+
+    /** The Salenoir reconciliation tool — preview-only until --confirm, never touches products.stock, requires every variant named and the total to match. */
+    public function test_set_stock_command_previews_then_only_writes_with_confirm(): void
+    {
+        [$shop] = $this->createShopWithOwner();
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'RP-Cyan-01', 'cost' => 100, 'price' => 200, 'stock' => 40]);
+        $v40 = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => '40', 'stock' => 11]);
+        $v41 = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => '41', 'stock' => 9]);
+        $v42 = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => '42', 'stock' => 8]);
+
+        // preview only — nothing written
+        $this->artisan('variants:set-stock', ['product_id' => $product->id, 'assignments' => ['40=15', '41=13', '42=12']])
+            ->expectsOutputToContain('এটা শুধু প্রিভিউ')
+            ->assertExitCode(0);
+        $this->assertEquals(11, $v40->fresh()->stock);
+
+        // sum doesn't match products.stock — rejected even with --confirm
+        $this->artisan('variants:set-stock', ['product_id' => $product->id, 'assignments' => ['40=15', '41=13', '42=11'], '--confirm' => true])
+            ->assertExitCode(1);
+        $this->assertEquals(11, $v40->fresh()->stock);
+
+        // a variant left out — rejected
+        $this->artisan('variants:set-stock', ['product_id' => $product->id, 'assignments' => ['40=20', '41=20'], '--confirm' => true])
+            ->assertExitCode(1);
+
+        // confirmed, matching sum — writes, products.stock untouched
+        $this->artisan('variants:set-stock', ['product_id' => $product->id, 'assignments' => ['40=15', '41=13', '42=12'], '--confirm' => true])
+            ->expectsOutputToContain('লেখা হয়ে গেছে')
+            ->assertExitCode(0);
+
+        $this->assertEquals(15, $v40->fresh()->stock);
+        $this->assertEquals(13, $v41->fresh()->stock);
+        $this->assertEquals(12, $v42->fresh()->stock);
+        $this->assertEquals(40, $product->fresh()->stock); // unchanged throughout
     }
 }
