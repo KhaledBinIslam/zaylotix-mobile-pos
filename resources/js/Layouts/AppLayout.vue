@@ -2,7 +2,6 @@
 import { Link, usePage, router, useForm } from '@inertiajs/vue3';
 import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import Toast from '@/Components/Toast.vue';
-import HelpButton from '@/Components/HelpButton.vue';
 import ZaylotixMark from '@/Components/ZaylotixMark.vue';
 import Sheet from '@/Components/Sheet.vue';
 import { useToast } from '@/composables/useToast';
@@ -144,18 +143,6 @@ function toggleLang() {
 function goBack() {
     window.history.back();
 }
-
-// friendly Bengali screen name sent along with the WhatsApp help message —
-// so support immediately knows which screen the owner is stuck on without
-// them having to explain it themselves
-const SCREEN_LABELS = {
-    home: 'হোম', sell: 'বিক্রি (POS)', restaurant: 'টেবিল', reservations: 'রিজার্ভেশন', kds: 'কিচেন ডিসপ্লে', cds: 'কাস্টমার ডিসপ্লে', stock: 'স্টক', units: 'ইউনিট ব্যবস্থাপনা', due: 'বাকি',
-    sales: 'বিক্রির ইতিহাস', promotions: 'অফার/কুপন', quotations: 'কোটেশন', accounts: 'হিসাব-নিকাশ',
-    reports: 'রিপোর্ট', expenses: 'খরচ', purchaseHistory: 'ক্রয়ের ইতিহাস', suppliers: 'সাপ্লায়ার',
-    serials: 'IMEI/ওয়ারেন্টি', cashier: 'স্টাফ', activity: 'অ্যাক্টিভিটি লগ', more: 'আরও', help: 'সাহায্য', partners: 'পার্টনার হিসাব', employees: 'কর্মচারী ও বেতন',
-    ingredients: 'উপাদান ও রেসিপি', preparations: 'প্রস্তুতকরণ', estimator: 'ইনগ্রেডিয়েন্ট এস্টিমেটর', shifts: 'শিফট ইতিহাস', stockHistory: 'স্টক ইতিহাস',
-};
-const screenLabel = computed(() => SCREEN_LABELS[props.active] || props.active);
 
 // One coherent icon family for the desktop sidebar, matching the exact
 // stroke convention the mobile bottom tab bar already established (24x24
@@ -510,6 +497,5 @@ const sidebarGroups = computed(() => [
         <button class="btn" :disabled="closeShiftForm.processing" @click="submitCloseShift">{{ closeShiftForm.processing ? '...' : t('workPeriod.endButton') }}</button>
     </Sheet>
 
-    <HelpButton :screen-label="screenLabel" />
     <Toast />
 </template>

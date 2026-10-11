@@ -1356,13 +1356,6 @@ export const translations = {
     'loan.fullyPaid': { bn: 'সম্পূর্ণ পরিশোধিত', en: 'Fully paid' },
 
     // ---- help / support ----
-    'help.fabTitle': { bn: 'সাহায্য প্রয়োজন?', en: 'Need help?' },
-    'help.fabLabel': { bn: 'সাপোর্টের জন্য ক্লিক করুন', en: 'Click for support' },
-    'help.menuTitle': { bn: 'কীভাবে সাহায্য চান?', en: 'How can we help?' },
-    'help.menuFaq': { bn: 'সহজ প্রশ্ন-উত্তর দেখুন', en: 'See simple FAQ' },
-    'help.menuFaqSub': { bn: 'অ্যাপের ভেতরেই, নেট লাগবে না', en: 'Right inside the app, no WhatsApp needed' },
-    'help.menuWhatsapp': { bn: 'WhatsApp এ সরাসরি কথা বলুন', en: 'Talk to us directly on WhatsApp' },
-    'help.menuWhatsappSub': { bn: 'এখান থেকে বের হয়ে WhatsApp খুলবে', en: "This will leave the app and open WhatsApp" },
     'nav.help': { bn: 'সাহায্য', en: 'Help' },
     'more.helpSub': { bn: 'সহজ প্রশ্ন-উত্তর ও WhatsApp সাপোর্ট', en: 'Simple FAQ & WhatsApp support' },
     'help.title': { bn: 'সাহায্য কেন্দ্র', en: 'Help Center' },
