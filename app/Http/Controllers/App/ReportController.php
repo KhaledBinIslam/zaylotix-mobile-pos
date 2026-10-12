@@ -56,10 +56,17 @@ class ReportController extends Controller
             'heatmap' => Reports::heatmap($from, $to),
             'consumptionReport' => $shop?->hasFeature('ingredient_tracking') ? Reports::consumptionReport($from, $to) : null,
             'variantInventory' => $shop?->hasFeature('product_variants') ? Reports::variantInventoryBreakdown() : null,
+            'variantProfitReport' => $shop?->hasFeature('product_variants') ? Reports::variantProfitReport($from, $to) : null,
+            'serialProfitReport' => $shop?->hasFeature('serial_tracking') ? Reports::serialProfitReport($from, $to) : null,
+            // who rang it up — every shop has at least an owner user, so
+            // this is never feature-gated, unlike the branch/variant/serial
+            // breakdowns above
+            'salespersonProfitReport' => Reports::salespersonProfitReport($from, $to),
             // combined across every branch of this business -- only present
             // when viewing the main shop itself (never from inside a branch)
             // and it actually has siblings, see Reports::combinedRangeStats()
             'combinedStats' => $this->combinedStatsIfMainShop($shop, $from, $to),
+            'branchProductProfitReport' => $this->branchProductProfitReportIfMainShop($shop, $from, $to),
             // one-click "everything" summary — customer due and supplier
             // payable totals alongside the P&L already in $stats, so an
             // owner never has to visit three separate pages to see the
@@ -85,6 +92,21 @@ class ReportController extends Controller
         }
 
         return Reports::combinedRangeStats([$shop->id, ...$branchIds], $from, $to);
+    }
+
+    /** Same "main shop with real branches" gate as combinedStatsIfMainShop() — this is the item-level cut of the same comparison. */
+    private function branchProductProfitReportIfMainShop(?Shop $shop, string $from, string $to): ?array
+    {
+        if (! $shop || $shop->parent_shop_id) {
+            return null;
+        }
+
+        $branchIds = Shop::withoutGlobalScopes()->where('parent_shop_id', $shop->id)->pluck('id')->all();
+        if (! $branchIds) {
+            return null;
+        }
+
+        return Reports::branchProductProfitReport([$shop->id, ...$branchIds], $from, $to);
     }
 
     private function resolveRange(string $preset, ?string $from, ?string $to): array

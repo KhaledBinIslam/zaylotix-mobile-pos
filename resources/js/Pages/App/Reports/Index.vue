@@ -9,6 +9,10 @@ const props = defineProps({
     expiringSoon: Array, cashierBreakdown: Array, restaurantBreakdown: Object, salesByType: Object, itemWisePurchases: Array,
     summary: Object, categoryReport: Object, discountReport: Object, wastageReport: Array, ratingReport: Object, heatmap: Object, consumptionReport: Array, complimentaryReport: Object, combinedStats: Object,
     variantInventory: Object,
+    variantProfitReport: { type: Array, default: () => [] },
+    serialProfitReport: { type: Array, default: () => [] },
+    salespersonProfitReport: { type: Array, default: () => [] },
+    branchProductProfitReport: { type: Array, default: () => [] },
 });
 const { t } = useI18n();
 
@@ -267,8 +271,48 @@ function heatColor(count) {
             <div class="sechead"><h2>{{ t('rep.categoryReport') }}</h2></div>
             <div class="card" style="padding:0;margin-bottom:14px">
                 <div v-for="(row, name) in categoryReport" :key="name" class="row" style="cursor:default">
-                    <div class="mid"><b>{{ name }}</b><span>{{ row.qty }} {{ t('rep.unitsSold') }}</span></div>
-                    <div class="end"><b>{{ money(row.revenue) }}</b></div>
+                    <div class="mid"><b>{{ name }}</b><span>{{ row.qty }} {{ t('rep.unitsSold') }} • {{ row.margin_pct }}% {{ t('rep.margin') }}</span></div>
+                    <div class="end"><b :style="{ color: row.profit >= 0 ? 'var(--green)' : 'var(--rose)' }">{{ money(row.profit) }}</b></div>
+                </div>
+            </div>
+        </template>
+
+        <template v-if="variantProfitReport?.length">
+            <div class="sechead"><h2>{{ t('rep.variantProfitReport') }}</h2></div>
+            <div class="card" style="padding:0;margin-bottom:14px">
+                <div v-for="(p, i) in variantProfitReport" :key="p.product_variant_id" class="row" style="cursor:default" :style="i > 0 ? 'border-top:1px solid var(--line)' : ''">
+                    <div class="mid"><b>{{ p.product_name }}</b><span>{{ p.variant_label || '—' }} • {{ p.qty_sold }} {{ t('rep.unitsSold') }} • {{ p.margin_pct }}% {{ t('rep.margin') }}</span></div>
+                    <div class="end"><b :style="{ color: p.profit >= 0 ? 'var(--green)' : 'var(--rose)' }">{{ money(p.profit) }}</b></div>
+                </div>
+            </div>
+        </template>
+
+        <template v-if="serialProfitReport?.length">
+            <div class="sechead"><h2>{{ t('rep.serialProfitReport') }}</h2></div>
+            <div class="card" style="padding:0;margin-bottom:14px">
+                <div v-for="(p, i) in serialProfitReport" :key="p.imei + p.invoice_no" class="row" style="cursor:default" :style="i > 0 ? 'border-top:1px solid var(--line)' : ''">
+                    <div class="mid"><b>{{ p.product_name }}</b><span>IMEI {{ p.imei }} • {{ p.invoice_no }} • {{ p.date }}</span></div>
+                    <div class="end"><b :style="{ color: p.profit >= 0 ? 'var(--green)' : 'var(--rose)' }">{{ money(p.profit) }}</b></div>
+                </div>
+            </div>
+        </template>
+
+        <template v-if="isOwner && salespersonProfitReport?.length">
+            <div class="sechead"><h2>{{ t('rep.salespersonProfitReport') }}</h2></div>
+            <div class="card" style="padding:0;margin-bottom:14px">
+                <div v-for="(p, i) in salespersonProfitReport" :key="p.user_id ?? 'none'" class="row" style="cursor:default" :style="i > 0 ? 'border-top:1px solid var(--line)' : ''">
+                    <div class="mid"><b>{{ p.name }}</b><span>{{ p.count }} {{ t('rep.billCount') }} • {{ t('rep.revenue') }} {{ money(p.revenue) }} • {{ p.margin_pct }}% {{ t('rep.margin') }}</span></div>
+                    <div class="end"><b :style="{ color: p.profit >= 0 ? 'var(--green)' : 'var(--rose)' }">{{ money(p.profit) }}</b></div>
+                </div>
+            </div>
+        </template>
+
+        <template v-if="isOwner && branchProductProfitReport?.length">
+            <div class="sechead"><h2>{{ t('rep.branchProductProfitReport') }}</h2></div>
+            <div class="card" style="padding:0;margin-bottom:14px">
+                <div v-for="(p, i) in branchProductProfitReport" :key="p.shop_id + ':' + p.product_name" class="row" style="cursor:default" :style="i > 0 ? 'border-top:1px solid var(--line)' : ''">
+                    <div class="mid"><b>{{ p.product_name }}</b><span>{{ p.shop_name }} • {{ p.qty_sold }} {{ t('rep.unitsSold') }}</span></div>
+                    <div class="end"><b :style="{ color: p.profit >= 0 ? 'var(--green)' : 'var(--rose)' }">{{ money(p.profit) }}</b></div>
                 </div>
             </div>
         </template>

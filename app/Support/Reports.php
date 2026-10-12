@@ -333,7 +333,14 @@ class Reports
         return ['by_source' => $bySource, 'by_waiter' => $byWaiter];
     }
 
-    /** Revenue/qty per product category over the range — a line item with no category (or a since-deleted product) falls into a single "uncategorized" bucket rather than being silently dropped. */
+    /**
+     * Revenue/cost/profit/qty per product category over the range — a line
+     * item with no category (or a since-deleted product) falls into a
+     * single "uncategorized" bucket rather than being silently dropped.
+     * Cost/profit added on top of the original qty/revenue-only version —
+     * same per-line profit formula productStats() uses ((price-cost)*qty -
+     * discount), so sum(profit) here still reconciles to rangeStats().
+     */
     public static function categoryReport(string $from, string $to): array
     {
         $byCategory = SaleItem::whereHas('sale', fn ($q) => $q->whereDate('date', '>=', $from)->whereDate('date', '<=', $to))
@@ -343,9 +350,10 @@ class Reports
             ->map(fn ($group) => [
                 'qty' => (float) $group->sum('qty'),
                 'revenue' => (float) $group->sum(fn (SaleItem $i) => $i->qty * $i->price - $i->discount),
+                'profit' => (float) $group->sum(fn (SaleItem $i) => ($i->price - $i->cost) * $i->qty - $i->discount),
             ]);
 
-        // same reasoning as productStats() — a return's refund/qty must
+        // same reasoning as productStats() — a return's refund/qty/cost must
         // come back out of its category's total too, or a fully-refunded
         // sale keeps inflating that category after the P&L already zeroed
         // it out.
@@ -357,14 +365,167 @@ class Reports
             ->groupBy(fn (SalesReturn $r) => $r->saleItem->product?->category?->name ?: 'অশ্রেণীবদ্ধ');
 
         foreach ($returnsByCategory as $category => $group) {
-            $existing = $byCategory->get($category, ['qty' => 0, 'revenue' => 0]);
+            $existing = $byCategory->get($category, ['qty' => 0, 'revenue' => 0, 'profit' => 0]);
+            $profitImpact = (float) $group->sum(fn (SalesReturn $r) => $r->cost === null ? (float) $r->refund : (float) $r->refund - (float) $r->cost);
             $byCategory->put($category, [
                 'qty' => $existing['qty'] - (float) $group->sum('qty'),
                 'revenue' => round($existing['revenue'] - (float) $group->sum('refund'), 2),
+                'profit' => round($existing['profit'] - $profitImpact, 2),
             ]);
         }
 
-        return $byCategory->sortByDesc('revenue')->all();
+        return $byCategory->map(function ($row) {
+            $row['margin_pct'] = $row['revenue'] > 0 ? round(($row['profit'] / $row['revenue']) * 100, 1) : 0;
+
+            return $row;
+        })->sortByDesc('revenue')->all();
+    }
+
+    /**
+     * Profit attributed to whoever rang up the sale (Sale.user_id) — the
+     * profit counterpart to cashierCashBreakdown()'s cash-drawer view.
+     * Returns reduce the selling user's own profit (SalesReturn.user_id is
+     * whoever processed the return, normally the same cashier handling the
+     * counter that shift, same attribution cashierCashBreakdown() already
+     * uses for cash returns).
+     */
+    public static function salespersonProfitReport(string $from, string $to): array
+    {
+        $inRange = fn ($query) => $query->whereDate('date', '>=', $from)->whereDate('date', '<=', $to);
+
+        $byUser = $inRange(Sale::query())->where('sale_type', '!=', 'exchange')
+            ->get()
+            ->groupBy('user_id')
+            ->map(fn ($group) => [
+                'count' => $group->count(),
+                'revenue' => (float) $group->sum('total'),
+                'profit' => (float) $group->sum('profit'),
+            ]);
+
+        $returnsByUser = $inRange(SalesReturn::query())->get()->groupBy('user_id');
+        foreach ($returnsByUser as $userId => $group) {
+            if (! $userId) {
+                continue;
+            }
+            $existing = $byUser->get($userId, ['count' => 0, 'revenue' => 0, 'profit' => 0]);
+            $profitImpact = (float) $group->sum(fn (SalesReturn $r) => $r->cost === null ? (float) $r->refund : (float) $r->refund - (float) $r->cost);
+            $byUser->put($userId, [
+                'count' => $existing['count'],
+                'revenue' => round($existing['revenue'] - (float) $group->sum('refund'), 2),
+                'profit' => round($existing['profit'] - $profitImpact, 2),
+            ]);
+        }
+
+        $users = User::whereIn('id', $byUser->keys()->filter())->get(['id', 'name', 'role'])->keyBy('id');
+
+        return $byUser->map(function ($row, $userId) use ($users) {
+            $row['user_id'] = $userId;
+            $row['name'] = $users[$userId]->name ?? 'অজানা';
+            $row['margin_pct'] = $row['revenue'] > 0 ? round(($row['profit'] / $row['revenue']) * 100, 1) : 0;
+
+            return $row;
+        })->sortByDesc('profit')->values()->all();
+    }
+
+    /**
+     * Per-product profit broken down by branch — combinedRangeStats()'s
+     * byBranch is already per-branch, but only as one aggregate total per
+     * branch; this is the item-level cut across the same set of shops, for
+     * a main shop comparing e.g. "which branch sells product X best".
+     * Deliberately a separate method rather than folding into
+     * combinedRangeStats() — that one feeds the always-shown summary card,
+     * this one is a bigger, opt-in table.
+     */
+    public static function branchProductProfitReport(array $shopIds, string $from, string $to): array
+    {
+        $rows = SaleItem::withoutGlobalScopes()
+            ->whereIn('shop_id', $shopIds)
+            ->whereHas('sale', fn ($q) => $q->withoutGlobalScopes()->whereDate('date', '>=', $from)->whereDate('date', '<=', $to))
+            ->selectRaw('shop_id, product_name, SUM(qty) as qty_sold, SUM(qty * price - discount) as revenue, SUM((price - cost) * qty - discount) as profit')
+            ->groupBy('shop_id', 'product_name')
+            ->get();
+
+        $shopNames = Shop::withoutGlobalScopes()->whereIn('id', $shopIds)->pluck('name', 'id');
+
+        return $rows->map(fn ($r) => [
+            'shop_id' => $r->shop_id,
+            'shop_name' => $shopNames->get($r->shop_id, '—'),
+            'product_name' => $r->product_name,
+            'qty_sold' => (float) $r->qty_sold,
+            'revenue' => round((float) $r->revenue, 2),
+            'profit' => round((float) $r->profit, 2),
+        ])->sortByDesc('profit')->values()->all();
+    }
+
+    /**
+     * Per-IMEI/serial profit — a serial-tracked device is always qty=1 per
+     * sale line, so this is just that line's own price/cost rather than an
+     * aggregate. Excludes a line whose device was later returned (the
+     * SalesReturn row already reverses that unit's sale via SaleReversal;
+     * showing it here too would double it against rangeStats()).
+     */
+    public static function serialProfitReport(string $from, string $to, int $limit = 200)
+    {
+        $returnedItemIds = SalesReturn::whereNotNull('sale_item_id')
+            ->whereHas('saleItem', fn ($q) => $q->whereNotNull('product_serial_id'))
+            ->pluck('sale_item_id');
+
+        return SaleItem::whereNotNull('product_serial_id')
+            ->whereNotIn('id', $returnedItemIds)
+            ->whereHas('sale', fn ($q) => $q->whereDate('date', '>=', $from)->whereDate('date', '<=', $to))
+            ->with(['sale:id,invoice_no,date', 'serial:id,imei'])
+            ->get()
+            ->map(fn (SaleItem $i) => [
+                'imei' => $i->serial?->imei ?? '—',
+                'product_name' => $i->product_name,
+                'invoice_no' => $i->sale?->invoice_no,
+                'date' => $i->sale?->date?->toDateString(),
+                'revenue' => round((float) $i->price - (float) $i->discount, 2),
+                'cost' => round((float) $i->cost, 2),
+                'profit' => round(((float) $i->price - (float) $i->cost) - (float) $i->discount, 2),
+            ])
+            ->sortByDesc('profit')
+            ->take($limit)
+            ->values();
+    }
+
+    /**
+     * Per-variant profit (size/color), the profit counterpart to
+     * variantInventoryBreakdown() — grouped by product_variant_id, not just
+     * variant_label text, so two different products that happen to share a
+     * label (e.g. both have a "42, কালো") never get merged into one row.
+     */
+    public static function variantProfitReport(string $from, string $to)
+    {
+        $rows = SaleItem::whereNotNull('product_variant_id')
+            ->whereHas('sale', fn ($q) => $q->whereDate('date', '>=', $from)->whereDate('date', '<=', $to))
+            ->selectRaw('product_variant_id, product_name, variant_label, SUM(qty) as qty_sold, SUM(qty * price - discount) as revenue, SUM((price - cost) * qty - discount) as profit')
+            ->groupBy('product_variant_id', 'product_name', 'variant_label')
+            ->get()
+            ->keyBy('product_variant_id');
+
+        $returns = SalesReturn::whereNotNull('product_variant_id')
+            ->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)
+            ->get()
+            ->groupBy('product_variant_id');
+
+        foreach ($returns as $variantId => $group) {
+            if (! $rows->has($variantId)) {
+                continue; // original sale fell outside this range — same as productStats(), rare enough to skip rather than reconstruct the row
+            }
+            $row = $rows->get($variantId);
+            $profitImpact = (float) $group->sum(fn (SalesReturn $r) => $r->cost === null ? (float) $r->refund : (float) $r->refund - (float) $r->cost);
+            $row->qty_sold = (float) $row->qty_sold - (float) $group->sum('qty');
+            $row->revenue = round((float) $row->revenue - (float) $group->sum('refund'), 2);
+            $row->profit = round((float) $row->profit - $profitImpact, 2);
+        }
+
+        return $rows->values()->sortByDesc('profit')->map(function ($row) {
+            $revenue = (float) $row->revenue;
+            $row->margin_pct = $revenue > 0 ? round(((float) $row->profit / $revenue) * 100, 1) : 0;
+
+            return $row;
+        })->values();
     }
 
     /**
