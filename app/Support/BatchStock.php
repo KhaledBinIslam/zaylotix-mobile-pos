@@ -107,6 +107,62 @@ class BatchStock
     }
 
     /**
+     * Branch-transfer counterpart to deduct() — pulls up to $qty from the
+     * soonest-expiring non-expired batches on the source product (same FEFO
+     * rule, same "never draw from an expired batch" guard) and lands each
+     * portion on a matching batch_no+expiry_date batch on the destination
+     * product, creating one if this is the first time that batch has
+     * reached that branch. Any amount left over after exhausting tracked
+     * batches (plain stock that predates batch tracking, or that's sitting
+     * in an expired batch) simply moves as untracked stock on both sides —
+     * the same silent under-coverage deduct() already allows for a sale,
+     * so a transfer never gets stuck part-way through over old unbatched
+     * inventory.
+     */
+    public static function transferBetweenShops(Product $sourceProduct, Product $destProduct, float $qty): void
+    {
+        if ($qty <= 0) {
+            return;
+        }
+
+        $remaining = $qty;
+
+        $batches = ProductBatch::where('product_id', $sourceProduct->id)
+            ->available()->notExpired()->fefoOrder()->lockForUpdate()->get();
+
+        foreach ($batches as $batch) {
+            if ($remaining <= 0) {
+                break;
+            }
+
+            $take = min((float) $batch->qty, $remaining);
+            $batch->decrement('qty', $take);
+            $remaining -= $take;
+
+            $destBatch = ProductBatch::withoutGlobalScopes()
+                ->where('shop_id', $destProduct->shop_id)->where('product_id', $destProduct->id)
+                ->where('batch_no', $batch->batch_no)
+                ->where(fn ($q) => $batch->expiry_date === null
+                    ? $q->whereNull('expiry_date')
+                    : $q->whereDate('expiry_date', $batch->expiry_date->toDateString()))
+                ->lockForUpdate()->first();
+
+            if ($destBatch) {
+                $destBatch->increment('qty', $take);
+            } else {
+                ProductBatch::create([
+                    'shop_id' => $destProduct->shop_id,
+                    'product_id' => $destProduct->id,
+                    'batch_no' => $batch->batch_no,
+                    'expiry_date' => $batch->expiry_date,
+                    'qty' => $take,
+                    'cost' => $batch->cost,
+                ]);
+            }
+        }
+    }
+
+    /**
      * Restores a partial return proportionally across the original FEFO
      * allocation, batch by batch — there's no per-unit breakdown recorded
      * inside one allocation entry, so an exact split isn't possible, but

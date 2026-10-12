@@ -4,10 +4,12 @@ namespace App\Http\Controllers\App;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Models\ProductSerial;
 use App\Models\ProductVariant;
 use App\Models\Shop;
 use App\Models\StockTransfer;
 use App\Support\Activity;
+use App\Support\BatchStock;
 use App\Support\Tenancy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -55,18 +57,27 @@ class StockTransferController extends Controller
         // Only what the transfer form needs to show per-variant stock —
         // never cost/profit, same reasoning as ReturnController::
         // presentProductForPicker (this list already excluded cost before
-        // variants were added here, kept that way).
+        // variants were added here, kept that way). available_serials is
+        // the same "never cost" rule — just id/imei/warranty, enough to let
+        // the owner pick which physical unit is moving (see store()).
         $products = Product::with(['variants' => fn ($q) => $q->orderBy('size')->orderBy('color')])
+            ->with(['serials' => fn ($q) => $q->available()->orderBy('id')])
             ->withCount(['batches', 'serials'])
             ->orderBy('name')
             ->get(['id', 'name', 'emoji', 'barcode', 'stock', 'sold_by_weight'])
             ->map(fn (Product $p) => [
                 'id' => $p->id, 'name' => $p->name, 'emoji' => $p->emoji, 'barcode' => $p->barcode,
                 'stock' => (float) $p->stock, 'sold_by_weight' => $p->sold_by_weight,
-                // batch/serial-tracked products can't transfer yet (see
-                // store()) — the form disables/explains instead of letting
-                // a cashier hit a confusing server error
-                'batch_or_serial_tracked' => $p->batches_count > 0 || $p->serials_count > 0,
+                // a serial-tracked product is moved by picking specific
+                // IMEIs (see available_serials), a batch-tracked one by a
+                // plain qty — FEFO-split transparently on the backend
+                // (BatchStock::transferBetweenShops) — the form branches on
+                // these instead of blocking either kind outright
+                'is_batch_tracked' => $p->batches_count > 0,
+                'is_serial_tracked' => $p->serials_count > 0,
+                'available_serials' => $p->serials->map(fn (ProductSerial $s) => [
+                    'id' => $s->id, 'imei' => $s->imei, 'warranty_expiry' => $s->warranty_expiry,
+                ]),
                 'variants' => $p->variants->map(fn (ProductVariant $v) => [
                     'id' => $v->id, 'size' => $v->size, 'color' => $v->color, 'label' => $v->label(), 'stock' => (float) $v->stock, 'barcode' => $v->barcode,
                 ]),
@@ -98,7 +109,14 @@ class StockTransferController extends Controller
             'product_id' => ['required', Rule::exists('products', 'id')->where('shop_id', Tenancy::id())],
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.product_variant_id' => ['nullable', 'integer'],
-            'lines.*.qty' => ['required', 'numeric', 'min:0.001'],
+            // qty drives a plain/variant/batch-tracked line; serial_ids
+            // drives a serial-tracked one instead (see store()'s branching)
+            // — never both required at once, so each stays nullable here
+            // and the real "did you give me enough to work with" check
+            // happens per-kind below.
+            'lines.*.qty' => ['nullable', 'numeric', 'min:0.001'],
+            'lines.*.serial_ids' => ['nullable', 'array'],
+            'lines.*.serial_ids.*' => ['integer'],
         ]);
 
         $shopId = Tenancy::id();
@@ -115,27 +133,16 @@ class StockTransferController extends Controller
             $sourceProduct = Product::whereKey($data['product_id'])->lockForUpdate()->first();
             abort_if(! $sourceProduct, 404, 'পণ্যটি পাওয়া যায়নি।');
 
-            // Batch/IMEI-serial transfer isn't built yet — blocking with a
-            // clear message here (rather than silently desyncing batch/
-            // serial bookkeeping the way variant stock used to) until that's
-            // a dedicated piece of work.
-            if ($sourceProduct->batches()->exists() || $sourceProduct->serials()->exists()) {
-                abort(422, "{$sourceProduct->name} ব্যাচ/সিরিয়াল ট্র্যাক করা পণ্য — এই ধরনের পণ্য এখনো শাখার মধ্যে ট্রান্সফার করা যায় না।");
-            }
-
+            // A serial-tracked product is identified by its specific IMEIs
+            // (see the serial branch below), never by a plain qty — a
+            // product that happens to carry both serials and batches (not
+            // a real combination in practice; pharmacy uses batches,
+            // electronics uses serials) is treated as serial-tracked, since
+            // "which physical unit" is the more defining identity of the two.
+            $isSerialTracked = $sourceProduct->serials()->exists();
+            $isBatchTracked = ! $isSerialTracked && $sourceProduct->batches()->exists();
             $hasVariants = $sourceProduct->variants()->exists();
             $lines = collect($data['lines']);
-
-            if ($hasVariants && $lines->contains(fn ($l) => empty($l['product_variant_id']))) {
-                throw ValidationException::withMessages(['lines' => "{$sourceProduct->name}-এর সাইজ/রং আছে — একটা নির্দিষ্ট ভ্যারিয়েন্ট না বেছে ট্রান্সফার করা যাবে না।"]);
-            }
-            if (! $hasVariants && ($lines->count() > 1 || $lines->contains(fn ($l) => ! empty($l['product_variant_id'])))) {
-                throw ValidationException::withMessages(['lines' => "{$sourceProduct->name}-এর কোনো ভ্যারিয়েন্ট নেই।"]);
-            }
-
-            if (! $sourceProduct->sold_by_weight && $lines->contains(fn ($l) => floor($l['qty']) != $l['qty'])) {
-                abort(422, "{$sourceProduct->name}-এর পরিমাণ পূর্ণ সংখ্যা হতে হবে।");
-            }
 
             // matched exactly like CatalogSync — barcode first, then name —
             // and auto-created on the destination if this is the first time
@@ -154,6 +161,71 @@ class StockTransferController extends Controller
                     'sold_by_weight' => $sourceProduct->sold_by_weight, 'weight_unit' => $sourceProduct->weight_unit,
                     'stock' => 0,
                 ]);
+            }
+
+            if ($isSerialTracked) {
+                $serialIds = $lines->flatMap(fn ($l) => $l['serial_ids'] ?? [])->unique()->values();
+                if ($serialIds->isEmpty()) {
+                    throw ValidationException::withMessages(['lines' => "{$sourceProduct->name}-এর জন্য কমপক্ষে একটি IMEI/সিরিয়াল বাছাই করুন।"]);
+                }
+
+                // available() + lockForUpdate() so a serial already sold
+                // (or picked by a second, concurrent transfer) can never be
+                // moved twice — the count mismatch below catches both cases
+                // with one clear message rather than silently moving fewer
+                // units than the owner asked for.
+                $serials = ProductSerial::where('product_id', $sourceProduct->id)
+                    ->available()->whereIn('id', $serialIds)->lockForUpdate()->get();
+                if ($serials->count() !== $serialIds->count()) {
+                    throw ValidationException::withMessages(['lines' => 'একটি বা একাধিক IMEI পাওয়া যায়নি বা ইতিমধ্যে বিক্রি/ট্রান্সফার হয়ে গেছে — পেজ রিলোড করে আবার চেষ্টা করুন।']);
+                }
+
+                foreach ($serials as $serial) {
+                    // the unit itself moves branch — same record, same IMEI,
+                    // same warranty/cost history, just now owned by the
+                    // destination product/shop (see BelongsToTenant: an
+                    // explicit shop_id on an update is never overwritten,
+                    // that auto-stamp only fires on create)
+                    $serial->update(['shop_id' => $destShop->id, 'product_id' => $destProduct->id]);
+                }
+
+                $movedQty = $serials->count();
+                $sourceProduct->decrement('stock', $movedQty);
+                $destProduct->increment('stock', $movedQty);
+
+                StockTransfer::create([
+                    'shop_id' => $sourceShop->id,
+                    'from_shop_id' => $sourceShop->id,
+                    'to_shop_id' => $destShop->id,
+                    'from_product_id' => $sourceProduct->id,
+                    'to_product_id' => $destProduct->id,
+                    'from_product_variant_id' => null,
+                    'to_product_variant_id' => null,
+                    'product_name' => $sourceProduct->name,
+                    'variant_label' => null,
+                    'qty' => $movedQty,
+                    'user_id' => Auth::guard('web')->id(),
+                ]);
+
+                Activity::log('stockTransfer.create', "{$sourceProduct->name} — {$movedQty} IMEI '{$sourceShop->name}' থেকে '{$destShop->name}'-এ পাঠানো হয়েছে।", $sourceProduct, [
+                    'qty' => $movedQty, 'to_shop' => $destShop->name,
+                ]);
+
+                return;
+            }
+
+            if ($hasVariants && $lines->contains(fn ($l) => empty($l['product_variant_id']))) {
+                throw ValidationException::withMessages(['lines' => "{$sourceProduct->name}-এর সাইজ/রং আছে — একটা নির্দিষ্ট ভ্যারিয়েন্ট না বেছে ট্রান্সফার করা যাবে না।"]);
+            }
+            if (! $hasVariants && ($lines->count() > 1 || $lines->contains(fn ($l) => ! empty($l['product_variant_id'])))) {
+                throw ValidationException::withMessages(['lines' => "{$sourceProduct->name}-এর কোনো ভ্যারিয়েন্ট নেই।"]);
+            }
+
+            if ($lines->contains(fn ($l) => empty($l['qty']))) {
+                throw ValidationException::withMessages(['lines' => "{$sourceProduct->name}-এর পরিমাণ লিখুন।"]);
+            }
+            if (! $sourceProduct->sold_by_weight && $lines->contains(fn ($l) => floor($l['qty']) != $l['qty'])) {
+                abort(422, "{$sourceProduct->name}-এর পরিমাণ পূর্ণ সংখ্যা হতে হবে।");
             }
 
             $totalQty = 0.0;
@@ -205,6 +277,9 @@ class StockTransferController extends Controller
                     }
                     $sourceProduct->decrement('stock', $qty);
                     $destProduct->increment('stock', $qty);
+                    if ($isBatchTracked) {
+                        BatchStock::transferBetweenShops($sourceProduct, $destProduct, $qty);
+                    }
 
                     $lineSummaries[] = ['from_product_variant_id' => null, 'to_product_variant_id' => null, 'variant_label' => null, 'qty' => $qty];
                 }

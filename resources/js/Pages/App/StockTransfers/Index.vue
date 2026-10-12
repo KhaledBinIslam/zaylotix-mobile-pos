@@ -22,17 +22,24 @@ const filtered = computed(() => props.products.filter((p) =>
 const form = useForm({ to_shop_id: props.siblings[0]?.id ?? '', product_id: '', lines: [] });
 const selectedProduct = computed(() => props.products.find((p) => p.id === form.product_id));
 const variantQty = ref({}); // product_variant_id -> qty string, only used while a variant product is selected
+const selectedSerialIds = ref([]); // only used while a serial-tracked product is selected — see the IMEI checklist below
 
 function pick(p) {
-    if (p.batch_or_serial_tracked) return; // disabled in the template too — see the row's own hint
     form.product_id = p.id;
     variantQty.value = {};
-    if (!p.variants?.length) {
+    selectedSerialIds.value = [];
+    if (p.is_serial_tracked) {
+        form.lines = []; // rebuilt by the selectedSerialIds watcher below
+    } else if (!p.variants?.length) {
         form.lines = [{ product_variant_id: null, qty: '' }];
     } else {
         form.lines = [];
     }
 }
+
+watch(selectedSerialIds, (ids) => {
+    form.lines = ids.length ? [{ serial_ids: ids.slice() }] : [];
+}, { deep: true });
 
 // Rebuilds `lines` from the per-variant qty inputs whenever one changes —
 // only variants with a qty actually typed in are included, so a variant
@@ -50,7 +57,7 @@ function send() {
     if (!form.to_shop_id || !form.product_id || !form.lines.length) return;
     form.post(route('app.stockTransfers.store'), {
         preserveScroll: true,
-        onSuccess: () => { form.product_id = ''; form.lines = []; variantQty.value = {}; },
+        onSuccess: () => { form.product_id = ''; form.lines = []; variantQty.value = {}; selectedSerialIds.value = []; },
     });
 }
 </script>
@@ -77,7 +84,17 @@ function send() {
                     <button class="btn sm ghost" style="width:auto" @click="form.product_id = ''">✕</button>
                 </div>
 
-                <template v-if="selectedProduct.variants?.length">
+                <template v-if="selectedProduct.is_serial_tracked">
+                    <div style="margin-top:10px;font-size:12px;color:var(--mut)">{{ t('stockTransfer.pickImeisHint') }}</div>
+                    <div v-if="!selectedProduct.available_serials.length" class="empty" style="padding:16px 0">{{ t('stockTransfer.noAvailableSerials') }}</div>
+                    <label v-for="s in selectedProduct.available_serials" :key="s.id" style="display:flex;align-items:center;gap:10px;margin-top:8px;cursor:pointer">
+                        <input type="checkbox" :value="s.id" v-model="selectedSerialIds">
+                        <div style="flex:1"><b>{{ s.imei }}</b><div v-if="s.warranty_expiry" style="font-size:12px;color:var(--mut)">{{ t('stock.warrantyUntil') }} {{ s.warranty_expiry.slice(0, 10) }}</div></div>
+                    </label>
+                    <div style="margin-top:10px;font-weight:700">{{ t('stockTransfer.totalLabel') }}: {{ selectedSerialIds.length }}</div>
+                    <button class="btn sm" style="margin-top:8px;width:100%" :disabled="form.processing || !selectedSerialIds.length" @click="send">{{ form.processing ? '...' : t('stockTransfer.sendButton') }}</button>
+                </template>
+                <template v-else-if="selectedProduct.variants?.length">
                     <div style="margin-top:10px;font-size:12px;color:var(--mut)">{{ t('stockTransfer.perVariantHint') }}</div>
                     <div v-for="v in selectedProduct.variants" :key="v.id" style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:8px">
                         <div style="flex:1"><b>{{ v.label }}</b><div style="font-size:12px;color:var(--mut)">{{ t('stockTransfer.currentStock') }} {{ qty(v.stock) }}</div></div>
@@ -87,6 +104,7 @@ function send() {
                     <button class="btn sm" style="margin-top:8px;width:100%" :disabled="form.processing || !totalQty" @click="send">{{ form.processing ? '...' : t('stockTransfer.sendButton') }}</button>
                 </template>
                 <template v-else>
+                    <div v-if="selectedProduct.is_batch_tracked" style="margin-top:10px;font-size:12px;color:var(--mut)">{{ t('stockTransfer.batchTrackedHint') }}</div>
                     <div style="display:flex;gap:8px;margin-top:10px">
                         <input v-model.number="form.lines[0].qty" type="number" :step="selectedProduct.sold_by_weight ? 0.001 : 1" min="0" :placeholder="t('stockTransfer.qtyPlaceholder')" style="flex:1">
                         <button class="btn sm" style="width:auto;padding:0 20px" :disabled="form.processing || !form.lines[0]?.qty" @click="send">{{ form.processing ? '...' : t('stockTransfer.sendButton') }}</button>
@@ -97,11 +115,12 @@ function send() {
             </div>
 
             <input v-model="q" :placeholder="t('pos.searchPlaceholder')" style="margin-bottom:12px">
-            <div v-for="p in filtered" :key="p.id" class="row" :style="p.batch_or_serial_tracked ? 'opacity:.55;cursor:default' : ''" @click="pick(p)">
+            <div v-for="p in filtered" :key="p.id" class="row" @click="pick(p)">
                 <div class="ava">{{ p.emoji || '📦' }}</div>
                 <div class="mid">
                     <b>{{ p.name }}</b>
-                    <span v-if="p.batch_or_serial_tracked">{{ t('stockTransfer.batchSerialBlocked') }}</span>
+                    <span v-if="p.is_serial_tracked">{{ t('stockTransfer.pickImeisHint') }}</span>
+                    <span v-else-if="p.is_batch_tracked">{{ t('stockTransfer.batchTrackedHint') }}</span>
                     <span v-else>{{ t('stockTransfer.currentStock') }} {{ qty(p.stock) }}</span>
                 </div>
                 <div class="end">›</div>

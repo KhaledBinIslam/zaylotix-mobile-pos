@@ -152,32 +152,134 @@ class BranchStockTransferTest extends TestCase
         $this->assertEquals(0, (float) $product->fresh()->stock);
     }
 
-    public function test_a_batch_tracked_product_is_blocked_with_a_clear_message_not_silently_desynced(): void
+    public function test_a_batch_tracked_product_transfers_and_the_batch_identity_follows_it(): void
     {
         [$main, $owner] = $this->createShopWithOwner();
         $this->grantFeature($main, 'batch_tracking');
         $branch = $this->createBranch($main);
         $product = Product::create(['shop_id' => $main->id, 'name' => 'Napa', 'cost' => 2, 'price' => 3, 'stock' => 100]);
-        ProductBatch::create(['shop_id' => $main->id, 'product_id' => $product->id, 'batch_no' => 'B1', 'qty' => 100, 'cost' => 2]);
+        $batch = ProductBatch::create(['shop_id' => $main->id, 'product_id' => $product->id, 'batch_no' => 'B1', 'expiry_date' => now()->addYear()->toDateString(), 'qty' => 100, 'cost' => 2]);
 
-        $response = $this->actingAs($owner, 'web')->postJson('/app/stock-transfers', [
+        $response = $this->actingAs($owner, 'web')->post('/app/stock-transfers', [
             'to_shop_id' => $branch->id, 'product_id' => $product->id, 'lines' => [['product_variant_id' => null, 'qty' => 10]],
         ]);
 
-        $response->assertStatus(422);
-        $this->assertEquals(100, (float) $product->fresh()->stock);
+        $response->assertRedirect();
+        $this->assertEquals(90, (float) $product->fresh()->stock);
+        $this->assertEquals(90, (float) $batch->fresh()->qty);
+
+        $destProduct = Product::withoutGlobalScopes()->where('shop_id', $branch->id)->where('name', 'Napa')->first();
+        $this->assertEquals(10, (float) $destProduct->stock);
+        $destBatch = ProductBatch::withoutGlobalScopes()->where('shop_id', $branch->id)->where('product_id', $destProduct->id)->first();
+        $this->assertNotNull($destBatch);
+        $this->assertSame('B1', $destBatch->batch_no);
+        $this->assertSame($batch->expiry_date->toDateString(), $destBatch->expiry_date->toDateString());
+        $this->assertEquals(10, (float) $destBatch->qty);
+        $this->assertEquals(2.0, (float) $destBatch->cost);
     }
 
-    public function test_a_serial_tracked_product_is_blocked_with_a_clear_message(): void
+    public function test_batch_transfer_draws_fefo_across_two_batches_and_merges_into_one_destination_batch_on_a_repeat(): void
+    {
+        [$main, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'batch_tracking');
+        $branch = $this->createBranch($main);
+        $product = Product::create(['shop_id' => $main->id, 'name' => 'Napa', 'cost' => 2, 'price' => 3, 'stock' => 15]);
+        $soonest = ProductBatch::create(['shop_id' => $main->id, 'product_id' => $product->id, 'batch_no' => 'OLD', 'expiry_date' => now()->addMonth()->toDateString(), 'qty' => 5, 'cost' => 2]);
+        $later = ProductBatch::create(['shop_id' => $main->id, 'product_id' => $product->id, 'batch_no' => 'NEW', 'expiry_date' => now()->addYear()->toDateString(), 'qty' => 10, 'cost' => 2]);
+
+        // first transfer (qty 8) exhausts the soonest-expiring batch (5) and spills 3 into the later one
+        $payload = ['to_shop_id' => $branch->id, 'product_id' => $product->id, 'lines' => [['product_variant_id' => null, 'qty' => 8]]];
+        $this->actingAs($owner, 'web')->post('/app/stock-transfers', $payload)->assertRedirect();
+
+        $this->assertEquals(0, (float) $soonest->fresh()->qty);
+        $this->assertEquals(7, (float) $later->fresh()->qty);
+
+        $destProduct = Product::withoutGlobalScopes()->where('shop_id', $branch->id)->where('name', 'Napa')->first();
+        $this->assertEquals(2, ProductBatch::withoutGlobalScopes()->where('product_id', $destProduct->id)->count());
+
+        // second transfer (qty 2) draws only from NEW (OLD is empty) and lands on the SAME destination batch, not a duplicate
+        $this->actingAs($owner, 'web')->post('/app/stock-transfers', ['to_shop_id' => $branch->id, 'product_id' => $product->id, 'lines' => [['product_variant_id' => null, 'qty' => 2]]])->assertRedirect();
+
+        $this->assertEquals(5, (float) $later->fresh()->qty);
+        $this->assertEquals(2, ProductBatch::withoutGlobalScopes()->where('product_id', $destProduct->id)->count()); // still just 2, not 3
+        $destNewBatch = ProductBatch::withoutGlobalScopes()->where('product_id', $destProduct->id)->where('batch_no', 'NEW')->first();
+        $this->assertEquals(5, (float) $destNewBatch->qty); // 3 from the first transfer's spillover + 2 from the second
+    }
+
+    public function test_batch_transfer_never_draws_from_an_expired_batch(): void
+    {
+        [$main, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'batch_tracking');
+        $branch = $this->createBranch($main);
+        $product = Product::create(['shop_id' => $main->id, 'name' => 'Napa', 'cost' => 2, 'price' => 3, 'stock' => 10]);
+        $expired = ProductBatch::create(['shop_id' => $main->id, 'product_id' => $product->id, 'batch_no' => 'EXP', 'expiry_date' => now()->subDay()->toDateString(), 'qty' => 10, 'cost' => 2]);
+
+        // the whole qty is sitting in an expired batch, but products.stock itself doesn't know that —
+        // the transfer still succeeds (same "never blocks" rule as a sale would hit via sellableQty elsewhere),
+        // it just moves as plain stock since no non-expired batch exists to draw from
+        $this->actingAs($owner, 'web')->post('/app/stock-transfers', [
+            'to_shop_id' => $branch->id, 'product_id' => $product->id, 'lines' => [['product_variant_id' => null, 'qty' => 10]],
+        ])->assertRedirect();
+
+        $this->assertEquals(10, (float) $expired->fresh()->qty); // untouched — never drawn from
+        $destProduct = Product::withoutGlobalScopes()->where('shop_id', $branch->id)->where('name', 'Napa')->first();
+        $this->assertEquals(10, (float) $destProduct->stock);
+        $this->assertEquals(0, ProductBatch::withoutGlobalScopes()->where('product_id', $destProduct->id)->count()); // no batch created for it
+    }
+
+    public function test_a_serial_tracked_product_transfers_the_specific_imeis_picked(): void
+    {
+        [$main, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'serial_tracking');
+        $branch = $this->createBranch($main);
+        $product = Product::create(['shop_id' => $main->id, 'name' => 'Phone', 'cost' => 10000, 'price' => 15000, 'stock' => 2]);
+        $moved = ProductSerial::create(['shop_id' => $main->id, 'product_id' => $product->id, 'imei' => '111', 'status' => 'in_stock', 'warranty_expiry' => now()->addYear()]);
+        $stays = ProductSerial::create(['shop_id' => $main->id, 'product_id' => $product->id, 'imei' => '222', 'status' => 'in_stock']);
+
+        $response = $this->actingAs($owner, 'web')->post('/app/stock-transfers', [
+            'to_shop_id' => $branch->id, 'product_id' => $product->id, 'lines' => [['serial_ids' => [$moved->id]]],
+        ]);
+
+        $response->assertRedirect();
+        $this->assertEquals(1, (float) $product->fresh()->stock);
+        $this->assertEquals(1, ProductSerial::where('product_id', $product->id)->count()); // only '222' left on the source
+
+        $destProduct = Product::withoutGlobalScopes()->where('shop_id', $branch->id)->where('name', 'Phone')->first();
+        $this->assertEquals(1, (float) $destProduct->stock);
+        $movedFresh = $moved->fresh();
+        $this->assertEquals($branch->id, $movedFresh->shop_id);
+        $this->assertEquals($destProduct->id, $movedFresh->product_id);
+        $this->assertSame('111', $movedFresh->imei); // same unit, same warranty history, just a new owner
+        $this->assertTrue($movedFresh->isUnderWarranty());
+        $this->assertEquals($main->id, $stays->fresh()->shop_id); // '222' never touched
+    }
+
+    public function test_an_already_sold_serial_cannot_be_transferred(): void
     {
         [$main, $owner] = $this->createShopWithOwner();
         $this->grantFeature($main, 'serial_tracking');
         $branch = $this->createBranch($main);
         $product = Product::create(['shop_id' => $main->id, 'name' => 'Phone', 'cost' => 10000, 'price' => 15000, 'stock' => 1]);
-        ProductSerial::create(['shop_id' => $main->id, 'product_id' => $product->id, 'imei' => '12345', 'status' => 'in_stock']);
+        $sold = ProductSerial::create(['shop_id' => $main->id, 'product_id' => $product->id, 'imei' => '111', 'status' => 'sold']);
 
         $response = $this->actingAs($owner, 'web')->postJson('/app/stock-transfers', [
-            'to_shop_id' => $branch->id, 'product_id' => $product->id, 'lines' => [['product_variant_id' => null, 'qty' => 1]],
+            'to_shop_id' => $branch->id, 'product_id' => $product->id, 'lines' => [['serial_ids' => [$sold->id]]],
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertEquals($main->id, $sold->fresh()->shop_id); // untouched
+    }
+
+    public function test_a_serial_tracked_product_requires_picking_at_least_one_imei(): void
+    {
+        [$main, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'serial_tracking');
+        $branch = $this->createBranch($main);
+        $product = Product::create(['shop_id' => $main->id, 'name' => 'Phone', 'cost' => 10000, 'price' => 15000, 'stock' => 1]);
+        ProductSerial::create(['shop_id' => $main->id, 'product_id' => $product->id, 'imei' => '111', 'status' => 'in_stock']);
+
+        $response = $this->actingAs($owner, 'web')->postJson('/app/stock-transfers', [
+            'to_shop_id' => $branch->id, 'product_id' => $product->id, 'lines' => [['serial_ids' => []]],
         ]);
 
         $response->assertStatus(422);
