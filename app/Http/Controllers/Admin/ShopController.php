@@ -112,7 +112,7 @@ class ShopController extends Controller
             // only a main shop (parent_shop_id null) can have branches of
             // its own -- a branch's edit page just never shows this section
             'branches' => $shop->parent_shop_id ? null : $shop->branches()->get(['id', 'name', 'area', 'status', 'is_warehouse', 'created_at']),
-            'ambassadors' => $isSuperAdmin ? \App\Models\Ambassador::where('status', 'active')->orderBy('name')->get(['id', 'name']) : null,
+            'ambassadors' => $isSuperAdmin ? \App\Models\Ambassador::where('status', 'active')->orderBy('name')->get(['id', 'name', 'employee_id']) : null,
             'currentAmbassadorId' => $isSuperAdmin ? $shop->currentAmbassador()?->id : null,
         ]);
     }

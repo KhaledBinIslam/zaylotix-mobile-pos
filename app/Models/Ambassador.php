@@ -8,7 +8,7 @@ class Ambassador extends Model
 {
     // Not tenant-scoped — ambassadors are a platform-level, super-admin-only
     // concept with no relation to any shop's own tenant boundary.
-    protected $fillable = ['name', 'phone', 'email', 'note', 'one_time_bonus', 'recurring_percent', 'status'];
+    protected $fillable = ['name', 'employee_id', 'phone', 'email', 'note', 'one_time_bonus', 'recurring_percent', 'status'];
 
     protected function casts(): array
     {

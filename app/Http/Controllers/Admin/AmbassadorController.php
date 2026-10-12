@@ -30,6 +30,7 @@ class AmbassadorController extends Controller
             ->map(fn (Ambassador $a) => [
                 'id' => $a->id,
                 'name' => $a->name,
+                'employee_id' => $a->employee_id,
                 'phone' => $a->phone,
                 'email' => $a->email,
                 'one_time_bonus' => (float) $a->one_time_bonus,
@@ -41,30 +42,45 @@ class AmbassadorController extends Controller
                 'brought_this_month' => $a->broughtShops()->whereDate('created_at', '>=', now()->startOfMonth())->count(),
             ]);
 
-        return Inertia::render('Admin/Ambassadors/Index', ['ambassadors' => $ambassadors]);
+        return Inertia::render('Admin/Ambassadors/Index', [
+            'ambassadors' => $ambassadors,
+            // main shops only, same convention as show()'s own shop picker —
+            // a branch's own ambassador (if ever needed) is still reachable
+            // via that branch's own Edit page
+            'shops' => Shop::withoutGlobalScopes()->whereNull('parent_shop_id')->orderBy('name')->get(['id', 'name']),
+        ]);
     }
 
+    /**
+     * Quick-add — Khaled's explicit ask: just who (name + employee ID) and
+     * which shop, nothing money-related at creation time. Rates/phone/
+     * email/note are still editable afterward from the ambassador's own
+     * detail page (show()) if ever needed; this only trims what the
+     * creation step itself asks for.
+     */
     public function store(Request $request)
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:20'],
-            'email' => ['nullable', 'email', 'max:255'],
-            'note' => ['nullable', 'string', 'max:1000'],
-            'one_time_bonus' => ['required', 'numeric', 'min:0'],
-            'recurring_percent' => ['required', 'numeric', 'min:0', 'max:100'],
+            'employee_id' => ['required', 'string', 'max:50'],
+            'shop_id' => ['required', 'exists:shops,id'],
         ]);
 
-        $ambassador = Ambassador::create($data);
-        AdminActivity::log('ambassador.create', "Added ambassador '{$ambassador->name}'.", $ambassador);
+        $ambassador = Ambassador::create(['name' => $data['name'], 'employee_id' => $data['employee_id']]);
 
-        return back()->with('success', "Ambassador '{$ambassador->name}' added.");
+        $shop = Shop::withoutGlobalScopes()->findOrFail($data['shop_id']);
+        AmbassadorCommissionService::assign($shop, $ambassador);
+
+        AdminActivity::log('ambassador.create', "Added ambassador '{$ambassador->name}' ({$ambassador->employee_id}) for shop '{$shop->name}'.", $ambassador);
+
+        return back()->with('success', "Ambassador '{$ambassador->name}' added for '{$shop->name}'.");
     }
 
     public function update(Request $request, Ambassador $ambassador)
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
+            'employee_id' => ['required', 'string', 'max:50'],
             'phone' => ['nullable', 'string', 'max:20'],
             'email' => ['nullable', 'email', 'max:255'],
             'note' => ['nullable', 'string', 'max:1000'],

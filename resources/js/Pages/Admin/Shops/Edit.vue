@@ -253,21 +253,21 @@ const recommendedFeatureKeys = () => {
                 <div>
                     <label class="text-sm font-medium text-gray-600">
                         Brought by
-                        <span class="text-xs font-normal text-gray-400">— one-time bonus, set once (correcting later won't create a second bonus)</span>
+                        <span class="text-xs font-normal text-gray-400">— set once (correcting later is fine)</span>
                     </label>
                     <select v-model="ambassadorForm.brought_by_ambassador_id" class="mt-1 w-full rounded-lg border-gray-300">
                         <option :value="null">— none —</option>
-                        <option v-for="a in ambassadors" :key="a.id" :value="a.id">{{ a.name }}</option>
+                        <option v-for="a in ambassadors" :key="a.id" :value="a.id">{{ a.name }}{{ a.employee_id ? ' — ' + a.employee_id : '' }}</option>
                     </select>
                 </div>
                 <div>
                     <label class="text-sm font-medium text-gray-600">
                         Currently assigned
-                        <span class="text-xs font-normal text-gray-400">— drives recurring %, reassignable anytime</span>
+                        <span class="text-xs font-normal text-gray-400">— reassignable anytime</span>
                     </label>
                     <select v-model="ambassadorForm.current_ambassador_id" class="mt-1 w-full rounded-lg border-gray-300">
                         <option :value="null">— none —</option>
-                        <option v-for="a in ambassadors" :key="a.id" :value="a.id">{{ a.name }}</option>
+                        <option v-for="a in ambassadors" :key="a.id" :value="a.id">{{ a.name }}{{ a.employee_id ? ' — ' + a.employee_id : '' }}</option>
                     </select>
                 </div>
             </div>

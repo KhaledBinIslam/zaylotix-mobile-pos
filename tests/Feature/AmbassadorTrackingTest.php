@@ -24,6 +24,23 @@ class AmbassadorTrackingTest extends TestCase
         return Admin::create(['name' => 'Support', 'email' => 'amb-sup-'.uniqid().'@test.com', 'password' => 'password', 'role' => 'support']);
     }
 
+    /** Khaled's explicit simplification: the "+ New ambassador" quick-add only ever asks for name + employee ID + which shop — nothing money-related. */
+    public function test_creating_an_ambassador_only_needs_name_employee_id_and_shop(): void
+    {
+        [$shop] = $this->createShopWithOwner();
+
+        $this->actingAs($this->superAdmin(), 'admin')->post('/admin/ambassadors', [
+            'name' => 'Karim', 'employee_id' => 'EMP-007', 'shop_id' => $shop->id,
+        ])->assertRedirect();
+
+        $ambassador = Ambassador::where('employee_id', 'EMP-007')->first();
+        $this->assertNotNull($ambassador);
+        $this->assertSame('Karim', $ambassador->name);
+        $this->assertSame(0.0, (float) $ambassador->one_time_bonus); // never asked for, defaults to 0
+        $this->assertSame(0.0, (float) $ambassador->recurring_percent);
+        $this->assertSame($ambassador->id, $shop->fresh()->currentAmbassador()?->id); // the shop pick also assigns them
+    }
+
     public function test_a_support_admin_cannot_reach_any_ambassador_route(): void
     {
         [$shop] = $this->createShopWithOwner();

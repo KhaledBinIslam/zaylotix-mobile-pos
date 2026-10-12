@@ -7,7 +7,7 @@ const props = defineProps({
 });
 
 const form = useForm({
-    name: props.ambassador.name, phone: props.ambassador.phone, email: props.ambassador.email,
+    name: props.ambassador.name, employee_id: props.ambassador.employee_id, phone: props.ambassador.phone, email: props.ambassador.email,
     note: props.ambassador.note, one_time_bonus: Number(props.ambassador.one_time_bonus),
     recurring_percent: Number(props.ambassador.recurring_percent), status: props.ambassador.status,
 });
@@ -34,6 +34,7 @@ function markMonthPaid(month) {
             <form @submit.prevent="save" class="bg-white border rounded-xl p-5 space-y-3 lg:col-span-1">
                 <h2 class="font-bold text-sm text-gray-600">Details & rates</h2>
                 <div><label class="text-xs text-gray-500">Name</label><input v-model="form.name" class="mt-1 w-full rounded-lg border-gray-300 text-sm"></div>
+                <div><label class="text-xs text-gray-500">Employee ID</label><input v-model="form.employee_id" class="mt-1 w-full rounded-lg border-gray-300 text-sm"></div>
                 <div><label class="text-xs text-gray-500">Phone</label><input v-model="form.phone" class="mt-1 w-full rounded-lg border-gray-300 text-sm"></div>
                 <div><label class="text-xs text-gray-500">Email</label><input v-model="form.email" class="mt-1 w-full rounded-lg border-gray-300 text-sm"></div>
                 <div>
