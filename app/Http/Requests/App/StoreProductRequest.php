@@ -42,6 +42,11 @@ class StoreProductRequest extends FormRequest
             'barcode' => ['nullable', 'string', 'max:64', Rule::unique('products', 'barcode')->where('shop_id', Tenancy::id())->ignore($this->route('product'))],
             'sold_by_weight' => ['nullable', 'boolean'],
             'weight_unit' => ['required_if:sold_by_weight,1', 'nullable', 'in:kg,litre'],
+            // per-product opt-in into the shop-wide serial_tracking feature
+            // (see Stock/Index.vue's hasSerialTracking) — accepted from
+            // anyone since it's harmless either way, a shop without the
+            // feature simply never sends/shows it
+            'track_serial' => ['nullable', 'boolean'],
             'cost' => ['required', 'numeric', 'min:0'],
             'price' => ['required', 'numeric', 'min:0'],
             'wholesale_price' => ['nullable', 'numeric', 'min:0'],

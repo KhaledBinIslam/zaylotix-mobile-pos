@@ -159,6 +159,54 @@ class SerialTrackingTest extends TestCase
         );
     }
 
+    public function test_a_product_can_opt_into_serial_tracking_independently_of_others(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'serial_tracking');
+
+        $this->actingAs($owner, 'web')->post(route('app.products.store'), [
+            'name' => 'Phone', 'cost' => 10000, 'price' => 15000, 'stock' => 0, 'track_serial' => true,
+        ])->assertRedirect();
+        $this->actingAs($owner, 'web')->post(route('app.products.store'), [
+            'name' => 'Phone Case', 'cost' => 100, 'price' => 200, 'stock' => 0,
+        ])->assertRedirect();
+
+        $this->assertTrue(Product::where('name', 'Phone')->first()->track_serial);
+        $this->assertFalse(Product::where('name', 'Phone Case')->first()->track_serial);
+    }
+
+    public function test_updating_a_product_can_turn_serial_tracking_on_or_off(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'serial_tracking');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Phone', 'cost' => 10000, 'price' => 15000, 'stock' => 0]);
+        $this->assertFalse($product->fresh()->track_serial);
+
+        $this->actingAs($owner, 'web')->put(route('app.products.update', $product->id), [
+            'name' => 'Phone', 'cost' => 10000, 'price' => 15000, 'stock' => 0, 'track_serial' => true,
+        ])->assertRedirect();
+
+        $this->assertTrue($product->fresh()->track_serial);
+    }
+
+    public function test_stock_in_with_imeis_still_works_even_when_the_product_was_never_flagged(): void
+    {
+        // track_serial only drives whether Stock/Index.vue *shows* the IMEI
+        // field by default — the backend itself stays permissive so an
+        // already-serial-tracked product from before this flag existed (or
+        // any API caller) never breaks just because the flag is off.
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'serial_tracking');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Phone', 'cost' => 10000, 'price' => 15000, 'stock' => 0, 'track_serial' => false]);
+
+        $this->actingAs($owner, 'web')->post("/app/products/{$product->id}/stock-in", [
+            'qty' => 2, 'imeis' => "111\n222",
+        ])->assertRedirect();
+
+        $this->assertEquals(2, $product->fresh()->stock);
+        $this->assertSame(2, ProductSerial::count());
+    }
+
     public function test_serials_are_tenant_scoped(): void
     {
         [$shopA, $ownerA] = $this->createShopWithOwner();

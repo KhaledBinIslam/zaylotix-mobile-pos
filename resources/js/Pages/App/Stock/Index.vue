@@ -180,7 +180,7 @@ const preExistingUnallocatedStock = computed(() => (!editingHasVariants.value &&
 const form = useForm({
     name: '', name_en: '', generic_name: '', company: '', shelf_location: '', requires_prescription: false, emoji: '📦', photo: null, remove_photo: false, category_id: '', new_category_name: '',
     unit_id: '', new_unit_name: '', barcode: '', cost: '', price: '', wholesale_price: '', discount_price: '', stock: '',
-    reorder_point: '', sold_by_weight: false, weight_unit: 'kg',
+    reorder_point: '', sold_by_weight: false, weight_unit: 'kg', track_serial: false,
     // restaurant-only (see isRestaurant) — 'tracked' everywhere else,
     // unchanged from before this field existed
     stock_mode: 'tracked', available: true,
@@ -254,6 +254,7 @@ function openEdit(p) {
     form.stock_mode = p.stock_mode || 'tracked';
     form.available = Number(p.stock) > 0; // only meaningful when stock_mode is 'toggle' — see Product::isMarkedAvailable()
     form.sold_by_weight = !!p.sold_by_weight; form.weight_unit = p.weight_unit || 'kg';
+    form.track_serial = !!p.track_serial;
     form.photo = null; form.remove_photo = false;
     newPhotoPreview.value = null;
     form.new_category_name = ''; form.new_unit_name = '';
@@ -436,8 +437,8 @@ function applyStockIn() {
         qty: stockInQty.value, cost: stockInCost.value,
         batch_no: hasBatchTracking.value ? stockInBatchNo.value : '',
         expiry_date: hasBatchTracking.value ? stockInExpiryDate.value : '',
-        imeis: hasSerialTracking.value ? stockInImeis.value : '',
-        warranty_expiry: hasSerialTracking.value ? stockInWarrantyExpiry.value : '',
+        imeis: hasSerialTracking.value && stockInProduct.value?.track_serial ? stockInImeis.value : '',
+        warranty_expiry: hasSerialTracking.value && stockInProduct.value?.track_serial ? stockInWarrantyExpiry.value : '',
     }, {
         onSuccess: () => (stockInSheet.value = false),
         onFinish: () => (stockInSubmitting.value = false),
@@ -650,6 +651,14 @@ useKeyboardShortcuts({
                     <button type="button" :class="{ on: form.weight_unit === 'kg' }" @click="form.weight_unit = 'kg'">{{ t('stock.unitKg') }}</button>
                     <button type="button" :class="{ on: form.weight_unit === 'litre' }" @click="form.weight_unit = 'litre'">{{ t('stock.unitLitre') }}</button>
                 </div>
+            </div>
+
+            <div v-if="hasSerialTracking" class="field">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                    <input v-model="form.track_serial" type="checkbox">
+                    {{ t('stock.trackSerial') }}
+                </label>
+                <div style="color:var(--dim);font-size:12px;margin-top:4px">{{ t('stock.trackSerialHint') }}</div>
             </div>
 
             <div class="f2">
@@ -891,7 +900,7 @@ useKeyboardShortcuts({
                      breaking during stock-in) -->
                 <div class="field"><label>{{ t('stock.expiryDate') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label><input v-model="stockInExpiryDate" type="date"></div>
             </template>
-            <template v-if="hasSerialTracking">
+            <template v-if="hasSerialTracking && stockInProduct?.track_serial">
                 <div class="field">
                     <label>{{ t('stock.imeis') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.imeisHint') }}</span></label>
                     <textarea v-model="stockInImeis" rows="3" :placeholder="t('stock.imeisPlaceholder')"></textarea>

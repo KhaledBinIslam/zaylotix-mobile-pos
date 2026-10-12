@@ -14,7 +14,7 @@ class Product extends Model
 
     protected $fillable = [
         'shop_id', 'category_id', 'unit_id', 'name', 'name_en', 'generic_name', 'company', 'shelf_location', 'requires_prescription', 'emoji', 'photo_path', 'barcode',
-        'sold_by_weight', 'weight_unit',
+        'sold_by_weight', 'weight_unit', 'track_serial',
         'cost', 'price', 'wholesale_price', 'discount_price', 'stock', 'stock_mode', 'expiry_date', 'batch_no', 'size', 'color', 'imei',
         'reorder_point',
     ];
@@ -44,6 +44,7 @@ class Product extends Model
             'expiry_date' => 'date:Y-m-d',
             'requires_prescription' => 'boolean',
             'sold_by_weight' => 'boolean',
+            'track_serial' => 'boolean',
         ];
     }
 

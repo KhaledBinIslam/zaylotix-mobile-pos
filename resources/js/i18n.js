@@ -1018,6 +1018,8 @@ export const translations = {
     'stock.wholesalePriceHint': { bn: '(ঐচ্ছিক — POS-এ "পাইকারি" মোডে এই দাম প্রযোজ্য হবে)', en: '(optional — used when POS is in "wholesale" mode)' },
     'stock.soldByWeight': { bn: 'ওজন/লিটার হিসেবে বিক্রি (লুজ পণ্য)', en: 'Sold by weight/volume (loose item)' },
     'stock.soldByWeightHint': { bn: 'চাল, ডাল, তেলের মতো লুজ পণ্যের জন্য — দাম হবে প্রতি কেজি/লিটার, POS-এ গ্রাম/মিলি লিখে বিক্রি করা যাবে', en: 'For loose goods like rice, dal, oil — price becomes per kg/litre, and POS lets you type grams/ml to sell' },
+    'stock.trackSerial': { bn: 'এই পণ্যের জন্য IMEI/সিরিয়াল ট্র্যাক করুন', en: 'Track IMEI/serial for this product' },
+    'stock.trackSerialHint': { bn: 'মোবাইল, ল্যাপটপের মতো পণ্যের জন্য চালু করুন — স্টক-ইন করার সময় IMEI লেখার ঘর দেখাবে। অন্য সাধারণ পণ্যের জন্য বন্ধ রাখুন।', en: 'Turn on for devices like phones/laptops — stock-in will then show an IMEI box. Leave off for ordinary products.' },
     'stock.unitKg': { bn: 'কেজি', en: 'kg' },
     'stock.unitLitre': { bn: 'লিটার', en: 'litre' },
     'stock.stock': { bn: 'স্টক', en: 'Stock' },
