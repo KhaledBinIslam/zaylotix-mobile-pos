@@ -19,6 +19,7 @@ return [
     'returns' => ['label_bn' => 'বিক্রয় ফেরত', 'label_en' => 'Sales returns', 'category' => 'স্টক'],
     'stock_count' => ['label_bn' => 'স্টক গণনা', 'label_en' => 'Stock count', 'category' => 'স্টক'],
     'barcode_labels' => ['label_bn' => 'বারকোড লেবেল প্রিন্ট', 'label_en' => 'Barcode label printing', 'category' => 'স্টক'],
+    'service_billing' => ['label_bn' => 'সার্ভিস/রিপেয়ার বিলিং', 'label_en' => 'Service/repair billing', 'category' => 'সার্ভিস'],
 
     'customers' => ['label_bn' => 'কাস্টমার তালিকা', 'label_en' => 'Customer list', 'category' => 'কাস্টমার'],
     'due' => ['label_bn' => 'বাকি তোলা', 'label_en' => 'Collect dues', 'category' => 'কাস্টমার'],

@@ -458,8 +458,8 @@ body {
 @media (min-width: 1024px) { #nav { display: none; } }
 
 .seg { display: flex; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 4px; gap: 4px; }
-.seg button { flex: 1; padding: 10px; border-radius: 9px; font-size: 13px; font-weight: 650; color: var(--mut); }
-.seg button.on { background: var(--gold); color: #fff; }
+.seg button, .seg a { flex: 1; padding: 10px; border-radius: 9px; font-size: 13px; font-weight: 650; color: var(--mut); text-align: center; text-decoration: none; }
+.seg button.on, .seg a.on { background: var(--gold); color: #fff; }
 
 .empty { text-align: center; color: var(--dim); padding: 40px 20px; }
 .empty .big { font-size: 40px; margin-bottom: 10px; }

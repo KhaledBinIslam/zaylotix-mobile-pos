@@ -29,6 +29,10 @@ class FeatureSeeder extends Seeder
             ['key' => 'weight_based_selling', 'label_bn' => 'ওজন/আয়তন হিসেবে বিক্রি (কেজি, গ্রাম, লিটার)', 'label_en' => 'Weight/volume-based selling (kg, gram, litre)', 'category' => 'inventory', 'description' => 'Mark a product as loose-sold — price becomes "per kg"/"per litre" and the POS gets a quick gram/ml weight-entry pad instead of a whole-unit stepper.'],
             ['key' => 'wholesale_pricing', 'label_bn' => 'পাইকারি মূল্য (Wholesale)', 'label_en' => 'Wholesale pricing', 'category' => 'inventory', 'description' => 'Set a separate wholesale price per product and mark a whole checkout as retail or wholesale — POS uses the wholesale rate on every line for that sale.'],
             ['key' => 'prescription_records', 'label_bn' => 'প্রেসক্রিপশন রেকর্ড', 'label_en' => 'Prescription records', 'category' => 'inventory', 'description' => 'Flag drug-control products so the cashier is reminded to check a prescription, and record a note about it at checkout.'],
+            // opt-in only — electronics/mobile-repair shops turn this on;
+            // billing a ticket creates an ordinary Sale (sale_type='service'),
+            // so every existing report already counts its revenue/profit
+            ['key' => 'service_billing', 'label_bn' => 'সার্ভিস/রিপেয়ার বিলিং', 'label_en' => 'Service/repair billing', 'category' => 'inventory', 'description' => 'Log a repair job (device, customer, technician), add parts/labor as it progresses, and bill it as a normal sale once done.'],
             // opt-in only — a restaurant that wants raw-ingredient/recipe-level
             // cost control turns this on specifically; products.stock keeps
             // working exactly as before either way (see IngredientConsumption)

@@ -36,6 +36,7 @@ use App\Http\Controllers\App\NotificationController;
 use App\Http\Controllers\App\OnboardingController;
 use App\Http\Controllers\App\PaymentController;
 use App\Http\Controllers\App\PaymentGatewayController;
+use App\Http\Controllers\App\ServiceTicketController;
 use App\Http\Controllers\App\ShopBackupController;
 use App\Http\Controllers\App\StockHistoryController;
 use App\Http\Controllers\App\StockTransferController;
@@ -322,6 +323,17 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
 
     Route::middleware(['perm:stock_count', 'feature:stock_count'])->group(function () {
         Route::post('stock-count', [StockCountController::class, 'store'])->name('stockCount.store');
+    });
+
+    Route::middleware(['perm:service_billing', 'feature:service_billing'])->group(function () {
+        Route::get('service-tickets', [ServiceTicketController::class, 'index'])->name('serviceTickets.index');
+        Route::post('service-tickets', [ServiceTicketController::class, 'store'])->name('serviceTickets.store');
+        Route::get('service-tickets/{ticket}', [ServiceTicketController::class, 'show'])->name('serviceTickets.show');
+        Route::post('service-tickets/{ticket}/items', [ServiceTicketController::class, 'addItem'])->name('serviceTickets.items.store');
+        Route::delete('service-ticket-items/{item}', [ServiceTicketController::class, 'removeItem'])->name('serviceTickets.items.destroy');
+        Route::patch('service-tickets/{ticket}', [ServiceTicketController::class, 'updateStatus'])->name('serviceTickets.update');
+        Route::post('service-tickets/{ticket}/bill', [ServiceTicketController::class, 'bill'])->name('serviceTickets.bill');
+        Route::post('service-tickets/{ticket}/cancel', [ServiceTicketController::class, 'cancel'])->name('serviceTickets.cancel');
     });
 
     Route::middleware(['perm:accounts', 'feature:accounts'])->group(function () {
