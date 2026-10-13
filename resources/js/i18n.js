@@ -849,6 +849,7 @@ export const translations = {
     'damage.reason': { bn: 'কারণ', en: 'Reason' },
     'damage.reasonPlaceholder': { bn: 'মেয়াদ শেষ / ভাঙা', en: 'Expired / broken' },
     'damage.batchLabel': { bn: 'কোন ব্যাচ থেকে', en: 'Which batch' },
+    'damage.variantLabel': { bn: 'কোন সাইজ/রং', en: 'Which size/color' },
     'damage.batchAny': { bn: 'নির্দিষ্ট করবো না', en: "Don't specify" },
     'damage.submit': { bn: 'ক্ষতি যোগ করুন', en: 'Add damage' },
     'return.sheetTitle': { bn: '↩️ বিক্রয় ফেরত', en: '↩️ Sales Return' },

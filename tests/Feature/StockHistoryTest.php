@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Damage;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\SalesReturn;
 use App\Models\StockCount;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -68,6 +69,36 @@ class StockHistoryTest extends TestCase
         $this->assertSame('Oil', $records[0]['product']['name']);
         $this->assertSame($owner->name, $records[0]['user']['name']);
         $this->assertSame(40.0, (float) $records[0]['refund']);
+    }
+
+    public function test_damage_tab_shows_which_variant_was_written_off(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 200, 'price' => 400, 'stock' => 10]);
+        $variant = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => 'M', 'color' => 'Red', 'stock' => 10]);
+        Damage::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'product_variant_id' => $variant->id, 'qty' => 2, 'loss' => 400, 'date' => now()]);
+
+        $response = $this->actingAs($owner, 'web')->get('/app/stock-history?type=damage');
+
+        $records = $response->getOriginalContent()->getData()['page']['props']['records']['data'];
+        $this->assertSame('M', $records[0]['variant']['size']);
+        $this->assertSame('Red', $records[0]['variant']['color']);
+    }
+
+    public function test_count_tab_shows_which_variant_was_recounted(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 200, 'price' => 400, 'stock' => 18]);
+        $variant = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => 'L', 'stock' => 8]);
+        StockCount::create([
+            'shop_id' => $shop->id, 'date' => now(), 'changed' => 1,
+            'changes' => [['product_id' => $product->id, 'product_variant_id' => $variant->id, 'from' => 10, 'to' => 8]],
+        ]);
+
+        $response = $this->actingAs($owner, 'web')->get('/app/stock-history?type=count');
+
+        $records = $response->getOriginalContent()->getData()['page']['props']['records']['data'];
+        $this->assertSame('Shirt (L)', $records[0]['changes'][0]['product_name']);
     }
 
     public function test_history_is_tenant_scoped(): void

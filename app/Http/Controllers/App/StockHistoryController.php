@@ -26,18 +26,20 @@ class StockHistoryController extends Controller
 
         $records = match ($type) {
             'count' => $this->stockCounts(),
-            'return' => SalesReturn::with(['product:id,name,emoji', 'user:id,name'])
+            'return' => SalesReturn::with(['product:id,name,emoji', 'variant:id,size,color', 'user:id,name'])
                 ->latest('id')->paginate(20)->withQueryString(),
-            default => Damage::with('product:id,name,emoji')
+            default => Damage::with(['product:id,name,emoji', 'variant:id,size,color'])
                 ->latest('id')->paginate(20)->withQueryString(),
         };
 
         return Inertia::render('App/StockHistory/Index', ['type' => $type, 'records' => $records]);
     }
 
-    /** StockCount.changes is a JSON array of {product_id, from, to} with no
-     *  product name baked in - resolve every id referenced on this page of
-     *  results in one batch query rather than one lookup per row. */
+    /** StockCount.changes is a JSON array of {product_id, from, to} (plus
+     *  product_variant_id for a variant row — see StockCountController)
+     *  with no product/variant name baked in — resolve every id referenced
+     *  on this page of results in one batch query rather than one lookup
+     *  per row. */
     private function stockCounts()
     {
         $page = StockCount::latest('id')->paginate(20)->withQueryString();
@@ -47,11 +49,20 @@ class StockHistoryController extends Controller
             ->unique()->values();
         $names = Product::whereIn('id', $productIds)->pluck('name', 'id');
 
-        $page->getCollection()->transform(function ($count) use ($names) {
-            $count->changes = collect($count->changes)->map(fn ($c) => [
-                ...$c,
-                'product_name' => $names->get($c['product_id'], '?'),
-            ])->all();
+        $variantIds = collect($page->items())
+            ->flatMap(fn ($c) => collect($c->changes)->pluck('product_variant_id'))
+            ->filter()->unique()->values();
+        $variants = \App\Models\ProductVariant::whereIn('id', $variantIds)->get(['id', 'size', 'color'])->keyBy('id');
+
+        $page->getCollection()->transform(function ($count) use ($names, $variants) {
+            $count->changes = collect($count->changes)->map(function ($c) use ($names, $variants) {
+                $variant = ! empty($c['product_variant_id']) ? $variants->get($c['product_variant_id']) : null;
+
+                return [
+                    ...$c,
+                    'product_name' => $names->get($c['product_id'], '?').($variant ? ' ('.$variant->label().')' : ''),
+                ];
+            })->all();
 
             return $count;
         });

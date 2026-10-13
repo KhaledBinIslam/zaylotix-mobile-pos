@@ -9,6 +9,11 @@ const { t } = useI18n();
 
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 const fmt = (dt) => new Date(dt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+function variantSuffix(r) {
+    if (!r.variant) return '';
+    const label = [r.variant.size, r.variant.color].filter(Boolean).join(', ');
+    return label ? ` (${label})` : '';
+}
 
 function setTab(type) {
     router.get(route('app.stockHistory.index'), { type }, { preserveState: true });
@@ -32,7 +37,7 @@ function setTab(type) {
             <div v-for="r in records.data" :key="r.id" class="row" style="cursor:default">
                 <div class="ava">{{ r.product?.emoji || '🗑️' }}</div>
                 <div class="mid">
-                    <b>{{ r.product?.name || '—' }} × {{ r.qty }}</b>
+                    <b>{{ r.product?.name || '—' }}{{ variantSuffix(r) }} × {{ r.qty }}</b>
                     <span>{{ r.reason || '—' }} • {{ fmt(r.created_at) }}</span>
                 </div>
                 <div class="end" style="color:var(--rose);font-weight:700">−{{ money(r.loss) }}</div>
@@ -46,7 +51,7 @@ function setTab(type) {
                     <b>{{ r.changed }} {{ t('stockHistory.productsChanged') }}</b>
                     <span style="color:var(--mut);font-size:12.5px">{{ fmt(r.created_at) }}</span>
                 </summary>
-                <div v-for="c in r.changes" :key="c.product_id" style="display:flex;justify-content:space-between;padding:4px 0;font-size:12.5px;color:var(--mut);border-top:1px solid var(--line)">
+                <div v-for="c in r.changes" :key="c.product_variant_id ? 'v-' + c.product_variant_id : 'p-' + c.product_id" style="display:flex;justify-content:space-between;padding:4px 0;font-size:12.5px;color:var(--mut);border-top:1px solid var(--line)">
                     <span>{{ c.product_name }}</span>
                     <span>{{ c.from }} → {{ c.to }}</span>
                 </div>
@@ -58,7 +63,7 @@ function setTab(type) {
             <div v-for="r in records.data" :key="r.id" class="row" style="cursor:default">
                 <div class="ava">{{ r.product?.emoji || '↩️' }}</div>
                 <div class="mid">
-                    <b>{{ r.product?.name || '—' }} × {{ r.qty }}</b>
+                    <b>{{ r.product?.name || '—' }}{{ variantSuffix(r) }} × {{ r.qty }}</b>
                     <span>{{ r.user?.name || '—' }} • {{ fmt(r.created_at) }}{{ r.phone ? ' • ' + r.phone : '' }}</span>
                 </div>
                 <div class="end" style="color:var(--rose);font-weight:700">−{{ money(r.refund) }}</div>

@@ -15,7 +15,7 @@ class MoreController extends Controller
     {
         $shop = Tenancy::shop();
 
-        $productsQuery = Product::whereDoesntHave('variants')->orderBy('name');
+        $productsQuery = Product::orderBy('name');
         // feeds the batch picker on the Damage/Return sheets — every
         // available batch (expired ones included; writing off/returning
         // against an already-expired batch is a legitimate, expected use of
@@ -24,16 +24,25 @@ class MoreController extends Controller
         if ($shop?->hasFeature('batch_tracking')) {
             $productsQuery->with(['batches' => fn ($q) => $q->available()->fefoOrder()]);
         }
+        // feeds the variant picker on the Damage/Stock-count sheets — a
+        // variant product's own `stock` is never writable directly there
+        // (DamageController/StockCountController both require naming the
+        // specific size/color instead), same reasoning Purchase/Stock-in
+        // already follow
+        if ($shop?->hasFeature('product_variants')) {
+            $productsQuery->with(['variants' => fn ($q) => $q->orderBy('size')->orderBy('color')]);
+        }
 
         return Inertia::render('App/More', [
             // More is reachable by any staff regardless of permission
             // grants — never the raw model, see Shop::toArrayForUser()
             'shop' => $shop?->toArrayForUser(Auth::guard('web')->user()),
-            // feeds the Purchase/Damage/Return/Stock-count pickers — none of
-            // those flows support variant products (their stock is a live
-            // sum of variants, managed from the Stock page instead), so
-            // variant-having products are excluded here rather than letting
-            // one get picked and silently rejected or mishandled downstream
+            // feeds the Purchase/Damage/Return/Stock-count pickers — the
+            // quick Return sheet here still only takes a plain product
+            // (unchanged; a variant return goes through the full Returns
+            // page instead, which already handles it), but Damage and
+            // Stock-count now take a specific variant when the product has
+            // any (see those controllers)
             'products' => $productsQuery->get(['id', 'name', 'emoji', 'price', 'cost', 'stock']),
             'suppliers' => $shop?->hasFeature('suppliers') ? Supplier::orderBy('name')->get(['id', 'name']) : [],
         ]);

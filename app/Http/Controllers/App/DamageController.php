@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Damage;
 use App\Models\Product;
 use App\Models\ProductBatch;
+use App\Models\ProductVariant;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -16,21 +17,30 @@ class DamageController extends Controller
     {
         $data = $request->validate([
             'product_id' => ['required', 'exists:products,id'],
+            'product_variant_id' => ['nullable', 'integer'],
             'product_batch_id' => ['nullable', 'exists:product_batches,id'],
             'qty' => ['required', 'numeric', 'min:0.001'],
             'reason' => ['nullable', 'string', 'max:255'],
         ]);
 
         DB::transaction(function () use ($data) {
-            $product = Product::whereKey($data['product_id'])->lockForUpdate()->firstOrFail();
+            $product = Product::withCount('variants')->whereKey($data['product_id'])->lockForUpdate()->firstOrFail();
 
             // a variant product's `stock` is a live-maintained sum of its
             // variants' stock (see ProductController) — writing to it
             // directly here would desync that sum from its parts with
-            // nothing to ever resync it, same reasoning as stockIn/update
-            if ($product->variants()->exists()) {
+            // nothing to ever resync it, same reasoning as stockIn/update.
+            // A specific variant is fine — that's exactly what the matching
+            // branch below does, moving both the variant's own stock and
+            // the product total together, same as StockTransferController.
+            if ($product->variants_count > 0 && empty($data['product_variant_id'])) {
                 throw ValidationException::withMessages([
-                    'qty' => "{$product->name} ভ্যারিয়েন্ট পণ্য — এখানে নষ্ট লেখা যাবে না, স্টক পেজ থেকে নির্দিষ্ট ভ্যারিয়েন্টের স্টক কমান।",
+                    'qty' => "{$product->name}-এর সাইজ/রং আছে — একটা নির্দিষ্ট ভ্যারিয়েন্ট বেছে নষ্ট লিখুন।",
+                ]);
+            }
+            if ($product->variants_count === 0 && ! empty($data['product_variant_id'])) {
+                throw ValidationException::withMessages([
+                    'product_variant_id' => "{$product->name}-এর কোনো ভ্যারিয়েন্ট নেই।",
                 ]);
             }
 
@@ -41,6 +51,35 @@ class DamageController extends Controller
                 throw ValidationException::withMessages([
                     'qty' => "{$product->name}-এর পরিমাণ পূর্ণ সংখ্যা হতে হবে।",
                 ]);
+            }
+
+            if (! empty($data['product_variant_id'])) {
+                $variant = ProductVariant::whereKey($data['product_variant_id'])->lockForUpdate()->first();
+                if (! $variant || $variant->product_id !== $product->id) {
+                    throw ValidationException::withMessages([
+                        'product_variant_id' => 'এই ভ্যারিয়েন্টটি সঠিক নয়।',
+                    ]);
+                }
+                if ($variant->stock < $data['qty']) {
+                    throw ValidationException::withMessages([
+                        'qty' => "পর্যাপ্ত স্টক নেই: {$product->name} ({$variant->label()}) — আছে মাত্র {$variant->stock}টি।",
+                    ]);
+                }
+
+                $loss = ((float) ($variant->cost ?? $product->cost)) * (float) $data['qty'];
+                $variant->decrement('stock', $data['qty']);
+                $product->decrement('stock', $data['qty']);
+
+                Damage::create([
+                    'product_id' => $product->id,
+                    'product_variant_id' => $variant->id,
+                    'qty' => $data['qty'],
+                    'reason' => $data['reason'] ?? null,
+                    'loss' => $loss,
+                    'date' => now()->toDateString(),
+                ]);
+
+                return;
             }
 
             // A ValidationException (not abort()) is required here so this

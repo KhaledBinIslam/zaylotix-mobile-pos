@@ -276,16 +276,24 @@ function batchLabel(b) {
     return `${b.qty}× ${no}${expiry}`;
 }
 
+const hasVariants = computed(() => features.value.includes('product_variants'));
+function variantsOf(productId) {
+    return props.products.find((p) => p.id === productId)?.variants || [];
+}
+function variantLabel(v) {
+    return [v.size, v.color].filter(Boolean).join(', ');
+}
+
 // --- damage ---
 const damageSheet = ref(false);
-const damageForm = useForm({ product_id: '', product_batch_id: '', qty: '', reason: '' });
+const damageForm = useForm({ product_id: '', product_variant_id: '', product_batch_id: '', qty: '', reason: '' });
 function saveDamage() {
     damageForm.post(route('app.damages.store'), { onSuccess: () => { damageSheet.value = false; damageForm.reset(); } });
 }
 
 // --- return ---
 const returnSheet = ref(false);
-const returnForm = useForm({ product_id: '', product_batch_id: '', qty: '', refund: '', phone: '' });
+const returnForm = useForm({ product_id: '', product_variant_id: '', product_batch_id: '', qty: '', refund: '', phone: '' });
 function saveReturn() {
     returnForm.post(route('app.returns.store'), { onSuccess: () => { returnSheet.value = false; returnForm.reset(); } });
 }
@@ -301,10 +309,20 @@ function saveSupplierReturn() {
 const countSheet = ref(false);
 const counts = ref({});
 const countSubmitting = ref(false);
+// a variant product is recounted one row per size/color (its own total is
+// just the sum, same reasoning as Damage/Return) — flattened here instead
+// of nesting a second v-for in the template, since each row needs its own
+// stable key either way
+const countRows = computed(() => props.products.flatMap((p) => {
+    if (p.variants?.length) {
+        return p.variants.map((v) => ({ key: `v-${v.id}`, product_id: p.id, product_variant_id: v.id, emoji: p.emoji, name: `${p.name} (${variantLabel(v)})`, stock: v.stock }));
+    }
+    return [{ key: `p-${p.id}`, product_id: p.id, product_variant_id: null, emoji: p.emoji, name: p.name, stock: p.stock }];
+}));
 function applyCount() {
-    const payload = Object.entries(counts.value)
-        .filter(([, v]) => v !== '' && v !== null && v !== undefined)
-        .map(([product_id, counted]) => ({ product_id: Number(product_id), counted: Number(counted) }));
+    const payload = countRows.value
+        .filter((row) => counts.value[row.key] !== '' && counts.value[row.key] !== null && counts.value[row.key] !== undefined)
+        .map((row) => ({ product_id: row.product_id, product_variant_id: row.product_variant_id, counted: Number(counts.value[row.key]) }));
 
     if (!payload.length) return;
 
@@ -736,11 +754,19 @@ onMounted(() => {
         <Sheet v-model="damageSheet" :title="t('damage.sheetTitle')">
             <div class="field">
                 <label>{{ t('damage.selectProduct') }}</label>
-                <select v-model="damageForm.product_id">
+                <select v-model="damageForm.product_id" @change="damageForm.product_variant_id = ''">
                     <option :value="''">{{ t('damage.selectPlaceholder') }}</option>
                     <option v-for="p in products" :key="p.id" :value="p.id">{{ p.emoji }} {{ p.name }} — {{ t('damage.stockLabel') }}: {{ p.stock }}</option>
                 </select>
                 <div v-if="damageForm.errors.product_id" style="color:var(--rose);font-size:12px;margin-top:6px">{{ damageForm.errors.product_id }}</div>
+            </div>
+            <div v-if="hasVariants && variantsOf(damageForm.product_id).length" class="field">
+                <label>{{ t('damage.variantLabel') }}</label>
+                <select v-model="damageForm.product_variant_id">
+                    <option :value="''">{{ t('damage.selectPlaceholder') }}</option>
+                    <option v-for="v in variantsOf(damageForm.product_id)" :key="v.id" :value="v.id">{{ variantLabel(v) }} — {{ t('damage.stockLabel') }}: {{ v.stock }}</option>
+                </select>
+                <div v-if="damageForm.errors.product_variant_id" style="color:var(--rose);font-size:12px;margin-top:6px">{{ damageForm.errors.product_variant_id }}</div>
             </div>
             <div v-if="hasBatchTracking && batchesOf(damageForm.product_id).length" class="field">
                 <label>{{ t('damage.batchLabel') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
@@ -768,11 +794,19 @@ onMounted(() => {
         <Sheet v-model="returnSheet" :title="t('return.sheetTitle')">
             <div class="field">
                 <label>{{ t('damage.selectProduct') }}</label>
-                <select v-model="returnForm.product_id">
+                <select v-model="returnForm.product_id" @change="returnForm.product_variant_id = ''">
                     <option :value="''">{{ t('damage.selectPlaceholder') }}</option>
                     <option v-for="p in products" :key="p.id" :value="p.id">{{ p.emoji }} {{ p.name }} — {{ p.price }}৳</option>
                 </select>
                 <div v-if="returnForm.errors.product_id" style="color:var(--rose);font-size:12px;margin-top:6px">{{ returnForm.errors.product_id }}</div>
+            </div>
+            <div v-if="hasVariants && variantsOf(returnForm.product_id).length" class="field">
+                <label>{{ t('damage.variantLabel') }}</label>
+                <select v-model="returnForm.product_variant_id">
+                    <option :value="''">{{ t('damage.selectPlaceholder') }}</option>
+                    <option v-for="v in variantsOf(returnForm.product_id)" :key="v.id" :value="v.id">{{ variantLabel(v) }} — {{ t('damage.stockLabel') }}: {{ v.stock }}</option>
+                </select>
+                <div v-if="returnForm.errors.product_variant_id" style="color:var(--rose);font-size:12px;margin-top:6px">{{ returnForm.errors.product_variant_id }}</div>
             </div>
             <div v-if="hasBatchTracking && batchesOf(returnForm.product_id).length" class="field">
                 <label>{{ t('damage.batchLabel') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
@@ -851,10 +885,10 @@ onMounted(() => {
         <!-- stock count -->
         <Sheet v-model="countSheet" :title="t('count.sheetTitle')" :subtitle="t('count.sheetSub')">
             <div style="max-height:52vh;overflow-y:auto;margin:8px 0">
-                <div v-for="p in products" :key="p.id" class="cart-line">
-                    <div style="font-size:19px">{{ p.emoji }}</div>
-                    <div class="nm"><b>{{ p.name }}</b><span>{{ t('count.systemLabel') }}: {{ p.stock }} {{ t('count.pieces') }}</span></div>
-                    <input v-model="counts[p.id]" type="number" :placeholder="String(p.stock)" style="width:70px;padding:8px;text-align:center">
+                <div v-for="row in countRows" :key="row.key" class="cart-line">
+                    <div style="font-size:19px">{{ row.emoji }}</div>
+                    <div class="nm"><b>{{ row.name }}</b><span>{{ t('count.systemLabel') }}: {{ row.stock }} {{ t('count.pieces') }}</span></div>
+                    <input v-model="counts[row.key]" type="number" :placeholder="String(row.stock)" style="width:70px;padding:8px;text-align:center">
                 </div>
             </div>
             <button class="btn" :disabled="countSubmitting" @click="applyCount">

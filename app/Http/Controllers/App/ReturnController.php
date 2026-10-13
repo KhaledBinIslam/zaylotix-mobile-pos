@@ -91,6 +91,7 @@ class ReturnController extends Controller
     {
         $data = $request->validate([
             'product_id' => ['required', 'exists:products,id'],
+            'product_variant_id' => ['nullable', 'integer'],
             'product_batch_id' => ['nullable', 'exists:product_batches,id'],
             'qty' => ['required', 'numeric', 'min:0.001'],
             'refund' => ['required', 'numeric', 'min:0'],
@@ -98,11 +99,16 @@ class ReturnController extends Controller
         ]);
 
         DB::transaction(function () use ($data) {
-            $product = Product::whereKey($data['product_id'])->lockForUpdate()->firstOrFail();
+            $product = Product::withCount('variants')->whereKey($data['product_id'])->lockForUpdate()->firstOrFail();
 
-            if ($product->variants()->exists()) {
+            if ($product->variants_count > 0 && empty($data['product_variant_id'])) {
                 throw ValidationException::withMessages([
-                    'qty' => "{$product->name} ভ্যারিয়েন্ট পণ্য — এখানে ফেরত নেওয়া যাবে না, স্টক পেজ থেকে নির্দিষ্ট ভ্যারিয়েন্টে স্টক ফেরত দিন।",
+                    'qty' => "{$product->name}-এর সাইজ/রং আছে — একটা নির্দিষ্ট ভ্যারিয়েন্ট বেছে ফেরত নিন।",
+                ]);
+            }
+            if ($product->variants_count === 0 && ! empty($data['product_variant_id'])) {
+                throw ValidationException::withMessages([
+                    'product_variant_id' => "{$product->name}-এর কোনো ভ্যারিয়েন্ট নেই।",
                 ]);
             }
 
@@ -112,11 +118,24 @@ class ReturnController extends Controller
                 ]);
             }
 
+            $variant = null;
+            if (! empty($data['product_variant_id'])) {
+                $variant = ProductVariant::whereKey($data['product_variant_id'])->lockForUpdate()->first();
+                if (! $variant || $variant->product_id !== $product->id) {
+                    throw ValidationException::withMessages([
+                        'product_variant_id' => 'এই ভ্যারিয়েন্টটি সঠিক নয়।',
+                    ]);
+                }
+            }
+
             $everSold = (float) SaleItem::where('product_id', $product->id)
+                ->when($variant, fn ($q) => $q->where('product_variant_id', $variant->id), fn ($q) => $q->whereNull('product_variant_id'))
                 ->whereHas('sale')
                 ->selectRaw('COALESCE(SUM(qty * unit_factor), 0) as total')
                 ->value('total');
-            $alreadyReturned = (float) SalesReturn::where('product_id', $product->id)->sum('qty');
+            $alreadyReturned = (float) SalesReturn::where('product_id', $product->id)
+                ->when($variant, fn ($q) => $q->where('product_variant_id', $variant->id), fn ($q) => $q->whereNull('product_variant_id'))
+                ->sum('qty');
             $returnable = $everSold - $alreadyReturned;
 
             if ($data['qty'] > $returnable) {
@@ -135,11 +154,13 @@ class ReturnController extends Controller
                 }
             }
 
+            $variant?->increment('stock', $data['qty']);
             $product->increment('stock', $data['qty']);
             $batch?->increment('qty', $data['qty']);
 
             SalesReturn::create([
                 'product_id' => $product->id,
+                'product_variant_id' => $variant?->id,
                 'product_batch_id' => $batch?->id,
                 'user_id' => Auth::guard('web')->id() ?? Auth::guard('sanctum')->id(),
                 'qty' => $data['qty'],

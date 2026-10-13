@@ -4,6 +4,7 @@ namespace App\Http\Controllers\App;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\StockCount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +16,7 @@ class StockCountController extends Controller
         $data = $request->validate([
             'counts' => ['required', 'array'],
             'counts.*.product_id' => ['required', 'exists:products,id'],
+            'counts.*.product_variant_id' => ['nullable', 'integer'],
             'counts.*.counted' => ['required', 'numeric', 'min:0'],
         ]);
 
@@ -31,22 +33,41 @@ class StockCountController extends Controller
 
             foreach ($counts as $row) {
                 $product = Product::withCount('variants')->whereKey($row['product_id'])->lockForUpdate()->first();
+                if (! $product) {
+                    continue;
+                }
+
                 // a piece-counted product's recount is always a whole
                 // number, even though the column itself now accepts
                 // decimals for weighed products — round away any stray
                 // fractional entry rather than silently accepting it
-                $counted = $product?->sold_by_weight ? (float) $row['counted'] : round((float) $row['counted']);
-                if (! $product || (float) $product->stock === $counted) {
+                $counted = $product->sold_by_weight ? (float) $row['counted'] : round((float) $row['counted']);
+
+                // a variant product's own `stock` is a live-maintained sum
+                // of its variants — recounting a SPECIFIC variant (named by
+                // product_variant_id) moves both that variant's stock and
+                // the product total together, same as Damage/Return;
+                // recounting the product itself isn't offered in the UI for
+                // a variant product, and is skipped here if it somehow
+                // arrives anyway, for the same desync reason as before.
+                if (! empty($row['product_variant_id'])) {
+                    $variant = ProductVariant::whereKey($row['product_variant_id'])->lockForUpdate()->first();
+                    if (! $variant || $variant->product_id !== $product->id) {
+                        continue;
+                    }
+                    if ((float) $variant->stock === $counted) {
+                        continue;
+                    }
+
+                    $delta = $counted - (float) $variant->stock;
+                    $changes[] = ['product_id' => $product->id, 'product_variant_id' => $variant->id, 'from' => (float) $variant->stock, 'to' => $counted];
+                    $variant->update(['stock' => $counted]);
+                    $product->increment('stock', $delta);
+
                     continue;
                 }
 
-                // a variant product's `stock` is a live-maintained sum of
-                // its variants — overwriting it here with a hand-counted
-                // number would desync it from its parts permanently, with
-                // nothing to ever resync it. Skipped, not rejected outright,
-                // since one stray variant product in a large recount batch
-                // shouldn't block reconciling everything else in it.
-                if ($product->variants_count > 0) {
+                if ($product->variants_count > 0 || (float) $product->stock === $counted) {
                     continue;
                 }
 
