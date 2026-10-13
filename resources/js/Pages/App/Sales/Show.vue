@@ -1,8 +1,9 @@
 <script setup>
-import { Head, Link, router, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, onMounted, ref } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import ReceiptMemo from '@/Components/ReceiptMemo.vue';
+import Sheet from '@/Components/Sheet.vue';
 import { useI18n } from '@/composables/useI18n';
 import { useToast } from '@/composables/useToast';
 import { usePermissions } from '@/composables/usePermissions';
@@ -34,6 +35,29 @@ function voidSale() {
     router.delete(route('app.sales.destroy', props.sale.id), {
         data: { reason },
         onSuccess: () => router.visit(route('app.sales')),
+    });
+}
+
+// --- split this sale's leftover due into an installment schedule ---
+const installmentSheet = ref(false);
+const installmentForm = useForm({
+    sale_id: props.sale.id,
+    customer_id: props.sale.customer_id,
+    total_amount: dueRemainder.value,
+    down_payment: 0,
+    installment_count: 3,
+    frequency: 'monthly',
+    start_date: new Date().toISOString().slice(0, 10),
+    late_fee_type: '',
+    late_fee_amount: '',
+});
+function openInstallmentSheet() {
+    installmentForm.total_amount = dueRemainder.value;
+    installmentSheet.value = true;
+}
+function createInstallmentPlan() {
+    installmentForm.post(route('app.installments.store'), {
+        onSuccess: () => (installmentSheet.value = false),
     });
 }
 
@@ -210,9 +234,48 @@ const justBilled = ref(false);
             ↩️ {{ t('sales.returnExchangeButton') }}
         </Link>
 
+        <Link v-if="sale.installment_plan" :href="route('app.installments.show', sale.installment_plan.id)" class="no-print btn ghost" style="margin-top:16px;display:block;text-align:center">
+            📅 {{ t('installment.viewPlanButton') }}
+        </Link>
+        <button v-else-if="hasPerm('installments') && features.includes('installment_sales') && sale.customer_id && dueRemainder > 0 && !sale.voided_at" class="no-print btn ghost" style="margin-top:16px" @click="openInstallmentSheet">
+            📅 {{ t('installment.splitButton') }}
+        </button>
+
         <button v-if="isOwner && !sale.voided_at" class="no-print btn ghost" style="margin-top:16px;color:var(--rose);border-color:var(--rose)" @click="voidSale">
             {{ t('sales.voidButton') }}
         </button>
+
+        <Sheet v-model="installmentSheet" :title="t('installment.splitButton')">
+            <div class="field">
+                <label>{{ t('installment.totalAmount') }}</label>
+                <input v-model.number="installmentForm.total_amount" type="number" step="0.01">
+                <div v-if="installmentForm.errors.total_amount" style="color:var(--rose);font-size:12px;margin-top:6px">{{ installmentForm.errors.total_amount }}</div>
+            </div>
+            <div class="f2">
+                <div class="field"><label>{{ t('installment.installmentCount') }}</label><input v-model.number="installmentForm.installment_count" type="number" min="1" max="60"></div>
+                <div class="field">
+                    <label>{{ t('installment.frequency') }}</label>
+                    <select v-model="installmentForm.frequency">
+                        <option value="monthly">{{ t('installment.monthly') }}</option>
+                        <option value="weekly">{{ t('installment.weekly') }}</option>
+                    </select>
+                </div>
+            </div>
+            <div class="field"><label>{{ t('installment.startDate') }}</label><input v-model="installmentForm.start_date" type="date"></div>
+            <div class="f2">
+                <div class="field">
+                    <label>{{ t('installment.lateFeeType') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
+                    <select v-model="installmentForm.late_fee_type">
+                        <option value="">{{ t('common.none') }}</option>
+                        <option value="flat">{{ t('installment.lateFeeFlat') }}</option>
+                        <option value="percent">{{ t('installment.lateFeePercent') }}</option>
+                    </select>
+                </div>
+                <div v-if="installmentForm.late_fee_type" class="field"><label>{{ t('installment.lateFeeAmount') }}</label><input v-model.number="installmentForm.late_fee_amount" type="number" step="0.01"></div>
+            </div>
+            <button class="btn" :disabled="installmentForm.processing" @click="createInstallmentPlan">{{ installmentForm.processing ? '...' : t('installment.createButton') }}</button>
+            <button class="btn ghost" style="margin-top:10px" @click="installmentSheet = false">{{ t('common.cancel') }}</button>
+        </Sheet>
     </AppLayout>
 </template>
 

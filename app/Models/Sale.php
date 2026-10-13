@@ -108,6 +108,12 @@ class Sale extends Model
         return $this->hasMany(SalePayment::class);
     }
 
+    /** At most one — InstallmentController::store() blocks creating a second plan for the same sale. */
+    public function installmentPlan()
+    {
+        return $this->hasOne(InstallmentPlan::class);
+    }
+
     /**
      * Only set for a sale that came from billing a restaurant table order —
      * lets Sales/Show.vue offer the combined kitchen+customer print/WhatsApp

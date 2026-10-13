@@ -36,6 +36,7 @@ use App\Http\Controllers\App\NotificationController;
 use App\Http\Controllers\App\OnboardingController;
 use App\Http\Controllers\App\PaymentController;
 use App\Http\Controllers\App\PaymentGatewayController;
+use App\Http\Controllers\App\InstallmentController;
 use App\Http\Controllers\App\ServiceTicketController;
 use App\Http\Controllers\App\ShopBackupController;
 use App\Http\Controllers\App\StockHistoryController;
@@ -282,6 +283,13 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::post('customers/{customer}/payments', [PaymentController::class, 'store'])->name('payments.store');
         Route::post('customers/{customer}/payments/full', [PaymentController::class, 'full'])->name('payments.full');
         Route::get('customers/{customer}/payments', [PaymentController::class, 'history'])->name('payments.history');
+    });
+
+    Route::middleware(['perm:installments', 'feature:installment_sales'])->group(function () {
+        Route::get('installments', [InstallmentController::class, 'index'])->name('installments.index');
+        Route::post('installments', [InstallmentController::class, 'store'])->name('installments.store');
+        Route::get('installments/{plan}', [InstallmentController::class, 'show'])->name('installments.show');
+        Route::post('installments/{plan}/cancel', [InstallmentController::class, 'cancel'])->name('installments.cancel');
     });
 
     Route::middleware('feature:ingredient_tracking')->group(function () {

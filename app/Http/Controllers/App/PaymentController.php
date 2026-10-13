@@ -4,10 +4,13 @@ namespace App\Http\Controllers\App;
 
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
+use App\Models\InstallmentPlan;
+use App\Support\InstallmentAllocation;
 use App\Support\Tenancy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class PaymentController extends Controller
@@ -20,6 +23,10 @@ class PaymentController extends Controller
         $data = $request->validate([
             'amount' => ['required', 'numeric', 'min:0.01'],
             'method' => ['nullable', 'in:cash,bkash,nagad'],
+            // tagging a payment to a plan never changes the due math below —
+            // it only tells InstallmentAllocation which installment(s) this
+            // money actually covers (see its own docblock)
+            'installment_plan_id' => ['nullable', Rule::exists('installment_plans', 'id')->where('customer_id', $customer->id)],
         ]);
 
         $amount = (float) $data['amount'];
@@ -47,6 +54,7 @@ class PaymentController extends Controller
 
             $locked->payments()->create([
                 'shop_id' => Tenancy::id(),
+                'installment_plan_id' => $data['installment_plan_id'] ?? null,
                 'user_id' => Auth::guard('web')->id() ?? Auth::guard('sanctum')->id(),
                 'amount' => $amount,
                 // snapshotted here, not re-derived later from other rows —
@@ -62,6 +70,13 @@ class PaymentController extends Controller
                 \App\Models\Shop::whereKey(Tenancy::id())->increment('cash_balance', $amount);
             } else {
                 \App\Models\Shop::whereKey(Tenancy::id())->increment('bank_balance', $amount);
+            }
+
+            if (! empty($data['installment_plan_id'])) {
+                $plan = InstallmentPlan::whereKey($data['installment_plan_id'])->lockForUpdate()->first();
+                if ($plan) {
+                    InstallmentAllocation::apply($plan, $amount);
+                }
             }
         });
 

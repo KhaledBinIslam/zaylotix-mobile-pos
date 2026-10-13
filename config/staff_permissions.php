@@ -23,6 +23,7 @@ return [
 
     'customers' => ['label_bn' => 'কাস্টমার তালিকা', 'label_en' => 'Customer list', 'category' => 'কাস্টমার'],
     'due' => ['label_bn' => 'বাকি তোলা', 'label_en' => 'Collect dues', 'category' => 'কাস্টমার'],
+    'installments' => ['label_bn' => 'কিস্তি প্ল্যান ব্যবস্থাপনা', 'label_en' => 'Installment plan management', 'category' => 'কাস্টমার'],
 
     'expenses' => ['label_bn' => 'খরচের হিসাব', 'label_en' => 'Expenses', 'category' => 'হিসাব'],
     'accounts' => ['label_bn' => 'হিসাব-নিকাশ (সম্পদ/দায়)', 'label_en' => 'Accounts (assets/liabilities)', 'category' => 'হিসাব'],

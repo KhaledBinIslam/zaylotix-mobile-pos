@@ -9,7 +9,7 @@ class Payment extends Model
 {
     use BelongsToTenant;
 
-    protected $fillable = ['shop_id', 'customer_id', 'user_id', 'amount', 'due_before', 'due_after', 'method', 'date'];
+    protected $fillable = ['shop_id', 'customer_id', 'installment_plan_id', 'user_id', 'amount', 'due_before', 'due_after', 'method', 'date'];
 
     protected function casts(): array
     {
@@ -29,5 +29,10 @@ class Payment extends Model
     public function customer()
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    public function installmentPlan()
+    {
+        return $this->belongsTo(InstallmentPlan::class);
     }
 }

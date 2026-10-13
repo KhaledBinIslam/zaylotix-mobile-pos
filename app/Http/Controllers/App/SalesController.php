@@ -52,7 +52,7 @@ class SalesController extends Controller
             // restaurant table) carries the kitchen-facing items/note over
             // so this page can offer the combined kitchen+customer
             // print/WhatsApp without a second round trip
-            'sale' => $saleModel->load(['items', 'customer', 'user', 'payments', 'voidedByUser', 'tableOrder.table']),
+            'sale' => $saleModel->load(['items', 'customer', 'user', 'payments', 'voidedByUser', 'tableOrder.table', 'installmentPlan:id,sale_id,status']),
         ]);
     }
 

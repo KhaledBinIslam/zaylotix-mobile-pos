@@ -31,6 +31,7 @@ Schedule::call(fn () => Artisan::call('zaylotix:payment-reminders'))->dailyAt('0
 Schedule::call(fn () => Artisan::call('zaylotix:expire-subscriptions'))->dailyAt('00:05');
 Schedule::call(fn () => Artisan::call('zaylotix:low-stock-alerts'))->dailyAt('09:00');
 Schedule::call(fn () => Artisan::call('zaylotix:expiry-alerts'))->dailyAt('09:00');
+Schedule::call(fn () => Artisan::call('zaylotix:installment-late-fees'))->dailyAt('00:10');
 Schedule::call(fn () => Artisan::call('zaylotix:backup'))->dailyAt('02:00');
 
 // Production-readiness audit: this app's QUEUE_CONNECTION=database has

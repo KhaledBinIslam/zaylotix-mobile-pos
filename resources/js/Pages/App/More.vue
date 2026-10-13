@@ -353,7 +353,7 @@ onMounted(() => {
         <div class="pgttl">{{ t('more.title') }}</div>
         <div class="pgsub">{{ shop?.name }} • {{ shop?.phone }}</div>
 
-        <template v-if="hasPerm('sales_history') || (hasPerm('barcode_labels') && features.includes('barcode_printing')) || (hasPerm('pos') && isRestaurant) || (hasPerm('promotions') && features.includes('promotions')) || (hasPerm('pos') && features.includes('quotations')) || hasPerm('pos') || isMainShopWithBranches || (isOwner && branches) || (hasPerm('service_billing') && features.includes('service_billing'))">
+        <template v-if="hasPerm('sales_history') || (hasPerm('barcode_labels') && features.includes('barcode_printing')) || (hasPerm('pos') && isRestaurant) || (hasPerm('promotions') && features.includes('promotions')) || (hasPerm('pos') && features.includes('quotations')) || hasPerm('pos') || isMainShopWithBranches || (isOwner && branches) || (hasPerm('service_billing') && features.includes('service_billing')) || (hasPerm('installments') && features.includes('installment_sales'))">
             <div class="sechead"><h2>{{ t('more.sectionSales') }}</h2></div>
             <Link v-if="hasPerm('pos') && isRestaurant" :href="route('app.restaurant.tables.index')" class="row">
                 <div class="ava">🍽️</div><div class="mid"><b>{{ t('nav.restaurant') }}</b><span>{{ t('restaurant.tablesSubtitle') }}</span></div><div class="end">›</div>
@@ -381,6 +381,9 @@ onMounted(() => {
             </Link>
             <Link v-if="hasPerm('service_billing') && features.includes('service_billing')" :href="route('app.serviceTickets.index')" class="row">
                 <div class="ava">🛠️</div><div class="mid"><b>{{ t('nav.serviceTickets') }}</b><span>{{ t('more.serviceTicketsSub') }}</span></div><div class="end">›</div>
+            </Link>
+            <Link v-if="hasPerm('installments') && features.includes('installment_sales')" :href="route('app.installments.index')" class="row">
+                <div class="ava">📅</div><div class="mid"><b>{{ t('nav.installments') }}</b><span>{{ t('more.installmentsSub') }}</span></div><div class="end">›</div>
             </Link>
             <button v-if="isOwner && !inApp" class="row" style="width:100%;text-align:left;border:none;background:none;cursor:pointer" @click="openRenewalSheet">
                 <div class="ava">💳</div><div class="mid"><b>{{ t('renewal.menuTitle') }}</b><span>{{ t('renewal.menuSub') }}</span></div><div class="end">›</div>

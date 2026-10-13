@@ -41,6 +41,11 @@ class FeatureSeeder extends Seeder
             ['key' => 'promotions', 'label_bn' => 'অফার/কুপন (BOGO, কম্বো, কুপন কোড)', 'label_en' => 'Promotions/coupons (BOGO, combo, coupon codes)', 'category' => 'billing', 'description' => 'Buy-X-get-Y (or combo) auto-discounts and coupon codes applied at checkout.'],
             ['key' => 'loyalty_points', 'label_bn' => 'লয়্যালটি পয়েন্ট', 'label_en' => 'Loyalty points', 'category' => 'billing', 'description' => 'Customers earn points on purchases and redeem them for a discount later — the owner sets both rates.'],
             ['key' => 'quotations', 'label_bn' => 'কোটেশন/মূল্য তালিকা', 'label_en' => 'Quotations', 'category' => 'billing', 'description' => 'Give a customer a written price quote before they buy, then convert it straight into a sale when they\'re ready.'],
+            // opt-in only — never touches customers.due bookkeeping itself,
+            // just lays a schedule/late-fee/overdue-tracking layer on top of
+            // a sale's own leftover due (see the create_installment_plans
+            // migration's docblock)
+            ['key' => 'installment_sales', 'label_bn' => 'কিস্তিতে বিক্রি (Installment)', 'label_en' => 'Installment sales', 'category' => 'billing', 'description' => 'Split a sale\'s remaining due into a dated schedule, track partial payments against it, and apply a late fee automatically once an installment is overdue.'],
             // opt-in only, like hr_payroll — a shop connects its OWN Meta
             // WhatsApp Business account (see WhatsappCredentialController),
             // this just gates whether the bulk-send screen is reachable at all
