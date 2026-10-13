@@ -171,15 +171,27 @@ class AmbassadorTrackingTest extends TestCase
         $this->assertSame('unpaid', AmbassadorCommission::where('month', '2026-04')->first()->status);
     }
 
-    public function test_ambassador_index_shows_unpaid_total_and_shops_brought(): void
+    /**
+     * The list view only shows who an ambassador is (name/employee
+     * ID/contact) — rates, shops-brought, and unpaid total are real data,
+     * still fully visible on the ambassador's own Show page, just not on
+     * this admin list anymore (Khaled's explicit ask).
+     */
+    public function test_ambassador_index_only_shows_identity_fields_not_rates_or_totals(): void
     {
         [$shop] = $this->createShopWithOwner();
-        $ambassador = Ambassador::create(['name' => 'Karim', 'one_time_bonus' => 500, 'recurring_percent' => 10]);
+        $ambassador = Ambassador::create(['name' => 'Karim', 'employee_id' => 'EMP-1', 'one_time_bonus' => 500, 'recurring_percent' => 10]);
         $this->actingAs($this->superAdmin(), 'admin')->post("/admin/shops/{$shop->id}/ambassador", ['brought_by_ambassador_id' => $ambassador->id]);
 
-        $this->actingAs($this->superAdmin(), 'admin')->get('/admin/ambassadors')->assertInertia(fn ($page) => $page
-            ->where('ambassadors.0.unpaid_total', 500)
-            ->where('ambassadors.0.brought_shops_count', 1)
+        $response = $this->actingAs($this->superAdmin(), 'admin')->get('/admin/ambassadors');
+
+        $response->assertInertia(fn ($page) => $page
+            ->where('ambassadors.0.name', 'Karim')
+            ->where('ambassadors.0.employee_id', 'EMP-1')
+            ->missing('ambassadors.0.unpaid_total')
+            ->missing('ambassadors.0.one_time_bonus')
+            ->missing('ambassadors.0.recurring_percent')
+            ->missing('ambassadors.0.brought_shops_count')
         );
     }
 }

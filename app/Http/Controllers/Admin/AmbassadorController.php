@@ -24,23 +24,12 @@ class AmbassadorController extends Controller
 {
     public function index()
     {
-        $ambassadors = Ambassador::withCount(['broughtShops', 'currentShops'])
-            ->orderBy('name')
-            ->get()
-            ->map(fn (Ambassador $a) => [
-                'id' => $a->id,
-                'name' => $a->name,
-                'employee_id' => $a->employee_id,
-                'phone' => $a->phone,
-                'email' => $a->email,
-                'one_time_bonus' => (float) $a->one_time_bonus,
-                'recurring_percent' => (float) $a->recurring_percent,
-                'status' => $a->status,
-                'brought_shops_count' => $a->brought_shops_count,
-                'current_shops_count' => $a->current_shops_count,
-                'unpaid_total' => (float) $a->commissions()->where('status', 'unpaid')->sum('amount'),
-                'brought_this_month' => $a->broughtShops()->whereDate('created_at', '>=', now()->startOfMonth())->count(),
-            ]);
+        // Khaled's explicit ask: the list only shows who they are and how
+        // to reach them — rates/shops-brought/unpaid-total are still real,
+        // live data (see show()), just not dumped on this admin list view
+        // alongside a per-row DB hit each for unpaid_total/brought_this_month
+        $ambassadors = Ambassador::orderBy('name')
+            ->get(['id', 'name', 'employee_id', 'phone', 'email']);
 
         return Inertia::render('Admin/Ambassadors/Index', [
             'ambassadors' => $ambassadors,

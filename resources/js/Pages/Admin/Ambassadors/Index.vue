@@ -53,13 +53,6 @@ function submit() {
                         <th class="text-left px-4 py-3">Name</th>
                         <th class="text-left px-4 py-3">Employee ID</th>
                         <th class="text-left px-4 py-3">Contact</th>
-                        <th class="text-left px-4 py-3">One-time</th>
-                        <th class="text-left px-4 py-3">Recurring %</th>
-                        <th class="text-left px-4 py-3">Shops brought</th>
-                        <th class="text-left px-4 py-3">This month</th>
-                        <th class="text-left px-4 py-3">Currently assigned</th>
-                        <th class="text-left px-4 py-3">Unpaid</th>
-                        <th class="text-left px-4 py-3">Status</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -69,17 +62,8 @@ function submit() {
                         </td>
                         <td class="px-4 py-3 text-xs text-gray-500">{{ a.employee_id || '—' }}</td>
                         <td class="px-4 py-3 text-xs text-gray-500">{{ a.phone || a.email || '—' }}</td>
-                        <td class="px-4 py-3">৳{{ a.one_time_bonus }}</td>
-                        <td class="px-4 py-3">{{ a.recurring_percent }}%</td>
-                        <td class="px-4 py-3">{{ a.brought_shops_count }}</td>
-                        <td class="px-4 py-3">{{ a.brought_this_month }}</td>
-                        <td class="px-4 py-3">{{ a.current_shops_count }}</td>
-                        <td class="px-4 py-3 font-semibold" :class="a.unpaid_total > 0 ? 'text-rose-600' : 'text-gray-400'">৳{{ a.unpaid_total.toLocaleString('en-IN') }}</td>
-                        <td class="px-4 py-3">
-                            <span class="px-2 py-1 rounded-full text-xs font-semibold" :class="a.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-700'">{{ a.status }}</span>
-                        </td>
                     </tr>
-                    <tr v-if="!ambassadors.length"><td colspan="10" class="px-4 py-6 text-center text-gray-400">কোনো ambassador যোগ করা হয়নি।</td></tr>
+                    <tr v-if="!ambassadors.length"><td colspan="3" class="px-4 py-6 text-center text-gray-400">কোনো ambassador যোগ করা হয়নি।</td></tr>
                 </tbody>
             </table>
         </div>
