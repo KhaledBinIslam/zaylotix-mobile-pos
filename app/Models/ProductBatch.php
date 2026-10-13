@@ -9,7 +9,7 @@ class ProductBatch extends Model
 {
     use BelongsToTenant;
 
-    protected $fillable = ['shop_id', 'product_id', 'batch_no', 'expiry_date', 'qty', 'cost'];
+    protected $fillable = ['shop_id', 'product_id', 'supplier_id', 'batch_no', 'expiry_date', 'qty', 'cost'];
 
     protected function casts(): array
     {
@@ -22,6 +22,12 @@ class ProductBatch extends Model
     public function product()
     {
         return $this->belongsTo(Product::class);
+    }
+
+    /** Only set when this batch came in via a supplier-linked purchase (see BatchStock::receive()) — a plain stock-in has none. */
+    public function supplier()
+    {
+        return $this->belongsTo(Supplier::class);
     }
 
     public function scopeAvailable($query)

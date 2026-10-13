@@ -39,7 +39,7 @@ class BatchStock
         return max(0, (float) $product->stock - $expiredQty);
     }
 
-    public static function receive(Product $product, int $qty, ?string $batchNo, ?string $expiryDate, ?float $cost): void
+    public static function receive(Product $product, int $qty, ?string $batchNo, ?string $expiryDate, ?float $cost, ?int $supplierId = null): void
     {
         if ($qty <= 0 || ($batchNo === null && $expiryDate === null)) {
             return;
@@ -48,6 +48,7 @@ class BatchStock
         ProductBatch::create([
             'shop_id' => $product->shop_id,
             'product_id' => $product->id,
+            'supplier_id' => $supplierId,
             'batch_no' => $batchNo,
             'expiry_date' => $expiryDate,
             'qty' => $qty,

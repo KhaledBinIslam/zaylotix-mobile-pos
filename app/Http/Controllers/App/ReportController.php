@@ -48,6 +48,7 @@ class ReportController extends Controller
             'restaurantBreakdown' => $shop?->isRestaurant() ? Reports::restaurantBreakdown($from, $to) : null,
             'salesByType' => $shop?->hasFeature('wholesale_pricing') ? Reports::salesByType($from, $to) : null,
             'itemWisePurchases' => $shop?->hasFeature('purchases') ? Reports::itemWisePurchases($from, $to) : null,
+            'batchWiseReport' => $shop?->hasFeature('batch_tracking') ? Reports::batchWiseReport($from, $to) : null,
             'categoryReport' => Reports::categoryReport($from, $to),
             'discountReport' => Reports::discountReport($from, $to),
             'wastageReport' => $shop?->hasFeature('damages') ? Reports::wastageReport($from, $to) : null,

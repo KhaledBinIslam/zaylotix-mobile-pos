@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Product;
+use App\Models\ProductBatch;
 use App\Models\Purchase;
 use App\Models\Supplier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -77,6 +78,46 @@ class SupplierTest extends TestCase
         // weighted avg: (50*10 + 30*15) / 80 = 11.875
         $this->assertEqualsWithDelta(11.88, (float) $fresh->cost, 0.01);
         $this->assertEquals(1000 - 300, (float) $shop->fresh()->cash_balance);
+    }
+
+    public function test_a_batch_tracked_purchase_records_which_supplier_it_came_from(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
+        $this->grantFeature($shop, 'purchases');
+        $this->grantFeature($shop, 'batch_tracking');
+        $supplier = Supplier::create(['shop_id' => $shop->id, 'name' => 'Alpha Pharma', 'payable' => 0]);
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Napa', 'cost' => 2, 'price' => 3, 'stock' => 0]);
+
+        $this->actingAs($owner, 'web')->post('/app/purchases', [
+            'supplier_id' => $supplier->id,
+            'amount' => 200,
+            'method' => 'cash',
+            'product_id' => $product->id,
+            'qty' => 100,
+            'cost' => 2,
+            'batch_no' => 'B-ALPHA-1',
+            'expiry_date' => now()->addYear()->toDateString(),
+        ])->assertRedirect();
+
+        $batch = ProductBatch::where('batch_no', 'B-ALPHA-1')->first();
+        $this->assertNotNull($batch);
+        $this->assertSame($supplier->id, $batch->supplier_id);
+        $this->assertSame('Alpha Pharma', $batch->supplier->name);
+    }
+
+    public function test_a_batch_from_a_plain_stock_in_has_no_supplier_as_before(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'batch_tracking');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Napa', 'cost' => 2, 'price' => 3, 'stock' => 0]);
+
+        $this->actingAs($owner, 'web')->post("/app/products/{$product->id}/stock-in", [
+            'qty' => 50, 'batch_no' => 'B-DIRECT-1', 'expiry_date' => now()->addYear()->toDateString(),
+        ])->assertRedirect();
+
+        $batch = ProductBatch::where('batch_no', 'B-DIRECT-1')->first();
+        $this->assertNotNull($batch);
+        $this->assertNull($batch->supplier_id);
     }
 
     public function test_every_supplier_with_payable_is_shown_even_past_the_settled_cap(): void

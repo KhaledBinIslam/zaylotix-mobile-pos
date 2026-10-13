@@ -191,7 +191,7 @@ class PurchaseController extends Controller
 
             $shop = Tenancy::shop();
             if ($shop?->hasFeature('batch_tracking') && ! $lockedProduct->sold_by_weight) {
-                \App\Support\BatchStock::receive($lockedProduct, (int) $data['qty'], $data['batch_no'] ?? null, $data['expiry_date'] ?? null, $data['cost'] ?? null);
+                \App\Support\BatchStock::receive($lockedProduct, (int) $data['qty'], $data['batch_no'] ?? null, $data['expiry_date'] ?? null, $data['cost'] ?? null, $data['supplier_id'] ?? null);
             }
             if ($shop?->hasFeature('serial_tracking') && $imeis) {
                 \App\Support\SerialStock::receive($lockedProduct, $imeis, $data['warranty_expiry'] ?? null, $data['cost'] ?? null);

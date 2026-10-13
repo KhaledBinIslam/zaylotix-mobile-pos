@@ -7,6 +7,7 @@ import { useI18n } from '@/composables/useI18n';
 const props = defineProps({
     from: String, to: String, preset: String, stats: Object, sales: Array, topProducts: Array, bottomProducts: Array, productProfitReport: { type: Array, default: () => [] },
     expiringSoon: Array, cashierBreakdown: Array, restaurantBreakdown: Object, salesByType: Object, itemWisePurchases: Array,
+    batchWiseReport: { type: Array, default: () => [] },
     summary: Object, categoryReport: Object, discountReport: Object, wastageReport: Array, ratingReport: Object, heatmap: Object, consumptionReport: Array, complimentaryReport: Object, combinedStats: Object,
     variantInventory: Object,
     variantProfitReport: { type: Array, default: () => [] },
@@ -223,6 +224,22 @@ function heatColor(count) {
                 <div v-for="(p, i) in itemWisePurchases" :key="p.product_name" class="row" style="cursor:default" :style="i > 0 ? 'border-top:1px solid var(--line)' : ''">
                     <div class="mid"><b>{{ p.product_name }}</b><span>{{ p.qty }} {{ t('rep.unitsPurchased') }}</span></div>
                     <div class="end"><b>{{ money(p.amount) }}</b></div>
+                </div>
+            </div>
+        </template>
+
+        <template v-if="batchWiseReport?.length">
+            <div class="sechead"><h2>{{ t('rep.batchWiseReport') }}</h2></div>
+            <div class="card" style="padding:0;margin-bottom:14px">
+                <div v-for="(b, i) in batchWiseReport" :key="b.id" class="row" style="cursor:default" :style="i > 0 ? 'border-top:1px solid var(--line)' : ''">
+                    <div class="mid">
+                        <b>{{ b.product_name }}{{ b.batch_no ? ' — ' + b.batch_no : '' }}</b>
+                        <span>
+                            <template v-if="b.expiry_date">{{ t('stock.expiresOn') }} {{ b.expiry_date }} • </template>
+                            {{ b.supplier_name || t('rep.unknownSupplier') }} • {{ t('rep.qtySold') }} {{ b.qty_sold }}
+                        </span>
+                    </div>
+                    <div class="end"><b>{{ b.qty_remaining }} {{ t('stock.pieces') }}</b></div>
                 </div>
             </div>
         </template>

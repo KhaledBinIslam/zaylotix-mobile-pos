@@ -6,6 +6,7 @@ use App\Models\Damage;
 use App\Models\Expense;
 use App\Models\Payment;
 use App\Models\PreparationItem;
+use App\Models\ProductBatch;
 use App\Models\ProductVariant;
 use App\Models\Purchase;
 use App\Models\Sale;
@@ -292,6 +293,42 @@ class Reports
             ])
             ->sortByDesc('amount')
             ->take($limit)
+            ->values();
+    }
+
+    /**
+     * Per-batch picture: what's left, what sold in this range, and which
+     * supplier it came from — the batch-tracking counterpart to
+     * itemWisePurchases(), read straight off the allocation records
+     * BatchStock::deduct() already stamps onto each sale_item rather than
+     * a second sold-qty ledger that could drift out of sync. Lists every
+     * batch that's either still on hand or moved something in this range —
+     * a long-empty batch from months ago doesn't clutter the list forever.
+     */
+    public static function batchWiseReport(string $from, string $to, int $limit = 100)
+    {
+        $soldByBatch = SaleItem::whereNotNull('batch_allocations')
+            ->whereHas('sale', fn ($q) => $q->whereDate('date', '>=', $from)->whereDate('date', '<=', $to))
+            ->get(['batch_allocations'])
+            ->flatMap(fn (SaleItem $i) => $i->batch_allocations ?? [])
+            ->groupBy('batch_id')
+            ->map(fn ($group) => (float) $group->sum('qty'));
+
+        return ProductBatch::with(['product:id,name,emoji', 'supplier:id,name'])
+            ->where(fn ($q) => $q->where('qty', '>', 0)->orWhereIn('id', $soldByBatch->keys()))
+            ->orderBy('expiry_date')
+            ->limit($limit)
+            ->get()
+            ->map(fn (ProductBatch $b) => [
+                'id' => $b->id,
+                'product_name' => $b->product?->name ?? 'অজানা',
+                'batch_no' => $b->batch_no,
+                'expiry_date' => $b->expiry_date?->toDateString(),
+                'supplier_name' => $b->supplier?->name,
+                'qty_remaining' => (float) $b->qty,
+                'qty_sold' => (float) ($soldByBatch[$b->id] ?? 0),
+                'cost' => round((float) $b->cost, 2),
+            ])
             ->values();
     }
 
