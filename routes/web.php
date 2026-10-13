@@ -218,6 +218,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::post('products/import', [ProductImportController::class, 'store'])->name('products.import.store');
 
         Route::get('medicine-catalog/search', [MedicineCatalogController::class, 'search'])->name('medicineCatalog.search');
+        Route::get('products/barcode-lookup/{barcode}', [ProductController::class, 'barcodeLookup'])->name('products.barcodeLookup');
 
         // standalone unit management — not gated by unit_conversion, since
         // a product's own base unit (pc/kg/etc.) is set regardless of

@@ -5,6 +5,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import Pagination from '@/Components/Pagination.vue';
 import HowToHint from '@/Components/HowToHint.vue';
+import SmartScanSheet from '@/Components/SmartScanSheet.vue';
 import { useI18n } from '@/composables/useI18n';
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts';
 import { usePollingReload } from '@/composables/usePollingReload';
@@ -221,6 +222,23 @@ function pickMedicine(m) {
     form.company = m.company;
     medicineQuery.value = '';
     medicineResults.value = [];
+}
+
+// --- smart scan (camera barcode check / OCR label capture) — see
+// SmartScanSheet.vue's own docblock. Only ever pre-fills the still-open,
+// still-editable Add Product form; nothing here is ever saved on its own. ---
+const smartScanOpen = ref(false);
+function onSmartScanDetected(fields) {
+    if (fields.name) form.name = fields.name;
+    if (fields.generic_name) form.generic_name = fields.generic_name;
+    if (fields.company) form.company = fields.company;
+    if (fields.price) form.price = fields.price;
+    if (fields.barcode) form.barcode = fields.barcode;
+    toast('✅ ' + t('smartScan.appliedToast'));
+}
+function onSmartScanBarcodeFound({ barcode, product }) {
+    form.barcode = barcode;
+    toast('ℹ️ ' + t('smartScan.alreadyExistsToast', { name: product.name + (product.variant_label ? ` (${product.variant_label})` : '') }));
 }
 
 function openNew() {
@@ -570,6 +588,9 @@ useKeyboardShortcuts({
                  checkbox below already correctly uses it). shelf_location
                  stays on hasBatchTracking below — genuinely useful for any
                  shop with a physical rack/shelf system, not pharmacy-only. -->
+            <button v-if="!editing" type="button" class="btn ghost sm" style="width:100%;margin-bottom:14px" @click="smartScanOpen = true">
+                📷 {{ t('smartScan.buttonLabel') }}
+            </button>
             <div v-if="!editing && hasPrescriptionRecords" class="field">
                 <label>{{ t('stock.medicineCatalogSearch') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
                 <input v-model="medicineQuery" :placeholder="t('stock.medicineCatalogPlaceholder')" @input="searchMedicineCatalog">
@@ -926,6 +947,8 @@ useKeyboardShortcuts({
             </button>
             <button class="btn ghost" style="margin-top:10px" @click="importSheet = false">{{ t('common.cancel') }}</button>
         </Sheet>
+
+        <SmartScanSheet v-model="smartScanOpen" @detected="onSmartScanDetected" @barcode-found="onSmartScanBarcodeFound" />
 
         <Teleport to="body">
             <div v-if="scannerOpen" id="scanwrap">

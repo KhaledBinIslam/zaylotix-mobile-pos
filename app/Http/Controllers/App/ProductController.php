@@ -326,4 +326,32 @@ class ProductController extends Controller
 
         return back()->with('success', 'Stock updated.');
     }
+
+    /**
+     * Checked by the Smart Scan sheet the instant a barcode is decoded,
+     * before the owner types anything else — "this is already a product
+     * in your catalog" is far more useful said immediately than as a
+     * uniqueness error after they've filled out a whole new-product form.
+     * Matches by barcode on either a plain product or a variant (a scanned
+     * barcode on a clothing/shoe label is usually the variant's own, not
+     * the parent product's) — tenant-scoped automatically, like every other
+     * Product/ProductVariant query.
+     */
+    public function barcodeLookup(string $barcode)
+    {
+        $product = Product::where('barcode', $barcode)->first(['id', 'name', 'price', 'stock', 'emoji']);
+        if ($product) {
+            return response()->json(['exists' => true, 'product' => $product]);
+        }
+
+        $variant = \App\Models\ProductVariant::where('barcode', $barcode)->with('product:id,name,emoji')->first();
+        if ($variant) {
+            return response()->json(['exists' => true, 'product' => [
+                'id' => $variant->product_id, 'name' => $variant->product?->name, 'emoji' => $variant->product?->emoji,
+                'variant_label' => $variant->label(), 'price' => $variant->price, 'stock' => $variant->stock,
+            ]]);
+        }
+
+        return response()->json(['exists' => false, 'product' => null]);
+    }
 }
