@@ -53,6 +53,7 @@ function submit() {
                         <th class="text-left px-4 py-3">Name</th>
                         <th class="text-left px-4 py-3">Employee ID</th>
                         <th class="text-left px-4 py-3">Contact</th>
+                        <th class="text-right px-4 py-3">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -62,8 +63,11 @@ function submit() {
                         </td>
                         <td class="px-4 py-3 text-xs text-gray-500">{{ a.employee_id || '—' }}</td>
                         <td class="px-4 py-3 text-xs text-gray-500">{{ a.phone || a.email || '—' }}</td>
+                        <td class="px-4 py-3 text-right whitespace-nowrap">
+                            <Link :href="route('admin.ambassadors.show', a.id)" class="text-xs font-semibold text-gray-600 hover:text-violet-700">Edit</Link>
+                        </td>
                     </tr>
-                    <tr v-if="!ambassadors.length"><td colspan="3" class="px-4 py-6 text-center text-gray-400">কোনো ambassador যোগ করা হয়নি।</td></tr>
+                    <tr v-if="!ambassadors.length"><td colspan="4" class="px-4 py-6 text-center text-gray-400">কোনো ambassador যোগ করা হয়নি।</td></tr>
                 </tbody>
             </table>
         </div>
