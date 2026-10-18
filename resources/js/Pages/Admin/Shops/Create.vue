@@ -248,7 +248,7 @@ const featuresByCategory = (list) => {
                 </div>
             </div>
 
-            <button class="w-full py-3 rounded-lg [background:#7C3AED] text-white font-bold" :disabled="form.processing">
+            <button class="w-full py-3 rounded-lg bg-brand-purple text-white font-bold" :disabled="form.processing">
                 {{ form.processing ? 'Creating...' : 'Create shop' }}
             </button>
         </form>

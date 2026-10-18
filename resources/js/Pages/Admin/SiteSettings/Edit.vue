@@ -69,7 +69,7 @@ function remove() {
             <div v-if="form.errors.logo" class="text-rose-600 text-xs mb-3">{{ form.errors.logo }}</div>
 
             <div class="flex gap-2">
-                <button class="px-4 py-2 rounded-lg [background:#7C3AED] text-white font-semibold text-sm" :disabled="!form.logo || form.processing" @click="upload">
+                <button class="px-4 py-2 rounded-lg bg-brand-purple text-white font-semibold text-sm" :disabled="!form.logo || form.processing" @click="upload">
                     {{ form.processing ? 'Uploading...' : 'Upload' }}
                 </button>
                 <button v-if="setting.logo_url" class="px-4 py-2 rounded-lg border border-rose-200 text-rose-600 font-semibold text-sm" @click="remove">
@@ -85,7 +85,7 @@ function remove() {
             <label class="block text-sm font-medium text-gray-700 mb-1">Days before expiry</label>
             <div class="flex items-center gap-2">
                 <input v-model.number="reminderForm.reminder_days" type="number" min="1" max="30" class="border rounded-lg px-3 py-2 text-sm w-24">
-                <button class="px-4 py-2 rounded-lg [background:#7C3AED] text-white font-semibold text-sm" :disabled="reminderForm.processing" @click="saveReminderDays">
+                <button class="px-4 py-2 rounded-lg bg-brand-purple text-white font-semibold text-sm" :disabled="reminderForm.processing" @click="saveReminderDays">
                     {{ reminderForm.processing ? 'Saving...' : 'Save' }}
                 </button>
             </div>
@@ -99,7 +99,7 @@ function remove() {
             <label class="block text-sm font-medium text-gray-700 mb-1">WhatsApp number</label>
             <div class="flex items-center gap-2">
                 <input v-model="whatsappForm.whatsapp_contact" placeholder="8801XXXXXXXXX" class="border rounded-lg px-3 py-2 text-sm w-48">
-                <button class="px-4 py-2 rounded-lg [background:#7C3AED] text-white font-semibold text-sm" :disabled="whatsappForm.processing" @click="saveWhatsappContact">
+                <button class="px-4 py-2 rounded-lg bg-brand-purple text-white font-semibold text-sm" :disabled="whatsappForm.processing" @click="saveWhatsappContact">
                     {{ whatsappForm.processing ? 'Saving...' : 'Save' }}
                 </button>
             </div>
@@ -113,7 +113,7 @@ function remove() {
             <label class="block text-sm font-medium text-gray-700 mb-1">Play Store URL</label>
             <div class="flex items-center gap-2">
                 <input v-model="playStoreForm.play_store_url" placeholder="https://play.google.com/store/apps/details?id=com.zaylotix.pos" class="border rounded-lg px-3 py-2 text-sm w-full">
-                <button class="px-4 py-2 rounded-lg [background:#7C3AED] text-white font-semibold text-sm shrink-0" :disabled="playStoreForm.processing" @click="savePlayStoreUrl">
+                <button class="px-4 py-2 rounded-lg bg-brand-purple text-white font-semibold text-sm shrink-0" :disabled="playStoreForm.processing" @click="savePlayStoreUrl">
                     {{ playStoreForm.processing ? 'Saving...' : 'Save' }}
                 </button>
             </div>

@@ -44,7 +44,7 @@ function impersonate(shop) {
                     <option value="demo">Demo</option>
                     <option value="internal">Internal</option>
                 </select>
-                <Link :href="route('admin.shops.create')" class="px-4 py-2 rounded-lg [background:#7C3AED] text-white font-semibold text-sm">+ New shop</Link>
+                <Link :href="route('admin.shops.create')" class="px-4 py-2 rounded-lg bg-brand-purple text-white font-semibold text-sm">+ New shop</Link>
             </div>
         </div>
 

@@ -330,7 +330,7 @@ onBeforeUnmount(() => {
             </footer>
 
             <div class="login-foot">
-                A <a href="https://zaylotix.com/" target="_blank" rel="noopener" style="color:#7C3AED;font-weight:800">Zaylotix →</a> product
+                A <a href="https://zaylotix.com/" target="_blank" rel="noopener" style="color:var(--purple);font-weight:800">Zaylotix →</a> product
             </div>
         </div>
     </div>

@@ -62,7 +62,7 @@ function disconnect(provider) {
                 <button
                     v-for="p in providers" :key="p"
                     class="px-4 py-2 rounded-lg text-sm font-semibold capitalize"
-                    :class="activeTab === p ? '[background:#7C3AED] text-white' : 'bg-gray-100 text-gray-600'"
+                    :class="activeTab === p ? 'bg-brand-purple text-white' : 'bg-gray-100 text-gray-600'"
                     @click="selectTab(p)"
                 >{{ p }}</button>
             </div>

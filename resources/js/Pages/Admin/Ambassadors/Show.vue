@@ -52,7 +52,7 @@ function markMonthPaid(month) {
                     </select>
                 </div>
                 <textarea v-model="form.note" placeholder="Note" class="w-full rounded-lg border-gray-300 text-sm" rows="2"></textarea>
-                <button class="w-full py-2 rounded-lg [background:#7C3AED] text-white text-sm font-bold" :disabled="form.processing">
+                <button class="w-full py-2 rounded-lg bg-brand-purple text-white text-sm font-bold" :disabled="form.processing">
                     {{ form.processing ? 'Saving...' : 'Save' }}
                 </button>
             </form>

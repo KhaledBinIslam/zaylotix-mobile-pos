@@ -1443,7 +1443,7 @@ useKeyboardShortcuts({
                 <div class="field" style="position:relative">
                     <label>{{ t('pos.customerName') }}</label>
                     <input v-model="customerName" :placeholder="t('pos.customerName')" autocomplete="off">
-                    <div v-if="nameSearchResults.length" style="position:absolute;z-index:5;left:0;right:0;top:100%;margin-top:4px;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.12)">
+                    <div v-if="nameSearchResults.length" style="position:absolute;z-index:5;left:0;right:0;top:100%;margin-top:4px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.12)">
                         <button
                             v-for="c in nameSearchResults" :key="c.id" type="button"
                             style="display:block;width:100%;text-align:left;padding:9px 12px;font-size:13px;border-bottom:1px solid var(--line)"

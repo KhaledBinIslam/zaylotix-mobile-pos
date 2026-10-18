@@ -28,7 +28,7 @@ function toggleActive(t) {
     <AdminLayout active="businessTypes">
         <div class="flex items-center justify-between mb-6">
             <h1 class="text-2xl font-bold">Business Types</h1>
-            <button class="px-4 py-2 rounded-lg [background:#7C3AED] text-white font-semibold text-sm" @click="showNew = !showNew">+ New type</button>
+            <button class="px-4 py-2 rounded-lg bg-brand-purple text-white font-semibold text-sm" @click="showNew = !showNew">+ New type</button>
         </div>
 
         <form v-if="showNew" @submit.prevent="submit" class="bg-white border rounded-xl p-5 mb-6 space-y-3 max-w-lg">

@@ -242,7 +242,7 @@ const recommendedFeatureKeys = () => {
                 </div>
             </div>
 
-            <button class="w-full py-3 rounded-lg [background:#7C3AED] text-white font-bold" :disabled="form.processing">
+            <button class="w-full py-3 rounded-lg bg-brand-purple text-white font-bold" :disabled="form.processing">
                 {{ form.processing ? 'Saving...' : 'Save changes' }}
             </button>
         </form>
@@ -271,7 +271,7 @@ const recommendedFeatureKeys = () => {
                     </select>
                 </div>
             </div>
-            <button class="px-4 py-2 rounded-lg [background:#7C3AED] text-white text-sm font-bold" :disabled="ambassadorForm.processing">
+            <button class="px-4 py-2 rounded-lg bg-brand-purple text-white text-sm font-bold" :disabled="ambassadorForm.processing">
                 {{ ambassadorForm.processing ? 'Saving...' : 'Save ambassador' }}
             </button>
         </form>
@@ -306,7 +306,7 @@ const recommendedFeatureKeys = () => {
                     </div>
                     <label class="flex items-center gap-2 text-sm text-gray-600"><input type="checkbox" v-model="branchForm.is_warehouse" class="rounded"> 🏭 This is a warehouse (stock-only, not for POS sales)</label>
                 </div>
-                <button class="px-4 py-2 rounded-lg [background:#7C3AED] text-white text-sm font-bold" :disabled="branchForm.processing">
+                <button class="px-4 py-2 rounded-lg bg-brand-purple text-white text-sm font-bold" :disabled="branchForm.processing">
                     {{ branchForm.processing ? 'Creating...' : 'Create branch' }}
                 </button>
             </form>

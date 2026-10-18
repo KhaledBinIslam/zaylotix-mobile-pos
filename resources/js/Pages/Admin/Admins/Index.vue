@@ -42,7 +42,7 @@ function destroy(admin) {
     <AdminLayout active="admins">
         <div class="flex items-center justify-between mb-6">
             <h1 class="text-2xl font-bold">Admin Accounts</h1>
-            <button class="px-4 py-2 rounded-lg [background:#7C3AED] text-white font-semibold text-sm" @click="openNew">+ New admin</button>
+            <button class="px-4 py-2 rounded-lg bg-brand-purple text-white font-semibold text-sm" @click="openNew">+ New admin</button>
         </div>
 
         <div class="bg-white border rounded-xl overflow-x-auto">
@@ -100,7 +100,7 @@ function destroy(admin) {
                     </div>
                 </div>
                 <div class="flex gap-2 mt-5">
-                    <button class="flex-1 px-4 py-2 rounded-lg [background:#7C3AED] text-white font-semibold text-sm" :disabled="form.processing" @click="save">{{ form.processing ? '...' : 'Save' }}</button>
+                    <button class="flex-1 px-4 py-2 rounded-lg bg-brand-purple text-white font-semibold text-sm" :disabled="form.processing" @click="save">{{ form.processing ? '...' : 'Save' }}</button>
                     <button class="px-4 py-2 rounded-lg border text-sm font-semibold text-gray-600" @click="sheet = false">Cancel</button>
                 </div>
             </div>

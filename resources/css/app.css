@@ -72,13 +72,32 @@
      keeps the already-tested plain numeral rendering, no exceptions. */
   --font-display: "Space Grotesk", "Baloo Da 2", "Hind Siliguri", "Inter", sans-serif;
 
+  /* font-size scale (Phase 9) — same adoption note as radius/spacing above:
+     a de facto convergence around these values already exists by copy-paste
+     convention (12/12.5/13/14-16px dominate); this names that convention so
+     new/updated work can reach for a token instead of picking e.g. 13.5px
+     where an existing page used 13px for the same role. Not retrofitted
+     onto the ~39 existing literal font-size declarations in one pass. */
+  --text-xs: 11px;
+  --text-sm: 12.5px;
+  --text-base: 14.5px;
+  --text-lg: 16px;
+  --text-xl: 19px;
+
   /* One real shadow, used for elevation only (cards lifting off the page
      background) — not a per-component colored glow. Section 9/28: a
      button/badge/stat tile matching its own fill color back at itself as a
      tinted shadow is the "glowing SaaS button" pattern this brief asks to
      remove; interactive controls rely on their own fill + a plain
-     translateY press state instead, not light bleeding out from under them. */
+     translateY press state instead, not light bleeding out from under them.
+     --sh itself is untouched (same value as before Phase 9) — --sh-md/-lg
+     (Phase 9) just NAME two heavier recipes that were already being
+     hand-rolled ad hoc in a few places (login/onboarding cards, the notif
+     dropdown, the wide sheet), so they read as deliberate elevation steps
+     instead of accidentally-slightly-different one-offs. */
   --sh: 0 6px 20px rgba(18, 38, 28, .08);
+  --sh-md: 0 12px 40px rgba(18, 38, 28, .12);
+  --sh-lg: 0 24px 64px rgba(18, 38, 28, .28);
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -182,7 +201,7 @@ body {
 .stat.rose .v { color: var(--rose); }
 .stat.rose { background: var(--roseSoft); }
 .stat.sky .v { color: var(--sky); }
-.stat.sky { background: #E3EFFB; }
+.stat.sky { background: var(--skySoft); }
 
 .sechead { display: flex; align-items: center; justify-content: space-between; margin: 22px 2px 12px; }
 .sechead h2 { font-family: var(--font-display); font-size: 16px; font-weight: 700; }
@@ -201,7 +220,7 @@ body {
 .pill.mint { background: var(--greenSoft); color: var(--mint); }
 .pill.rose { background: var(--roseSoft); color: var(--rose); }
 .pill.gold { background: var(--goldSoft); color: var(--gold2); }
-.pill.sky { background: #E3EFFB; color: var(--sky); }
+.pill.sky { background: var(--skySoft); color: var(--sky); }
 .pill.mut { background: #EDF2ED; color: var(--mut); }
 
 /* premium pass: bigger, more confident tap target (44px+ line, matching
@@ -276,7 +295,7 @@ body {
         width: 92vw; max-width: 880px; max-height: 86vh;
         border-radius: 22px; border-bottom: 1px solid var(--line2);
         padding: 22px 26px calc(22px + env(safe-area-inset-bottom));
-        box-shadow: 0 24px 64px rgba(18, 38, 28, .28);
+        box-shadow: var(--sh-lg);
     }
     #sheet.wide .grab { display: none; }
 }
@@ -305,7 +324,7 @@ body {
 .notif-dropdown {
   position: fixed; z-index: 63; top: 62px; right: 14px; width: 320px; max-width: 90vw;
   max-height: 60vh; overflow-y: auto; background: var(--panel); border: 1px solid var(--line);
-  border-radius: 16px; box-shadow: 0 12px 32px rgba(18, 38, 28, .18); padding: 8px;
+  border-radius: 16px; box-shadow: var(--sh-md); padding: 8px;
 }
 @media (min-width: 1024px) {
   .notif-dropdown { top: auto; right: auto; bottom: 78px; left: 16px; }
@@ -490,7 +509,7 @@ body {
 .login-inner { width: 100%; max-width: 400px; }
 .login-brand { text-align: center; margin-bottom: 22px; }
 .login-tag { font-size: 13.5px; color: var(--mut); margin-top: 3px; }
-.login-card { background: var(--panel); border: 1px solid var(--line); border-radius: 22px; padding: 24px 20px; box-shadow: 0 12px 40px rgba(18, 38, 28, .12); }
+.login-card { background: var(--panel); border: 1px solid var(--line); border-radius: 22px; padding: 24px 20px; box-shadow: var(--sh-md); }
 .lc-h { font-family: var(--font-display); font-size: 20px; font-weight: 700; }
 .lc-s { font-size: 13px; color: var(--mut); margin-bottom: 18px; }
 .remember { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--mut); margin: 6px 0 16px; cursor: pointer; }
@@ -709,7 +728,7 @@ body {
 .onb-dots { display: flex; justify-content: center; gap: 7px; margin-bottom: 18px; }
 .onb-dots span { width: 8px; height: 8px; border-radius: 50%; background: var(--line2); }
 .onb-dots span.on { background: var(--gold); width: 22px; border-radius: 5px; }
-.onb-card { background: var(--panel); border: 1px solid var(--line); border-radius: 22px; padding: 30px 24px; box-shadow: 0 12px 40px rgba(18, 38, 28, .12); text-align: center; }
+.onb-card { background: var(--panel); border: 1px solid var(--line); border-radius: 22px; padding: 30px 24px; box-shadow: var(--sh-md); text-align: center; }
 .onb-emoji { font-size: 52px; margin-bottom: 14px; }
 .onb-title { font-family: var(--font-display); font-size: 21px; font-weight: 700; margin-bottom: 10px; }
 .onb-body { font-size: 14px; color: var(--mut); line-height: 1.75; margin-bottom: 22px; }

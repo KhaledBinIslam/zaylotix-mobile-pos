@@ -36,7 +36,7 @@ function savePrice(f, value) {
                 <h1 class="text-2xl font-bold">Features</h1>
                 <p class="text-sm text-gray-500 mt-1">The permission catalog — grant these per shop from its Create/Edit form. New rows here become available to grant immediately, no code changes needed.</p>
             </div>
-            <button class="px-4 py-2 rounded-lg [background:#7C3AED] text-white font-semibold text-sm" @click="showNew = !showNew">+ New feature</button>
+            <button class="px-4 py-2 rounded-lg bg-brand-purple text-white font-semibold text-sm" @click="showNew = !showNew">+ New feature</button>
         </div>
 
         <form v-if="showNew" @submit.prevent="submit" class="bg-white border rounded-xl p-5 mb-6 space-y-3 max-w-2xl">

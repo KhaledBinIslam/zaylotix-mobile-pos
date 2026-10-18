@@ -54,7 +54,7 @@ function sendNotification() {
             </div>
             <div class="flex gap-2">
                 <Link :href="route('admin.shops.edit', shop.id)" class="px-4 py-2 rounded-lg border text-sm font-semibold">✏️ Edit</Link>
-                <a :href="route('admin.shops.export', shop.id)" class="px-4 py-2 rounded-lg [background:#7C3AED] text-white text-sm font-semibold">
+                <a :href="route('admin.shops.export', shop.id)" class="px-4 py-2 rounded-lg bg-brand-purple text-white text-sm font-semibold">
                     📤 Export Excel
                 </a>
                 <a :href="route('admin.shops.exportSql', shop.id)" class="px-4 py-2 rounded-lg bg-gray-800 text-white text-sm font-semibold" title="Portable SQL dump — importable into a fresh install for self-hosting or migration">
@@ -122,7 +122,7 @@ function sendNotification() {
                     <textarea v-model="notifyForm.message" rows="2" placeholder="e.g. New features added — check the update!" class="w-full rounded-lg border-gray-300 text-sm"></textarea>
                     <div v-if="notifyForm.errors.message" class="text-rose-600 text-xs mt-1">{{ notifyForm.errors.message }}</div>
                 </div>
-                <button class="px-4 py-2 rounded-lg [background:#7C3AED] text-white text-sm font-semibold h-fit" :disabled="notifyForm.processing">
+                <button class="px-4 py-2 rounded-lg bg-brand-purple text-white text-sm font-semibold h-fit" :disabled="notifyForm.processing">
                     {{ notifyForm.processing ? 'Sending...' : 'Send' }}
                 </button>
             </form>

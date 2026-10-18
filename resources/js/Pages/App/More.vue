@@ -600,7 +600,7 @@ onMounted(() => {
         <button class="btn ghost" style="margin-top:18px;color:var(--rose);border-color:var(--roseSoft)" @click="logout">🚪 {{ t('common.logout') }}</button>
 
         <div style="text-align:center;margin-top:24px;padding:16px 0 8px;border-top:1px solid var(--line)">
-            <div style="font-size:12.5px;color:var(--mut)">A <a href="https://zaylotix.com/" target="_blank" rel="noopener" style="color:#7C3AED;font-weight:800;text-decoration:none">Zaylotix →</a> product</div>
+            <div style="font-size:12.5px;color:var(--mut)">A <a href="https://zaylotix.com/" target="_blank" rel="noopener" style="color:var(--purple);font-weight:800;text-decoration:none">Zaylotix →</a> product</div>
             <div v-if="shop?.support_contact_name" style="font-size:12.5px;color:var(--mut);margin-top:5px">{{ t('more.supportContact') }}: <span style="color:var(--green);font-weight:800">{{ shop.support_contact_name }}</span></div>
             <div v-if="shop?.support_contact_phone" style="font-size:12.5px;color:var(--mut);margin-top:5px">{{ t('common.contact') }}: <a :href="'tel:' + shop.support_contact_phone" style="color:var(--gold);font-weight:800;text-decoration:none">{{ shop.support_contact_phone }}</a></div>
         </div>

@@ -758,7 +758,7 @@ useKeyboardShortcuts({
                 {{ form.processing ? '...' : t('stock.save') }}
             </button>
 
-            <div v-if="!editing && hasUnitConversion" class="field" style="background:var(--panel2);border-radius:10px;padding:10px 12px;font-size:12.5px;color:var(--mut)">
+            <div v-if="!editing && hasUnitConversion" class="field" style="background:var(--panel2);border-radius:var(--radius-sm);padding:10px 12px;font-size:12.5px;color:var(--mut)">
                 💡 {{ t('stock.packSizesAfterSaveHint') }}
             </div>
 
@@ -834,7 +834,7 @@ useKeyboardShortcuts({
                     {{ t('stock.addVariantGrid') }}
                 </button>
 
-                <div v-if="gridOpen" style="margin-top:10px;padding:10px;border:1px dashed var(--line);border-radius:10px">
+                <div v-if="gridOpen" style="margin-top:10px;padding:10px;border:1px dashed var(--line);border-radius:var(--radius-sm)">
                     <div style="font-size:12px;color:var(--mut);margin-bottom:8px">{{ t('stock.gridHint') }}</div>
                     <div class="f2">
                         <input v-model="gridColorsInput" :placeholder="t('stock.gridColorsPlaceholder')">
@@ -913,7 +913,7 @@ useKeyboardShortcuts({
                 <b>{{ stockInProduct.emoji }} {{ stockInProduct.name }}</b>
                 <div style="color:var(--mut);font-size:12px;margin-top:4px">{{ t('stock.currentStock') }} {{ formatQty(stockInProduct, stockInProduct.stock) }} {{ unitLabel(stockInProduct) }}</div>
             </div>
-            <div v-if="stockInProduct?.product_units?.length" class="field" style="background:var(--panel2);border-radius:10px;padding:8px 10px;font-size:12px;color:var(--mut)">
+            <div v-if="stockInProduct?.product_units?.length" class="field" style="background:var(--panel2);border-radius:var(--radius-sm);padding:8px 10px;font-size:12px;color:var(--mut)">
                 {{ t('stock.stockInPacksHint', { pieces: unitLabel(stockInProduct) }) }}
             </div>
             <div class="f2">

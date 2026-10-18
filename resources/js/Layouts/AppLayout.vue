@@ -390,8 +390,8 @@ const mobileNavSlots = computed(() => {
                          button dropped its text label to match the bell/lang icon-only circles —
                          together these free up noticeably more width for the shop name/branch
                          picker next to them on a narrow phone. -->
-                    <img v-if="shop?.logo_url" :src="shop.logo_url" style="width:32px;height:32px;object-fit:contain;border-radius:10px;flex:0 0 auto">
-                    <img v-else-if="platformLogoUrl" :src="platformLogoUrl" style="width:32px;height:32px;object-fit:contain;border-radius:10px;flex:0 0 auto">
+                    <img v-if="shop?.logo_url" :src="shop.logo_url" style="width:32px;height:32px;object-fit:contain;border-radius:var(--radius-sm);flex:0 0 auto">
+                    <img v-else-if="platformLogoUrl" :src="platformLogoUrl" style="width:32px;height:32px;object-fit:contain;border-radius:var(--radius-sm);flex:0 0 auto">
                     <ZaylotixMark v-else :size="32" />
                     <div class="btitle">
                         <b style="font-size:15.5px;display:block;line-height:1.15">Zaylotix POS</b>

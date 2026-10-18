@@ -25,7 +25,7 @@ function contactSupport() {
         <div class="pgttl">{{ t('help.title') }}</div>
         <div class="pgsub">{{ t('help.subtitle') }}</div>
 
-        <button class="btn" style="background:#25D366;box-shadow:0 4px 14px rgba(37,211,102,.3);margin-bottom:16px" @click="contactSupport">
+        <button class="btn" style="background:var(--wa);margin-bottom:16px" @click="contactSupport">
             {{ t('help.whatsappCta') }}
         </button>
 

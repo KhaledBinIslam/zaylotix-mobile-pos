@@ -28,13 +28,13 @@ function submit() {
                     <input v-model="form.password" type="password" class="mt-1 w-full rounded-lg border-gray-300">
                 </div>
                 <div v-if="form.errors.email" class="text-rose-600 text-sm">{{ form.errors.email }}</div>
-                <button type="submit" class="w-full py-3 rounded-lg text-white font-bold" style="background:#7C3AED" :disabled="form.processing">
+                <button type="submit" class="w-full py-3 rounded-lg text-white font-bold" style="background:var(--purple)" :disabled="form.processing">
                     {{ form.processing ? '...' : 'Log in' }}
                 </button>
             </form>
 
             <div class="text-center text-xs text-gray-400 mt-6">
-                A <a href="https://zaylotix.com/" target="_blank" class="font-semibold" style="color:#7C3AED">Zaylotix</a> product
+                A <a href="https://zaylotix.com/" target="_blank" class="font-semibold" style="color:var(--purple)">Zaylotix</a> product
             </div>
         </div>
     </div>

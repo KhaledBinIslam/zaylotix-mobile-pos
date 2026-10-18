@@ -20,7 +20,7 @@ function submit() {
                 <h1 class="text-2xl font-bold">Ambassadors</h1>
                 <p class="text-sm text-gray-500 mt-1">Sales-agent tracking — who brought each shop, their commission rates, and what's owed.</p>
             </div>
-            <button class="px-4 py-2 rounded-lg [background:#7C3AED] text-white font-semibold text-sm" @click="showNew = !showNew">+ New ambassador</button>
+            <button class="px-4 py-2 rounded-lg bg-brand-purple text-white font-semibold text-sm" @click="showNew = !showNew">+ New ambassador</button>
         </div>
 
         <form v-if="showNew" @submit.prevent="submit" class="bg-white border rounded-xl p-5 mb-6 space-y-3 max-w-2xl">

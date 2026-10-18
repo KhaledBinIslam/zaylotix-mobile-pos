@@ -51,7 +51,7 @@ function submitRestore() {
         <div class="bg-white border rounded-xl p-6 max-w-3xl">
             <div class="flex items-center justify-between mb-5">
                 <div class="text-sm text-gray-500">Connection: <b class="text-gray-800">{{ connection }}</b>{{ connection !== 'mysql' ? ' — restore is only available on MySQL' : '' }}</div>
-                <button class="px-4 py-2 rounded-lg [background:#7C3AED] text-white font-semibold text-sm disabled:opacity-50" :disabled="creating" @click="createBackup">
+                <button class="px-4 py-2 rounded-lg bg-brand-purple text-white font-semibold text-sm disabled:opacity-50" :disabled="creating" @click="createBackup">
                     {{ creating ? 'Backing up...' : '+ Backup now' }}
                 </button>
             </div>

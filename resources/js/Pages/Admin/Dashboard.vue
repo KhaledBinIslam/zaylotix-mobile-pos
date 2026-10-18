@@ -36,7 +36,7 @@ function sendBroadcast() {
             </div>
             <div class="bg-white border rounded-xl p-4 shadow-sm">
                 <div class="text-xs text-gray-500">Collected this month</div>
-                <div class="text-2xl font-extrabold mt-1 [color:#7C3AED]">{{ money(stats.collectedThisMonth) }}</div>
+                <div class="text-2xl font-extrabold mt-1 text-brand-purple">{{ money(stats.collectedThisMonth) }}</div>
             </div>
         </div>
 
@@ -49,7 +49,7 @@ function sendBroadcast() {
                         <div class="font-medium text-sm">{{ s.name }}</div>
                         <div class="text-xs text-gray-500">{{ s.phone }}</div>
                     </div>
-                    <Link :href="route('admin.subscriptions.index')" class="text-xs font-semibold [color:#7C3AED]">Record payment</Link>
+                    <Link :href="route('admin.subscriptions.index')" class="text-xs font-semibold text-brand-purple">Record payment</Link>
                 </div>
             </div>
 
@@ -86,7 +86,7 @@ function sendBroadcast() {
                     <textarea v-model="broadcastForm.message" rows="2" placeholder="e.g. Zaylotix POS will be under maintenance tonight 11pm-12am." class="w-full rounded-lg border-gray-300 text-sm"></textarea>
                     <div v-if="broadcastForm.errors.message" class="text-rose-600 text-xs mt-1">{{ broadcastForm.errors.message }}</div>
                 </div>
-                <button class="px-4 py-2 rounded-lg [background:#7C3AED] text-white text-sm font-semibold h-fit" :disabled="broadcastForm.processing">
+                <button class="px-4 py-2 rounded-lg bg-brand-purple text-white text-sm font-semibold h-fit" :disabled="broadcastForm.processing">
                     {{ broadcastForm.processing ? 'Sending...' : `Send to ${stats.activeShops} shop(s)` }}
                 </button>
             </form>

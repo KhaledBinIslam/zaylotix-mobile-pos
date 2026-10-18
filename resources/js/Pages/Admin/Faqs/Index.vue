@@ -50,7 +50,7 @@ function destroy(f) {
                 <h1 class="text-2xl font-bold">FAQs</h1>
                 <p class="text-sm text-gray-500 mt-1">Shown in every shop's Help page (App → ❓ → FAQ) — same list for every shop.</p>
             </div>
-            <button class="px-4 py-2 rounded-lg [background:#7C3AED] text-white font-semibold text-sm" @click="openNew">+ New FAQ</button>
+            <button class="px-4 py-2 rounded-lg bg-brand-purple text-white font-semibold text-sm" @click="openNew">+ New FAQ</button>
         </div>
 
         <form v-if="showNew" @submit.prevent="submit" class="bg-white border rounded-xl p-5 mb-6 space-y-3 max-w-2xl">

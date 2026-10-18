@@ -28,7 +28,7 @@ const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
             </div>
             <div class="bg-white border rounded-xl p-4 shadow-sm">
                 <div class="text-xs text-gray-500">Total shops</div>
-                <div class="text-2xl font-extrabold mt-1 [color:#7C3AED]">{{ stats.totalShops }}</div>
+                <div class="text-2xl font-extrabold mt-1 text-brand-purple">{{ stats.totalShops }}</div>
             </div>
         </div>
 
@@ -107,7 +107,7 @@ const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
                     <span class="font-semibold">{{ f.shop_count }} shops ({{ f.percent }}%)</span>
                 </div>
                 <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                    <div class="h-full [background:#7C3AED]" :style="{ width: f.percent + '%' }"></div>
+                    <div class="h-full bg-brand-purple" :style="{ width: f.percent + '%' }"></div>
                 </div>
             </div>
         </div>

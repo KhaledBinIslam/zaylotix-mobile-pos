@@ -137,9 +137,42 @@ Work proceeds phase 0 → 9, in order. Each phase stops for Khaled's explicit "s
 
 ---
 
-## Phases 5-9 — Pending dedicated research before each begins
+## Phases 5-8 — completed
 
-Per the master prompt's own phased structure, Phase 5 (service/repair refinement), Phase 6 (quotation strengthening beyond the integer-qty gap already found in 0.4), Phase 7 (payroll date-tracking, installment-creation bug, wholesale, customer segmentation/CRM), Phase 8 (bottom-nav customization), and Phase 9 (UI/UX redesign) will each get a short, dedicated research pass immediately before that phase's implementation starts, with findings appended to `ARCHITECTURE_NOTES.md` and this file at that time — consistent with the audit-before-fix discipline used for phases 0-4 above.
+Phase 5 (service/repair), Phase 6 (quotation strengthening), Phase 7 (payroll/installments/wholesale/CRM), and Phase 8 (bottom-nav customization) are all implemented, tested, and deployed. See commits `f0cf876`, `67f6df0`, `cf70efe`, `c8f7042`.
+
+## Phase 9 — Premium UI/UX redesign via design tokens (logic unchanged)
+
+Research pass (full findings in `ARCHITECTURE_NOTES.md` section 8): App/* is mostly token-driven with fixable drift; Admin/* is a wholly separate, untokenized Tailwind-default system; no dark mode exists; no font-size scale exists; 8 Breeze scaffold components are dead code. Ground rule for this entire phase: CSS custom properties + light class/template changes only — zero route/controller/model/business-logic changes.
+
+### 9.1 — Bridge Admin/* onto the existing token system
+- **Solution**: Add a `theme.extend.colors` block to `tailwind.config.js` mapping brand tokens to the CSS custom properties (e.g. `brand-purple: 'var(--purple)'`, `brand-green: 'var(--green)'`, `brand-rose: 'var(--rose)'`, `brand-mut: 'var(--mut)'`, `brand-line: 'var(--line)'`), then swap Admin/*'s raw Tailwind defaults and literal `#7C3AED`/`[background:#7C3AED]` arbitrary-values for the new `brand-*` utilities across `AdminLayout.vue` and `Admin/**/*.vue`.
+- **Risk**: Low — pure color-value substitution, same rendered pixels (same hex), just sourced from one token instead of N literals.
+- **Test**: `npm run build` clean; visual spot-check of Admin dashboard/login/shops pages unchanged in appearance.
+
+### 9.2 — Fix concrete token drift in App/*
+- Retrofit the ~15 files with literal inline `border-radius` values onto `--radius-sm/md/lg`.
+- Fix `app.css:185`'s `.stat.sky` background (`#E3EFFB` → `var(--skySoft)`, removing the one-digit-off near-duplicate of the real token).
+- Fix `Help/Index.vue:28`'s literal `#25D366` + custom glow shadow → `var(--wa)`, no glow (matching the app's existing no-colored-glow convention).
+- Fix `BarcodeLabels/Index.vue:164`'s literal `#fff`/`#ddd` → `var(--panel)`/`var(--line)`.
+- **Risk**: Very low — each is a value substitution with an identical or near-identical rendered color.
+- **Test**: `npm run build` clean; visual spot-check of Stock, Pos, Help, BarcodeLabels pages.
+
+### 9.3 — Add a font-size token scale (additive, zero visual change on day one)
+- **Solution**: Add `--text-xs/sm/base/lg/xl` tokens to `:root` derived from the already-dominant real-world values (11/12.5/14.5/16/19px). Do not force-retrofit all 39+ existing literal usages (too invasive for a logic-unchanged phase) — the scale exists for future pages/edits to converge on.
+- **Risk**: None — purely additive tokens, nothing references them yet.
+
+### 9.4 — Name the elevation scale
+- **Solution**: Add `--sh-sm`/`--sh-lg` alongside the existing `--sh`, formalizing the 2-3 shadow recipes already hand-rolled ad hoc (login/onboarding card, notif dropdown, wide sheet) as deliberate steps instead of accidental near-duplicates. Point those specific selectors at the new tokens.
+- **Risk**: Very low — same or near-identical shadow values, now named.
+
+### 9.5 — Scope decisions explicitly flagged to Khaled, NOT built
+- Dark mode (net-new feature, no existing infra).
+- Whether Admin's purple should visually unify with App's green/gold brand, or stay deliberately distinct as an internal-console look (9.1 above assumes "bridge the token, keep the color" — a literal-value-preserving refactor, not a rebrand; the rebrand question itself is still Khaled's call).
+- The PWA install theme color (`resources/views/app.blade.php`, `public/manifest.json`) currently matches Admin's purple, not the in-app functional palette — may be intentional, may be an oversight.
+- Bumping `--dim`'s contrast (currently ~2.9:1) — a one-line token edit, but a visible app-wide color shift on every "quiet" text element.
+- A loading-skeleton state — none exists anywhere; doing it right needs a per-page template conditional, beyond a pure token/class change.
+- Deleting the 8 confirmed-unused Breeze components — zero risk, but a file-deletion action flagged for a nod rather than done silently.
 
 ---
 

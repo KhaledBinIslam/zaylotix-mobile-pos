@@ -161,7 +161,7 @@ const printCss = computed(() => `
         <Teleport to="body">
             <div v-if="printing" id="label-print-overlay">
                 <component :is="'style'" v-html="printCss"></component>
-                <div class="no-print" style="padding:12px;display:flex;gap:10px;background:#fff;border-bottom:1px solid #ddd">
+                <div class="no-print" style="padding:12px;display:flex;gap:10px;background:var(--panel);border-bottom:1px solid var(--line)">
                     <button class="btn sm" @click="doPrint">🖨️ {{ t('bc.print') }}</button>
                     <button class="btn sm ghost" @click="closePrint">{{ t('bc.close') }}</button>
                 </div>

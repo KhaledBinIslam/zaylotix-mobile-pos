@@ -63,7 +63,7 @@ function submitPay() {
                 <b style="color:var(--green)">{{ money(row.basic_salary) }}</b>
             </div>
 
-            <div v-if="row.paid" class="row" style="cursor:default;background:var(--greenSoft);border-radius:10px">
+            <div v-if="row.paid" class="row" style="cursor:default;background:var(--greenSoft);border-radius:var(--radius-sm)">
                 <div class="ava">✅</div>
                 <div class="mid"><b>{{ t('pay.alreadyPaid') }}</b><span>{{ t('pay.paidOn') }}: {{ row.paid.paid_date }}</span></div>
                 <div class="end"><b>{{ money(row.paid.net_paid) }}</b></div>

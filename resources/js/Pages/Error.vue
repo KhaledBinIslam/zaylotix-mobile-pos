@@ -54,7 +54,7 @@ function goBack() {
             </div>
 
             <div class="login-foot">
-                A <a href="https://zaylotix.com/" target="_blank" rel="noopener" style="color:#7C3AED;font-weight:800">Zaylotix →</a> product<br>
+                A <a href="https://zaylotix.com/" target="_blank" rel="noopener" style="color:var(--purple);font-weight:800">Zaylotix →</a> product<br>
                 সমস্যা লেগেই থাকলে যোগাযোগ করুন: <a href="tel:01979894356">01979894356</a>
             </div>
         </div>
