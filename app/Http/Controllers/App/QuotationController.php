@@ -43,9 +43,9 @@ class QuotationController extends Controller
         ]);
     }
 
-    public function store(Request $request)
+    private function quotationRules(): array
     {
-        $data = $request->validate([
+        return [
             'customer_id' => ['nullable', Rule::exists('customers', 'id')->where('shop_id', Tenancy::id())],
             'customer_name' => ['nullable', 'string', 'max:255'],
             'customer_phone' => ['nullable', 'string', 'max:20'],
@@ -61,39 +61,69 @@ class QuotationController extends Controller
             'items.*.qty' => ['required', 'numeric', 'min:0.001'],
             'items.*.price' => ['required', 'numeric', 'min:0'],
             'items.*.discount' => ['nullable', 'numeric', 'min:0'],
-        ]);
+        ];
+    }
 
+    /**
+     * Shared by store() and update() — resolves each line's product,
+     * enforces the weighed-vs-whole-number qty rule, and returns the line
+     * payloads + subtotal + any low-stock warnings together so the two
+     * callers can never compute a quote's pricing differently from each
+     * other (same reasoning as PosController's single performCheckout()).
+     */
+    private function resolveLines(array $items): array
+    {
+        $products = Product::whereIn('id', collect($items)->pluck('product_id'))->get()->keyBy('id');
+
+        $subtotal = 0;
+        $lines = [];
+        $lowStockWarnings = [];
+        foreach ($items as $item) {
+            $product = $products->get($item['product_id']);
+            if (! $product->sold_by_weight && floor($item['qty']) != $item['qty']) {
+                throw ValidationException::withMessages([
+                    'items' => "{$product->name} ওজন-ভিত্তিক পণ্য না — পরিমাণ পূর্ণ সংখ্যা হতে হবে।",
+                ]);
+            }
+            // Confirmed gap (see docs/FIX_PLAN.md Phase 6): creation never
+            // checked quoted qty against current stock at all — a quote for
+            // 50 of something with 5 in stock went through silently. A
+            // quote isn't a stock reservation (the shop may restock before
+            // anyone converts it), so this warns rather than blocks —
+            // conversion itself is still the one place that actually
+            // re-validates live stock and hard-blocks if it's genuinely
+            // insufficient at that later moment.
+            if ((float) $item['qty'] > (float) $product->stock) {
+                $lowStockWarnings[] = "{$product->name} (চাহিদা {$item['qty']}, আছে {$product->stock})";
+            }
+            $rawLineTotal = (float) $item['price'] * $item['qty'];
+            $lineDiscount = min((float) ($item['discount'] ?? 0), $rawLineTotal);
+            $subtotal += $rawLineTotal - $lineDiscount;
+
+            $lines[] = [
+                'product_id' => $product->id,
+                'product_name' => $product->name,
+                'qty' => $item['qty'],
+                'price' => $item['price'],
+                'discount' => $lineDiscount,
+            ];
+        }
+
+        return [$lines, $subtotal, $lowStockWarnings];
+    }
+
+    public function store(Request $request)
+    {
+        $data = $request->validate($this->quotationRules());
         $shopId = Tenancy::id();
 
-        $quotation = DB::transaction(function () use ($data, $shopId) {
+        [$quotation, $lowStockWarnings] = DB::transaction(function () use ($data, $shopId) {
             // locking the shop row serializes concurrent quote submissions
             // so the sequential quote_no can't collide, same pattern as
             // Sale's invoice_no
             $shop = Shop::whereKey($shopId)->lockForUpdate()->first();
 
-            $products = Product::whereIn('id', collect($data['items'])->pluck('product_id'))->get()->keyBy('id');
-
-            $subtotal = 0;
-            $lines = [];
-            foreach ($data['items'] as $item) {
-                $product = $products->get($item['product_id']);
-                if (! $product->sold_by_weight && floor($item['qty']) != $item['qty']) {
-                    throw ValidationException::withMessages([
-                        'items' => "{$product->name} ওজন-ভিত্তিক পণ্য না — পরিমাণ পূর্ণ সংখ্যা হতে হবে।",
-                    ]);
-                }
-                $rawLineTotal = (float) $item['price'] * $item['qty'];
-                $lineDiscount = min((float) ($item['discount'] ?? 0), $rawLineTotal);
-                $subtotal += $rawLineTotal - $lineDiscount;
-
-                $lines[] = [
-                    'product_id' => $product->id,
-                    'product_name' => $product->name,
-                    'qty' => $item['qty'],
-                    'price' => $item['price'],
-                    'discount' => $lineDiscount,
-                ];
-            }
+            [$lines, $subtotal, $lowStockWarnings] = $this->resolveLines($data['items']);
 
             $discount = min((float) ($data['discount'] ?? 0), $subtotal);
             $total = $subtotal - $discount;
@@ -120,10 +150,70 @@ class QuotationController extends Controller
                 QuotationItem::create($line + ['quotation_id' => $quotation->id]);
             }
 
-            return $quotation;
+            return [$quotation, $lowStockWarnings];
         });
 
-        return back()->with('success', "{$quotation->quote_no} তৈরি হয়েছে।");
+        $message = "{$quotation->quote_no} তৈরি হয়েছে।";
+        if (! empty($lowStockWarnings)) {
+            $message .= ' ⚠️ পর্যাপ্ত স্টক নেই: '.implode(', ', $lowStockWarnings).' — বিক্রির আগে স্টক নিশ্চিত করুন।';
+        }
+
+        return back()->with('success', $message);
+    }
+
+    /**
+     * Missing feature (see docs/FIX_PLAN.md Phase 6): "cancel and create a
+     * new one" was the only way to fix a mistake on an open quote. Only
+     * ever touches an 'open' quotation — a converted/cancelled one keeps
+     * its historical record exactly as it was; the quote_no/date never
+     * change, only the content and the derived totals.
+     */
+    public function update(Request $request, Quotation $quotation)
+    {
+        if ($quotation->status !== 'open') {
+            throw ValidationException::withMessages([
+                'status' => 'শুধু খোলা কোটেশন সম্পাদনা করা যাবে।',
+            ]);
+        }
+
+        $data = $request->validate($this->quotationRules());
+
+        $lowStockWarnings = DB::transaction(function () use ($data, $quotation) {
+            [$lines, $subtotal, $lowStockWarnings] = $this->resolveLines($data['items']);
+
+            $discount = min((float) ($data['discount'] ?? 0), $subtotal);
+            $total = $subtotal - $discount;
+
+            $quotation->update([
+                'customer_id' => $data['customer_id'] ?? null,
+                'customer_name' => $data['customer_name'] ?? null,
+                'customer_phone' => $data['customer_phone'] ?? null,
+                'valid_until' => $data['valid_until'] ?? null,
+                'subtotal' => $subtotal,
+                'discount' => $discount,
+                'total' => $total,
+                'notes' => $data['notes'] ?? null,
+            ]);
+
+            // replace every line wholesale rather than diffing — a
+            // quotation's items have no other row anywhere referencing
+            // their own id (unlike a Sale's items, never read by anything
+            // once billed), so there's nothing to preserve by patching
+            // in place
+            $quotation->items()->delete();
+            foreach ($lines as $line) {
+                QuotationItem::create($line + ['quotation_id' => $quotation->id]);
+            }
+
+            return $lowStockWarnings;
+        });
+
+        $message = "{$quotation->quote_no} আপডেট করা হয়েছে।";
+        if (! empty($lowStockWarnings)) {
+            $message .= ' ⚠️ পর্যাপ্ত স্টক নেই: '.implode(', ', $lowStockWarnings).' — বিক্রির আগে স্টক নিশ্চিত করুন।';
+        }
+
+        return back()->with('success', $message);
     }
 
     public function cancel(Quotation $quotation)

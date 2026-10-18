@@ -1133,19 +1133,16 @@ onBeforeUnmount(() => {
 // actual conversion only ever happens through the normal checkout() call
 // below (see PosController::checkout()'s `quotation_id` handling), so this
 // is purely a convenience fill of the same cart a cashier would build by
-// hand. If the live price has since gone UP, a compensating line discount
-// keeps the customer paying no more than what was quoted — if it's gone
-// down, they simply benefit from the lower live price.
+// hand. The server itself caps each line's unit price at the quoted net
+// price when quotation_id is present (see performCheckout()'s
+// $quotedNetUnitByProduct) — never charges more than quoted, and still
+// passes along the benefit if the live price has since dropped — so this
+// prefill no longer needs to (and must not) inject its own compensating
+// discount; doing both would double-discount the customer.
 onMounted(() => {
     if (props.prefillQuotation) {
         const q = props.prefillQuotation;
-        cart.value = q.items.map((l) => {
-            const live = props.products.find((p) => p.id === l.product_id);
-            const livePrice = live ? Number(live.price) : Number(l.price);
-            const quotedUnit = (Number(l.price) * l.qty - Number(l.discount || 0)) / l.qty;
-            const compDiscount = Math.max(0, Math.round((livePrice - quotedUnit) * l.qty * 100) / 100);
-            return { product_id: l.product_id, product_unit_id: null, product_variant_id: null, qty: l.qty, discount: compDiscount, imei: '' };
-        });
+        cart.value = q.items.map((l) => ({ product_id: l.product_id, product_unit_id: null, product_variant_id: null, qty: l.qty, discount: 0, imei: '' }));
         quotationId.value = q.id;
         customerPhone.value = q.customer_phone || '';
         customerName.value = q.customer_name || '';

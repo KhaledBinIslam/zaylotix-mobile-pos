@@ -12,17 +12,42 @@ const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 
 const statusLabel = { open: 'quotation.statusOpen', converted: 'quotation.statusConverted', cancelled: 'quotation.statusCancelled' };
 const statusPill = { open: 'gold', converted: 'mint', cancelled: 'mut' };
+// Confirmed gap (see docs/FIX_PLAN.md Phase 6): an expired-but-open quote
+// still showed the same "খোলা" (open) pill forever — nothing ever flagged
+// it as stale in the list. Display-only; the actual conversion block lives
+// server-side in PosController::performCheckout().
+function isExpired(q) {
+    if (q.status !== 'open' || !q.valid_until) return false;
+    return new Date(q.valid_until) < new Date(new Date().toDateString());
+}
 
 const sheet = ref(false);
+// Missing feature (see docs/FIX_PLAN.md Phase 6): "cancel and create a new
+// one" was the only way to fix a mistake on an open quote. null = creating
+// a new quotation; set to the quotation being edited otherwise — same
+// sheet/form either way, save() just posts to a different route.
+const editing = ref(null);
 const form = useForm({
     customer_name: '', customer_phone: '', valid_until: '', notes: '', discount: '',
     items: [],
 });
 
 function openNew() {
+    editing.value = null;
     form.reset();
     form.clearErrors();
     form.items = [{ product_id: '', qty: 1, price: '', discount: '' }];
+    sheet.value = true;
+}
+function openEdit(q) {
+    editing.value = q;
+    form.clearErrors();
+    form.customer_name = q.customer_name || '';
+    form.customer_phone = q.customer_phone || '';
+    form.valid_until = q.valid_until || '';
+    form.notes = q.notes || '';
+    form.discount = Number(q.discount) || '';
+    form.items = q.items.map((l) => ({ product_id: l.product_id, qty: Number(l.qty), price: Number(l.price), discount: Number(l.discount) || '' }));
     sheet.value = true;
 }
 function addLine() {
@@ -43,7 +68,12 @@ const subtotal = computed(() => form.items.reduce((s, l) => s + lineTotal(l), 0)
 const total = computed(() => Math.max(0, subtotal.value - (Number(form.discount) || 0)));
 
 function save() {
-    form.post(route('app.quotations.store'), { onSuccess: () => (sheet.value = false) });
+    const onSuccess = () => { sheet.value = false; editing.value = null; };
+    if (editing.value) {
+        form.put(route('app.quotations.update', editing.value.id), { onSuccess });
+    } else {
+        form.post(route('app.quotations.store'), { onSuccess });
+    }
 }
 </script>
 
@@ -63,12 +93,14 @@ function save() {
             </Link>
             <div class="end">
                 <b>{{ money(q.total) }}</b>
-                <span class="pill" :class="statusPill[q.status]" style="margin-top:3px">{{ t(statusLabel[q.status]) }}</span>
+                <span v-if="isExpired(q)" class="pill rose" style="margin-top:3px">{{ t('quotation.expired') }}</span>
+                <span v-else class="pill" :class="statusPill[q.status]" style="margin-top:3px">{{ t(statusLabel[q.status]) }}</span>
+                <button v-if="q.status === 'open'" type="button" class="btn sm ghost" style="width:auto;margin-top:4px;padding:4px 10px" @click="openEdit(q)">{{ t('common.edit') }}</button>
             </div>
         </div>
         <div v-if="!quotations.length" class="empty"><div class="big">📋</div>{{ t('quotation.noQuotations') }}</div>
 
-        <Sheet v-model="sheet" :title="t('quotation.newTitle')">
+        <Sheet v-model="sheet" :title="editing ? t('quotation.editTitle') : t('quotation.newTitle')">
             <div class="field"><label>{{ t('quotation.customerName') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label><input v-model="form.customer_name"></div>
             <div class="field"><label>{{ t('quotation.customerPhone') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label><input v-model="form.customer_phone" inputmode="tel"></div>
 

@@ -90,7 +90,13 @@ class PosController extends Controller
         // below, never here
         $quotation = null;
         if ($request->filled('quotation')) {
-            $quotation = Quotation::with('items')->where('status', 'open')->find($request->get('quotation'));
+            // an expired-but-still-open quote is never prefilled — matches
+            // the hard block in performCheckout() below (see its own
+            // comment); checked here too so the cashier gets a clean "not
+            // found" instead of a cart that then fails at checkout
+            $quotation = Quotation::with('items')->where('status', 'open')
+                ->where(fn ($q) => $q->whereNull('valid_until')->orWhere('valid_until', '>=', now()->startOfDay()))
+                ->find($request->get('quotation'));
         }
 
         // clothing shops get a category -> product -> color/size flow tuned
@@ -221,13 +227,40 @@ class PosController extends Controller
             // re-checked here (not just once at page-load) so a double-tap
             // or a second tab can't convert the same quote into two sales
             $quotation = null;
+            $quotedNetUnitByProduct = [];
             if (! empty($data['quotation_id'])) {
                 if (! $shop->hasFeature('quotations')) {
                     abort(422, 'কোটেশন ফিচারটি চালু নেই।');
                 }
-                $quotation = Quotation::whereKey($data['quotation_id'])->lockForUpdate()->first();
+                $quotation = Quotation::whereKey($data['quotation_id'])->lockForUpdate()->with('items')->first();
                 if (! $quotation || $quotation->status !== 'open') {
                     abort(422, 'এই কোটেশনটি ইতিমধ্যে বিক্রয়ে রূপান্তরিত বা বাতিল হয়ে গেছে।');
+                }
+                // Confirmed bug (see docs/FIX_PLAN.md Phase 6): valid_until
+                // was stored and displayed but never actually checked
+                // anywhere — an expired-but-still-open quote could be
+                // converted with no warning. Date-only comparison (not
+                // isPast(), which would treat "valid until today" as
+                // already expired from midnight) — a quote is good through
+                // the end of its valid_until date.
+                if ($quotation->valid_until && $quotation->valid_until->lt(now()->startOfDay())) {
+                    abort(422, 'এই কোটেশনের মেয়াদ শেষ হয়ে গেছে।');
+                }
+                // Confirmed gap: the quoted price was only ever honored by a
+                // client-side compensating discount the cashier could edit
+                // or bypass — nothing server-side actually capped what the
+                // customer pays at the price they were quoted. Net per-unit
+                // price (the quote's own line discount folded in), so a
+                // quote that already included a discount is still fully
+                // honored, not just its headline price.
+                foreach ($quotation->items as $qi) {
+                    if (! $qi->product_id || (float) $qi->qty <= 0) {
+                        continue;
+                    }
+                    $netUnit = ((float) $qi->price * (float) $qi->qty - (float) $qi->discount) / (float) $qi->qty;
+                    $quotedNetUnitByProduct[$qi->product_id] = isset($quotedNetUnitByProduct[$qi->product_id])
+                        ? min($quotedNetUnitByProduct[$qi->product_id], $netUnit)
+                        : $netUnit;
                 }
             }
 
@@ -304,6 +337,9 @@ class PosController extends Controller
 
                 $factor = 1;
                 $unitPrice = ($isWholesale && $product->wholesale_price !== null) ? (float) $product->wholesale_price : (float) $product->price;
+                if (isset($quotedNetUnitByProduct[$product->id])) {
+                    $unitPrice = min($unitPrice, $quotedNetUnitByProduct[$product->id]);
+                }
                 $unitCost = $product->cost;
                 $unitLabel = null;
                 $variant = null;

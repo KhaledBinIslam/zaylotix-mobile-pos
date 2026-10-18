@@ -15,6 +15,15 @@ const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 const statusLabel = { open: 'quotation.statusOpen', converted: 'quotation.statusConverted', cancelled: 'quotation.statusCancelled' };
 
 const waPhone = computed(() => props.quotation.customer?.phone || props.quotation.customer_phone || '');
+// Confirmed bug (see docs/FIX_PLAN.md Phase 6): valid_until was displayed
+// but never actually checked anywhere — the convert button stayed live on
+// an expired quote with no warning. date-only comparison, same as the
+// server's own check in PosController::performCheckout() — valid through
+// the end of valid_until's date, not from its midnight.
+const isExpired = computed(() => {
+    if (!props.quotation.valid_until) return false;
+    return new Date(props.quotation.valid_until) < new Date(new Date().toDateString());
+});
 
 function print() {
     window.print();
@@ -73,7 +82,10 @@ function cancelQuotation() {
         <div v-if="features.includes('memo_whatsapp') && !waPhone" class="no-print" style="font-size:12px;color:var(--mut);margin-top:8px">{{ t('quotation.waNeedsPhone') }}</div>
 
         <template v-if="quotation.status === 'open'">
-            <button class="no-print btn" style="margin-top:16px" @click="convertToSale">{{ t('quotation.convertToSale') }}</button>
+            <div v-if="isExpired" class="no-print card" style="margin-top:16px;text-align:center;color:var(--rose)">
+                <b>⏰ {{ t('quotation.expired') }}</b>
+            </div>
+            <button v-else class="no-print btn" style="margin-top:16px" @click="convertToSale">{{ t('quotation.convertToSale') }}</button>
             <button class="no-print btn rose" style="margin-top:10px" @click="cancelQuotation">{{ t('quotation.cancel') }}</button>
         </template>
         <div v-else class="no-print card" style="margin-top:16px;text-align:center">

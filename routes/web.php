@@ -170,6 +170,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
             Route::get('quotations', [QuotationController::class, 'index'])->name('quotations.index');
             Route::get('quotations/{quotation}', [QuotationController::class, 'show'])->name('quotations.show');
             Route::post('quotations', [QuotationController::class, 'store'])->name('quotations.store');
+            Route::put('quotations/{quotation}', [QuotationController::class, 'update'])->name('quotations.update');
             Route::post('quotations/{quotation}/cancel', [QuotationController::class, 'cancel'])->name('quotations.cancel');
         });
 
