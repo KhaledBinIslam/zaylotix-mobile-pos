@@ -61,6 +61,11 @@ class CheckoutRequest extends FormRequest
             // back to the normal price for any line whose product has no
             // wholesale_price of its own), never a per-line choice
             'sale_type' => ['nullable', 'in:retail,wholesale'],
+            // client-generated idempotency key — see PosController::performCheckout()'s
+            // matching check-or-return. Optional so any older cached frontend
+            // build (before this uuid existed) still checks out fine; just
+            // without replay protection until it reloads.
+            'client_uuid' => ['nullable', 'uuid'],
         ];
     }
 }

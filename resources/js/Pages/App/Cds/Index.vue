@@ -18,13 +18,15 @@ const STATUS_PILL = { pending: 'rose', cooked: 'gold', served: 'mint' };
 // read-only screen meant for a second monitor/tablet facing the customer —
 // only the order-status side needs to stay live, the menu itself barely
 // ever changes mid-service
-const { pollReload } = usePollingReload();
+const { pollReload, pollOnVisible } = usePollingReload();
 let pollTimer = null;
+function pollCdsNow() {
+    pollReload({ only: ['todaysOrders'], preserveScroll: true });
+}
 onMounted(() => {
-    pollTimer = setInterval(() => {
-        pollReload({ only: ['todaysOrders'], preserveScroll: true });
-    }, 8000);
+    pollTimer = setInterval(pollCdsNow, 8000);
 });
+pollOnVisible(pollCdsNow);
 onBeforeUnmount(() => clearInterval(pollTimer));
 </script>
 

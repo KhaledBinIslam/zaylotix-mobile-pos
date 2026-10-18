@@ -21,13 +21,15 @@ const SOURCE_ICON = { delivery: '🛵', takeaway: '🥡' };
 
 // same live-polling pattern as Tables.vue/Order.vue — a cook's screen must
 // reflect what a cashier just sent to the kitchen without a manual refresh
-const { pollReload } = usePollingReload();
+const { pollReload, pollOnVisible } = usePollingReload();
 let pollTimer = null;
+function pollKdsNow() {
+    pollReload({ only: ['openOrders', 'cookedOrders'], preserveScroll: true });
+}
 onMounted(() => {
-    pollTimer = setInterval(() => {
-        pollReload({ only: ['openOrders', 'cookedOrders'], preserveScroll: true });
-    }, 8000);
+    pollTimer = setInterval(pollKdsNow, 8000);
 });
+pollOnVisible(pollKdsNow);
 onBeforeUnmount(() => clearInterval(pollTimer));
 </script>
 

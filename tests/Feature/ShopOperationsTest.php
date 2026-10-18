@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\App\ProductController;
 use App\Models\Customer;
 use App\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\Concerns\CreatesShops;
 use Tests\TestCase;
 
@@ -96,6 +98,52 @@ class ShopOperationsTest extends TestCase
         $fresh = $product->fresh();
         $this->assertEquals(200, $fresh->stock);
         $this->assertEqualsWithDelta(5.00, (float) $fresh->cost, 0.01);
+    }
+
+    /**
+     * Phase 1.1 — see docs/FIX_PLAN.md. Confirmed root cause of the Stock
+     * page's reported 500: stock-in re-fetches the product under
+     * lockForUpdate() with no null-guard, so a product soft-deleted between
+     * route-binding and that re-fetch (double-submit, a second tab) threw
+     * an uncaught TypeError instead of a friendly error. Route-model-binding
+     * itself already excludes a soft-deleted product (confirmed by
+     * ErrorHandlingTest's analogous case), so the only way to exercise the
+     * actual race — deletion landing strictly between binding and the
+     * controller's internal re-fetch — is to call the controller directly
+     * with an already-resolved (not-yet-deleted-at-binding-time) $product.
+     */
+    public function test_stock_in_on_a_product_deleted_moments_earlier_is_a_friendly_error_not_a_500(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Vanishing', 'cost' => 10, 'price' => 15, 'stock' => 10]);
+        $this->actingAs($owner, 'web');
+        request()->merge(['qty' => 5]);
+        $product->delete(); // the race: deleted after binding resolved it, before the controller's own re-fetch
+
+        try {
+            app(ProductController::class)->stockIn($product);
+            $this->fail('Expected an HttpException (422) to be thrown.');
+        } catch (HttpException $e) {
+            $this->assertSame(422, $e->getStatusCode());
+        }
+    }
+
+    /**
+     * Phase 1.1 — see docs/FIX_PLAN.md. StockIn::apply() divides by
+     * (stock + qty) when a new cost is given; pre-existing bad-data negative
+     * stock that exactly offsets the incoming qty used to divide by zero
+     * (silent NAN/INF on PHP floats) instead of just skipping the re-average.
+     */
+    public function test_stock_in_skips_the_cost_average_instead_of_dividing_by_zero(): void
+    {
+        [$shop] = $this->createShopWithOwner();
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Bad Data', 'cost' => 10, 'price' => 15, 'stock' => -5]);
+
+        \App\Support\StockIn::apply($product, 5, 20);
+
+        $fresh = $product->fresh();
+        $this->assertEquals(0, $fresh->stock);
+        $this->assertEquals(10, (float) $fresh->cost); // unchanged, not NAN
     }
 
     public function test_owner_can_collect_a_partial_payment_from_their_customer(): void

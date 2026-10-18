@@ -3,8 +3,15 @@
 // persistence layer that actually stores whatever array these return.
 
 export function enqueueSale(queue, payload) {
+    // the payload already carries its own idempotency key (client_uuid —
+    // see PosController::performCheckout()'s matching check), generated once
+    // per checkout attempt in Pos/Index.vue's buildCheckoutPayload() —
+    // reusing it as this entry's local id too means a sale that's retried
+    // after a sync failure replays with the exact same key every time,
+    // instead of a fresh one that would just create a duplicate sale.
+    const id = payload?.client_uuid || ((typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
     const entry = {
-        id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+        id,
         payload,
         status: 'pending', // 'pending' | 'failed'
         error: null,

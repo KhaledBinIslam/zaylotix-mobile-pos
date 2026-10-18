@@ -20,7 +20,11 @@ class StockIn
     public static function apply(Product $lockedProduct, float $qty, ?float $cost): void
     {
         $newCost = $lockedProduct->cost;
-        if ($cost !== null) {
+        // guards a division by zero if pre-existing (bad-data) negative
+        // stock exactly offsets this incoming qty — division by zero on
+        // PHP floats doesn't throw, it silently produces NAN/INF, which
+        // would then get saved onto a decimal column
+        if ($cost !== null && ($lockedProduct->stock + $qty) > 0) {
             $existingValue = $lockedProduct->stock * $lockedProduct->cost;
             $incomingValue = $qty * $cost;
             $newCost = ($existingValue + $incomingValue) / ($lockedProduct->stock + $qty);

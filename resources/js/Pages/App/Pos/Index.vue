@@ -81,6 +81,17 @@ watch([customerPhone, customerName], ([phone, name]) => {
 watch(payMode, (mode) => { if (mode === 'credit') showCustomerInfo.value = true; });
 const submitting = ref(false);
 const errorMsg = ref('');
+// One idempotency key per checkout attempt, reused across manual retries of
+// the SAME cart (an ambiguous-failure resubmit must not look like a brand
+// new sale to the server) — only cleared once this attempt actually
+// concludes (success or queued offline), via resetCartAfterCheckout().
+let pendingCheckoutUuid = null;
+function checkoutUuid() {
+    if (!pendingCheckoutUuid) {
+        pendingCheckoutUuid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+    }
+    return pendingCheckoutUuid;
+}
 const heldSheet = ref(false);
 const prescriptionNote = ref('');
 // true the instant a drug-control-flagged product is in the cart. There's
@@ -491,6 +502,10 @@ function csrfToken() {
 
 function buildCheckoutPayload() {
     return {
+        // see checkoutUuid()'s own comment — stable across retries of this
+        // same cart so the server can recognize a replay (see
+        // PosController::performCheckout()) instead of double-selling.
+        client_uuid: checkoutUuid(),
         items: cart.value.map((l) => ({ product_id: l.product_id, product_unit_id: l.product_unit_id, product_variant_id: l.product_variant_id, qty: l.qty, discount: l.discount || 0, imei: l.imei || '' })),
         discount: discount.value || 0,
         complimentary: payMode.value === 'complimentary',
@@ -506,6 +521,7 @@ function buildCheckoutPayload() {
 }
 
 function resetCartAfterCheckout() {
+    pendingCheckoutUuid = null;
     cart.value = [];
     discount.value = 0;
     couponCode.value = '';
@@ -1004,14 +1020,16 @@ onMounted(() => {
     }
 });
 
-const { pollReload } = usePollingReload();
+const { pollReload, pollOnVisible } = usePollingReload();
 let pollTimer = null;
+function pollPosNow() {
+    if (cartOpen.value || scannerOpen.value || receiptOpen.value || submitting.value) return;
+    pollReload({ only: ['products'], preserveScroll: true, preserveState: true });
+}
 onMounted(() => {
-    pollTimer = setInterval(() => {
-        if (cartOpen.value || scannerOpen.value || receiptOpen.value || submitting.value) return;
-        pollReload({ only: ['products'], preserveScroll: true, preserveState: true });
-    }, 15000);
+    pollTimer = setInterval(pollPosNow, 15000);
 });
+pollOnVisible(pollPosNow);
 onBeforeUnmount(() => clearInterval(pollTimer));
 
 // F-keys never collide with normal typing, so these work regardless of

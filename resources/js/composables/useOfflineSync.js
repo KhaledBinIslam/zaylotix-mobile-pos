@@ -1,6 +1,8 @@
 import { ref, computed } from 'vue';
 import { enqueueSale, removeFromQueue, markFailed, retryEntry, pendingCount, failedCount } from '@/support/offlineQueue';
 import { kvGet, kvSet, KEYS } from '@/support/offlineDb';
+import { useToast } from '@/composables/useToast';
+import { useI18n } from '@/composables/useI18n';
 
 // "শেষ কখন data update হয়েছে" — a shop owner running for a couple of hours
 // offline needs to know how stale the prices/stock they're looking at are,
@@ -69,6 +71,13 @@ async function trySync() {
 
                 if (res.ok) {
                     queue.value = removeFromQueue(queue.value, entry.id);
+                    // the cashier who rang this sale up offline has long
+                    // since moved on to the next customer — this is the
+                    // only signal they ever get that it actually went
+                    // through (see the Phase 1 fix notes: previously silent)
+                    const { toast } = useToast();
+                    const { t } = useI18n();
+                    toast('✅ ' + t('offline.syncedToast', { invoice: data?.sale?.invoice_no || '' }));
                 } else {
                     const message = data.message || Object.values(data.errors || {})[0]?.[0] || 'সিঙ্ক ব্যর্থ হয়েছে।';
                     queue.value = markFailed(queue.value, entry.id, message);

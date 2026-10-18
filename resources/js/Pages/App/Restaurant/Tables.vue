@@ -75,14 +75,16 @@ function removeTable(tbl) {
 // while a sheet here is actually mid-submit, same guard the other polled
 // screens (Order/Stock) already use, so a background refresh never queues
 // in front of something the owner just tapped
-const { pollReload } = usePollingReload();
+const { pollReload, pollOnVisible } = usePollingReload();
 let pollTimer = null;
+function pollTablesNow() {
+    if (addSheet.value || settingsSheet.value) return;
+    pollReload({ only: ['tables'], preserveScroll: true });
+}
 onMounted(() => {
-    pollTimer = setInterval(() => {
-        if (addSheet.value || settingsSheet.value) return;
-        pollReload({ only: ['tables'], preserveScroll: true });
-    }, 10000);
+    pollTimer = setInterval(pollTablesNow, 10000);
 });
+pollOnVisible(pollTablesNow);
 onBeforeUnmount(() => clearInterval(pollTimer));
 </script>
 

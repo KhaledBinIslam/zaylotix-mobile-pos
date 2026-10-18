@@ -664,14 +664,16 @@ function openTableActionSheet(mode) {
 }
 
 // another device could add/remove items on the same table order
-const { pollReload } = usePollingReload();
+const { pollReload, pollOnVisible } = usePollingReload();
 let pollTimer = null;
+function pollOrderNow() {
+    if (billSheet.value || scannerOpen.value) return;
+    pollReload({ only: ['order'], preserveScroll: true, preserveState: true });
+}
 onMounted(() => {
-    pollTimer = setInterval(() => {
-        if (billSheet.value || scannerOpen.value) return;
-        pollReload({ only: ['order'], preserveScroll: true, preserveState: true });
-    }, 8000);
+    pollTimer = setInterval(pollOrderNow, 8000);
 });
+pollOnVisible(pollOrderNow);
 onBeforeUnmount(() => {
     clearInterval(pollTimer);
     if (html5Qrcode) html5Qrcode.stop().catch(() => {});

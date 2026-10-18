@@ -59,4 +59,13 @@ describe('offlineQueue', () => {
 
         expect(queue[0].id).not.toBe(queue[1].id);
     });
+
+    // Phase 1.2 — see docs/FIX_PLAN.md: the entry's own id must be the
+    // payload's client_uuid when present, so a retried/synced entry always
+    // replays under the same idempotency key the server checks.
+    it('reuses the payload client_uuid as the entry id when present', () => {
+        const queue = enqueueSale([], { client_uuid: 'fixed-uuid-123', items: [] });
+
+        expect(queue[0].id).toBe('fixed-uuid-123');
+    });
 });

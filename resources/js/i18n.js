@@ -1035,6 +1035,7 @@ export const translations = {
     'offline.saleQueuedAt': { bn: 'অফলাইনে বিক্রি — {time}', en: 'Offline sale — {time}' },
     'offline.retryAll': { bn: 'আবার চেষ্টা করুন', en: 'Retry all' },
     'offline.discardAll': { bn: 'বাদ দিন', en: 'Discard all' },
+    'offline.syncedToast': { bn: 'অফলাইন বিক্রি {invoice} সার্ভারে পাঠানো হয়েছে।', en: 'Offline sale {invoice} has synced.' },
 
     // ---- admin impersonation banner (shop side) ----
     'impersonate.banner': { bn: '{admin} এডমিন হিসেবে আপনি এই দোকানটি দেখছেন — বের হতে চাপুন', en: "You're viewing this shop as admin {admin} — tap to exit" },

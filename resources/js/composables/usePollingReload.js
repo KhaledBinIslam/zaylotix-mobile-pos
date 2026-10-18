@@ -1,3 +1,4 @@
+import { onBeforeUnmount } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { useToast } from '@/composables/useToast';
 import { useI18n } from '@/composables/useI18n';
@@ -57,5 +58,21 @@ export function usePollingReload() {
         });
     }
 
-    return { pollReload };
+    // Mobile browsers throttle/pause a backgrounded tab's setInterval, so a
+    // cashier who switches apps (or locks the phone) for a few minutes and
+    // comes back can sit looking at stale stock/order data until the next
+    // tick happens to fire on its own — reported as "pages not auto-
+    // refreshing". Each polled page already defines its own guarded poll
+    // function (skipping while a sheet/modal is open, same as its interval
+    // does); this just re-runs that exact function the moment the tab
+    // becomes visible again, instead of waiting out the rest of the interval.
+    function pollOnVisible(fn) {
+        function handler() {
+            if (document.visibilityState === 'visible') fn();
+        }
+        document.addEventListener('visibilitychange', handler);
+        onBeforeUnmount(() => document.removeEventListener('visibilitychange', handler));
+    }
+
+    return { pollReload, pollOnVisible };
 }

@@ -32,6 +32,69 @@ class CheckoutTransactionTest extends TestCase
         $this->assertEquals(1000 + 450, (float) $shop->fresh()->cash_balance);
     }
 
+    /** Phase 1.2 — see docs/FIX_PLAN.md: a replayed checkout (same client_uuid) must never double-sell or double-decrement stock. */
+    public function test_replaying_the_same_client_uuid_returns_the_original_sale_instead_of_creating_a_duplicate(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 100, 'price' => 150, 'stock' => 10]);
+        $uuid = (string) \Illuminate\Support\Str::uuid();
+
+        $first = $this->actingAs($owner, 'web')->postJson('/app/pos/checkout', [
+            'client_uuid' => $uuid,
+            'items' => [['product_id' => $product->id, 'qty' => 3]],
+            'payments' => [['method' => 'cash', 'amount' => 450]],
+        ]);
+        $first->assertOk();
+
+        // simulates the offline-sync replay (or a lost-response resubmit) of
+        // the exact same checkout attempt — identical payload, same uuid
+        $second = $this->actingAs($owner, 'web')->postJson('/app/pos/checkout', [
+            'client_uuid' => $uuid,
+            'items' => [['product_id' => $product->id, 'qty' => 3]],
+            'payments' => [['method' => 'cash', 'amount' => 450]],
+        ]);
+        $second->assertOk();
+
+        $this->assertSame(1, Sale::count());
+        $this->assertEquals(7, $product->fresh()->stock); // decremented exactly once
+        $this->assertSame($first->json('sale.id'), $second->json('sale.id'));
+    }
+
+    public function test_two_different_client_uuids_create_two_separate_sales(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 100, 'price' => 150, 'stock' => 10]);
+
+        $this->actingAs($owner, 'web')->postJson('/app/pos/checkout', [
+            'client_uuid' => (string) \Illuminate\Support\Str::uuid(),
+            'items' => [['product_id' => $product->id, 'qty' => 1]],
+            'payments' => [['method' => 'cash', 'amount' => 150]],
+        ])->assertOk();
+
+        $this->actingAs($owner, 'web')->postJson('/app/pos/checkout', [
+            'client_uuid' => (string) \Illuminate\Support\Str::uuid(),
+            'items' => [['product_id' => $product->id, 'qty' => 1]],
+            'payments' => [['method' => 'cash', 'amount' => 150]],
+        ])->assertOk();
+
+        $this->assertSame(2, Sale::count());
+        $this->assertEquals(8, $product->fresh()->stock);
+    }
+
+    public function test_checkout_without_a_client_uuid_still_works_for_an_older_cached_frontend(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 100, 'price' => 150, 'stock' => 10]);
+
+        $response = $this->actingAs($owner, 'web')->postJson('/app/pos/checkout', [
+            'items' => [['product_id' => $product->id, 'qty' => 1]],
+            'payments' => [['method' => 'cash', 'amount' => 150]],
+        ]);
+
+        $response->assertOk();
+        $this->assertNull(Sale::first()->client_uuid);
+    }
+
     public function test_checkout_fails_atomically_when_stock_is_insufficient(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();

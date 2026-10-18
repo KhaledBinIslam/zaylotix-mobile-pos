@@ -17,6 +17,7 @@ class Sale extends Model
         'subtotal', 'discount', 'is_complimentary', 'service_charge', 'vat', 'total', 'profit', 'payment_mode', 'sale_type', 'prescription_note', 'coupon_code',
         'points_earned', 'points_redeemed',
         'voided_at', 'voided_reason', 'voided_by',
+        'client_uuid',
     ];
 
     protected function casts(): array

@@ -305,7 +305,16 @@ class ProductController extends Controller
         }
 
         DB::transaction(function () use ($product, $data, $imeis) {
+            // Product uses SoftDeletes — if it was deleted between the route
+            // resolving $product and this re-fetch (double-submit, a second
+            // tab), $locked would be null and StockIn::apply()'s strict
+            // Product type-hint would throw an uncaught TypeError (raw 500)
+            // instead of a friendly error. Same guard already used by
+            // ProductVariantController::stockIn() for the identical race.
             $locked = Product::whereKey($product->id)->lockForUpdate()->first();
+            if (! $locked) {
+                abort(422, 'এই পণ্যটি মুছে ফেলা হয়েছে।');
+            }
             \App\Support\StockIn::apply($locked, (float) $data['qty'], $data['cost'] ?? null);
 
             $shop = \App\Support\Tenancy::shop();

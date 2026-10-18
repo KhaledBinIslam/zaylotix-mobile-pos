@@ -480,14 +480,16 @@ function saveImport() {
 // same reasoning as the POS page — another device (cashier, or the owner
 // on a second phone) can change stock at any moment, so quietly re-check
 // every 15s rather than showing a number that's gone stale
-const { pollReload } = usePollingReload();
+const { pollReload, pollOnVisible } = usePollingReload();
 let pollTimer = null;
+function pollStockNow() {
+    if (productSheet.value || stockInSheet.value) return;
+    pollReload({ only: ['products'], preserveScroll: true, preserveState: true });
+}
 onMounted(() => {
-    pollTimer = setInterval(() => {
-        if (productSheet.value || stockInSheet.value) return;
-        pollReload({ only: ['products'], preserveScroll: true, preserveState: true });
-    }, 15000);
+    pollTimer = setInterval(pollStockNow, 15000);
 });
+pollOnVisible(pollStockNow);
 onBeforeUnmount(() => clearInterval(pollTimer));
 
 useKeyboardShortcuts({

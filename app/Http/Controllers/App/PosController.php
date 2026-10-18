@@ -155,6 +155,22 @@ class PosController extends Controller
         return DB::transaction(function () use ($data, $shopId, $userId, $forcedPayments, $autoCoverTotal) {
             $shop = Shop::whereKey($shopId)->lockForUpdate()->first();
 
+            // Idempotency: a client-generated UUID identifies "this one
+            // checkout attempt" across retries. Without it, the offline
+            // queue's replay-on-reconnect (or a lost response on a normal
+            // online checkout whose request still reached the server) would
+            // resubmit an already-committed sale — double-selling and
+            // double-decrementing stock. The shop row is already locked
+            // above, so this check and the eventual Sale::create() below can
+            // never race each other for the same shop; a replay with the
+            // same uuid just gets back the sale that already exists.
+            if (! empty($data['client_uuid'])) {
+                $existing = Sale::where('client_uuid', $data['client_uuid'])->first();
+                if ($existing) {
+                    return $existing;
+                }
+            }
+
             // this checkout is converting an open quotation — locked and
             // re-checked here (not just once at page-load) so a double-tap
             // or a second tab can't convert the same quote into two sales
@@ -495,6 +511,7 @@ class PosController extends Controller
                 'coupon_code' => $couponResult['promotion']?->code,
                 'points_earned' => $pointsEarned ?: null,
                 'points_redeemed' => $redeemPoints ?: null,
+                'client_uuid' => $data['client_uuid'] ?? null,
             ]);
 
             if ($quotation) {
