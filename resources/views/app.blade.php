@@ -3,8 +3,19 @@
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-        <meta name="theme-color" content="#7C3AED">
+        <meta name="theme-color" content="#1FA463">
         <meta name="csrf-token" content="{{ csrf_token() }}">
+        <script>
+            // Applies an explicit light/dark CHOICE (see useTheme.js) before
+            // anything paints, so reloading on a saved "dark" never flashes
+            // light first. Someone who never touched the toggle gets no
+            // data-theme attribute at all — app.css's prefers-color-scheme
+            // media query handles that case with zero JS needed.
+            try {
+                var t = localStorage.getItem('zaylotix_theme');
+                if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+            } catch (e) {}
+        </script>
         <link rel="manifest" href="/manifest.json">
 
         <title inertia>{{ config('app.name', 'Zaylotix POS') }}</title>
@@ -30,6 +41,16 @@
         @inertiaHead
     </head>
     <body class="font-sans antialiased">
+        {{-- Real boot splash, not a Vue component — present in the raw HTML
+             before any JS runs, so there's zero blank-white flash on a cold
+             load (PWA cold start, hard refresh, first visit). app.css's
+             stylesheet link above is render-blocking, so --bg/--greenSoft
+             etc. are already resolved by the time this paints. Removed by
+             app.js right after Vue mounts — never re-shown on an Inertia
+             client-side navigation, since those don't reload this file. --}}
+        <div id="boot-splash">
+            <img src="/icons/icon-192.png?v=2" width="72" height="72" alt="Zaylotix">
+        </div>
         @inertia
     </body>
 </html>

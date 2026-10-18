@@ -82,7 +82,7 @@ function savePrice(f, value) {
                         </td>
                         <td class="px-4 py-3 text-xs text-gray-500 max-w-xs">{{ f.description }}</td>
                         <td class="px-4 py-3 text-xs max-w-xs">
-                            <span v-if="recommendedFor[f.key]?.length" class="text-violet-700">{{ recommendedFor[f.key].join(', ') }}</span>
+                            <span v-if="recommendedFor[f.key]?.length" class="text-brand-purple-700">{{ recommendedFor[f.key].join(', ') }}</span>
                             <span v-else class="text-gray-300">—</span>
                         </td>
                         <td class="px-4 py-3">

@@ -72,7 +72,7 @@ function submitRestore() {
                         <td class="py-2.5 text-gray-500">{{ formatSize(f.size) }}</td>
                         <td class="py-2.5 text-gray-500">{{ f.modified_at }}</td>
                         <td class="py-2.5 text-right whitespace-nowrap">
-                            <a :href="route('admin.backups.download', f.name)" class="text-violet-700 font-medium mr-4">Download</a>
+                            <a :href="route('admin.backups.download', f.name)" class="text-brand-purple-700 font-medium mr-4">Download</a>
                             <button v-if="connection === 'mysql'" class="text-amber-700 font-medium mr-4" @click="openRestore(f.name)">Restore</button>
                             <button class="text-rose-600 font-medium" @click="deleteFile(f.name)">Delete</button>
                         </td>

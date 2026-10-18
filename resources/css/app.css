@@ -10,7 +10,13 @@
   --ink: #12261C;
   --tx: #12261C;
   --mut: #5F7A67;
-  --dim: #93A99A;
+  /* Was #93A99A (~2.9:1 on white, below readable text contrast) — Khaled's
+     explicit call: quiet/secondary text (stat sub-labels, timestamps,
+     hints) still needs to be clearly legible, not just visually "quiet".
+     #627A6C clears ~4.5:1 on --panel while staying lighter-weight than
+     --mut's own ~4.7:1, so the two-tier hierarchy (mut = secondary body,
+     dim = tertiary hint) still reads, just no longer illegibly faint. */
+  --dim: #627A6C;
   --line: #DCE8DD;
   --line2: #C4DAC7;
   --green: #1FA463;
@@ -27,6 +33,19 @@
   --purple: #7C3AED;
   --purpleSoft: #EFE7FD;
   --wa: #25D366;
+
+  /* Admin backoffice's own identity (Phase 10, Khaled's explicit call:
+     keep it SEPARATE from the shop-facing green/gold brand, but give it a
+     real, deliberate premium palette instead of a flat single hex). A
+     more vivid, modern indigo than the old flat --purple — same family,
+     so "still Zaylotix" recognition carries over, just elevated. Every
+     Admin/* page already reads this through tailwind.config.js's
+     brand-purple/-soft utilities (bridged in Phase 9), so repointing
+     these two tokens here is the entire Admin re-skin — no per-page
+     template edits needed. */
+  --admin-primary: #6D4AFF;
+  --admin-primary2: #5636D9;
+  --admin-primary-soft: #F1EDFF;
 
   /* --mint and --green are the same hex on purpose, not a leftover
      duplicate: --green is the BRAND color (nav, primary money/sell
@@ -100,6 +119,51 @@
   --sh-lg: 0 24px 64px rgba(18, 38, 28, .28);
 }
 
+/* Dark mode (Phase 10, Khaled's explicit call). Two layers, standard
+   pattern: (1) follows the OS/browser preference automatically, unless
+   the person has explicitly picked a side via the in-app toggle
+   (useTheme.js writes data-theme to <html> and localStorage; the
+   :not([data-theme="light"]) guard is what lets an explicit "light" pick
+   override a dark OS preference); (2) an explicit data-theme="dark"
+   applies regardless of OS preference, for someone who wants dark even
+   on a light-OS device. Only CUSTOM PROPERTIES are redefined here — every
+   rule in this file already reads color through var(...), so the entire
+   app (including the Admin panel, via its own tailwind brand-* tokens
+   above) repaints correctly with zero template changes. The handful of
+   deliberately-fixed literal colors (printed receipt, camera scan
+   overlay, hero banner text sitting on its own gradient) are untouched on
+   purpose — see their own comments elsewhere in this file. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg:#0E1512; --bg2:#121C17; --panel:#16211C; --panel2:#1B2821; --ink:#E8F1EC; --tx:#E8F1EC; --mut:#A9C2B4; --dim:#87A696; --line:#24342B; --line2:#314536; --green:#2ECC80; --green2:#27B873; --greenSoft:#163524; --gold:#FF8F4D; --gold2:#FF7A2E; --goldSoft:#3B2414; --mint:#2ECC80; --rose:#FF6B70; --roseSoft:#3A1619; --sky:#5FA8EE; --skySoft:#142A3C; --purple:#A077FF; --purpleSoft:#241A40; --admin-primary:#9B7FFF; --admin-primary2:#7C5CFF; --admin-primary-soft:#241C47; --sh:0 6px 20px rgba(0,0,0,.5); --sh-md:0 12px 40px rgba(0,0,0,.55); --sh-lg:0 24px 64px rgba(0,0,0,.65); }
+}
+:root[data-theme="dark"] { --bg:#0E1512; --bg2:#121C17; --panel:#16211C; --panel2:#1B2821; --ink:#E8F1EC; --tx:#E8F1EC; --mut:#A9C2B4; --dim:#87A696; --line:#24342B; --line2:#314536; --green:#2ECC80; --green2:#27B873; --greenSoft:#163524; --gold:#FF8F4D; --gold2:#FF7A2E; --goldSoft:#3B2414; --mint:#2ECC80; --rose:#FF6B70; --roseSoft:#3A1619; --sky:#5FA8EE; --skySoft:#142A3C; --purple:#A077FF; --purpleSoft:#241A40; --admin-primary:#9B7FFF; --admin-primary2:#7C5CFF; --admin-primary-soft:#241C47; --sh:0 6px 20px rgba(0,0,0,.5); --sh-md:0 12px 40px rgba(0,0,0,.55); --sh-lg:0 24px 64px rgba(0,0,0,.65); }
+
+/* Boot splash (Phase 10) — see the HTML comment in app.blade.php for why
+   this lives in raw HTML/CSS instead of a Vue component. app.js removes
+   it (adds .leaving, then deletes the element) right after Vue mounts. */
+#boot-splash {
+  position: fixed; inset: 0; z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg);
+  transition: opacity .35s ease;
+}
+#boot-splash::before {
+  content: ''; position: absolute; width: 130px; height: 130px; border-radius: 50%;
+  background: radial-gradient(circle, var(--greenSoft), transparent 70%);
+  animation: boot-ring 1.6s ease-in-out infinite;
+}
+#boot-splash img {
+  position: relative; width: 72px; height: 72px; border-radius: var(--radius-md);
+  filter: drop-shadow(0 8px 24px rgba(31, 164, 99, .35));
+  animation: boot-pop .55s cubic-bezier(.34, 1.56, .64, 1) both;
+}
+#boot-splash.leaving { opacity: 0; pointer-events: none; }
+@keyframes boot-pop { 0% { opacity: 0; transform: scale(.7); } 60% { opacity: 1; transform: scale(1.06); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes boot-ring { 0%, 100% { transform: scale(.9); opacity: .6; } 50% { transform: scale(1.08); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  #boot-splash::before, #boot-splash img { animation: none; }
+}
+
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; }
 body {
@@ -111,7 +175,14 @@ body {
   font-family: "Inter", "Hind Siliguri", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   letter-spacing: -.1px;
   overscroll-behavior: none;
+  transition: background-color .25s ease, color .25s ease;
 }
+/* Smooths the light/dark toggle on the most common surfaces — purely
+   cosmetic, never affects layout. Elements with their own more specific
+   `transition` (e.g. .btn's press-state transition) keep that instead,
+   which is fine; they're small enough that an instant color swap there
+   isn't noticeable next to everything else easing around them. */
+.card, .row, .stat, .pill, #phone, #top, #nav, #sheet, #scrim { transition: background-color .25s ease, color .25s ease, border-color .25s ease; }
 
 #phone { max-width: 430px; margin: 0 auto; min-height: 100vh; position: relative; background: var(--bg); display: flex; flex-direction: column; box-shadow: 0 0 0 1px var(--line); }
 @media (min-width: 480px) { #phone { border-left: 1px solid var(--line); border-right: 1px solid var(--line); } }
@@ -753,7 +824,7 @@ body {
    body-inherited font plus generous 13px padding, making a handful of
    number fields eat the whole screen on mobile and look oversized on web
    too. Still comfortably tappable (~40px tall), just no longer bloated. */
-input:not([type="checkbox"]):not([type="radio"]), select, textarea { font: inherit; font-size: 14.5px; background: #fff; border: 1.5px solid var(--line); color: var(--tx); border-radius: 11px; padding: 10px 12px; outline: none; width: 100%; transition: border-color .12s ease, box-shadow .12s ease; }
+input:not([type="checkbox"]):not([type="radio"]), select, textarea { font: inherit; font-size: 14.5px; background: var(--panel); border: 1.5px solid var(--line); color: var(--tx); border-radius: 11px; padding: 10px 12px; outline: none; width: 100%; transition: border-color .12s ease, box-shadow .12s ease; }
 input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:focus { border-color: var(--gold); box-shadow: 0 0 0 3px var(--goldSoft); }
 /* explicit, EQUAL width+height — not width:auto. @tailwindcss/forms (used on
    every Admin page) sets appearance:none + height:1rem on every checkbox/

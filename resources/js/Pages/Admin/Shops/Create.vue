@@ -181,7 +181,7 @@ const featuresByCategory = (list) => {
                 <div>
                     <label class="text-sm font-medium text-gray-600">
                         Monthly fee (৳)
-                        <span class="text-xs font-normal text-violet-600">— {{ packageMatch.label ? `${packageMatch.label} package price: ৳${suggestedFee}` : 'suggested once a package is matched below' }}</span>
+                        <span class="text-xs font-normal text-brand-purple-600">— {{ packageMatch.label ? `${packageMatch.label} package price: ৳${suggestedFee}` : 'suggested once a package is matched below' }}</span>
                     </label>
                     <input v-model.number="form.monthly_fee" type="number" min="0" class="mt-1 w-full rounded-lg border-gray-300" @input="feeManuallyEdited = true">
                     <div v-if="form.errors.monthly_fee" class="text-rose-600 text-xs mt-1">{{ form.errors.monthly_fee }}</div>
@@ -214,14 +214,14 @@ const featuresByCategory = (list) => {
             <div>
                 <label class="text-sm font-medium text-gray-600 block mb-2">
                     Features enabled for this shop
-                    <span v-if="form.business_type_id" class="text-xs font-normal text-violet-600">— pre-checked from the business type, adjust freely below</span>
+                    <span v-if="form.business_type_id" class="text-xs font-normal text-brand-purple-600">— pre-checked from the business type, adjust freely below</span>
                 </label>
 
-                <div class="rounded-lg p-3 mb-3 text-sm" :class="packageMatch.tier ? 'bg-violet-50 text-violet-800' : 'bg-amber-50 text-amber-800'">
+                <div class="rounded-lg p-3 mb-3 text-sm" :class="packageMatch.tier ? 'bg-brand-purple-50 text-brand-purple-800' : 'bg-amber-50 text-amber-800'">
                     <template v-if="packageMatch.tier">
                         <b>এই ফিচার সেট মিলছে: {{ packageMatch.label }} প্যাকেজের সাথে</b>
                         <div v-if="packageMatch.extras.length" class="text-xs mt-1">+ প্যাকেজের বাইরে অতিরিক্ত: {{ packageMatch.extras.map(featureLabel).join(', ') }}</div>
-                        <div v-if="packageMatch.nextLabel" class="text-xs mt-1 text-violet-600">এর মধ্যে যেকোনো <u>একটা</u> ফিচার বাছাই করলেই {{ packageMatch.nextLabel }}-এ চলে যাবে: {{ packageMatch.missingForNext.map(featureLabel).join(', ') }}</div>
+                        <div v-if="packageMatch.nextLabel" class="text-xs mt-1 text-brand-purple-600">এর মধ্যে যেকোনো <u>একটা</u> ফিচার বাছাই করলেই {{ packageMatch.nextLabel }}-এ চলে যাবে: {{ packageMatch.missingForNext.map(featureLabel).join(', ') }}</div>
                     </template>
                     <template v-else>
                         <b>এখনো কোনো ফিচার বাছাই করা হয়নি</b>
@@ -238,7 +238,7 @@ const featuresByCategory = (list) => {
                                     <span class="font-medium block">
                                         {{ f.label_en }} <span class="text-gray-400">({{ f.label_bn }})</span>
                                         <span v-if="Number(f.monthly_price) > 0" class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-700">৳{{ f.monthly_price }}/mo</span>
-                                        <span v-if="recommendedFeatureKeys().includes(f.key)" class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-100 text-violet-700">recommended</span>
+                                        <span v-if="recommendedFeatureKeys().includes(f.key)" class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-brand-purple-100 text-brand-purple-700">recommended</span>
                                     </span>
                                     <span v-if="f.description" class="text-xs text-gray-400">{{ f.description }}</span>
                                 </span>

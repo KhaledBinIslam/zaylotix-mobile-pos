@@ -5,6 +5,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import { useI18n } from '@/composables/useI18n';
 import { isInApp } from '@/composables/useInApp';
+import { resolvedTheme, setTheme } from '@/composables/useTheme';
 import { useToast } from '@/composables/useToast';
 import { usePermissions } from '@/composables/usePermissions';
 import { reportClientError } from '@/support/reportClientError';
@@ -36,6 +37,14 @@ const { t, lang } = useI18n();
 function setLang(value) {
     localStorage.setItem('zaylotix_lang', value);
     router.patch(route('app.settings.lang'), { lang: value }, { preserveScroll: true });
+}
+
+// theme is client-only (localStorage, see useTheme.js) — purely a display
+// preference, not something that needs to sync across a shop's devices
+const theme = ref(resolvedTheme());
+function setThemeChoice(value) {
+    setTheme(value);
+    theme.value = value;
 }
 
 // --- work period (shift/cash-drawer) — entirely optional, see AppLayout.vue
@@ -491,6 +500,16 @@ onMounted(() => {
                 <div class="seg" style="margin:0">
                     <button :class="{ on: lang === 'bn' }" @click="setLang('bn')">{{ t('more.langSwitch.bn') }}</button>
                     <button :class="{ on: lang === 'en' }" @click="setLang('en')">{{ t('more.langSwitch.en') }}</button>
+                </div>
+            </div>
+        </div>
+        <div class="row" style="cursor:default">
+            <div class="ava">{{ theme === 'dark' ? '🌙' : '☀️' }}</div>
+            <div class="mid"><b>{{ t('more.theme') }}</b><span>{{ t('more.themeSub') }}</span></div>
+            <div class="end">
+                <div class="seg" style="margin:0">
+                    <button :class="{ on: theme === 'light' }" @click="setThemeChoice('light')">{{ t('more.themeLight') }}</button>
+                    <button :class="{ on: theme === 'dark' }" @click="setThemeChoice('dark')">{{ t('more.themeDark') }}</button>
                 </div>
             </div>
         </div>

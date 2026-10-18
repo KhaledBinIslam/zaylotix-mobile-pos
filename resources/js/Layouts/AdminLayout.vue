@@ -56,7 +56,7 @@ const nav = computed(() => [
                 <img v-if="platformLogoUrl" :src="platformLogoUrl" class="w-[34px] h-[34px] object-contain rounded-lg shrink-0">
                 <ZaylotixMark v-else :size="34" />
                 <div>
-                    <div class="font-extrabold text-base leading-tight" style="color:var(--purple)">Zaylotix <span style="color:#F0369B">POS</span></div>
+                    <div class="font-extrabold text-base leading-tight" style="color:var(--admin-primary)">Zaylotix <span style="color:#F0369B">POS</span></div>
                     <div class="text-[11px] text-gray-400 leading-tight">Admin Panel</div>
                 </div>
             </div>
@@ -66,7 +66,7 @@ const nav = computed(() => [
                     v-for="item in nav" :key="item.key"
                     :href="route(item.route)"
                     class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium"
-                    :class="active === item.key ? 'bg-violet-50 text-violet-700' : 'text-gray-600 hover:bg-gray-100'"
+                    :class="active === item.key ? 'bg-brand-purple-soft text-brand-purple' : 'text-gray-600 hover:bg-gray-100'"
                 >
                     <span class="text-lg">{{ item.icon }}</span> {{ item.label }}
                 </Link>
@@ -90,7 +90,7 @@ const nav = computed(() => [
         <div class="flex-1 lg:ml-64">
             <header class="bg-white border-b sticky top-0 z-10 flex items-center gap-3 px-4 py-3 lg:hidden">
                 <button class="text-xl" @click="mobileOpen = true">☰</button>
-                <div class="font-bold" style="color:var(--purple)">Zaylotix POS Admin</div>
+                <div class="font-bold" style="color:var(--admin-primary)">Zaylotix POS Admin</div>
             </header>
 
             <main class="max-w-6xl mx-auto px-4 py-6">

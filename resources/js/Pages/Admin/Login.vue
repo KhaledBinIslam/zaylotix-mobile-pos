@@ -1,6 +1,7 @@
 <script setup>
 import { Head, useForm } from '@inertiajs/vue3';
 import ZaylotixLogo from '@/Components/ZaylotixLogo.vue';
+import Spinner from '@/Components/Spinner.vue';
 
 const form = useForm({ email: 'admin@zaylotix.com', password: 'password', remember: true });
 
@@ -28,8 +29,8 @@ function submit() {
                     <input v-model="form.password" type="password" class="mt-1 w-full rounded-lg border-gray-300">
                 </div>
                 <div v-if="form.errors.email" class="text-rose-600 text-sm">{{ form.errors.email }}</div>
-                <button type="submit" class="w-full py-3 rounded-lg text-white font-bold" style="background:var(--purple)" :disabled="form.processing">
-                    {{ form.processing ? '...' : 'Log in' }}
+                <button type="submit" class="w-full py-3 rounded-lg text-white font-bold" style="background:var(--admin-primary)" :disabled="form.processing">
+                    <Spinner v-if="form.processing" /><span v-else>Log in</span>
                 </button>
             </form>
 

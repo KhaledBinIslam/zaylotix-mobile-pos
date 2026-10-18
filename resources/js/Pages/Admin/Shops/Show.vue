@@ -72,7 +72,7 @@ function sendNotification() {
         <div v-if="shop.features?.length" class="bg-white border rounded-xl p-5 mb-6">
             <div class="font-bold mb-3">Enabled features</div>
             <div class="flex flex-wrap gap-2">
-                <span v-for="f in shop.features" :key="f.id" class="px-2.5 py-1 rounded-full text-xs font-semibold bg-violet-50 text-violet-700">{{ f.label_en }}</span>
+                <span v-for="f in shop.features" :key="f.id" class="px-2.5 py-1 rounded-full text-xs font-semibold bg-brand-purple-50 text-brand-purple-700">{{ f.label_en }}</span>
             </div>
         </div>
 

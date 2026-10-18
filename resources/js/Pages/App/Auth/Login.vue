@@ -1,6 +1,7 @@
 <script setup>
 import { Head, useForm, Link } from '@inertiajs/vue3';
 import ZaylotixLogo from '@/Components/ZaylotixLogo.vue';
+import Spinner from '@/Components/Spinner.vue';
 import { useI18n } from '@/composables/useI18n';
 
 defineProps({ subscriptionExpired: Boolean });
@@ -53,7 +54,7 @@ function submit() {
                     </label>
 
                     <button class="btn" type="submit" :disabled="form.processing">
-                        {{ form.processing ? '...' : t('login.submit') }}
+                        <Spinner v-if="form.processing" /><span v-else>{{ t('login.submit') }}</span>
                     </button>
                     <div class="lc-hint">{{ t('login.noAccount') }}<Link :href="route('signup')" style="color:var(--green);font-weight:700">{{ t('login.signupLink') }}</Link></div>
                 </form>

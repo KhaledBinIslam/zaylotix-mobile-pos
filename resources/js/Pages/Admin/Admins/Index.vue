@@ -60,7 +60,7 @@ function destroy(admin) {
                         <td class="px-4 py-3 font-medium">{{ a.name }} <span v-if="a.id === myId" class="text-xs text-gray-400">(you)</span></td>
                         <td class="px-4 py-3">{{ a.email }}</td>
                         <td class="px-4 py-3">
-                            <span class="px-2 py-1 rounded-full text-xs font-semibold" :class="a.role === 'super_admin' ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-600'">{{ a.role }}</span>
+                            <span class="px-2 py-1 rounded-full text-xs font-semibold" :class="a.role === 'super_admin' ? 'bg-brand-purple-100 text-brand-purple-700' : 'bg-gray-100 text-gray-600'">{{ a.role }}</span>
                         </td>
                         <td class="px-4 py-3 text-right space-x-2 whitespace-nowrap">
                             <button class="text-xs font-semibold text-gray-600" @click="openEdit(a)">Edit</button>

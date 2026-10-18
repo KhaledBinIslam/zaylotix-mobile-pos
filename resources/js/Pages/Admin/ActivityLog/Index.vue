@@ -23,7 +23,7 @@ defineProps({ logs: Object });
                 <tbody>
                     <tr v-for="log in logs.data" :key="log.id" class="border-t">
                         <td class="px-4 py-3">{{ log.admin?.name || 'System' }}</td>
-                        <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs font-semibold bg-violet-50 text-violet-700">{{ log.action }}</span></td>
+                        <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs font-semibold bg-brand-purple-50 text-brand-purple-700">{{ log.action }}</span></td>
                         <td class="px-4 py-3">{{ log.description }}</td>
                         <td class="px-4 py-3 text-gray-400">{{ log.created_at }}</td>
                     </tr>
@@ -37,7 +37,7 @@ defineProps({ logs: Object });
                 <Link
                     v-if="link.url" :href="link.url"
                     class="px-3 py-1.5 rounded-lg text-sm border"
-                    :class="link.active ? 'bg-violet-600 text-white border-violet-600' : 'text-gray-600 border-gray-200'"
+                    :class="link.active ? 'bg-brand-purple-600 text-white border-brand-purple-600' : 'text-gray-600 border-gray-200'"
                     v-html="link.label"
                 />
                 <span v-else class="px-3 py-1.5 rounded-lg text-sm border text-gray-300 border-gray-100" v-html="link.label" />

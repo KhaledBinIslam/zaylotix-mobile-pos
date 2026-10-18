@@ -59,12 +59,12 @@ function submit() {
                 <tbody>
                     <tr v-for="a in ambassadors" :key="a.id" class="border-t hover:bg-gray-50">
                         <td class="px-4 py-3">
-                            <Link :href="route('admin.ambassadors.show', a.id)" class="font-medium text-gray-900 hover:text-violet-700 hover:underline">{{ a.name }}</Link>
+                            <Link :href="route('admin.ambassadors.show', a.id)" class="font-medium text-gray-900 hover:text-brand-purple-700 hover:underline">{{ a.name }}</Link>
                         </td>
                         <td class="px-4 py-3 text-xs text-gray-500">{{ a.employee_id || '—' }}</td>
                         <td class="px-4 py-3 text-xs text-gray-500">{{ a.phone || a.email || '—' }}</td>
                         <td class="px-4 py-3 text-right whitespace-nowrap">
-                            <Link :href="route('admin.ambassadors.show', a.id)" class="text-xs font-semibold text-gray-600 hover:text-violet-700">Edit</Link>
+                            <Link :href="route('admin.ambassadors.show', a.id)" class="text-xs font-semibold text-gray-600 hover:text-brand-purple-700">Edit</Link>
                         </td>
                     </tr>
                     <tr v-if="!ambassadors.length"><td colspan="4" class="px-4 py-6 text-center text-gray-400">কোনো ambassador যোগ করা হয়নি।</td></tr>

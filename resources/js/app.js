@@ -11,6 +11,24 @@ import { reportClientError } from './support/reportClientError';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
+// See app.blade.php for #boot-splash's own markup/comment. Measured from
+// here (script start, effectively page-load time) rather than from the
+// moment the splash is removed, so a fast load still shows the logo
+// briefly instead of it blinking in and out — a sub-150ms flash reads as
+// a glitch, not as "the app opened." A slow load just removes it the
+// instant Vue is actually ready, no artificial extra wait either way.
+const bootStart = performance.now();
+function removeBootSplash() {
+    const splash = document.getElementById('boot-splash');
+    if (!splash) return;
+    const MIN_VISIBLE_MS = 450;
+    const wait = Math.max(0, MIN_VISIBLE_MS - (performance.now() - bootStart));
+    setTimeout(() => {
+        splash.classList.add('leaving');
+        setTimeout(() => splash.remove(), 400);
+    }, wait);
+}
+
 // Runs once, as early as possible, so every page component's own
 // `isInApp()` call (no args, just reads the cached result) is already
 // settled before anything renders — see useInApp.js for the 3-signal
@@ -54,13 +72,19 @@ createInertiaApp({
             import.meta.glob('./Pages/**/*.vue'),
         ),
     setup({ el, App, props, plugin }) {
-        return createApp({ render: () => h(App, props) })
+        const app = createApp({ render: () => h(App, props) })
             .use(plugin)
             .use(ZiggyVue)
             .mount(el);
+        removeBootSplash();
+        return app;
     },
+    // Matches --green — this file can't read CSS custom properties, Inertia's
+    // progress plugin wants a literal color string, so the hex is repeated
+    // here; it's brand-identity, not a token that's ever expected to drift
+    // on its own without someone also updating this to match.
     progress: {
-        color: '#4B5563',
+        color: '#1FA463',
     },
 });
 

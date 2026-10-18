@@ -102,7 +102,7 @@ function destroy(f) {
                             </span>
                         </td>
                         <td class="px-4 py-3 text-right space-x-3">
-                            <button class="text-xs font-semibold text-violet-600" @click="openEdit(f)">Edit</button>
+                            <button class="text-xs font-semibold text-brand-purple-600" @click="openEdit(f)">Edit</button>
                             <button class="text-xs font-semibold" :class="f.is_active ? 'text-rose-600' : 'text-emerald-600'" @click="toggleActive(f)">
                                 {{ f.is_active ? 'Deactivate' : 'Activate' }}
                             </button>
