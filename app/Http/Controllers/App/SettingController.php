@@ -219,6 +219,23 @@ class SettingController extends Controller
         return back()->with('success', 'লেবেল সেটিংস সংরক্ষণ করা হয়েছে।');
     }
 
+    /**
+     * The mobile bottom nav's two flexible slots between the always-fixed
+     * Home/Sell/More — see docs/FIX_PLAN.md Phase 8 and Shop::mobileNavItems().
+     * Whitelist kept in sync with AppLayout.vue's own candidate list.
+     */
+    public function updateMobileNav(Request $request)
+    {
+        $data = $request->validate([
+            'items' => ['required', 'array', 'max:2'],
+            'items.*' => ['nullable', 'in:stock,due,sales,customerList,reports,quotations,purchaseHistory,suppliers,promotions,accounts,expenses'],
+        ]);
+
+        Tenancy::shop()->update(['mobile_nav_items' => array_values(array_filter($data['items']))]);
+
+        return back()->with('success', 'বটম মেনু সংরক্ষণ করা হয়েছে।');
+    }
+
     /** Shop logo, printed on POS receipts and barcode labels once uploaded. */
     public function updateLogo(Request $request)
     {

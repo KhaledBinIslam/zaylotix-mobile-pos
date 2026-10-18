@@ -280,6 +280,26 @@ const sidebarGroups = computed(() => [
         ],
     },
 ]);
+
+// Missing feature (see docs/FIX_PLAN.md Phase 8): the mobile bottom nav's
+// two flexible slots (between the always-fixed Home/Sell/More) were
+// hardcoded to Stock + Due for every shop regardless of business type.
+// Reuses the exact same item definitions (href/icon/show) already computed
+// for the desktop sidebar — never a second, separately-maintained list —
+// restricted to a curated subset sensible as a one-tap bottom-nav
+// destination (kept in sync with SettingController::updateMobileNav()'s
+// own whitelist). Falls back to Shop::MOBILE_NAV_DEFAULT (['stock','due'])
+// when unset, and silently skips a saved key that no longer resolves to
+// anything visible (e.g. a feature since turned off) rather than rendering
+// a dead tab.
+const MOBILE_NAV_CANDIDATE_KEYS = ['stock', 'due', 'sales', 'customerList', 'reports', 'quotations', 'purchaseHistory', 'suppliers', 'promotions', 'accounts', 'expenses'];
+const mobileNavCandidates = computed(() => sidebarGroups.value.flatMap((g) => g.items).filter((i) => MOBILE_NAV_CANDIDATE_KEYS.includes(i.key)));
+const mobileNavSlots = computed(() => {
+    const picked = shop.value?.mobile_nav_items || ['stock', 'due'];
+    return picked
+        .map((key) => mobileNavCandidates.value.find((i) => i.key === key))
+        .filter((i) => i && i.show);
+});
 </script>
 
 <template>
@@ -365,12 +385,16 @@ const sidebarGroups = computed(() => [
                 </div>
 
                 <div id="top" class="lg:hidden">
-                    <!-- see the desktop sidebar's matching comment above — same priority order -->
-                    <img v-if="shop?.logo_url" :src="shop.logo_url" style="width:40px;height:40px;object-fit:contain;border-radius:12px;flex:0 0 auto">
-                    <img v-else-if="platformLogoUrl" :src="platformLogoUrl" style="width:40px;height:40px;object-fit:contain;border-radius:12px;flex:0 0 auto">
-                    <ZaylotixMark v-else :size="40" />
+                    <!-- see the desktop sidebar's matching comment above — same priority order.
+                         Compacted (Phase 8, see docs/FIX_PLAN.md): smaller logo, and the logout
+                         button dropped its text label to match the bell/lang icon-only circles —
+                         together these free up noticeably more width for the shop name/branch
+                         picker next to them on a narrow phone. -->
+                    <img v-if="shop?.logo_url" :src="shop.logo_url" style="width:32px;height:32px;object-fit:contain;border-radius:10px;flex:0 0 auto">
+                    <img v-else-if="platformLogoUrl" :src="platformLogoUrl" style="width:32px;height:32px;object-fit:contain;border-radius:10px;flex:0 0 auto">
+                    <ZaylotixMark v-else :size="32" />
                     <div class="btitle">
-                        <b style="font-size:17px;display:block;line-height:1.15">Zaylotix POS</b>
+                        <b style="font-size:15.5px;display:block;line-height:1.15">Zaylotix POS</b>
                         <span style="font-size:11px;color:var(--dim)" v-if="shop && !branches">{{ shop.name }} • {{ shop.area }}</span>
                         <select v-if="branches" :value="shop?.id" style="font-size:11px;margin:2px 0 0;padding:2px 6px;height:auto" @change="switchBranch">
                             <option v-for="b in branches" :key="b.id" :value="b.id">🏬 {{ b.name }}{{ b.area ? ' — ' + b.area : '' }}</option>
@@ -378,14 +402,14 @@ const sidebarGroups = computed(() => [
                     </div>
                     <button
                         v-if="isOwner"
-                        style="margin-left:auto;position:relative;border:1.5px solid var(--line2);border-radius:99px;width:38px;height:38px;color:var(--green);background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:16px"
+                        style="margin-left:auto;position:relative;border:1.5px solid var(--line2);border-radius:99px;width:33px;height:33px;color:var(--green);background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:16px;flex:0 0 auto"
                         @click="toggleNotifications"
                     >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px" v-html="ICONS.bell"></svg>
-                        <span v-if="unreadCount" style="position:absolute;top:-3px;right:-3px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--rose);color:#fff;font-size:9.5px;font-weight:800;display:flex;align-items:center;justify-content:center">{{ unreadCount }}</span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px" v-html="ICONS.bell"></svg>
+                        <span v-if="unreadCount" style="position:absolute;top:-3px;right:-3px;min-width:16px;height:16px;padding:0 3px;border-radius:9px;background:var(--rose);color:#fff;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center">{{ unreadCount }}</span>
                     </button>
                     <button
-                        :style="`${isOwner ? 'margin-left:8px' : 'margin-left:auto'};border:1.5px solid var(--line2);border-radius:99px;width:38px;height:38px;color:var(--green);background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800`"
+                        :style="`${isOwner ? 'margin-left:6px' : 'margin-left:auto'};border:1.5px solid var(--line2);border-radius:99px;width:33px;height:33px;color:var(--green);background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:800;flex:0 0 auto`"
                         :title="lang === 'bn' ? 'English' : 'বাংলা'"
                         @click="toggleLang"
                     >
@@ -393,10 +417,11 @@ const sidebarGroups = computed(() => [
                     </button>
                     <button
                         class="langbtn"
-                        style="margin-left:8px;border:1.5px solid var(--line2);border-radius:99px;padding:7px 13px;font-size:12.5px;font-weight:700;color:var(--green);background:var(--panel);display:flex;align-items:center;gap:6px"
+                        style="margin-left:6px;border:1.5px solid var(--line2);border-radius:99px;width:33px;height:33px;color:var(--green);background:var(--panel);display:flex;align-items:center;justify-content:center;flex:0 0 auto"
+                        :title="t('common.logout')"
                         @click="logout"
                     >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px" v-html="ICONS.logout"></svg> {{ t('common.logout') }}
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px" v-html="ICONS.logout"></svg>
                     </button>
                 </div>
 
@@ -430,17 +455,17 @@ const sidebarGroups = computed(() => [
                         <svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h14V9.5" /></svg>
                         <span>{{ t('nav.home') }}</span>
                     </Link>
-                    <Link v-if="hasPerm('stock')" :href="route('app.stock')" class="tab" :class="{ on: active === 'stock' }">
-                        <svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4z" /><path d="M3 7v10l9 4 9-4V7" /><path d="M12 11v10" /></svg>
-                        <span>{{ isRestaurant ? t('nav.stockRestaurant') : t('nav.stock') }}</span>
+                    <Link v-if="mobileNavSlots[0]" :href="mobileNavSlots[0].href" class="tab" :class="{ on: mobileNavSlots[0].on }">
+                        <svg viewBox="0 0 24 24" v-html="ICONS[mobileNavSlots[0].icon]"></svg>
+                        <span>{{ mobileNavSlots[0].label }}</span>
                     </Link>
                     <Link v-if="hasPerm('pos')" :href="mobileSellHref" class="tab sell" :class="{ on: mobileSellActive }">
                         <span class="fab"><svg viewBox="0 0 24 24"><path d="M4 7V5a1 1 0 0 1 1-1h2M4 17v2a1 1 0 0 0 1 1h2M20 7V5a1 1 0 0 0-1-1h-2M20 17v2a1 1 0 0 1-1 1h-2M4 12h16" /></svg></span>
                         <span>{{ t('nav.sell') }}</span>
                     </Link>
-                    <Link v-if="hasPerm('customers')" :href="route('app.customers')" class="tab" :class="{ on: active === 'due' }">
-                        <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z" /><path d="M4 10h16" /><path d="M8 15h4" /></svg>
-                        <span>{{ t('nav.due') }}</span>
+                    <Link v-if="mobileNavSlots[1]" :href="mobileNavSlots[1].href" class="tab" :class="{ on: mobileNavSlots[1].on }">
+                        <svg viewBox="0 0 24 24" v-html="ICONS[mobileNavSlots[1].icon]"></svg>
+                        <span>{{ mobileNavSlots[1].label }}</span>
                     </Link>
                     <Link :href="route('app.more')" class="tab" :class="{ on: active === 'more' }">
                         <svg viewBox="0 0 24 24"><circle cx="12" cy="6" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="12" cy="18" r="1.6" /></svg>

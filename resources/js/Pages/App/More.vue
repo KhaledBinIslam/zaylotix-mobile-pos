@@ -145,6 +145,33 @@ function toggleHardwareScanner(value) {
     hardwareScannerForm.patch(route('app.settings.hardwareScanner'), { preserveScroll: true });
 }
 
+// --- mobile bottom nav's two flexible slots (see docs/FIX_PLAN.md Phase 8
+// and AppLayout.vue's own mobileNavCandidates/mobileNavSlots — same
+// whitelist, kept in sync with SettingController::updateMobileNav()) ---
+const MOBILE_NAV_OPTIONS = [
+    { key: 'stock', label: () => t('nav.stock') },
+    { key: 'due', label: () => t('nav.due') },
+    { key: 'sales', label: () => t('nav.salesHistory') },
+    { key: 'customerList', label: () => t('customerList.title') },
+    { key: 'reports', label: () => t('nav.reports') },
+    { key: 'quotations', label: () => t('nav.quotations') },
+    { key: 'purchaseHistory', label: () => t('nav.purchaseHistory') },
+    { key: 'suppliers', label: () => t('nav.suppliers') },
+    { key: 'promotions', label: () => t('nav.promotions') },
+    { key: 'accounts', label: () => t('nav.accounts') },
+    { key: 'expenses', label: () => t('nav.expenses') },
+];
+const mobileNavSheet = ref(false);
+const mobileNavForm = useForm({ items: ['stock', 'due'] });
+function openMobileNavSheet() {
+    const current = props.shop?.mobile_nav_items || ['stock', 'due'];
+    mobileNavForm.items = [current[0] || '', current[1] || ''];
+    mobileNavSheet.value = true;
+}
+function saveMobileNav() {
+    mobileNavForm.patch(route('app.settings.mobileNav'), { preserveScroll: true, onSuccess: () => (mobileNavSheet.value = false) });
+}
+
 // --- payment gateway (bring-your-own-key) — owner only, lazy-loaded only
 // when this sheet is actually opened, never shipped to a cashier session ---
 const gatewaySheet = ref(false);
@@ -471,6 +498,10 @@ onMounted(() => {
             <div class="ava">{{ shop?.logo_url ? '🖼️' : '➕' }}</div>
             <div class="mid"><b>{{ t('more.shopLogo') }}</b><span>{{ t('more.shopLogoSub') }}</span></div><div class="end">›</div>
         </button>
+        <button v-if="hasPerm('settings')" class="row lg:hidden" style="width:100%;text-align:left" @click="openMobileNavSheet">
+            <div class="ava">📱</div>
+            <div class="mid"><b>{{ t('more.mobileNav') }}</b><span>{{ t('more.mobileNavSub') }}</span></div><div class="end">›</div>
+        </button>
         <button v-if="isOwner" class="row" style="width:100%;text-align:left" @click="openGatewaySheet">
             <div class="ava">💳</div>
             <div class="mid"><b>{{ t('more.paymentGateway') }}</b><span>{{ t('more.paymentGatewaySub') }}</span></div><div class="end">›</div>
@@ -605,6 +636,26 @@ onMounted(() => {
             <button class="btn sm ghost" style="width:100%" :disabled="binForm.processing" @click="saveBinNo">{{ binForm.processing ? '...' : t('stock.save') }}</button>
 
             <button class="btn ghost" style="margin-top:10px" @click="logoSheet = false">{{ t('common.cancel') }}</button>
+        </Sheet>
+
+        <Sheet v-model="mobileNavSheet" :title="t('more.mobileNav')" :subtitle="t('more.mobileNavSub')">
+            <div class="field">
+                <label>{{ t('more.mobileNavSlot', { n: 1 }) }}</label>
+                <select v-model="mobileNavForm.items[0]">
+                    <option value="">{{ t('common.none') }}</option>
+                    <option v-for="o in MOBILE_NAV_OPTIONS" :key="o.key" :value="o.key">{{ o.label() }}</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>{{ t('more.mobileNavSlot', { n: 2 }) }}</label>
+                <select v-model="mobileNavForm.items[1]">
+                    <option value="">{{ t('common.none') }}</option>
+                    <option v-for="o in MOBILE_NAV_OPTIONS" :key="o.key" :value="o.key">{{ o.label() }}</option>
+                </select>
+            </div>
+            <div v-if="mobileNavForm.errors.items" style="color:var(--rose);font-size:12px;margin-bottom:10px">{{ mobileNavForm.errors.items }}</div>
+            <button class="btn" :disabled="mobileNavForm.processing" @click="saveMobileNav">{{ mobileNavForm.processing ? '...' : t('stock.save') }}</button>
+            <button class="btn ghost" style="margin-top:10px" @click="mobileNavSheet = false">{{ t('common.cancel') }}</button>
         </Sheet>
 
         <!-- payment gateway (bring-your-own-key) -->

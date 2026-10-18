@@ -13,7 +13,7 @@ class Shop extends Model
     // Shop itself is NOT tenant-scoped (it *is* the tenant) — access control
     // happens via ShopPolicy (owner can only see their own; admin sees all).
     protected $fillable = [
-        'parent_shop_id', 'brought_by_ambassador_id', 'is_warehouse', 'business_type_id', 'name', 'name_en', 'phone', 'email', 'website', 'kitchen_whatsapp', 'payment_timing', 'kitchen_print_order', 'area', 'owner_name', 'support_contact_name', 'support_contact_phone', 'logo_path', 'receipt_footer', 'bin_no', 'trade_license_no', 'tin_no', 'memo_settings', 'label_settings',
+        'parent_shop_id', 'brought_by_ambassador_id', 'is_warehouse', 'business_type_id', 'name', 'name_en', 'phone', 'email', 'website', 'kitchen_whatsapp', 'payment_timing', 'kitchen_print_order', 'area', 'owner_name', 'support_contact_name', 'support_contact_phone', 'logo_path', 'receipt_footer', 'bin_no', 'trade_license_no', 'tin_no', 'memo_settings', 'label_settings', 'mobile_nav_items',
         'sales_mode', 'hardware_scanner_enabled', 'lang', 'plan', 'account_type', 'monthly_fee', 'staff_limit', 'status',
         'subscription_start', 'subscription_expiry',
         'cash_balance', 'bank_balance', 'capital',
@@ -63,6 +63,23 @@ class Shop extends Model
         return array_merge(self::LABEL_SETTINGS_DEFAULTS, $this->label_settings ?? []);
     }
 
+    /**
+     * The mobile bottom nav's two flexible slots (between the always-fixed
+     * Home/Sell/More) — see docs/FIX_PLAN.md Phase 8. Null (every shop
+     * before this feature, or one that's never customized it) resolves to
+     * exactly this default, which is the exact pair every shop already saw
+     * hardcoded before this existed — zero visual change until an owner
+     * actually picks something else. AppLayout.vue is the one place that
+     * decides which keys are valid choices and silently skips a saved key
+     * that no longer resolves to anything (a feature since turned off).
+     */
+    public const MOBILE_NAV_DEFAULT = ['stock', 'due'];
+
+    public function mobileNavItems(): array
+    {
+        return $this->mobile_nav_items ?? self::MOBILE_NAV_DEFAULT;
+    }
+
     protected function casts(): array
     {
         return [
@@ -70,6 +87,7 @@ class Shop extends Model
             'is_warehouse' => 'boolean',
             'memo_settings' => 'array',
             'label_settings' => 'array',
+            'mobile_nav_items' => 'array',
             'subscription_start' => 'date:Y-m-d',
             'subscription_expiry' => 'date:Y-m-d',
             'cash_balance' => 'decimal:2',
@@ -200,6 +218,7 @@ class Shop extends Model
         // LABEL_SETTINGS_DEFAULTS itself.
         $data['memo_settings'] = $this->memoSettings();
         $data['label_settings'] = $this->labelSettings();
+        $data['mobile_nav_items'] = $this->mobileNavItems();
 
         return $data;
     }
