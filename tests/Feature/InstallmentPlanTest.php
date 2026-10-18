@@ -82,6 +82,70 @@ class InstallmentPlanTest extends TestCase
         $this->assertSame(1, InstallmentPlan::count());
     }
 
+    /** Phase 7 — see docs/FIX_PLAN.md. Confirmed bug: total_amount had no upper bound against what's actually owed. */
+    public function test_cannot_schedule_more_than_the_customers_actual_due(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'installment_sales');
+        $customer = Customer::create(['shop_id' => $shop->id, 'name' => 'Karim', 'phone' => '01711111111', 'due' => 500]);
+
+        $response = $this->actingAs($owner, 'web')->postJson(route('app.installments.store'), [
+            'customer_id' => $customer->id, 'total_amount' => 1000, 'installment_count' => 2,
+            'frequency' => 'monthly', 'start_date' => now()->toDateString(),
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('total_amount');
+        $this->assertSame(0, InstallmentPlan::count());
+    }
+
+    public function test_cannot_schedule_more_than_a_specific_sales_own_remaining_due(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'installment_sales');
+        // customer's total due (1000) is bigger than this one sale's own due (400) —
+        // the sale-specific ceiling must win, not the looser customer-wide one
+        $customer = Customer::create(['shop_id' => $shop->id, 'name' => 'Karim', 'phone' => '01711111111', 'due' => 1000]);
+        $sale = Sale::create(['shop_id' => $shop->id, 'customer_id' => $customer->id, 'user_id' => $owner->id, 'invoice_no' => 'INV-1', 'date' => now()->toDateString(), 'time' => now()->toTimeString(), 'subtotal' => 400, 'discount' => 0, 'total' => 400, 'profit' => 40, 'payment_mode' => 'credit']);
+
+        $response = $this->actingAs($owner, 'web')->postJson(route('app.installments.store'), [
+            'sale_id' => $sale->id, 'customer_id' => $customer->id, 'total_amount' => 401, 'installment_count' => 2,
+            'frequency' => 'monthly', 'start_date' => now()->toDateString(),
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertSame(0, InstallmentPlan::count());
+    }
+
+    public function test_a_sales_own_partially_tendered_amount_reduces_the_schedulable_ceiling(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'installment_sales');
+        $customer = Customer::create(['shop_id' => $shop->id, 'name' => 'Karim', 'phone' => '01711111111', 'due' => 1000]);
+        $sale = Sale::create(['shop_id' => $shop->id, 'customer_id' => $customer->id, 'user_id' => $owner->id, 'invoice_no' => 'INV-1', 'date' => now()->toDateString(), 'time' => now()->toTimeString(), 'subtotal' => 1000, 'discount' => 0, 'total' => 1000, 'profit' => 100, 'payment_mode' => 'split']);
+        $sale->payments()->create(['shop_id' => $shop->id, 'method' => 'cash', 'amount' => 600]); // 400 still actually due on this sale
+
+        $this->actingAs($owner, 'web')->postJson(route('app.installments.store'), [
+            'sale_id' => $sale->id, 'customer_id' => $customer->id, 'total_amount' => 400, 'installment_count' => 2,
+            'frequency' => 'monthly', 'start_date' => now()->toDateString(),
+        ])->assertRedirect();
+
+        $this->assertSame(1, InstallmentPlan::count());
+    }
+
+    /** Confirmed TOCTOU race (Phase 7): the exists() pre-check alone can't stop two near-simultaneous submits — the DB-level unique index is the real guard. */
+    public function test_the_database_itself_rejects_a_second_plan_for_the_same_sale(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $customer = Customer::create(['shop_id' => $shop->id, 'name' => 'Karim', 'phone' => '01711111111', 'due' => 1000]);
+        $sale = Sale::create(['shop_id' => $shop->id, 'customer_id' => $customer->id, 'user_id' => $owner->id, 'invoice_no' => 'INV-1', 'date' => now()->toDateString(), 'time' => now()->toTimeString(), 'subtotal' => 1000, 'discount' => 0, 'total' => 1000, 'profit' => 100, 'payment_mode' => 'credit']);
+        InstallmentPlan::create(['shop_id' => $shop->id, 'customer_id' => $customer->id, 'sale_id' => $sale->id, 'total_amount' => 500, 'installment_count' => 1, 'frequency' => 'monthly', 'start_date' => now()->toDateString(), 'status' => 'active']);
+
+        $this->expectException(\Illuminate\Database\QueryException::class);
+
+        InstallmentPlan::create(['shop_id' => $shop->id, 'customer_id' => $customer->id, 'sale_id' => $sale->id, 'total_amount' => 500, 'installment_count' => 1, 'frequency' => 'monthly', 'start_date' => now()->toDateString(), 'status' => 'active']);
+    }
+
     public function test_a_payment_tagged_to_a_plan_allocates_oldest_due_date_first_and_still_reduces_customer_due(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();

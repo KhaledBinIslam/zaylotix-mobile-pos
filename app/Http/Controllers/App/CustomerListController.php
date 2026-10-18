@@ -30,7 +30,13 @@ class CustomerListController extends Controller
         $credential = WhatsappCredential::where('shop_id', $shopId)->where('is_active', true)->first();
 
         return Inertia::render('App/CustomerList/Index', [
-            'customers' => Customer::orderBy('name')->get(['id', 'name', 'phone', 'due', 'total_spent', 'visits']),
+            // updated_at doubles as "last activity" (bumped on every sale/
+            // payment elsewhere) and loyalty_points added so the list's new
+            // segment filters (top spenders, most visits, highest due,
+            // inactive) — see docs/FIX_PLAN.md Phase 7 — have real data to
+            // sort/filter by; this page itself still does no
+            // filtering/sorting server-side, same as before.
+            'customers' => Customer::orderBy('name')->get(['id', 'name', 'phone', 'due', 'total_spent', 'visits', 'loyalty_points', 'updated_at']),
             'whatsappApiReady' => (bool) $credential,
         ]);
     }

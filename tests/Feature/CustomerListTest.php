@@ -45,6 +45,18 @@ class CustomerListTest extends TestCase
         );
     }
 
+    /** Phase 7 — see docs/FIX_PLAN.md: segmentation (top spenders/visits/due/inactive) needs loyalty_points and updated_at on every row. */
+    public function test_index_includes_loyalty_points_and_last_activity_for_segmentation(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        Customer::create(['shop_id' => $shop->id, 'name' => 'Karim', 'phone' => '01700000001', 'loyalty_points' => 50]);
+
+        $this->actingAs($owner, 'web')->get('/app/customer-list')->assertInertia(fn ($page) => $page
+            ->where('customers.0.loyalty_points', 50)
+            ->has('customers.0.updated_at')
+        );
+    }
+
     public function test_staff_with_customers_permission_can_reach_the_list(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();

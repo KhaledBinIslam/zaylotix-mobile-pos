@@ -3,13 +3,17 @@
 namespace App\Http\Controllers\App;
 
 use App\Http\Controllers\Controller;
+use App\Models\Customer;
 use App\Models\InstallmentPlan;
 use App\Models\InstallmentScheduleItem;
+use App\Models\Sale;
 use App\Support\Activity;
 use App\Support\Tenancy;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 /**
@@ -61,45 +65,96 @@ class InstallmentController extends Controller
             abort(422, 'এই বিক্রয়ের জন্য ইতিমধ্যে একটি কিস্তির প্ল্যান আছে।');
         }
 
-        $plan = DB::transaction(function () use ($data) {
-            $plan = InstallmentPlan::create([
-                'shop_id' => Tenancy::id(),
-                'customer_id' => $data['customer_id'],
-                'sale_id' => $data['sale_id'] ?? null,
-                'total_amount' => $data['total_amount'],
-                'down_payment' => $data['down_payment'] ?? 0,
-                'installment_count' => $data['installment_count'],
-                'frequency' => $data['frequency'],
-                'start_date' => $data['start_date'],
-                'late_fee_type' => $data['late_fee_type'] ?? null,
-                'late_fee_amount' => $data['late_fee_amount'] ?? null,
-                'status' => 'active',
-                'notes' => $data['notes'] ?? null,
-                'user_id' => Auth::guard('web')->id() ?? Auth::guard('sanctum')->id(),
-            ]);
+        try {
+            $plan = DB::transaction(function () use ($data) {
+                // Confirmed bug (see docs/FIX_PLAN.md Phase 7): total_amount
+                // had no upper bound at all — a plan could be scheduled for
+                // far more than the customer (or that specific sale)
+                // actually owes. Since creating a plan is deliberately pure
+                // bookkeeping and never touches customers.due itself (see
+                // this table's own migration docblock), an over-scheduled
+                // plan would sit with permanently unpayable installments —
+                // PaymentController already hard-blocks collecting past the
+                // real due, so those installments could never be paid off,
+                // and ApplyInstallmentLateFees would keep charging late fees
+                // on debt that never existed. Locked so this can't race a
+                // concurrent return/void/payment changing the same due out
+                // from under this check.
+                $customer = Customer::whereKey($data['customer_id'])->lockForUpdate()->first();
+                if (! $customer) {
+                    abort(422, 'কাস্টমার খুঁজে পাওয়া যায়নি।');
+                }
+                $maxAllowed = (float) $customer->due;
 
-            $count = (int) $data['installment_count'];
-            $total = (float) $data['total_amount'];
-            $each = round($total / $count, 2);
-            $date = \Carbon\Carbon::parse($data['start_date']);
+                if (! empty($data['sale_id'])) {
+                    $sale = Sale::whereKey($data['sale_id'])->lockForUpdate()->with('payments')->first();
+                    if (! $sale) {
+                        abort(422, 'বিক্রয়টি খুঁজে পাওয়া যায়নি।');
+                    }
+                    $tendered = (float) $sale->payments->sum('amount');
+                    $saleDue = max(0.0, round((float) $sale->total - $tendered, 2));
+                    // the lower of the two — a sale's own due can never
+                    // legitimately exceed the customer's total due; taking
+                    // the minimum is the more conservative (safer) ceiling
+                    // if the two have ever drifted apart
+                    $maxAllowed = min($maxAllowed, $saleDue);
+                }
 
-            for ($i = 0; $i < $count; $i++) {
-                // the last line absorbs whatever rounding left behind, so
-                // the schedule's own sum always equals total_amount exactly
-                $amount = $i === $count - 1 ? round($total - ($each * ($count - 1)), 2) : $each;
+                if ((float) $data['total_amount'] - $maxAllowed > 0.01) {
+                    throw ValidationException::withMessages([
+                        'total_amount' => 'এত বেশি বাকির উপর কিস্তি করা যাবে না। সর্বোচ্চ: '.number_format($maxAllowed, 2),
+                    ]);
+                }
 
-                InstallmentScheduleItem::create([
+                $plan = InstallmentPlan::create([
                     'shop_id' => Tenancy::id(),
-                    'installment_plan_id' => $plan->id,
-                    'due_date' => $date->copy()->toDateString(),
-                    'amount' => $amount,
+                    'customer_id' => $data['customer_id'],
+                    'sale_id' => $data['sale_id'] ?? null,
+                    'total_amount' => $data['total_amount'],
+                    'down_payment' => $data['down_payment'] ?? 0,
+                    'installment_count' => $data['installment_count'],
+                    'frequency' => $data['frequency'],
+                    'start_date' => $data['start_date'],
+                    'late_fee_type' => $data['late_fee_type'] ?? null,
+                    'late_fee_amount' => $data['late_fee_amount'] ?? null,
+                    'status' => 'active',
+                    'notes' => $data['notes'] ?? null,
+                    'user_id' => Auth::guard('web')->id() ?? Auth::guard('sanctum')->id(),
                 ]);
 
-                $date = $data['frequency'] === 'weekly' ? $date->copy()->addWeek() : $date->copy()->addMonthNoOverflow();
-            }
+                $count = (int) $data['installment_count'];
+                $total = (float) $data['total_amount'];
+                $each = round($total / $count, 2);
+                $date = \Carbon\Carbon::parse($data['start_date']);
 
-            return $plan;
-        });
+                for ($i = 0; $i < $count; $i++) {
+                    // the last line absorbs whatever rounding left behind,
+                    // so the schedule's own sum always equals total_amount
+                    // exactly
+                    $amount = $i === $count - 1 ? round($total - ($each * ($count - 1)), 2) : $each;
+
+                    InstallmentScheduleItem::create([
+                        'shop_id' => Tenancy::id(),
+                        'installment_plan_id' => $plan->id,
+                        'due_date' => $date->copy()->toDateString(),
+                        'amount' => $amount,
+                    ]);
+
+                    $date = $data['frequency'] === 'weekly' ? $date->copy()->addWeek() : $date->copy()->addMonthNoOverflow();
+                }
+
+                return $plan;
+            });
+        } catch (QueryException $e) {
+            // the unique index on sale_id (added alongside this fix) is the
+            // real guard against the race the exists() check above can't
+            // close on its own — a concurrent duplicate submit lands here
+            // as a friendly error instead of a raw 500
+            if ((int) $e->getCode() === 23000) {
+                abort(422, 'এই বিক্রয়ের জন্য ইতিমধ্যে একটি কিস্তির প্ল্যান আছে।');
+            }
+            throw $e;
+        }
 
         Activity::log('installment.create', "{$plan->customer->name}-এর জন্য {$data['installment_count']}টি কিস্তির প্ল্যান তৈরি হয়েছে।", $plan, ['total_amount' => $data['total_amount']]);
 

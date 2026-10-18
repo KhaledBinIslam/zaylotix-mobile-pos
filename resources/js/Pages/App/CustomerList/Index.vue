@@ -13,9 +13,26 @@ const { toast } = useToast();
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 
 const q = ref('');
-const filtered = computed(() => props.customers.filter((c) =>
-    !q.value || c.name.toLowerCase().includes(q.value.toLowerCase()) || (c.phone || '').includes(q.value)
-));
+// Missing feature (see docs/FIX_PLAN.md Phase 7): this was a flat,
+// undifferentiated list with search only — the underlying data
+// (total_spent, visits, due, updated_at-as-last-activity) already existed
+// on Customer, just never exposed as a sort/filter. 'all' keeps the exact
+// previous behavior (alphabetical, no filtering) unchanged.
+const segment = ref('all');
+const INACTIVE_DAYS = 30;
+function daysSince(dateStr) {
+    return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
+}
+const filtered = computed(() => {
+    let rows = props.customers.filter((c) =>
+        !q.value || c.name.toLowerCase().includes(q.value.toLowerCase()) || (c.phone || '').includes(q.value)
+    );
+    if (segment.value === 'topSpenders') rows = [...rows].sort((a, b) => b.total_spent - a.total_spent);
+    else if (segment.value === 'mostVisits') rows = [...rows].sort((a, b) => b.visits - a.visits);
+    else if (segment.value === 'highestDue') rows = rows.filter((c) => c.due > 0).sort((a, b) => b.due - a.due);
+    else if (segment.value === 'inactive') rows = rows.filter((c) => daysSince(c.updated_at) >= INACTIVE_DAYS).sort((a, b) => daysSince(b.updated_at) - daysSince(a.updated_at));
+    return rows;
+});
 
 const selected = ref({});
 const selectedIds = computed(() => Object.keys(selected.value).filter((id) => selected.value[id]).map(Number));
@@ -96,11 +113,21 @@ function exportSelected(fmt) {
             <button class="btn sm ghost" style="width:auto;padding:0 14px" @click="clearSelection">{{ t('customerList.clearSelection') }}</button>
         </div>
 
+        <div class="seg" style="margin-bottom:10px;overflow-x:auto">
+            <button :class="{ on: segment === 'all' }" @click="segment = 'all'">{{ t('customerList.segmentAll') }}</button>
+            <button :class="{ on: segment === 'topSpenders' }" @click="segment = 'topSpenders'">{{ t('customerList.segmentTopSpenders') }}</button>
+            <button :class="{ on: segment === 'mostVisits' }" @click="segment = 'mostVisits'">{{ t('customerList.segmentMostVisits') }}</button>
+            <button :class="{ on: segment === 'highestDue' }" @click="segment = 'highestDue'">{{ t('customerList.segmentHighestDue') }}</button>
+            <button :class="{ on: segment === 'inactive' }" @click="segment = 'inactive'">{{ t('customerList.segmentInactive') }}</button>
+        </div>
+
         <div v-for="c in filtered" :key="c.id" class="row" @click="toggle(c)" :style="selected[c.id] ? 'border-color:var(--gold);background:var(--goldSoft)' : ''">
             <div class="ava">{{ selected[c.id] ? '✅' : '👤' }}</div>
             <div class="mid">
                 <b>{{ c.name }}</b>
                 <span>📞 {{ c.phone || t('customerList.noPhone') }} • {{ t('customerList.totalBought') }} {{ money(c.total_spent) }}<template v-if="c.due > 0"> • <span style="color:var(--rose)">{{ t('customerList.due') }} {{ money(c.due) }}</span></template></span>
+                <span v-if="segment === 'mostVisits'">🔁 {{ t('customerList.visitsCount', { n: c.visits }) }}</span>
+                <span v-else-if="segment === 'inactive'" style="color:var(--rose)">⏰ {{ t('customerList.daysInactive', { n: daysSince(c.updated_at) }) }}</span>
             </div>
         </div>
         <div v-if="!filtered.length" class="empty"><div class="big">👤</div>{{ t('customerList.noCustomers') }}</div>
