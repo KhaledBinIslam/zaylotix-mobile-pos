@@ -35,6 +35,9 @@ function onProductPick(line) {
     const p = props.products.find((x) => x.id === line.product_id);
     if (p) line.price = p.price;
 }
+function isWeighed(line) {
+    return !!props.products.find((x) => x.id === line.product_id)?.sold_by_weight;
+}
 const lineTotal = (l) => Math.max(0, (Number(l.price) || 0) * (Number(l.qty) || 0) - (Number(l.discount) || 0));
 const subtotal = computed(() => form.items.reduce((s, l) => s + lineTotal(l), 0));
 const total = computed(() => Math.max(0, subtotal.value - (Number(form.discount) || 0)));
@@ -76,7 +79,7 @@ function save() {
                     <option v-for="p in products" :key="p.id" :value="p.id">{{ p.emoji }} {{ p.name }} — {{ p.price }}৳</option>
                 </select>
                 <div class="f2">
-                    <div class="field" style="margin:0"><label>{{ t('return.qty') }}</label><input v-model.number="line.qty" type="number" min="1"></div>
+                    <div class="field" style="margin:0"><label>{{ t('return.qty') }}</label><input v-model.number="line.qty" type="number" :min="isWeighed(line) ? 0.001 : 1" :step="isWeighed(line) ? 0.001 : 1"></div>
                     <div class="field" style="margin:0"><label>{{ t('stock.price') }}</label><input v-model.number="line.price" type="number"></div>
                 </div>
                 <div class="f2" style="margin-top:8px">

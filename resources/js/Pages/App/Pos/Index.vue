@@ -259,17 +259,29 @@ function setQty(line, value) {
 function isWeighedLine(l) {
     return !l.product_variant_id && !l.product_unit_id && !!productOf(l.product_id)?.sold_by_weight;
 }
+// small-unit label + how many of it make one base unit — kg/litre split
+// into thousandths (g/ml), meter splits into hundredths (cm); every
+// small-unit/big-unit conversion below goes through weightDivisor() so a
+// new weight_unit only needs an entry here, not a hunt through every /1000.
+function weightDivisor(p) {
+    return p.weight_unit === 'meter' ? 100 : 1000;
+}
 function weightSmallUnit(p) {
-    return p.weight_unit === 'litre' ? 'ml' : 'g';
+    if (p.weight_unit === 'litre') return 'ml';
+    if (p.weight_unit === 'meter') return 'cm';
+    return 'g';
 }
 function weightBigUnit(p) {
-    return p.weight_unit === 'litre' ? t('stock.unitLitre') : t('stock.unitKg');
+    if (p.weight_unit === 'litre') return t('stock.unitLitre');
+    if (p.weight_unit === 'meter') return t('stock.unitMeter');
+    return t('stock.unitKg');
 }
-/** e.g. 0.25 kg → "250 g", 1.5 kg → "1.5 kg" — grams for anything under 1 base unit, otherwise the base unit, never both */
+/** e.g. 0.25 kg → "250 g", 1.5 kg → "1.5 kg" — the small unit for anything under 1 base unit, otherwise the base unit, never both */
 function formatWeightQty(p, qty) {
     const n = Number(qty);
-    if (n < 1) return `${Math.round(n * 1000)} ${weightSmallUnit(p)}`;
-    return `${Math.round(n * 1000) / 1000} ${weightBigUnit(p)}`;
+    const divisor = weightDivisor(p);
+    if (n < 1) return `${Math.round(n * divisor)} ${weightSmallUnit(p)}`;
+    return `${Math.round(n * divisor) / divisor} ${weightBigUnit(p)}`;
 }
 
 // low-stock warning between "plenty" and "out" — a cashier restocking
@@ -296,34 +308,41 @@ function variantStockLevel(v) {
 
 const weightSheet = ref(false);
 const weightProduct = ref(null);
-const weightEntryUnit = ref('g'); // 'g'/'kg' or 'ml'/'litre', matches the product's weight_unit
+const weightEntryUnit = ref('g'); // small or big unit string, matches the product's weight_unit (see weightSmallUnit/weightBigUnit)
 const weightValue = ref('');
+// small-unit preset values — kg/litre present in grams/ml, meter in cm;
+// weightPresets() picks the right list for the open product's weight_unit
 const WEIGHT_PRESETS_G = [100, 250, 500, 1000, 2000];
+const WEIGHT_PRESETS_CM = [25, 50, 100, 200, 500];
+function weightPresets(p) {
+    return p?.weight_unit === 'meter' ? WEIGHT_PRESETS_CM : WEIGHT_PRESETS_G;
+}
 
 function openWeightEntry(p) {
     if (p.stock <= 0) return;
     weightProduct.value = p;
     weightEntryUnit.value = weightSmallUnit(p);
     const existing = cart.value.find((l) => l.product_id === p.id && !l.product_variant_id && !l.product_unit_id);
-    weightValue.value = existing ? String(Math.round(Number(existing.qty) * 1000)) : '';
+    weightValue.value = existing ? String(Math.round(Number(existing.qty) * weightDivisor(p))) : '';
     weightSheet.value = true;
 }
-function pickWeightPreset(grams) {
+function pickWeightPreset(smallUnitValue) {
     weightEntryUnit.value = weightSmallUnit(weightProduct.value);
-    weightValue.value = String(grams);
+    weightValue.value = String(smallUnitValue);
 }
 function toggleWeightEntryUnit() {
     const p = weightProduct.value;
+    const divisor = weightDivisor(p);
     const n = Number(weightValue.value) || 0;
     const isSmall = weightEntryUnit.value === weightSmallUnit(p);
     weightEntryUnit.value = isSmall ? p.weight_unit : weightSmallUnit(p);
-    weightValue.value = n ? String(isSmall ? n / 1000 : Math.round(n * 1000)) : '';
+    weightValue.value = n ? String(isSmall ? n / divisor : Math.round(n * divisor)) : '';
 }
 function confirmWeightEntry() {
     const p = weightProduct.value;
     const raw = Number(weightValue.value);
     if (!raw || raw <= 0) return;
-    const qty = weightEntryUnit.value === weightSmallUnit(p) ? raw / 1000 : raw;
+    const qty = weightEntryUnit.value === weightSmallUnit(p) ? raw / weightDivisor(p) : raw;
 
     if (Number(p.stock) < qty) {
         toast('❌ ' + t('pos.notEnoughStock') + ' ' + p.name + ` (${t('stock.currentStock')} ${formatWeightQty(p, p.stock)})`);
@@ -1416,8 +1435,8 @@ useKeyboardShortcuts({
             </div>
 
             <div v-if="weightProduct" style="display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 16px">
-                <button v-for="g in WEIGHT_PRESETS_G" :key="g" class="upill" @click="pickWeightPreset(g)">
-                    {{ g < 1000 ? `${g} ${weightSmallUnit(weightProduct)}` : `${g / 1000} ${weightBigUnit(weightProduct)}` }}
+                <button v-for="g in weightPresets(weightProduct)" :key="g" class="upill" @click="pickWeightPreset(g)">
+                    {{ g < weightDivisor(weightProduct) ? `${g} ${weightSmallUnit(weightProduct)}` : `${g / weightDivisor(weightProduct)} ${weightBigUnit(weightProduct)}` }}
                 </button>
             </div>
 

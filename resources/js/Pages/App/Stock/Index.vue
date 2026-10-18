@@ -140,9 +140,14 @@ const categoryCounts = computed(() => props.stats.category_counts);
 // is used, looking exactly like "my kg got silently changed to piece".
 // Falls back to the generic pieces label only when the product genuinely
 // has no unit set at all, same fallback POS already uses.
+function weightUnitLabel(unit) {
+    if (unit === 'litre') return t('stock.unitLitre');
+    if (unit === 'meter') return t('stock.unitMeter');
+    return t('stock.unitKg');
+}
 function unitLabel(p) {
     if (!p.sold_by_weight) return p.unit?.name || t('stock.pieces');
-    return p.weight_unit === 'litre' ? t('stock.unitLitre') : t('stock.unitKg');
+    return weightUnitLabel(p.weight_unit);
 }
 // weighed stock shows up to 3 decimals (never trailing zeros past what's
 // needed) so 0.25 kg reads as "0.25 kg", not "0.250 kg" or rounded to "0 kg"
@@ -671,6 +676,7 @@ useKeyboardShortcuts({
                 <div v-if="form.sold_by_weight" class="seg" style="margin-top:8px">
                     <button type="button" :class="{ on: form.weight_unit === 'kg' }" @click="form.weight_unit = 'kg'">{{ t('stock.unitKg') }}</button>
                     <button type="button" :class="{ on: form.weight_unit === 'litre' }" @click="form.weight_unit = 'litre'">{{ t('stock.unitLitre') }}</button>
+                    <button type="button" :class="{ on: form.weight_unit === 'meter' }" @click="form.weight_unit = 'meter'">{{ t('stock.unitMeter') }}</button>
                 </div>
             </div>
 
@@ -684,7 +690,7 @@ useKeyboardShortcuts({
 
             <div class="f2">
                 <div class="field">
-                    <label>{{ form.sold_by_weight ? t('stock.sellPricePerUnit', { unit: form.weight_unit === 'litre' ? t('stock.unitLitre') : t('stock.unitKg') }) : t('stock.sellPrice') }}</label>
+                    <label>{{ form.sold_by_weight ? t('stock.sellPricePerUnit', { unit: weightUnitLabel(form.weight_unit) }) : t('stock.sellPrice') }}</label>
                     <input v-model="form.price" type="number" step="0.01">
                     <div v-if="form.errors.price" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.price }}</div>
                 </div>
@@ -730,7 +736,7 @@ useKeyboardShortcuts({
                     </label>
                 </div>
                 <div class="field" v-else-if="!(isRestaurant && form.stock_mode === 'untracked')">
-                    <label>{{ t('stock.stock') }}{{ form.sold_by_weight ? ` (${form.weight_unit === 'litre' ? t('stock.unitLitre') : t('stock.unitKg')})` : '' }}</label>
+                    <label>{{ t('stock.stock') }}{{ form.sold_by_weight ? ` (${weightUnitLabel(form.weight_unit)})` : '' }}</label>
                     <input v-model="form.stock" type="number" :step="form.sold_by_weight ? 0.001 : 1">
                     <div v-if="form.errors.stock" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.stock }}</div>
                 </div>

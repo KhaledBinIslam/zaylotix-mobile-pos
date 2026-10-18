@@ -14,6 +14,7 @@ class QuotationItem extends Model
     protected function casts(): array
     {
         return [
+            'qty' => 'decimal:3',
             'price' => 'decimal:2',
             'discount' => 'decimal:2',
         ];

@@ -186,6 +186,37 @@ class QuotationTest extends TestCase
         $this->assertSame('open', $quotationB->fresh()->status); // shop B's quote is untouched
     }
 
+    /** Phase 0.4 — see docs/FIX_PLAN.md: a weighed product may be quoted at a fractional qty. */
+    public function test_a_weighed_product_can_be_quoted_at_a_fractional_qty(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'quotations');
+        $rice = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 50, 'price' => 80, 'stock' => 100, 'sold_by_weight' => true, 'weight_unit' => 'kg']);
+
+        $response = $this->actingAs($owner, 'web')->post('/app/quotations', [
+            'items' => [['product_id' => $rice->id, 'qty' => 1.5, 'price' => 80]],
+        ]);
+
+        $response->assertRedirect();
+        $quotation = Quotation::first();
+        $this->assertEquals(1.5, (float) $quotation->items()->first()->qty);
+        $this->assertEquals(120.0, (float) $quotation->subtotal); // 1.5 * 80
+    }
+
+    public function test_a_non_weighed_product_still_rejects_a_fractional_qty_on_a_quotation(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'quotations');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'A', 'cost' => 10, 'price' => 20, 'stock' => 10]);
+
+        $response = $this->actingAs($owner, 'web')->post('/app/quotations', [
+            'items' => [['product_id' => $product->id, 'qty' => 1.5, 'price' => 20]],
+        ]);
+
+        $response->assertSessionHasErrors('items');
+        $this->assertSame(0, Quotation::count());
+    }
+
     public function test_converting_via_checkout_requires_the_quotations_feature(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();

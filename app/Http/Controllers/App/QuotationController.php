@@ -28,7 +28,11 @@ class QuotationController extends Controller
     {
         return Inertia::render('App/Quotations/Index', [
             'quotations' => Quotation::with('items')->orderByDesc('id')->get(),
-            'products' => Product::whereDoesntHave('variants')->orderBy('name')->get(['id', 'name', 'emoji', 'price']),
+            // sold_by_weight/weight_unit included so the quote form can let a
+            // weighed product take a fractional qty (e.g. 1.5 kg) while
+            // every other product still requires a whole number — see
+            // store()'s matching per-line check below
+            'products' => Product::whereDoesntHave('variants')->orderBy('name')->get(['id', 'name', 'emoji', 'price', 'sold_by_weight', 'weight_unit']),
         ]);
     }
 
@@ -50,7 +54,11 @@ class QuotationController extends Controller
             'discount' => ['nullable', 'numeric', 'min:0'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', Rule::exists('products', 'id')->where('shop_id', Tenancy::id())],
-            'items.*.qty' => ['required', 'integer', 'min:1'],
+            // numeric at this layer — a weighed product's line may be a
+            // fractional kg/litre/metre qty, enforced per-line just below
+            // once the product itself is known (mirrors
+            // PosController::performCheckout's identical gating)
+            'items.*.qty' => ['required', 'numeric', 'min:0.001'],
             'items.*.price' => ['required', 'numeric', 'min:0'],
             'items.*.discount' => ['nullable', 'numeric', 'min:0'],
         ]);
@@ -69,6 +77,11 @@ class QuotationController extends Controller
             $lines = [];
             foreach ($data['items'] as $item) {
                 $product = $products->get($item['product_id']);
+                if (! $product->sold_by_weight && floor($item['qty']) != $item['qty']) {
+                    throw ValidationException::withMessages([
+                        'items' => "{$product->name} ওজন-ভিত্তিক পণ্য না — পরিমাণ পূর্ণ সংখ্যা হতে হবে।",
+                    ]);
+                }
                 $rawLineTotal = (float) $item['price'] * $item['qty'];
                 $lineDiscount = min((float) ($item['discount'] ?? 0), $rawLineTotal);
                 $subtotal += $rawLineTotal - $lineDiscount;

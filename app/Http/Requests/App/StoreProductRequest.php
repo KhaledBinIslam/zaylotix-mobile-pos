@@ -41,7 +41,7 @@ class StoreProductRequest extends FormRequest
             // only new/renamed duplicates going forward are blocked.
             'barcode' => ['nullable', 'string', 'max:64', Rule::unique('products', 'barcode')->where('shop_id', Tenancy::id())->ignore($this->route('product'))],
             'sold_by_weight' => ['nullable', 'boolean'],
-            'weight_unit' => ['required_if:sold_by_weight,1', 'nullable', 'in:kg,litre'],
+            'weight_unit' => ['required_if:sold_by_weight,1', 'nullable', 'in:kg,litre,meter'],
             // per-product opt-in into the shop-wide serial_tracking feature
             // (see Stock/Index.vue's hasSerialTracking) — accepted from
             // anyone since it's harmless either way, a shop without the

@@ -1129,6 +1129,7 @@ export const translations = {
     'stock.trackSerialHint': { bn: 'মোবাইল, ল্যাপটপের মতো পণ্যের জন্য চালু করুন — স্টক-ইন করার সময় IMEI লেখার ঘর দেখাবে। অন্য সাধারণ পণ্যের জন্য বন্ধ রাখুন।', en: 'Turn on for devices like phones/laptops — stock-in will then show an IMEI box. Leave off for ordinary products.' },
     'stock.unitKg': { bn: 'কেজি', en: 'kg' },
     'stock.unitLitre': { bn: 'লিটার', en: 'litre' },
+    'stock.unitMeter': { bn: 'মিটার', en: 'metre' },
     'stock.stock': { bn: 'স্টক', en: 'Stock' },
     'stock.barcode': { bn: 'বারকোড', en: 'Barcode' },
     'stock.discountPrice': { bn: 'ছাড়ের দাম', en: 'Discount price' },

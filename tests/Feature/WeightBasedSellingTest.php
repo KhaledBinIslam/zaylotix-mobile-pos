@@ -50,6 +50,23 @@ class WeightBasedSellingTest extends TestCase
         $this->assertEquals(15.5, (float) $product->stock);
     }
 
+    /** Phase 0.4 — see docs/FIX_PLAN.md: weight_unit extended beyond kg/litre for hardware/textile (cloth/rope sold by the metre). */
+    public function test_owner_can_create_a_metre_sold_product(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'weight_based_selling');
+
+        $response = $this->actingAs($owner, 'web')->post('/app/products', [
+            'name' => 'কাপড়', 'cost' => 100, 'price' => 150, 'stock' => 25.5,
+            'sold_by_weight' => 1, 'weight_unit' => 'meter',
+        ]);
+
+        $response->assertRedirect();
+        $product = Product::where('name', 'কাপড়')->first();
+        $this->assertSame('meter', $product->weight_unit);
+        $this->assertEquals(25.5, (float) $product->stock);
+    }
+
     public function test_checkout_sells_a_fractional_quantity_and_decrements_stock_precisely(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();
