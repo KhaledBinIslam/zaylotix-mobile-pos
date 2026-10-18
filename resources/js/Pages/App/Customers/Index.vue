@@ -37,14 +37,35 @@ function saveCustomer() {
 // --- collect payment sheet ---
 const collectSheet = ref(false);
 const collecting = ref(null);
-const collectForm = useForm({ amount: '' });
+const collectForm = useForm({ amount: '', sale_id: '' });
 const markingPaid = ref(false);
+
+// Per-invoice reference (Khaled's explicit ask — see docs/FIX_PLAN.md Phase
+// 3.2): due_at_checkout is exact; tagged_paid only ever reflects a payment
+// that explicitly picked this invoice via the dropdown below, never a
+// historical/untagged lump payment — customer.due above remains the one
+// real total regardless of what's picked here.
+const invoiceList = ref([]);
+const invoicesLoading = ref(false);
+function loadInvoices(c) {
+    invoiceList.value = [];
+    invoicesLoading.value = true;
+    fetch(route('app.payments.invoices', c.id), { headers: { Accept: 'application/json' } })
+        .then((r) => r.json())
+        .then((data) => { invoiceList.value = data.invoices || []; })
+        .catch((e) => reportClientError(e, 'loadInvoices'))
+        .finally(() => (invoicesLoading.value = false));
+}
+function invoiceRemaining(inv) {
+    return Math.max(0, inv.due_at_checkout - inv.tagged_paid);
+}
 
 function openCollect(c) {
     collecting.value = c;
     collectForm.reset();
     collectForm.clearErrors();
     collectSheet.value = true;
+    loadInvoices(c);
 }
 function collect() {
     collectForm.post(route('app.payments.store', collecting.value.id), {
@@ -216,6 +237,24 @@ function sendOffer() {
                 <input v-model="collectForm.amount" type="number" :placeholder="String(collecting?.due || 0)">
                 <div v-if="collectForm.errors.amount" style="color:var(--rose);font-size:12px;margin-top:6px">{{ collectForm.errors.amount }}</div>
             </div>
+
+            <div v-if="invoiceList.length" class="field">
+                <label>{{ t('due.whichInvoice') }} <span style="color:var(--dim);font-weight:400">({{ t('stock.optional') }})</span></label>
+                <select v-model="collectForm.sale_id">
+                    <option value="">{{ t('due.generalPayment') }}</option>
+                    <option v-for="inv in invoiceList" :key="inv.id" :value="inv.id">
+                        {{ inv.invoice_no }} ({{ inv.date.slice(0, 10) }}) — {{ t('due.remaining') }} {{ money(invoiceRemaining(inv)) }}
+                    </option>
+                </select>
+            </div>
+            <div v-if="invoiceList.length" class="card" style="margin-bottom:14px;font-size:12px;color:var(--dim)">
+                {{ t('due.invoiceBreakdownNote') }}
+                <div v-for="inv in invoiceList" :key="inv.id" style="display:flex;justify-content:space-between;margin-top:6px;color:var(--mut)">
+                    <span>{{ inv.invoice_no }} ({{ inv.date.slice(0, 10) }})</span>
+                    <span>{{ t('due.dueAtCheckout') }} {{ money(inv.due_at_checkout) }}<template v-if="inv.tagged_paid > 0"> • {{ t('due.taggedPaid') }} {{ money(inv.tagged_paid) }}</template></span>
+                </div>
+            </div>
+
             <button class="btn" :disabled="collectForm.processing" @click="collect">
                 {{ collectForm.processing ? '...' : t('due.collectSubmit') }}
             </button>

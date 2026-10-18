@@ -287,6 +287,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::post('customers/{customer}/payments', [PaymentController::class, 'store'])->name('payments.store');
         Route::post('customers/{customer}/payments/full', [PaymentController::class, 'full'])->name('payments.full');
         Route::get('customers/{customer}/payments', [PaymentController::class, 'history'])->name('payments.history');
+        Route::get('customers/{customer}/invoices', [PaymentController::class, 'invoices'])->name('payments.invoices');
     });
 
     Route::middleware(['perm:installments', 'feature:installment_sales'])->group(function () {

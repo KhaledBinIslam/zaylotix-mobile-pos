@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\Customer;
+use App\Models\Sale;
+use App\Models\SalePayment;
 use App\Models\Shop;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -82,6 +84,91 @@ class CustomerPaymentHistoryTest extends TestCase
         // other tenant-isolation test in this suite.
         $this->actingAs($ownerA, 'web')->getJson("/app/customers/{$customerB->id}/payments")
             ->assertNotFound();
+    }
+
+    // ---- Phase 3.2: optional per-invoice tagging (see docs/FIX_PLAN.md) ----
+
+    public function test_a_payment_can_be_tagged_to_a_specific_invoice(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $customer = Customer::create(['shop_id' => $shop->id, 'name' => 'Karim', 'due' => 500]);
+        $sale = Sale::create(['shop_id' => $shop->id, 'customer_id' => $customer->id, 'invoice_no' => 'INV-1', 'date' => now()->toDateString(), 'time' => now()->toTimeString(), 'subtotal' => 500, 'total' => 500, 'profit' => 100, 'payment_mode' => 'credit']);
+
+        $this->actingAs($owner, 'web')->post("/app/customers/{$customer->id}/payments", ['amount' => 200, 'sale_id' => $sale->id])
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertEquals(300, (float) $customer->fresh()->due);
+        $payment = $customer->payments()->latest('id')->first();
+        $this->assertSame($sale->id, $payment->sale_id);
+    }
+
+    public function test_a_payment_without_an_invoice_still_works_exactly_as_before(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $customer = Customer::create(['shop_id' => $shop->id, 'name' => 'Karim', 'due' => 500]);
+
+        $this->actingAs($owner, 'web')->post("/app/customers/{$customer->id}/payments", ['amount' => 200])
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertEquals(300, (float) $customer->fresh()->due);
+        $this->assertNull($customer->payments()->latest('id')->first()->sale_id);
+    }
+
+    public function test_cannot_tag_a_payment_to_another_customers_invoice(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $customer = Customer::create(['shop_id' => $shop->id, 'name' => 'Karim', 'due' => 500]);
+        $otherCustomer = Customer::create(['shop_id' => $shop->id, 'name' => 'Rahim', 'due' => 0]);
+        $otherSale = Sale::create(['shop_id' => $shop->id, 'customer_id' => $otherCustomer->id, 'invoice_no' => 'INV-2', 'date' => now()->toDateString(), 'time' => now()->toTimeString(), 'subtotal' => 100, 'total' => 100, 'profit' => 20, 'payment_mode' => 'cash']);
+
+        $response = $this->actingAs($owner, 'web')->post("/app/customers/{$customer->id}/payments", ['amount' => 100, 'sale_id' => $otherSale->id]);
+
+        $response->assertSessionHasErrors('sale_id');
+        $this->assertEquals(500, (float) $customer->fresh()->due); // unchanged
+    }
+
+    public function test_invoices_endpoint_shows_due_at_checkout_and_only_tagged_payments(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $customer = Customer::create(['shop_id' => $shop->id, 'name' => 'Karim', 'due' => 800]);
+        $saleA = Sale::create(['shop_id' => $shop->id, 'customer_id' => $customer->id, 'invoice_no' => 'INV-A', 'date' => now()->toDateString(), 'time' => now()->toTimeString(), 'subtotal' => 500, 'total' => 500, 'profit' => 100, 'payment_mode' => 'credit']);
+        $saleB = Sale::create(['shop_id' => $shop->id, 'customer_id' => $customer->id, 'invoice_no' => 'INV-B', 'date' => now()->toDateString(), 'time' => now()->toTimeString(), 'subtotal' => 300, 'total' => 300, 'profit' => 60, 'payment_mode' => 'credit']);
+        // a general (untagged) payment — must NOT show up as "paid toward" either invoice
+        $this->actingAs($owner, 'web')->post("/app/customers/{$customer->id}/payments", ['amount' => 100]);
+        // a payment explicitly tagged to invoice A
+        $this->actingAs($owner, 'web')->post("/app/customers/{$customer->id}/payments", ['amount' => 150, 'sale_id' => $saleA->id]);
+
+        $response = $this->actingAs($owner, 'web')->getJson("/app/customers/{$customer->id}/invoices");
+
+        $response->assertOk();
+        $invoices = collect($response->json('invoices'))->keyBy('invoice_no');
+        $this->assertEquals(500.0, $invoices['INV-A']['due_at_checkout']);
+        $this->assertEquals(150.0, $invoices['INV-A']['tagged_paid']); // only the explicitly-tagged payment
+        $this->assertEquals(300.0, $invoices['INV-B']['due_at_checkout']);
+        $this->assertEquals(0.0, $invoices['INV-B']['tagged_paid']); // the untagged ৳100 payment doesn't count here
+    }
+
+    public function test_invoices_endpoint_excludes_a_voided_sale(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $customer = Customer::create(['shop_id' => $shop->id, 'name' => 'Karim', 'due' => 0]);
+        Sale::create(['shop_id' => $shop->id, 'customer_id' => $customer->id, 'invoice_no' => 'INV-V', 'date' => now()->toDateString(), 'time' => now()->toTimeString(), 'subtotal' => 200, 'total' => 200, 'profit' => 40, 'payment_mode' => 'credit', 'voided_at' => now()]);
+
+        $response = $this->actingAs($owner, 'web')->getJson("/app/customers/{$customer->id}/invoices");
+
+        $response->assertOk()->assertJson(['invoices' => []]);
+    }
+
+    public function test_invoices_endpoint_excludes_a_sale_already_fully_paid_at_checkout(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $customer = Customer::create(['shop_id' => $shop->id, 'name' => 'Karim', 'due' => 0]);
+        $sale = Sale::create(['shop_id' => $shop->id, 'customer_id' => $customer->id, 'invoice_no' => 'INV-PAID', 'date' => now()->toDateString(), 'time' => now()->toTimeString(), 'subtotal' => 200, 'total' => 200, 'profit' => 40, 'payment_mode' => 'cash']);
+        SalePayment::create(['shop_id' => $shop->id, 'sale_id' => $sale->id, 'method' => 'cash', 'amount' => 200]);
+
+        $response = $this->actingAs($owner, 'web')->getJson("/app/customers/{$customer->id}/invoices");
+
+        $response->assertOk()->assertJson(['invoices' => []]);
     }
 
     public function test_staff_without_due_permission_cannot_view_history(): void

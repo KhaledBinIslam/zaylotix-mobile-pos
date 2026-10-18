@@ -5,6 +5,7 @@ namespace App\Http\Controllers\App;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\InstallmentPlan;
+use App\Models\Payment;
 use App\Support\InstallmentAllocation;
 use App\Support\Tenancy;
 use Illuminate\Http\Request;
@@ -27,6 +28,12 @@ class PaymentController extends Controller
             // it only tells InstallmentAllocation which installment(s) this
             // money actually covers (see its own docblock)
             'installment_plan_id' => ['nullable', Rule::exists('installment_plans', 'id')->where('customer_id', $customer->id)],
+            // optional — which invoice this payment is actually for (see
+            // invoices() below). Never changes the due math either; a
+            // payment with no sale_id still works exactly as it always has,
+            // this just makes a later per-invoice view possible going
+            // forward (see docs/FIX_PLAN.md Phase 3.2).
+            'sale_id' => ['nullable', Rule::exists('sales', 'id')->where('customer_id', $customer->id)],
         ]);
 
         $amount = (float) $data['amount'];
@@ -54,6 +61,7 @@ class PaymentController extends Controller
 
             $locked->payments()->create([
                 'shop_id' => Tenancy::id(),
+                'sale_id' => $data['sale_id'] ?? null,
                 'installment_plan_id' => $data['installment_plan_id'] ?? null,
                 'user_id' => Auth::guard('web')->id() ?? Auth::guard('sanctum')->id(),
                 'amount' => $amount,
@@ -93,6 +101,48 @@ class PaymentController extends Controller
         ]);
 
         return response()->json(['payments' => $payments]);
+    }
+
+    /**
+     * Phase 3.2 (see docs/FIX_PLAN.md) — a per-invoice reference view, NOT a
+     * second source of truth: customer.due stays the one authoritative
+     * total, always shown alongside this. due_at_checkout is exact and
+     * immutable (total minus whatever was tendered at the moment of sale);
+     * tagged_paid only ever reflects payments explicitly collected against
+     * THIS invoice via sale_id (see store() above) — a historical lump
+     * payment collected before that existed, or any payment collected
+     * without picking an invoice, is correctly NOT counted here, since
+     * there's no reliable way to know which invoice(s) it actually applied
+     * to. That's why this never claims to show a current "still owed"
+     * figure per invoice — only what was due at checkout and what's since
+     * been explicitly tagged to it.
+     */
+    public function invoices(Customer $customer)
+    {
+        $this->authorize('view', $customer);
+
+        $invoices = $customer->sales()
+            ->whereNull('voided_at')
+            ->with('payments')
+            ->orderByDesc('date')->orderByDesc('id')
+            ->get()
+            ->map(function ($sale) {
+                $tendered = (float) $sale->payments->sum('amount');
+                $dueAtCheckout = max(0, round((float) $sale->total - $tendered, 2));
+
+                return [
+                    'id' => $sale->id,
+                    'invoice_no' => $sale->invoice_no,
+                    'date' => $sale->date,
+                    'total' => (float) $sale->total,
+                    'due_at_checkout' => $dueAtCheckout,
+                    'tagged_paid' => (float) Payment::where('sale_id', $sale->id)->sum('amount'),
+                ];
+            })
+            ->filter(fn ($row) => $row['due_at_checkout'] > 0)
+            ->values();
+
+        return response()->json(['invoices' => $invoices]);
     }
 
     public function full(Customer $customer)
