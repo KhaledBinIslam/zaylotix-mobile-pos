@@ -147,9 +147,12 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
     Route::middleware('perm:pos')->group(function () {
         Route::get('pos', [PosController::class, 'index'])->name('pos');
         Route::post('pos/checkout', [PosController::class, 'checkout'])->name('pos.checkout');
+        Route::post('pos/billing-preview', [PosController::class, 'billingPreview'])->name('pos.billingPreview');
+        Route::post('pos/bogo-suggestions', [PosController::class, 'bogoSuggestions'])->name('pos.bogoSuggestions');
         Route::get('pos/barcode/{barcode}', [PosController::class, 'barcode'])
             ->middleware('sales.mode')->name('pos.barcode');
         Route::get('customers/lookup', [CustomerController::class, 'lookup'])->name('customers.lookup');
+        Route::get('customers/search', [CustomerController::class, 'search'])->name('customers.search');
 
         Route::post('pos/gateway/{provider}/initiate', [GatewayCheckoutController::class, 'initiate'])->name('gatewayCheckout.initiate');
         Route::get('pos/gateway/status/{reference}', [GatewayCheckoutController::class, 'status'])->name('gatewayCheckout.status');

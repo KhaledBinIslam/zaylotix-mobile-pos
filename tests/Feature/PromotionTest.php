@@ -112,6 +112,89 @@ class PromotionTest extends TestCase
         $this->assertEquals(60.0, (float) Sale::first()->total); // no discount, promotion is off
     }
 
+    // ---- Phase 2: suggest a combo's missing free reward item (see docs/FIX_PLAN.md) ----
+
+    public function test_combo_suggests_the_missing_free_drink_once_the_burger_is_in_cart(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'promotions');
+        $burger = Product::create(['shop_id' => $shop->id, 'name' => 'Burger', 'cost' => 50, 'price' => 100, 'stock' => 20]);
+        $drink = Product::create(['shop_id' => $shop->id, 'name' => 'Drink', 'cost' => 10, 'price' => 30, 'stock' => 20]);
+        Promotion::create(['shop_id' => $shop->id, 'name' => 'Combo', 'type' => 'bogo', 'buy_product_id' => $burger->id, 'buy_qty' => 1, 'get_product_id' => $drink->id, 'get_qty' => 1, 'get_discount_percent' => 100]);
+
+        $response = $this->actingAs($owner, 'web')->postJson('/app/pos/bogo-suggestions', [
+            'items' => [['product_id' => $burger->id, 'qty' => 1]],
+        ]);
+
+        $response->assertOk();
+        $suggestions = $response->json('suggestions');
+        $this->assertCount(1, $suggestions);
+        $this->assertSame($drink->id, $suggestions[0]['product_id']);
+        $this->assertSame(1, $suggestions[0]['missing_qty']);
+    }
+
+    public function test_combo_suggests_nothing_once_the_drink_has_already_been_added(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'promotions');
+        $burger = Product::create(['shop_id' => $shop->id, 'name' => 'Burger', 'cost' => 50, 'price' => 100, 'stock' => 20]);
+        $drink = Product::create(['shop_id' => $shop->id, 'name' => 'Drink', 'cost' => 10, 'price' => 30, 'stock' => 20]);
+        Promotion::create(['shop_id' => $shop->id, 'name' => 'Combo', 'type' => 'bogo', 'buy_product_id' => $burger->id, 'buy_qty' => 1, 'get_product_id' => $drink->id, 'get_qty' => 1, 'get_discount_percent' => 100]);
+
+        $response = $this->actingAs($owner, 'web')->postJson('/app/pos/bogo-suggestions', [
+            'items' => [
+                ['product_id' => $burger->id, 'qty' => 1],
+                ['product_id' => $drink->id, 'qty' => 1],
+            ],
+        ]);
+
+        $response->assertOk()->assertJson(['suggestions' => []]);
+    }
+
+    public function test_self_referential_bogo_never_suggests_adding_more_of_the_same_product(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'promotions');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Soap', 'cost' => 10, 'price' => 20, 'stock' => 50]);
+        Promotion::create(['shop_id' => $shop->id, 'name' => 'B2G1', 'type' => 'bogo', 'buy_product_id' => $product->id, 'buy_qty' => 2, 'get_product_id' => $product->id, 'get_qty' => 1, 'get_discount_percent' => 100]);
+
+        $response = $this->actingAs($owner, 'web')->postJson('/app/pos/bogo-suggestions', [
+            'items' => [['product_id' => $product->id, 'qty' => 2]],
+        ]);
+
+        $response->assertOk()->assertJson(['suggestions' => []]);
+    }
+
+    public function test_suggestions_are_empty_below_the_buy_quantity(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'promotions');
+        $burger = Product::create(['shop_id' => $shop->id, 'name' => 'Burger', 'cost' => 50, 'price' => 100, 'stock' => 20]);
+        $drink = Product::create(['shop_id' => $shop->id, 'name' => 'Drink', 'cost' => 10, 'price' => 30, 'stock' => 20]);
+        Promotion::create(['shop_id' => $shop->id, 'name' => 'Combo', 'type' => 'bogo', 'buy_product_id' => $burger->id, 'buy_qty' => 2, 'get_product_id' => $drink->id, 'get_qty' => 1, 'get_discount_percent' => 100]);
+
+        $response = $this->actingAs($owner, 'web')->postJson('/app/pos/bogo-suggestions', [
+            'items' => [['product_id' => $burger->id, 'qty' => 1]],
+        ]);
+
+        $response->assertOk()->assertJson(['suggestions' => []]);
+    }
+
+    public function test_suggestions_require_the_promotions_feature(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        // deliberately NOT granting 'promotions'
+        $burger = Product::create(['shop_id' => $shop->id, 'name' => 'Burger', 'cost' => 50, 'price' => 100, 'stock' => 20]);
+        Product::create(['shop_id' => $shop->id, 'name' => 'Drink', 'cost' => 10, 'price' => 30, 'stock' => 20]);
+        Promotion::create(['shop_id' => $shop->id, 'name' => 'Combo', 'type' => 'bogo', 'buy_product_id' => $burger->id, 'buy_qty' => 1, 'get_product_id' => $burger->id, 'get_qty' => 1, 'get_discount_percent' => 100]);
+
+        $response = $this->actingAs($owner, 'web')->postJson('/app/pos/bogo-suggestions', [
+            'items' => [['product_id' => $burger->id, 'qty' => 1]],
+        ]);
+
+        $response->assertOk()->assertJson(['suggestions' => []]);
+    }
+
     // ---- coupon codes ----
 
     public function test_a_valid_percent_coupon_discounts_the_subtotal(): void

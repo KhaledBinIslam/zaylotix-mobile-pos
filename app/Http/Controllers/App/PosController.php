@@ -18,6 +18,7 @@ use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\SalePayment;
 use App\Models\Shop;
+use App\Support\BillingPreview;
 use App\Support\PromotionEngine;
 use App\Support\Tenancy;
 use Illuminate\Http\Request;
@@ -136,6 +137,51 @@ class PosController extends Controller
         $sale = self::performCheckout($request->validated(), $shopId, $userId);
 
         return response()->json(['sale' => $sale]);
+    }
+
+    /**
+     * Reported bug: the billing popup computed its own displayed total
+     * client-side (manual discount only — never a coupon's or redeemed
+     * loyalty points' discount), so it tendered a higher amount than the
+     * server's real, lower, post-coupon total and tripped checkout's own
+     * "payment exceeds total" guard. The client now calls this whenever the
+     * coupon code or redeemed-points value changes, and uses the returned
+     * figures to display/tender from instead of recomputing them itself —
+     * see BillingPreview's own docblock for why this can never drift from
+     * what checkout() actually charges.
+     */
+    public function billingPreview(CheckoutRequest $request)
+    {
+        $shopId = Tenancy::id();
+        $userId = Auth::guard('web')->id() ?? Auth::guard('sanctum')->id();
+        $breakdown = BillingPreview::compute($request->validated(), $shopId, $userId);
+
+        return response()->json($breakdown);
+    }
+
+    /**
+     * Reported gap: a combo BOGO's free reward item never showed up unless
+     * the cashier already knew to add it themselves. Cheap, read-only (no
+     * locks, no transaction) — called on every cart change, unlike
+     * billingPreview() above which only runs the full checkout-pricing
+     * simulation when a coupon/redeem is actually active.
+     */
+    public function bogoSuggestions(Request $request)
+    {
+        $shop = Tenancy::shop();
+        if (! $shop?->hasFeature('promotions')) {
+            return response()->json(['suggestions' => []]);
+        }
+
+        $items = $request->validate([
+            'items' => ['required', 'array'],
+            'items.*.product_id' => ['required', 'integer'],
+            'items.*.product_unit_id' => ['nullable', 'integer'],
+            'items.*.product_variant_id' => ['nullable', 'integer'],
+            'items.*.qty' => ['required', 'numeric'],
+        ])['items'];
+
+        return response()->json(['suggestions' => PromotionEngine::suggestMissingBogoItems($items)]);
     }
 
     /**

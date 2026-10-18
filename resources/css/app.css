@@ -346,7 +346,10 @@ body {
    pseudo-classes beat one plain class) and would stretch this to fill its
    flex row — flex-basis sidesteps that fight entirely, since a flex
    item's explicit flex-basis takes priority over its own width. */
-.qn-input { flex: 0 0 38px; min-width: 26px; text-align: center; font-weight: 750; font-variant-numeric: tabular-nums; padding: 4px 2px; border-radius: 8px; }
+/* reported: a typed 3+ digit qty (100, 1000) could clip/scroll inside the
+   old 38px basis — widened enough for 4 digits at this font size without
+   crowding the +/- buttons either side of it. */
+.qn-input { flex: 0 0 46px; min-width: 30px; text-align: center; font-weight: 750; font-variant-numeric: tabular-nums; padding: 4px 2px; border-radius: 8px; }
 
 .pgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 /* content-visibility:auto tells the browser to skip layout/paint entirely

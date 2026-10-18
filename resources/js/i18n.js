@@ -969,6 +969,8 @@ export const translations = {
     'pos.couponCode': { bn: 'কুপন কোড', en: 'Coupon code' },
     'pos.couponCodeHint': { bn: '(ঐচ্ছিক)', en: '(optional)' },
     'pos.couponCodePlaceholder': { bn: 'কোড থাকলে লিখুন', en: 'Enter code if any' },
+    'pos.bogoSuggestion': { bn: 'অফার: {emoji} {name} ফ্রি পাবেন ({qty}টি)', en: 'Offer: get {qty}x {emoji} {name} free' },
+    'pos.bogoAddFree': { bn: 'যুক্ত করুন', en: 'Add free' },
     'pos.redeemPoints': { bn: 'পয়েন্ট রিডিম', en: 'Redeem points' },
     'pos.redeemPointsHint': { bn: '(আছে {points} পয়েন্ট)', en: '(has {points} points)' },
     'pos.pointsEarnedReceipt': { bn: '⭐ {n} পয়েন্ট অর্জিত', en: '⭐ {n} points earned' },

@@ -12,6 +12,7 @@ import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts';
 import { useOfflineSync } from '@/composables/useOfflineSync';
 import { usePollingReload } from '@/composables/usePollingReload';
 import { fetchWithSessionRetry } from '@/support/fetchWithSessionRetry';
+import { isStaleAutoFill } from '@/support/customerAutoFill';
 
 const props = defineProps({
     products: Array,
@@ -254,6 +255,11 @@ function inc(line, d) {
     line.qty += d;
     if (line.qty <= 0) cart.value = cart.value.filter((l) => l !== line);
 }
+// reported: the only way to drop a line was decrementing it to zero one tap
+// at a time — painful for a line with a large qty. One explicit "✕" button.
+function removeLine(line) {
+    cart.value = cart.value.filter((l) => l !== line);
+}
 // reported: a cart line's quantity could only be nudged one tap at a time
 // (+/- buttons) — no way to type a number directly, painful for a large
 // quantity like 50. Typing is only for non-weighed lines; a weighed line's
@@ -420,11 +426,22 @@ function lineTotal(l) {
 }
 
 const subtotal = computed(() => cart.value.reduce((s, l) => s + lineTotal(l), 0));
-// complimentary forces the server to charge nothing (discount = subtotal,
-// see PosController::performCheckout) — the displayed total must reflect
-// that the instant "🎁 Complimentary" is picked, not just after the receipt
-// comes back, or the sheet keeps showing a price that's never actually charged
-const effectiveDiscount = computed(() => (payMode.value === 'complimentary' ? subtotal.value : (discount.value || 0)));
+// Reported bug: a coupon code's (or redeemed loyalty points') discount was
+// never reflected here — only the manual overall discount was — so this
+// displayed (and tendered) a higher total than the server's real, lower,
+// post-coupon total, tripping checkout's own "payment exceeds total" guard.
+// billingPreview (see refreshBillingPreview() below) asks the server for
+// the real figures whenever a coupon/redeem is active, using the exact same
+// pricing logic checkout() itself runs — so these can never drift from what
+// checkout actually charges. Falls back to the plain client-only math
+// (unchanged from before) whenever neither is active, so the common no-
+// coupon sale needs no network round trip at all.
+const billingPreview = ref(null);
+const effectiveDiscount = computed(() => {
+    if (payMode.value === 'complimentary') return subtotal.value;
+    if (billingPreview.value) return billingPreview.value.discount;
+    return discount.value || 0;
+});
 // Display-only breakdown for the checkout sheet: `subtotal` above is
 // already net of each line's own discount (that's what the checkout math
 // needs), so showing it next to "Discount: -৳0" whenever only per-line
@@ -439,11 +456,76 @@ const totalDiscount = computed(() => (grossSubtotal.value - subtotal.value) + ef
 // charge is additive on top of the discounted subtotal, unlike VAT (which is
 // backed out of an already-inclusive price and shown separately, never added)
 const serviceCharge = computed(() => {
+    if (payMode.value !== 'complimentary' && billingPreview.value) return billingPreview.value.service_charge;
     const rate = shop.value?.service_charge_rate;
     if (rate === null || rate === undefined) return 0;
     return Math.round(Math.max(0, subtotal.value - effectiveDiscount.value) * Number(rate) / 100 * 100) / 100;
 });
-const total = computed(() => Math.max(0, subtotal.value - effectiveDiscount.value) + serviceCharge.value);
+const total = computed(() => {
+    if (payMode.value !== 'complimentary' && billingPreview.value) return billingPreview.value.total;
+    return Math.max(0, subtotal.value - effectiveDiscount.value) + serviceCharge.value;
+});
+
+// Debounced server round-trip for the coupon/redeem-points case only (see
+// effectiveDiscount's comment above) — reuses buildCheckoutPayload() so the
+// preview always prices the EXACT same cart/discount/coupon/redeem state
+// checkout() would.
+function billingPreviewNeeded() {
+    return cart.value.length > 0 && !!(couponCode.value.trim() || Number(redeemPoints.value) > 0);
+}
+let billingPreviewTimer = null;
+async function refreshBillingPreview() {
+    if (!billingPreviewNeeded()) { billingPreview.value = null; return; }
+    try {
+        const res = await fetch(route('app.pos.billingPreview'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken(), Accept: 'application/json' },
+            body: JSON.stringify(buildCheckoutPayload()),
+        });
+        billingPreview.value = res.ok ? await res.json() : null;
+    } catch (e) {
+        // offline/unreachable — fall back to the plain client-only math
+        // above rather than blocking; the real checkout (online or queued
+        // offline) still re-validates for real at that point
+        billingPreview.value = null;
+    }
+}
+watch([cart, discount, couponCode, redeemPoints, customerPhone, payMode, saleType], () => {
+    clearTimeout(billingPreviewTimer);
+    if (!billingPreviewNeeded()) { billingPreview.value = null; return; }
+    billingPreviewTimer = setTimeout(refreshBillingPreview, 400);
+}, { deep: true });
+
+// Reported gap: a combo BOGO ("buy 1 burger get 1 drink free") silently did
+// nothing unless the cashier already knew to add the free item themselves
+// — see PromotionEngine::suggestMissingBogoItems()'s own docblock for why
+// this only ever suggests a DIFFERENT reward product, never "add more of
+// what you're already buying". One-tap add, not continuous auto-insertion,
+// so it can never fight a cashier who removes the suggested item on purpose.
+const bogoSuggestions = ref([]);
+let bogoSuggestionsTimer = null;
+async function refreshBogoSuggestions() {
+    if (!hasPromotions.value || !cart.value.length) { bogoSuggestions.value = []; return; }
+    try {
+        const res = await fetch(route('app.pos.bogoSuggestions'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken(), Accept: 'application/json' },
+            body: JSON.stringify({ items: cart.value.map((l) => ({ product_id: l.product_id, product_unit_id: l.product_unit_id, product_variant_id: l.product_variant_id, qty: l.qty })) }),
+        });
+        bogoSuggestions.value = res.ok ? (await res.json()).suggestions || [] : [];
+    } catch (e) {
+        bogoSuggestions.value = [];
+    }
+}
+watch(cart, () => {
+    clearTimeout(bogoSuggestionsTimer);
+    if (!hasPromotions.value || !cart.value.length) { bogoSuggestions.value = []; return; }
+    bogoSuggestionsTimer = setTimeout(refreshBogoSuggestions, 400);
+}, { deep: true });
+function addBogoSuggestion(s) {
+    for (let i = 0; i < s.missing_qty; i++) addToCart(s.product_id, null, { silent: true });
+    toast('🎁 ' + s.product_emoji + ' ' + s.product_name + ' ' + t('pos.added'));
+}
 
 // Split mode: cashier types how much came in via each method; whatever's
 // left of the total is shown live as due (server enforces the same math —
@@ -529,7 +611,11 @@ function resetCartAfterCheckout() {
     quotationId.value = null;
     customerPhone.value = '';
     customerName.value = '';
+    lastAutoFilledName = null;
     customerLookup.value = null;
+    nameSearchResults.value = [];
+    billingPreview.value = null;
+    bogoSuggestions.value = [];
     showCustomerInfo.value = false;
     splitMode.value = false;
     splitAmounts.value = { cash: '', bkash: '', nagad: '' };
@@ -733,6 +819,7 @@ function holdCart() {
             discount.value = 0;
             customerPhone.value = '';
             customerName.value = '';
+            lastAutoFilledName = null;
             customerLookup.value = null;
             cartOpen.value = false;
         },
@@ -750,6 +837,7 @@ async function resumeHeldCart(id) {
 
     cart.value = data.cart || [];
     discount.value = data.discount || 0;
+    lastAutoFilledName = null; // this name came from the held cart itself, never treat it as our own stale auto-fill
     customerPhone.value = data.customer_phone || '';
     customerName.value = data.customer_name || '';
     heldSheet.value = false;
@@ -828,10 +916,22 @@ function sendMemoWA() {
 // already exists so their name (and outstanding due) shows automatically —
 // saves re-typing the name for a repeat customer and avoids duplicate records
 let lookupTimer = null;
+// tracks the exact string WE last auto-filled (never a cashier's own typed
+// name) — reported bug: editing the phone to a different existing customer
+// left the previous customer's auto-filled name sitting in the field, which
+// then got sent to checkout and silently overwrote that DIFFERENT, unrelated
+// customer's real name server-side (PosController::performCheckout's
+// "update name if it differs" logic trusted whatever was posted). A
+// hand-typed name is never touched by this — only our own stale auto-fill is.
+let lastAutoFilledName = null;
 watch(customerPhone, (val) => {
     clearTimeout(lookupTimer);
     customerLookup.value = null;
     redeemPoints.value = '';
+    if (isStaleAutoFill(customerName.value, lastAutoFilledName)) {
+        customerName.value = '';
+        lastAutoFilledName = null;
+    }
     const phone = (val || '').trim();
     if (phone.length < 6) return;
 
@@ -844,10 +944,44 @@ watch(customerPhone, (val) => {
             customerLookup.value = data;
             if (data.found && !customerName.value.trim()) {
                 customerName.value = data.name;
+                lastAutoFilledName = data.name;
             }
         } catch (e) { /* not critical to checkout — silently skip */ }
     }, 400);
 });
+
+// reported: a repeat customer could only be found by exact phone number —
+// no way to recognize them by name (e.g. cashier doesn't have the phone
+// handy, or the customer shares a household line). Only searches while no
+// phone has been typed/resolved yet, so it never fights the phone-driven
+// lookup above once a customer's already been picked.
+const nameSearchResults = ref([]);
+let nameSearchTimer = null;
+watch(customerName, (val) => {
+    clearTimeout(nameSearchTimer);
+    if (customerPhone.value.trim() || isStaleAutoFill(val, lastAutoFilledName)) {
+        nameSearchResults.value = [];
+        return;
+    }
+    const q = (val || '').trim();
+    if (q.length < 2) { nameSearchResults.value = []; return; }
+
+    nameSearchTimer = setTimeout(async () => {
+        try {
+            const res = await fetch(route('app.customers.search') + '?q=' + encodeURIComponent(q), {
+                headers: { Accept: 'application/json' },
+            });
+            const data = await res.json();
+            nameSearchResults.value = data.results || [];
+        } catch (e) { /* not critical to checkout — silently skip */ }
+    }, 400);
+});
+function pickCustomerFromSearch(c) {
+    nameSearchResults.value = [];
+    customerPhone.value = c.phone || '';
+    customerName.value = c.name;
+    customerLookup.value = { found: true, name: c.name, due: Number(c.due), loyalty_points: c.loyalty_points };
+}
 
 /* ---------------- barcode scanner ---------------- */
 const scannerOpen = ref(false);
@@ -1166,10 +1300,10 @@ useKeyboardShortcuts({
                 </div>
                 <div class="card" style="padding:0;margin-bottom:14px">
                     <template v-if="cart.length">
-                        <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;padding:8px 12px;font-size:10.5px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.03em;border-bottom:1px solid var(--line)">
-                            <span>{{ t('pos.item') }}</span><span>{{ t('pos.qty') }}</span><span style="text-align:right">{{ t('pos.lineTotal') }}</span>
+                        <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:8px;padding:8px 12px;font-size:10.5px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.03em;border-bottom:1px solid var(--line)">
+                            <span>{{ t('pos.item') }}</span><span>{{ t('pos.qty') }}</span><span style="text-align:right">{{ t('pos.lineTotal') }}</span><span></span>
                         </div>
-                        <div v-for="l in cart" :key="l.product_id + ':' + (l.product_unit_id || l.product_variant_id || 'base')" style="display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--line);font-size:12.5px">
+                        <div v-for="l in cart" :key="l.product_id + ':' + (l.product_unit_id || l.product_variant_id || 'base')" style="display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--line);font-size:12.5px">
                             <span style="min-width:0"><b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ productOf(l.product_id)?.name }}</b></span>
                             <span v-if="isWeighedLine(l)" style="display:flex;align-items:center;gap:4px">
                                 <button class="qbtn sm ghost" style="width:auto;padding:0 8px;font-size:11px" @click="openWeightEntry(productOf(l.product_id))">{{ formatWeightQty(productOf(l.product_id), l.qty) }} ✎</button>
@@ -1180,9 +1314,14 @@ useKeyboardShortcuts({
                                 <button class="qbtn" style="width:22px;height:22px;font-size:13px" @click="inc(l, 1)">＋</button>
                             </span>
                             <b style="text-align:right">{{ money(lineTotal(l)) }}</b>
+                            <button type="button" class="qbtn sm ghost" style="width:22px;height:22px;font-size:12px;color:var(--rose)" :title="t('common.delete')" @click="removeLine(l)">✕</button>
                         </div>
                     </template>
                     <div v-else class="empty" style="padding:24px 0"><div class="big">🛒</div>{{ t('pos.cartEmpty') }}</div>
+                </div>
+                <div v-for="s in bogoSuggestions" :key="s.promotion_id" class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:8px;justify-content:space-between">
+                    <span style="font-size:13px">🎁 {{ t('pos.bogoSuggestion', { emoji: s.product_emoji, name: s.product_name, qty: s.missing_qty }) }}</span>
+                    <button class="btn sm" style="width:auto;padding:6px 12px" @click="addBogoSuggestion(s)">{{ t('pos.bogoAddFree') }}</button>
                 </div>
                 <div v-if="cart.length" class="card" style="margin-bottom:14px">
                     <div style="display:flex;justify-content:space-between;font-size:18px;font-weight:800"><span>{{ t('pos.subtotal') }}</span><b style="color:var(--gold)">{{ money(subtotal) }}</b></div>
@@ -1252,6 +1391,7 @@ useKeyboardShortcuts({
                                 <input type="number" inputmode="numeric" class="qn-input" :value="l.qty" min="1" @change="setQty(l, $event.target.value)">
                                 <button class="qbtn" @click="inc(l, 1)">＋</button>
                             </template>
+                            <button type="button" class="qbtn ghost" style="width:30px;height:30px;color:var(--rose)" :title="t('common.delete')" @click="removeLine(l)">✕</button>
                         </div>
                         <div class="cart-line-discount">
                             <span>{{ t('pos.itemDiscount') }}</span>
@@ -1279,6 +1419,11 @@ useKeyboardShortcuts({
                     </div>
                 </div>
 
+                <div v-for="s in bogoSuggestions" :key="s.promotion_id" class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:8px;justify-content:space-between">
+                    <span style="font-size:13px">🎁 {{ t('pos.bogoSuggestion', { emoji: s.product_emoji, name: s.product_name, qty: s.missing_qty }) }}</span>
+                    <button class="btn sm" style="width:auto;padding:6px 12px" @click="addBogoSuggestion(s)">{{ t('pos.bogoAddFree') }}</button>
+                </div>
+
                 <!-- collapsed by default (see showCustomerInfo's docblock) — a fast
                      cash sale needs zero taps here; a shop that wants due/loyalty/
                      memo tracking is one tap away, same fields as always -->
@@ -1298,9 +1443,20 @@ useKeyboardShortcuts({
                     <label>{{ t('pos.redeemPoints') }} <span style="color:var(--dim);font-weight:400">{{ t('pos.redeemPointsHint', { points: customerLookup.loyalty_points }) }}</span></label>
                     <input v-model.number="redeemPoints" type="number" inputmode="numeric" placeholder="0" min="0" :max="customerLookup.loyalty_points">
                 </div>
-                <div class="field">
+                <div class="field" style="position:relative">
                     <label>{{ t('pos.customerName') }}</label>
-                    <input v-model="customerName" :placeholder="t('pos.customerName')">
+                    <input v-model="customerName" :placeholder="t('pos.customerName')" autocomplete="off">
+                    <div v-if="nameSearchResults.length" style="position:absolute;z-index:5;left:0;right:0;top:100%;margin-top:4px;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.12)">
+                        <button
+                            v-for="c in nameSearchResults" :key="c.id" type="button"
+                            style="display:block;width:100%;text-align:left;padding:9px 12px;font-size:13px;border-bottom:1px solid var(--line)"
+                            @click="pickCustomerFromSearch(c)"
+                        >
+                            <b>{{ c.name }}</b>
+                            <span style="color:var(--mut)"> {{ c.phone }}</span>
+                            <span v-if="c.due > 0" style="color:var(--rose)"> • {{ t('pos.dueExists', { due: money(c.due) }) }}</span>
+                        </button>
+                    </div>
                 </div>
                 </template>
 

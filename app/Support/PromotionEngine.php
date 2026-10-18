@@ -104,6 +104,81 @@ class PromotionEngine
     }
 
     /**
+     * Reported gap: a combo-style BOGO ("buy 1 burger get 1 drink free")
+     * only ever discounts a reward unit the cashier already thought to add
+     * themselves — computeAutoLineDiscounts() never inserts it, by design
+     * (see that method's docblock). This tells the billing popup which
+     * reward product(s) the current cart has already earned but doesn't
+     * yet contain, so it can prompt the cashier to add it with one tap
+     * instead of the promo silently doing nothing.
+     *
+     * Deliberately skips the self-referential case (reward product ==
+     * trigger product, e.g. plain "buy 2 get 1 free" of the same item):
+     * there, the "bought" pool and the "reward" pool are the same cart
+     * lines, so simply ringing up the item normally already satisfies the
+     * promo — computeAutoLineDiscounts() correctly prices one of those
+     * units free with no extra line needed. Suggesting an "add more" tap
+     * there would also be mathematically unsafe: the suggested unit would
+     * itself count toward the buy quantity, which could cascade into
+     * suggesting still more. Read-only, no locks — this never runs inside
+     * the checkout transaction and never affects stock/money itself, only
+     * what's suggested to the client before checkout.
+     */
+    public static function suggestMissingBogoItems(array $items): array
+    {
+        $promotions = Promotion::where('type', 'bogo')->where('active', true)->get()
+            ->filter(fn ($p) => $p->isWithinDateWindow())
+            ->values();
+
+        if ($promotions->isEmpty()) {
+            return [];
+        }
+
+        $qtyByProduct = [];
+        foreach ($items as $item) {
+            if (! empty($item['product_unit_id']) || ! empty($item['product_variant_id'])) {
+                continue;
+            }
+            $pid = (int) $item['product_id'];
+            $qtyByProduct[$pid] = ($qtyByProduct[$pid] ?? 0) + (int) $item['qty'];
+        }
+
+        $suggestions = [];
+        foreach ($promotions as $promo) {
+            $buyQty = $promo->buy_qty ?: 1;
+            $rewardProductId = (int) ($promo->get_product_id ?: $promo->buy_product_id);
+            $buyProductId = (int) $promo->buy_product_id;
+            $qtyBought = $qtyByProduct[$buyProductId] ?? 0;
+
+            if ($qtyBought < $buyQty || $rewardProductId === $buyProductId) {
+                continue;
+            }
+
+            $times = intdiv($qtyBought, $buyQty);
+            $entitled = $times * ($promo->get_qty ?: 1);
+            $missing = $entitled - ($qtyByProduct[$rewardProductId] ?? 0);
+            if ($missing <= 0) {
+                continue;
+            }
+
+            $product = Product::find($rewardProductId);
+            if (! $product) {
+                continue;
+            }
+
+            $suggestions[] = [
+                'promotion_id' => $promo->id,
+                'product_id' => $rewardProductId,
+                'product_name' => $product->name,
+                'product_emoji' => $product->emoji,
+                'missing_qty' => $missing,
+            ];
+        }
+
+        return $suggestions;
+    }
+
+    /**
      * Must be called from inside the checkout transaction — locks the
      * promotion row so two near-simultaneous checkouts against the last
      * remaining redemption of a capped coupon can't both succeed.

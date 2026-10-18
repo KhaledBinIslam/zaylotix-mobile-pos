@@ -71,4 +71,26 @@ class CustomerController extends Controller
             'loyalty_points' => $customer->loyalty_points,
         ]);
     }
+
+    /**
+     * Used by the POS checkout sheet's name field — the phone-based lookup()
+     * above only ever finds a customer the cashier already knows the exact
+     * phone number for; this covers the equally common case of recognizing
+     * a repeat customer by name instead, especially useful when a customer
+     * shares a household phone or the cashier simply doesn't have it handy.
+     */
+    public function search(Request $request)
+    {
+        $q = trim((string) $request->get('q', ''));
+        if (mb_strlen($q) < 2) {
+            return response()->json(['results' => []]);
+        }
+
+        $customers = Customer::where('name', 'like', '%'.$q.'%')
+            ->orderBy('name')
+            ->limit(8)
+            ->get(['id', 'name', 'phone', 'due', 'loyalty_points']);
+
+        return response()->json(['results' => $customers]);
+    }
 }
