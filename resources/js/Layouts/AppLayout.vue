@@ -588,7 +588,12 @@ const mobileNavSlots = computed(() => {
                 </div>
             </div>
             <div v-else class="btnrow" style="margin-top:8px">
-                <button v-if="entry.status === 'failed' && entry.failureKind === 'transient'" class="btn sm" style="flex:1" @click="offlineSync.retry(entry.id)">{{ t('offline.retryAll') }}</button>
+                <!-- failureKind !== 'permanent' (not just === 'transient') deliberately
+                     also covers a legacy entry queued before this fix existed — it has
+                     no failureKind at all yet, so it still deserves a plain retry that
+                     re-attempts against the current (fixed) server logic, rather than
+                     only ever offering "cancel" for something that might now succeed. -->
+                <button v-if="entry.status === 'failed' && entry.failureKind !== 'permanent'" class="btn sm" style="flex:1" @click="offlineSync.retry(entry.id)">{{ t('offline.retryAll') }}</button>
                 <button class="btn sm ghost" style="flex:1" @click="startCancel(entry.id)">{{ t('offline.cancelThisSale') }}</button>
             </div>
         </div>
