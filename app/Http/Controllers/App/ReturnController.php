@@ -798,6 +798,31 @@ class ReturnController extends Controller
             ]);
         }
 
+        // Confirmed real bug (see docs/FIX_PLAN.md Phase 3.1): $netSettlement
+        // above is the correct NET figure, but until now it was only ever
+        // used in memory to move cash/due — never persisted anywhere. Every
+        // later read of this sale (invoice view, printed/WhatsApp memo, the
+        // "split into installments" flow) recomputed due as a generic
+        // `total - sum(payments)`, which — knowing nothing about the
+        // trade-in — overstated it by exactly the credit amount. Recording
+        // the credit as its own tender line (method=trade_credit, same
+        // shape as any other SalePayment, so every existing sum(payments)
+        // call site already handles it with zero special-casing) makes that
+        // generic formula correct again with no other code needing to change.
+        // min($credit, $newTotal): only the portion of the trade-in that was
+        // actually applied toward THIS sale's total counts here — if the
+        // traded-in item was worth more than the new item(s), the excess is
+        // refunded/credited separately above, not "spent" on this sale.
+        $creditApplied = round(min($credit, $newTotal), 2);
+        if ($creditApplied > 0) {
+            SalePayment::create([
+                'shop_id' => $shopId,
+                'sale_id' => $exchangeSale->id,
+                'method' => 'trade_credit',
+                'amount' => $creditApplied,
+            ]);
+        }
+
         // Not a DB column — set on the model purely so the memo can show the
         // price difference and what the customer actually paid/received,
         // without the frontend having to re-derive it from new_items_total

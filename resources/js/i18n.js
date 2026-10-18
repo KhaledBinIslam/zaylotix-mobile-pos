@@ -582,6 +582,7 @@ export const translations = {
     'pay.complimentary': { bn: 'ফ্রি (কমপ্লিমেন্টারি)', en: 'Complimentary (free)' },
     'pay.complimentaryActiveHint': { bn: 'এই বিল ফ্রি দেওয়া হচ্ছে — কোনো টাকা নেওয়া হবে না।', en: 'This bill is being given away free — no payment will be collected.' },
     'pay.split': { bn: 'ভাগ করা পেমেন্ট', en: 'Split payment' },
+    'pay.tradeCredit': { bn: 'ট্রেড-ইন ক্রেডিট', en: 'Trade-in credit' },
 
     // ---- more page ----
     'more.title': { bn: 'আরো', en: 'More' },

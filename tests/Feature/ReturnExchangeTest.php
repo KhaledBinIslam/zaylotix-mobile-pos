@@ -297,6 +297,72 @@ class ReturnExchangeTest extends TestCase
         $this->assertEquals(1000.0, (float) $shop->fresh()->cash_balance); // unchanged
     }
 
+    /**
+     * Phase 3.1 — see docs/FIX_PLAN.md. Confirmed real bug, worked example
+     * from the audit: trade in a ৳55 item, take a ৳100 item, pay the ৳45 net
+     * difference in cash. The customer owes nothing — net_settlement was
+     * always computed correctly in memory, but the credit was never
+     * recorded anywhere, so every later read of this sale (invoice/memo/
+     * installment-seeding) recomputed `total - tendered` = 100 - 45 = 55,
+     * showing a bogus ৳55 due on a fully-settled exchange.
+     */
+    public function test_exchange_credit_is_recorded_so_total_minus_tendered_nets_to_zero_due(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
+        $this->grantFeature($shop, 'returns');
+        $oldProduct = Product::create(['shop_id' => $shop->id, 'name' => 'Old Shirt', 'cost' => 30, 'price' => 55, 'stock' => 3]);
+        $newProduct = Product::create(['shop_id' => $shop->id, 'name' => 'New Shirt', 'cost' => 60, 'price' => 100, 'stock' => 3]);
+        $sale = $this->makeSale($shop->id, ['subtotal' => 55, 'total' => 55]);
+        $item = $this->makeItem($sale, $oldProduct, ['qty' => 1, 'price' => 55, 'cost' => 30]);
+
+        $response = $this->actingAs($owner, 'web')->postJson('/app/returns/process', [
+            'sale_id' => $sale->id,
+            'action' => 'exchange',
+            'lines' => [['sale_item_id' => $item->id, 'qty' => 1, 'condition' => 'resalable']],
+            'new_items' => [['product_id' => $newProduct->id, 'qty' => 1]],
+            'payments' => [['method' => 'cash', 'amount' => 45]],
+        ]);
+
+        $response->assertOk();
+        $exchangeSale = Sale::where('sale_type', 'exchange')->first();
+        $this->assertEquals(100.0, (float) $exchangeSale->total); // gross — item-level reporting unaffected
+        $this->assertEquals(0.0, (float) $exchangeSale->customer?->due ?? 0.0);
+
+        $payments = $exchangeSale->payments()->get();
+        $tradeCredit = $payments->firstWhere('method', 'trade_credit');
+        $this->assertNotNull($tradeCredit);
+        $this->assertEquals(55.0, (float) $tradeCredit->amount);
+
+        // exactly what Sales/Show.vue's dueRemainder computes — must be 0, not 55
+        $tendered = (float) $payments->sum('amount');
+        $this->assertEquals(100.0, $tendered);
+        $this->assertEquals(0.0, max(0, (float) $exchangeSale->total - $tendered));
+    }
+
+    public function test_exchange_credit_recorded_when_shop_refunds_the_difference_back(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
+        $this->grantFeature($shop, 'returns');
+        $oldProduct = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt L', 'cost' => 60, 'price' => 150, 'stock' => 3]);
+        $newProduct = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt M', 'cost' => 50, 'price' => 100, 'stock' => 3]);
+        $sale = $this->makeSale($shop->id, ['subtotal' => 150, 'total' => 150]);
+        $item = $this->makeItem($sale, $oldProduct, ['qty' => 1, 'price' => 150, 'cost' => 60]);
+
+        $this->actingAs($owner, 'web')->postJson('/app/returns/process', [
+            'sale_id' => $sale->id,
+            'action' => 'exchange',
+            'lines' => [['sale_item_id' => $item->id, 'qty' => 1, 'condition' => 'resalable']],
+            'new_items' => [['product_id' => $newProduct->id, 'qty' => 1]],
+        ])->assertOk();
+
+        $exchangeSale = Sale::where('sale_type', 'exchange')->first();
+        // only the portion of the credit actually spent on this sale (100 of the 150) is recorded —
+        // the remaining 50 was refunded in cash (test_exchange_for_a_cheaper_item_refunds_the_difference_in_cash)
+        $tradeCredit = $exchangeSale->payments()->where('method', 'trade_credit')->first();
+        $this->assertEquals(100.0, (float) $tradeCredit->amount);
+        $this->assertEquals(100.0, (float) $exchangeSale->total);
+    }
+
     public function test_variant_return_restocks_the_specific_variant_and_the_parent_product(): void
     {
         [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);

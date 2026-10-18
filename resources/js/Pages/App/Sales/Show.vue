@@ -22,7 +22,7 @@ const { t } = useI18n();
 
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 
-const payModeLabel = computed(() => ({ cash: t('pay.cash'), bkash: t('pay.bkash'), nagad: t('pay.nagad'), credit: t('pay.credit'), split: t('pay.split') }));
+const payModeLabel = computed(() => ({ cash: t('pay.cash'), bkash: t('pay.bkash'), nagad: t('pay.nagad'), credit: t('pay.credit'), split: t('pay.split'), trade_credit: t('pay.tradeCredit') }));
 
 const dueRemainder = computed(() => {
     const tendered = (props.sale.payments || []).reduce((sum, p) => sum + Number(p.amount), 0);
