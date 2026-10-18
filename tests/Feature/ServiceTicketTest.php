@@ -159,6 +159,24 @@ class ServiceTicketTest extends TestCase
         $this->assertNotNull($ticket->delivered_at);
     }
 
+    /** Phase 5 — see docs/FIX_PLAN.md. Confirmed bug: show() always scoped items to whereNull('sale_id'), so a delivered ticket's own page showed an empty item list and ৳0 total for work that was genuinely billed. */
+    public function test_a_delivered_tickets_own_page_still_shows_its_billed_items(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 0]);
+        $this->grantFeature($shop, 'service_billing');
+        $screen = Product::create(['shop_id' => $shop->id, 'name' => 'Screen Part', 'cost' => 2000, 'price' => 3500, 'stock' => 5]);
+        $ticket = ServiceTicket::create(['shop_id' => $shop->id, 'device_label' => 'Phone', 'status' => 'ready', 'received_at' => now()]);
+        $this->actingAs($owner, 'web')->post(route('app.serviceTickets.items.store', $ticket->id), ['product_id' => $screen->id, 'qty' => 1, 'price' => 3500]);
+        $this->actingAs($owner, 'web')->post(route('app.serviceTickets.bill', $ticket->id), ['payments' => [['method' => 'cash', 'amount' => 3500]]]);
+
+        $response = $this->actingAs($owner, 'web')->get(route('app.serviceTickets.show', $ticket->id));
+
+        $response->assertOk()->assertInertia(fn ($page) => $page
+            ->has('ticket.items', 1)
+            ->where('ticket.items.0.price', '3500.00')
+        );
+    }
+
     public function test_billing_on_credit_increases_customer_due(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();

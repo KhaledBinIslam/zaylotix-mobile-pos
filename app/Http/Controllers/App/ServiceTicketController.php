@@ -108,7 +108,17 @@ class ServiceTicketController extends Controller
 
     public function show(ServiceTicket $ticket)
     {
-        $ticket->load(['items' => fn ($q) => $q->whereNull('sale_id')->orderBy('id'), 'customer', 'product:id,name,emoji', 'serial:id,imei,warranty_expiry', 'sale:id,invoice_no,date,total']);
+        // Confirmed bug (see docs/FIX_PLAN.md Phase 5): this used to always
+        // scope to whereNull('sale_id') (the "still open" items), which is
+        // right while the ticket is open — nothing has a sale_id yet — but
+        // wrong once billed, since bill() stamps EVERY item with the one
+        // sale_id it created in a single pass (never a partial/mixed set —
+        // a ticket can only ever be billed once). A delivered ticket's own
+        // Show page was showing an empty item list and ৳0 total for work
+        // that was genuinely billed. Loading all items unconditionally is
+        // safe either way: an open/cancelled ticket's items are always
+        // still null here regardless, so nothing changes for that case.
+        $ticket->load(['items' => fn ($q) => $q->orderBy('id'), 'customer', 'product:id,name,emoji', 'serial:id,imei,warranty_expiry', 'sale:id,invoice_no,date,total']);
 
         // device/customer history — every OTHER ticket for the same specific
         // unit (if serial-tracked) or the same customer, so a technician can
