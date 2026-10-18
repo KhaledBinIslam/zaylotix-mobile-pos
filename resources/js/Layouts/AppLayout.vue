@@ -14,6 +14,59 @@ const props = defineProps({ active: { type: String, default: 'home' } });
 const page = usePage();
 const offlineSync = useOfflineSync();
 const failedSheet = ref(false);
+
+// Offline-sync resolution UI (see docs/FIX_PLAN.md — the "product not
+// found" fix). Only one remap-in-progress or one cancel-in-progress at a
+// time, keyed by entry+item id, rather than per-row component state —
+// simpler than it sounds since the failed sheet only ever shows a
+// handful of stuck entries at once.
+const activeRemap = ref(null); // { entryId, productId } | null
+const remapQuery = ref('');
+const remapResults = ref([]);
+let remapSearchTimer = null;
+function openRemap(entryId, productId) {
+    activeRemap.value = { entryId, productId };
+    remapQuery.value = '';
+    remapResults.value = [];
+}
+function closeRemap() {
+    activeRemap.value = null;
+    remapQuery.value = '';
+    remapResults.value = [];
+}
+watch(remapQuery, (q) => {
+    clearTimeout(remapSearchTimer);
+    if (!q || q.trim().length < 2) {
+        remapResults.value = [];
+        return;
+    }
+    remapSearchTimer = setTimeout(async () => {
+        try {
+            const res = await fetch(route('app.products.search') + '?q=' + encodeURIComponent(q.trim()));
+            const data = await res.json();
+            remapResults.value = data.results || [];
+        } catch {
+            remapResults.value = [];
+        }
+    }, 300);
+});
+function pickRemapResult(product) {
+    if (!activeRemap.value) return;
+    offlineSync.resolveItem(activeRemap.value.entryId, activeRemap.value.productId, product.id, product.name);
+    closeRemap();
+}
+
+const cancelingEntryId = ref(null);
+const cancelReason = ref('');
+function startCancel(entryId) {
+    cancelingEntryId.value = entryId;
+    cancelReason.value = '';
+}
+function confirmCancel() {
+    offlineSync.cancelWithReason(cancelingEntryId.value, cancelReason.value);
+    cancelingEntryId.value = null;
+    cancelReason.value = '';
+}
 // "as of when" for the offline banner — a shop owner looking at possibly
 // hours-old stock/prices while offline needs to know how stale it is, not
 // just a bare "no internet" message
@@ -499,16 +552,45 @@ const mobileNavSlots = computed(() => {
     </template>
 
     <Sheet v-model="failedSheet" :title="t('offline.failedTitle')">
-        <div v-for="entry in offlineSync.queue.value.filter(e => e.status === 'failed')" :key="entry.id" class="row" style="cursor:default">
-            <div class="ava pill rose" style="border-radius:12px;padding:0;width:42px;height:42px;font-size:18px">⚠️</div>
-            <div class="mid">
-                <b>{{ t('offline.saleQueuedAt', { time: new Date(entry.queuedAt).toLocaleString() }) }}</b>
-                <span>{{ entry.error }}</span>
+        <div v-for="entry in offlineSync.queue.value.filter(e => e.status === 'failed' || e.status === 'shop_mismatch')" :key="entry.id" class="card" style="margin-bottom:10px">
+            <div class="row" style="cursor:default;padding:0 0 8px">
+                <div class="ava pill rose" style="border-radius:12px;padding:0;width:42px;height:42px;font-size:18px">⚠️</div>
+                <div class="mid">
+                    <b>{{ t('offline.saleQueuedAt', { time: new Date(entry.queuedAt).toLocaleString() }) }}</b>
+                    <span>{{ entry.error }}</span>
+                </div>
             </div>
-        </div>
-        <div class="btnrow" style="margin-top:12px">
-            <button class="btn sm" style="flex:1" @click="offlineSync.queue.value.filter(e => e.status === 'failed').forEach(e => offlineSync.retry(e.id))">{{ t('offline.retryAll') }}</button>
-            <button class="btn sm ghost" style="flex:1" @click="offlineSync.queue.value.filter(e => e.status === 'failed').forEach(e => offlineSync.discard(e.id)); failedSheet = false">{{ t('offline.discardAll') }}</button>
+
+            <!-- Permanent failure WITH named problem items — fix each one
+                 in place (never discard the rest of the bill over it). -->
+            <template v-if="entry.status === 'failed' && entry.failureKind === 'permanent' && entry.problemItems?.length">
+                <div v-for="item in entry.problemItems" :key="item.product_id" style="padding:8px 0;border-top:1px solid var(--line)">
+                    <div style="font-size:13px;margin-bottom:6px">❓ {{ item.product_name || t('offline.unknownProduct') }}</div>
+                    <template v-if="activeRemap?.entryId === entry.id && activeRemap?.productId === item.product_id">
+                        <input v-model="remapQuery" :placeholder="t('offline.searchProduct')" style="margin-bottom:6px">
+                        <div v-for="r in remapResults" :key="r.id" class="row" style="cursor:pointer;padding:6px 0" @click="pickRemapResult(r)">
+                            <div class="mid"><b>{{ r.name }}</b><span>৳{{ r.price }} · {{ t('offline.stockAbbrev') }}: {{ r.stock }}</span></div>
+                        </div>
+                        <button class="btn sm ghost" style="width:100%" @click="closeRemap">{{ t('common.cancel') }}</button>
+                    </template>
+                    <div v-else class="btnrow">
+                        <button class="btn sm ghost" style="flex:1" @click="openRemap(entry.id, item.product_id)">{{ t('offline.matchAnother') }}</button>
+                        <button class="btn sm ghost" style="flex:1" @click="offlineSync.dropItem(entry.id, item.product_id)">{{ t('offline.dropItem') }}</button>
+                    </div>
+                </div>
+            </template>
+
+            <div v-if="cancelingEntryId === entry.id" style="padding-top:8px;border-top:1px solid var(--line)">
+                <input v-model="cancelReason" :placeholder="t('offline.cancelReasonPlaceholder')" style="margin-bottom:6px">
+                <div class="btnrow">
+                    <button class="btn sm rose" style="flex:1" @click="confirmCancel">{{ t('offline.confirmCancel') }}</button>
+                    <button class="btn sm ghost" style="flex:1" @click="cancelingEntryId = null">{{ t('common.cancel') }}</button>
+                </div>
+            </div>
+            <div v-else class="btnrow" style="margin-top:8px">
+                <button v-if="entry.status === 'failed' && entry.failureKind === 'transient'" class="btn sm" style="flex:1" @click="offlineSync.retry(entry.id)">{{ t('offline.retryAll') }}</button>
+                <button class="btn sm ghost" style="flex:1" @click="startCancel(entry.id)">{{ t('offline.cancelThisSale') }}</button>
+            </div>
         </div>
     </Sheet>
 

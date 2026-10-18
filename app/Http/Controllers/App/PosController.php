@@ -18,6 +18,7 @@ use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\SalePayment;
 use App\Models\Shop;
+use App\Support\Activity;
 use App\Support\BillingPreview;
 use App\Support\PromotionEngine;
 use App\Support\Tenancy;
@@ -140,7 +141,32 @@ class PosController extends Controller
     {
         $shopId = Tenancy::id();
         $userId = Auth::guard('web')->id() ?? Auth::guard('sanctum')->id();
-        $sale = self::performCheckout($request->validated(), $shopId, $userId);
+        $data = $request->validated();
+
+        // Real bug: an offline sale queued under one shop (classic
+        // trigger — an admin reusing one browser across impersonation
+        // sessions for different shops) could sit in the browser's
+        // IndexedDB past that session ending, then get replayed later
+        // under a DIFFERENT shop's session. Every product_id in it
+        // genuinely doesn't exist under the new tenant scope, so the old
+        // code gave a misleading generic "product not found" for every
+        // line — no signal that the real problem was a wrong shop, not a
+        // missing product, and retrying forever repeated the identical
+        // failure. A client built after this fix always sends its own
+        // shop_id, so a mismatch is caught HERE, before the product
+        // lookup even runs, with an unambiguous message naming the shop
+        // it was really queued for. An older cached client/already-queued
+        // entry with no shop_id simply skips this check — never worse
+        // than before.
+        if (! empty($data['shop_id']) && (int) $data['shop_id'] !== $shopId) {
+            return response()->json([
+                'message' => 'এই বিলটি অন্য একটি দোকানের জন্য সারিবদ্ধ হয়েছিল'.(! empty($data['shop_name']) ? " ({$data['shop_name']})" : '').' — এই দোকানের সেশনে সিঙ্ক করা যাবে না। সঠিক দোকানে লগইন/ইমপারসোনেট করে আবার চেষ্টা করুন, অথবা এই বিলটি বাতিল করুন।',
+                'shop_mismatch' => true,
+                'queued_for_shop_name' => $data['shop_name'] ?? null,
+            ], 409);
+        }
+
+        $sale = self::performCheckout($data, $shopId, $userId);
 
         return response()->json(['sale' => $sale]);
     }
@@ -163,6 +189,32 @@ class PosController extends Controller
         $breakdown = BillingPreview::compute($request->validated(), $shopId, $userId);
 
         return response()->json($breakdown);
+    }
+
+    /**
+     * An offline sale the cashier deliberately gives up on resolving (see
+     * the failed-queue resolution sheet, AppLayout.vue) — this never
+     * reached performCheckout(), so there's no Sale row to void; this is
+     * purely a best-effort audit trail of a bill that existed and was
+     * knowingly abandoned, logged against whichever shop is CURRENTLY
+     * live (the queuing shop, if different — see the shop-mismatch
+     * check in checkout() — may no longer even be this session's tenant).
+     */
+    public function discardOffline(Request $request)
+    {
+        $data = $request->validate([
+            'reason' => ['nullable', 'string', 'max:500'],
+            'payload' => ['nullable', 'array'],
+        ]);
+
+        Activity::log(
+            'pos.offlineSaleDiscarded',
+            'একটি সিঙ্ক-ব্যর্থ অফলাইন বিল বাতিল করা হয়েছে।'.(! empty($data['reason']) ? ' কারণ: '.$data['reason'] : ''),
+            null,
+            ['reason' => $data['reason'] ?? null, 'payload' => $data['payload'] ?? null],
+        );
+
+        return response()->json(['ok' => true]);
     }
 
     /**
@@ -266,11 +318,83 @@ class PosController extends Controller
 
             $productIds = collect($data['items'])->pluck('product_id')->unique()->sort()->values();
 
-            $products = Product::whereIn('id', $productIds)
+            // Set only by the offline-sync replay path (useOfflineSync.js),
+            // never a live checkout — a genuinely-queued sale rung up
+            // before its product was later deleted should still be able
+            // to sync (the sale really happened); a fresh/live attempt to
+            // sell something the shop has since discontinued should not.
+            $allowTrashedProducts = ! empty($data['offline_replay']);
+            $productsQuery = fn () => $allowTrashedProducts ? Product::withTrashed() : Product::query();
+
+            $products = $productsQuery()->whereIn('id', $productIds)
                 ->withCount('variants')
                 ->lockForUpdate()
                 ->get()
                 ->keyBy('id');
+
+            // Offline-sync recovery: a product_id that's missing outright
+            // (soft-deleted and not covered above, or — the actual root
+            // cause behind the reported bug — simply never existed under
+            // THIS shop's id space because the entry was queued under a
+            // different one) can sometimes still be matched by its
+            // barcode snapshot. Scoped to this same tenant via the normal
+            // query above, so this can never pull in a different shop's
+            // product under a mismatched id; it only helps when the
+            // genuinely-right product for this shop happens to carry a
+            // different id than the client remembered (e.g. the original
+            // row really was deleted and recreated).
+            $missingIds = $productIds->diff($products->keys());
+            if ($missingIds->isNotEmpty()) {
+                $barcodeByMissingId = collect($data['items'])
+                    ->filter(fn ($item) => $missingIds->contains($item['product_id']) && ! empty($item['product_barcode']))
+                    ->pluck('product_barcode', 'product_id');
+
+                if ($barcodeByMissingId->isNotEmpty()) {
+                    $byBarcode = $productsQuery()->whereIn('barcode', $barcodeByMissingId->unique()->values())
+                        ->withCount('variants')
+                        ->lockForUpdate()
+                        ->get()
+                        ->keyBy('barcode');
+
+                    // Rewrite the item's own product_id to the resolved
+                    // product's REAL id (not left as the original missing
+                    // one) — every later lookup in this method ($products,
+                    // $stockRemaining, $sellableRemaining, ...) is keyed by
+                    // a product's actual ->id, so the resolved product must
+                    // be stored under that same key, not the stale id the
+                    // client remembered.
+                    foreach ($data['items'] as $index => &$item) {
+                        $barcode = $barcodeByMissingId->get($item['product_id']);
+                        if ($barcode !== null && $byBarcode->has($barcode)) {
+                            $resolved = $byBarcode->get($barcode);
+                            $products->put($resolved->id, $resolved);
+                            $item['product_id'] = $resolved->id;
+                        }
+                    }
+                    unset($item);
+                    $productIds = collect($data['items'])->pluck('product_id')->unique()->sort()->values();
+                }
+            }
+
+            // Collected upfront, all at once — rather than aborting on the
+            // FIRST missing product the way every other per-line check
+            // below still does — specifically so a cart with more than one
+            // problem item can be reported (and resolved) in one pass
+            // instead of a frustrating one-at-a-time retry loop. Every
+            // OTHER validation (stock, unit/variant mismatch, qty) is
+            // unchanged and still fails fast on the first offender, same
+            // as before this fix.
+            $stillMissing = $productIds->diff($products->keys());
+            if ($stillMissing->isNotEmpty()) {
+                $nameByProductId = collect($data['items'])->pluck('product_name', 'product_id');
+                throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
+                    'message' => 'কিছু পণ্য পাওয়া যায়নি। নিচের প্রতিটি সমস্যা আলাদাভাবে সমাধান করুন।',
+                    'problem_items' => $stillMissing->map(fn ($id) => [
+                        'product_id' => $id,
+                        'product_name' => $nameByProductId->get($id) ?: null,
+                    ])->values(),
+                ], 422));
+            }
 
             $unitIds = collect($data['items'])->pluck('product_unit_id')->filter()->unique();
             $productUnits = $unitIds->isEmpty()

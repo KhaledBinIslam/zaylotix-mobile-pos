@@ -15,7 +15,16 @@ class CheckoutRequest extends FormRequest
     {
         return [
             'items' => ['required', 'array', 'min:1'],
-            'items.*.product_id' => ['required', 'integer', 'exists:products,id'],
+            // Deliberately no exists:products,id here (removed as part of
+            // the offline-sync "product not found" fix, docs/FIX_PLAN.md):
+            // that check is table-wide, not tenant-scoped, so it never
+            // actually protected against a cross-shop id anyway — it only
+            // ever caught "doesn't exist ANYWHERE," which is now handled
+            // far better in PosController::performCheckout() (barcode
+            // fallback, then a named, individually-resolvable error per
+            // item) than a blunt generic validation failure that gave the
+            // offline-sync recovery flow nothing to work with.
+            'items.*.product_id' => ['required', 'integer'],
             'items.*.product_unit_id' => ['nullable', 'integer', 'exists:product_units,id'],
             // a line is either a pack-unit conversion or a size/color
             // variant, never both — enforced in PosController::checkout
@@ -33,6 +42,36 @@ class CheckoutRequest extends FormRequest
             // product's own sold_by_weight flag to know which applies
             'items.*.qty' => ['required', 'numeric', 'min:0.001'],
             'items.*.discount' => ['nullable', 'numeric', 'min:0'],
+            // Diagnostic-only snapshot (see docs/FIX_PLAN.md's offline-sync
+            // "product not found" fix) — never trusted for pricing/stock,
+            // only used (a) to name the specific product in an error
+            // message when its id can't be resolved, and (b) as a
+            // same-shop fallback lookup by barcode when the id alone can't
+            // be found (e.g. a stale offline queue entry). Optional so any
+            // already-queued-but-not-yet-synced entry from before this
+            // field existed still checks out exactly as before.
+            'items.*.product_name' => ['nullable', 'string', 'max:255'],
+            'items.*.product_barcode' => ['nullable', 'string', 'max:100'],
+            'items.*.unit_label' => ['nullable', 'string', 'max:100'],
+            'items.*.variant_label' => ['nullable', 'string', 'max:100'],
+            // Which shop this cart was built under — set by the client from
+            // its own current session at the moment checkout is attempted
+            // (not the server's). Lets checkout() catch an offline sale
+            // that's being replayed under a DIFFERENT shop than the one
+            // that queued it (classic trigger: an admin reusing one
+            // browser across impersonation sessions for different shops)
+            // with a clear, specific error instead of a misleading generic
+            // "product not found" for every line. Optional for the same
+            // backward-compat reason as above.
+            'shop_id' => ['nullable', 'integer'],
+            'shop_name' => ['nullable', 'string', 'max:255'],
+            // Set only by the offline-sync replay path (useOfflineSync.js's
+            // trySync()), never by a live checkout — lets performCheckout()
+            // allow resolving a soft-deleted product ONLY for a genuine
+            // replay of a sale that was rung up before it was deleted,
+            // never for a fresh/live attempt to sell something the shop
+            // has since discontinued.
+            'offline_replay' => ['nullable', 'boolean'],
             'discount' => ['nullable', 'numeric', 'min:0'],
             // free/staff-meal sale — no payment collected at all, tracked
             // separately from a manual discount (see Reports::complimentaryReport())

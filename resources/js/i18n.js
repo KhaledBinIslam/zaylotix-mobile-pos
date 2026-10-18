@@ -1056,9 +1056,16 @@ export const translations = {
     'offline.failedCount': { bn: '{n} টি বিক্রি সিঙ্ক ব্যর্থ হয়েছে — দেখতে চাপুন', en: '{n} sale(s) failed to sync — tap to review' },
     'offline.failedTitle': { bn: 'সিঙ্ক ব্যর্থ হওয়া বিক্রি', en: 'Sales that failed to sync' },
     'offline.saleQueuedAt': { bn: 'অফলাইনে বিক্রি — {time}', en: 'Offline sale — {time}' },
-    'offline.retryAll': { bn: 'আবার চেষ্টা করুন', en: 'Retry all' },
-    'offline.discardAll': { bn: 'বাদ দিন', en: 'Discard all' },
+    'offline.retryAll': { bn: 'আবার চেষ্টা করুন', en: 'Retry' },
     'offline.syncedToast': { bn: 'অফলাইন বিক্রি {invoice} সার্ভারে পাঠানো হয়েছে।', en: 'Offline sale {invoice} has synced.' },
+    'offline.unknownProduct': { bn: 'অজানা পণ্য', en: 'Unknown product' },
+    'offline.searchProduct': { bn: 'পণ্যের নাম লিখুন...', en: 'Type a product name...' },
+    'offline.matchAnother': { bn: 'অন্য পণ্যের সাথে মেলান', en: 'Match to another product' },
+    'offline.dropItem': { bn: '✕ বাদ দিন', en: '✕ Drop item' },
+    'offline.cancelThisSale': { bn: 'এই বিলটি বাতিল করুন', en: 'Cancel this sale' },
+    'offline.cancelReasonPlaceholder': { bn: 'বাতিলের কারণ (ঐচ্ছিক)', en: 'Reason for cancelling (optional)' },
+    'offline.confirmCancel': { bn: 'নিশ্চিতভাবে বাতিল করুন', en: 'Confirm cancel' },
+    'offline.stockAbbrev': { bn: 'স্টক', en: 'Stock' },
 
     // ---- admin impersonation banner (shop side) ----
     'impersonate.banner': { bn: '{admin} এডমিন হিসেবে আপনি এই দোকানটি দেখছেন — বের হতে চাপুন', en: "You're viewing this shop as admin {admin} — tap to exit" },

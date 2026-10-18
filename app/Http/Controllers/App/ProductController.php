@@ -16,6 +16,30 @@ use Inertia\Inertia;
 
 class ProductController extends Controller
 {
+    /**
+     * Lightweight name/barcode lookup, same shape as
+     * CustomerController::search() — used by the offline-sync resolution
+     * sheet (AppLayout.vue) to let the cashier match a stuck cart line to
+     * an existing product when its original id can't be resolved
+     * (see docs/FIX_PLAN.md). AppLayout doesn't have the full products
+     * list Pos/Index.vue loads, so this is its own small endpoint rather
+     * than reusing that page's props.
+     */
+    public function search(Request $request)
+    {
+        $q = trim((string) $request->get('q', ''));
+        if (mb_strlen($q) < 2) {
+            return response()->json(['results' => []]);
+        }
+
+        $products = Product::where(fn ($query) => $query->where('name', 'like', '%'.$q.'%')->orWhere('barcode', 'like', '%'.$q.'%'))
+            ->orderBy('name')
+            ->limit(8)
+            ->get(['id', 'name', 'barcode', 'price', 'stock']);
+
+        return response()->json(['results' => $products]);
+    }
+
     public function index(Request $request)
     {
         $with = ['category', 'unit', 'productUnits.unit', 'variants'];

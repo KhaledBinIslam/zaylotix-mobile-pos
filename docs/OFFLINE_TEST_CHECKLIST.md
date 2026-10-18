@@ -34,3 +34,10 @@ worker, or `PosController::performCheckout()`.
 ## Cross-check after any offline-sync-related code change
 - [ ] No duplicate `Sale` rows for any `client_uuid` (`select client_uuid, count(*) from sales group by client_uuid having count(*) > 1` should return nothing, per-shop).
 - [ ] No stock drift between `products.stock` and the sum of its transactions for a shop that had offline sales during testing.
+
+## "Product not found" / wrong-shop sync (Phase 11, see docs/FIX_PLAN.md)
+Automated coverage: `tests/Feature/OfflineSyncProductResolutionTest.php`. Manual cross-checks that need a real device/admin account:
+- [ ] Admin impersonates Shop A, queue an offline sale (airplane mode), stop impersonating WITHOUT letting it sync, impersonate Shop B in the same browser, go back online. Confirm: the failed-queue sheet shows a "queued for a different shop" message naming Shop A — never a generic "product not found" — and the sale is NOT silently synced into Shop B.
+- [ ] From that same stuck entry, confirm "cancel this sale" (with an optional reason) removes it and the shop's Activity log gets a `pos.offlineSaleDiscarded` entry.
+- [ ] Soft-delete a product while a sale for it is genuinely queued offline (not yet synced), then go online. Confirm it still syncs successfully (historical sale, allowed) — but confirm a FRESH/live attempt to sell that same now-deleted product is still rejected normally.
+- [ ] Queue an offline sale with two different products, then (via DB or admin) make ONE of them unresolvable before syncing. Confirm the failed-queue sheet names that specific product, offers "match to another product" (search works, remapping fixes and auto-resyncs) and "drop item" (removes just that line, keeps the rest), without ever silently dropping the whole bill.

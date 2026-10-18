@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { enqueueSale, removeFromQueue, markFailed, retryEntry, pendingCount, failedCount } from '../offlineQueue.js';
+import { enqueueSale, removeFromQueue, markFailed, markShopMismatch, retryEntry, remapQueuedItem, dropQueuedItem, pendingCount, failedCount } from '../offlineQueue.js';
 
 describe('offlineQueue', () => {
     it('enqueues a sale as pending', () => {
@@ -67,5 +67,54 @@ describe('offlineQueue', () => {
         const queue = enqueueSale([], { client_uuid: 'fixed-uuid-123', items: [] });
 
         expect(queue[0].id).toBe('fixed-uuid-123');
+    });
+
+    // Phase 11 (offline-sync "product not found" fix) — see docs/FIX_PLAN.md.
+    it('marks a permanent failure with the problem items the server identified', () => {
+        let queue = enqueueSale([], { items: [{ product_id: 5 }] });
+        const id = queue[0].id;
+
+        queue = markFailed(queue, id, 'পণ্য পাওয়া যায়নি', 'permanent', [{ product_id: 5, product_name: 'পুরনো পণ্য' }]);
+
+        expect(queue[0].status).toBe('failed');
+        expect(queue[0].failureKind).toBe('permanent');
+        expect(queue[0].problemItems).toEqual([{ product_id: 5, product_name: 'পুরনো পণ্য' }]);
+    });
+
+    it('marks a shop mismatch with its own distinct status, separate from a product problem', () => {
+        let queue = enqueueSale([], { items: [], shop_name: 'দোকান A' });
+        const id = queue[0].id;
+
+        queue = markShopMismatch(queue, id, 'ভুল দোকান', 'দোকান A');
+
+        expect(queue[0].status).toBe('shop_mismatch');
+        expect(queue[0].queuedForShopName).toBe('দোকান A');
+        expect(failedCount(queue)).toBe(1); // counts toward the same "needs attention" badge as a plain failure
+    });
+
+    it('remapping a problem item to a different product id fixes it in place and re-queues the whole entry', () => {
+        let queue = enqueueSale([], { items: [{ product_id: 5, qty: 2 }, { product_id: 9, qty: 1 }] });
+        const id = queue[0].id;
+        queue = markFailed(queue, id, 'পণ্য পাওয়া যায়নি', 'permanent', [{ product_id: 5, product_name: 'পুরনো পণ্য' }]);
+
+        queue = remapQueuedItem(queue, id, 5, 42, 'নতুন পণ্য');
+
+        expect(queue[0].status).toBe('pending');
+        expect(queue[0].problemItems).toEqual([]);
+        expect(queue[0].payload.items).toEqual([
+            { product_id: 42, qty: 2, product_name: 'নতুন পণ্য' },
+            { product_id: 9, qty: 1 },
+        ]);
+    });
+
+    it('dropping a problem item removes only that line and keeps the rest of the bill', () => {
+        let queue = enqueueSale([], { items: [{ product_id: 5, qty: 2 }, { product_id: 9, qty: 1 }] });
+        const id = queue[0].id;
+        queue = markFailed(queue, id, 'পণ্য পাওয়া যায়নি', 'permanent', [{ product_id: 5, product_name: 'পুরনো পণ্য' }]);
+
+        queue = dropQueuedItem(queue, id, 5);
+
+        expect(queue[0].status).toBe('pending');
+        expect(queue[0].payload.items).toEqual([{ product_id: 9, qty: 1 }]);
     });
 });

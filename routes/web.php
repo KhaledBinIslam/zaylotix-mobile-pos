@@ -149,8 +149,10 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::post('pos/checkout', [PosController::class, 'checkout'])->name('pos.checkout');
         Route::post('pos/billing-preview', [PosController::class, 'billingPreview'])->name('pos.billingPreview');
         Route::post('pos/bogo-suggestions', [PosController::class, 'bogoSuggestions'])->name('pos.bogoSuggestions');
+        Route::post('pos/discard-offline', [PosController::class, 'discardOffline'])->name('pos.discardOffline');
         Route::get('pos/barcode/{barcode}', [PosController::class, 'barcode'])
             ->middleware('sales.mode')->name('pos.barcode');
+        Route::get('products/search', [ProductController::class, 'search'])->name('products.search');
         Route::get('customers/lookup', [CustomerController::class, 'lookup'])->name('customers.lookup');
         Route::get('customers/search', [CustomerController::class, 'search'])->name('customers.search');
 

@@ -166,13 +166,43 @@ Research pass (full findings in `ARCHITECTURE_NOTES.md` section 8): App/* is mos
 - **Solution**: Add `--sh-sm`/`--sh-lg` alongside the existing `--sh`, formalizing the 2-3 shadow recipes already hand-rolled ad hoc (login/onboarding card, notif dropdown, wide sheet) as deliberate steps instead of accidental near-duplicates. Point those specific selectors at the new tokens.
 - **Risk**: Very low — same or near-identical shadow values, now named.
 
-### 9.5 — Scope decisions explicitly flagged to Khaled, NOT built
+### 9.5 — Scope decisions explicitly flagged to Khaled, NOT built (resolved in Phase 10 below)
 - Dark mode (net-new feature, no existing infra).
 - Whether Admin's purple should visually unify with App's green/gold brand, or stay deliberately distinct as an internal-console look (9.1 above assumes "bridge the token, keep the color" — a literal-value-preserving refactor, not a rebrand; the rebrand question itself is still Khaled's call).
 - The PWA install theme color (`resources/views/app.blade.php`, `public/manifest.json`) currently matches Admin's purple, not the in-app functional palette — may be intentional, may be an oversight.
 - Bumping `--dim`'s contrast (currently ~2.9:1) — a one-line token edit, but a visible app-wide color shift on every "quiet" text element.
 - A loading-skeleton state — none exists anywhere; doing it right needs a per-page template conditional, beyond a pure token/class change.
 - Deleting the 8 confirmed-unused Breeze components — zero risk, but a file-deletion action flagged for a nod rather than done silently.
+
+## Phase 10 — Khaled's premium-feel follow-up to Phase 9 (completed, see commit `39cd12c`)
+
+Dark mode, Admin's own premium color identity (kept separate from the shop brand), the PWA/TWA install theme color fix, a `--dim` contrast bump, a real boot splash + branded progress bar + spinner component, and deletion of 8 confirmed-unused Breeze components. All six of Khaled's explicit answers to Phase 9's flagged scope questions.
+
+## Phase 11 — Offline-sync "product not found" permanent fix + Vite preload warning
+
+Real reported production bug, with a full root-cause spec from Khaled. Research (dedicated background agent, read-only) confirmed the trigger: the offline sale queue is a single, un-namespaced, browser-global IndexedDB store (`resources/js/support/offlineDb.js`) with no shop/session pinning — a sale queued while one shop's session is active (classic trigger: an admin reusing one browser across impersonation sessions for different shops) can sit there past that session ending, then get replayed under a DIFFERENT shop's session. `Product::whereIn('id', ...)` is tenant-scoped (`TenantScope`), so every product_id in the stale entry genuinely doesn't exist under the new tenant — giving the misleading generic "product not found" for every line, and since `retry` just resubmits the identical payload under the identical (still-mismatched) session, it fails identically forever.
+
+### 11.1 — Payload snapshot
+- Cart lines now carry a diagnostic-only snapshot (`product_name`, `product_barcode`, `unit_label`, `variant_label`) built from the already-loaded product catalog at payload-build time (`Pos/Index.vue`'s `lineSnapshot()`), plus a top-level `shop_id`/`shop_name`. Never trusted for pricing/stock — only used to name a problem item and as a same-tenant barcode fallback.
+
+### 11.2 — Shop-pin check
+- `PosController::checkout()` compares the payload's `shop_id` against `Tenancy::id()` BEFORE the product lookup even runs; a mismatch returns 409 with the queued-for shop's name, instead of the old misleading per-line "not found". An older cached client / already-queued entry with no `shop_id` skips the check — no worse than before. Client-side, `useOfflineSync.js`'s `trySync()` does the same check pre-flight (before even attempting the request) and marks the entry with a new `'shop_mismatch'` status, distinct from a plain product problem.
+
+### 11.3 — Server-side product resolution
+- `performCheckout()` now: (a) resolves `withTrashed()` ONLY when the request is flagged `offline_replay: true` (set only by the sync replay path, never a live checkout) — a genuinely-queued sale rung up before its product was deleted can still sync; a fresh live attempt to sell a discontinued product still can't; (b) falls back to a same-tenant barcode match for a product_id that can't be found by id at all, rewriting the item's `product_id` to the resolved product's real id so every later stock/lookup in the method stays consistent; (c) collects ALL still-missing items upfront (not just the first) into a structured `{message, problem_items: [{product_id, product_name}]}` 422 response — every other existing validation (stock, unit/variant mismatch, qty) is unchanged and still fails fast on the first offender.
+- Removed `CheckoutRequest`'s `exists:products,id` rule on `items.*.product_id` — it was table-wide, not tenant-scoped, so it never actually protected against a cross-shop id; it only blocked the new recovery flow from ever reaching the controller's much better per-item handling.
+
+### 11.4 — Failure classification + resolution UI
+- `trySync()` now classifies a failure as `'transient'` (network/5xx — the plain retry button still applies) or `'permanent'` (a real business rejection — resubmitting unchanged will fail forever). `AppLayout.vue`'s failed-queue sheet now shows, per problem item, "match to another product" (a small inline search against the new `GET /app/products/search` endpoint, tenant-scoped) or "drop item" (removes just that line, keeps the rest of the bill) — never silently discarding a multi-item sale over one bad line. A whole stuck entry (shop-mismatch or otherwise) can be cancelled with an optional reason, logged via `Activity::log()` (`POST /app/pos/discard-offline`) — there's no `Sale` row to void since it never reached the server, so this is purely a best-effort audit trail.
+
+### 11.5 — Hard-delete check (already satisfied)
+- Confirmed `ProductController::destroy()` only ever calls `$product->delete()` (soft delete via `SoftDeletes`) — grepped the whole `app/` tree for `forceDelete` and found no caller touching `Product` at all. No code change needed for this item.
+
+### 11.6 — Vite CSS preload warning
+- `app.blade.php`'s `@vite([...])` was passing BOTH `app.js` and the current page's own `.vue` component as entries — the Laravel-Breeze-starter default. Since a page component's own manifest entry lists `app.js` as an import, Laravel's Vite helper walked that graph and emitted a redundant `<link rel=preload as=style>` for `app.js`'s CSS on top of the normal `<link rel=stylesheet>` already emitted for it as its own entry — exactly Chrome's "was preloaded... but not used" warning. Dropped the page-component entry; Inertia's own `resolve()` (`import.meta.glob('./Pages/**/*.vue')` in `app.js`) already dynamically imports every page component at runtime regardless — the same mechanism every SPA navigation after the first page load already relies on.
+
+### 11.7 — Recovery of the specific stuck bill Khaled reported (10/18/2026 9:34 AM)
+- This fix can't reach into that specific device's browser remotely — the stuck entry lives in that browser's own IndexedDB, not on the server. Once this fix is deployed, reopening the app on that SAME device should surface it in the failed-queue sheet with the new, specific message (shop-mismatch or a named problem item) instead of the old generic one, and the resolution options above apply to it directly — no manual server-side intervention needed, but it does need that specific device/browser to be opened again.
 
 ---
 

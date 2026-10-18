@@ -582,13 +582,36 @@ function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]')?.content || '';
 }
 
+// Diagnostic-only snapshot of a cart line's product/variant/unit (never
+// used for pricing/stock — the server always resolves those itself).
+// Exists so a product that can't be resolved by id at sync time (the
+// offline-sync "product not found" bug — see docs/FIX_PLAN.md) can still
+// be NAMED in the error, and so the resolution UI (AppLayout.vue's failed
+// queue sheet) has something to show the cashier besides a bare number.
+function lineSnapshot(l) {
+    const p = props.products.find((pp) => pp.id === l.product_id);
+    const variant = p?.variants?.find((v) => v.id === l.product_variant_id);
+    const unit = p?.productUnits?.find((u) => u.id === l.product_unit_id);
+    return {
+        product_name: p?.name || '',
+        product_barcode: p?.barcode || '',
+        variant_label: variant ? [variant.size, variant.color].filter(Boolean).join(' / ') : '',
+        unit_label: unit?.unit?.name || '',
+    };
+}
+
 function buildCheckoutPayload() {
     return {
         // see checkoutUuid()'s own comment — stable across retries of this
         // same cart so the server can recognize a replay (see
         // PosController::performCheckout()) instead of double-selling.
         client_uuid: checkoutUuid(),
-        items: cart.value.map((l) => ({ product_id: l.product_id, product_unit_id: l.product_unit_id, product_variant_id: l.product_variant_id, qty: l.qty, discount: l.discount || 0, imei: l.imei || '' })),
+        // Which shop this cart was actually built under, captured now (not
+        // read again at sync time, which could be a different shop's
+        // session — see docs/FIX_PLAN.md's offline-sync fix).
+        shop_id: shop.value?.id ?? null,
+        shop_name: shop.value?.name ?? null,
+        items: cart.value.map((l) => ({ product_id: l.product_id, product_unit_id: l.product_unit_id, product_variant_id: l.product_variant_id, qty: l.qty, discount: l.discount || 0, imei: l.imei || '', ...lineSnapshot(l) })),
         discount: discount.value || 0,
         complimentary: payMode.value === 'complimentary',
         coupon_code: couponCode.value || '',

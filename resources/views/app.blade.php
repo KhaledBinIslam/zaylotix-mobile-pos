@@ -37,7 +37,28 @@
 
         <!-- Scripts -->
         @routes
-        @vite(['resources/js/app.js', "resources/js/Pages/{$page['component']}.vue"])
+        {{--
+            Deliberately only app.js here, not the page component (the
+            Breeze/Jetstream Inertia starter's usual
+            @vite(['resources/js/app.js', "resources/js/Pages/{$page['component']}.vue"])
+            pattern). Passing the page component made Laravel's Vite
+            helper walk ITS import graph too — which lists app.js as a
+            dependency (resources/js/Pages/App/Pos/Index.vue's manifest
+            entry has "imports": ["resources/js/app.js", ...]) — emitting
+            a <link rel=preload as=style> for app.js's own CSS on top of
+            the normal <link rel=stylesheet> already emitted for app.js
+            as its own entry. Same URL, two tags, and the preload one
+            isn't "consumed" the way the browser's heuristic expects —
+            exactly Chrome's "was preloaded... but not used within a few
+            seconds" warning. Dropping the page-component entry removes
+            that redundant walk; it isn't needed for the page's own CSS
+            either way, since Inertia's resolve() (app.js's
+            import.meta.glob('./Pages/**/*.vue')) dynamically imports
+            every page component at runtime regardless — the exact same
+            mechanism every SPA navigation after this first load already
+            relies on, since no later page was ever listed here.
+        --}}
+        @vite(['resources/js/app.js'])
         @inertiaHead
     </head>
     <body class="font-sans antialiased">

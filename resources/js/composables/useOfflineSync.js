@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue';
-import { enqueueSale, removeFromQueue, markFailed, retryEntry, pendingCount, failedCount } from '@/support/offlineQueue';
+import { usePage } from '@inertiajs/vue3';
+import { enqueueSale, removeFromQueue, markFailed, markShopMismatch, retryEntry, remapQueuedItem, dropQueuedItem, pendingCount, failedCount } from '@/support/offlineQueue';
 import { kvGet, kvSet, KEYS } from '@/support/offlineDb';
 import { useToast } from '@/composables/useToast';
 import { useI18n } from '@/composables/useI18n';
@@ -57,6 +58,28 @@ async function trySync() {
     syncing.value = true;
     try {
         for (const entry of pending) {
+            // Real bug (see docs/FIX_PLAN.md): a sale queued under one
+            // shop (e.g. during an admin's impersonation session) could
+            // sit here past that session ending, then get replayed under
+            // a DIFFERENT shop's session — every product_id in it
+            // genuinely doesn't exist under the new tenant scope, giving
+            // a misleading generic "product not found" instead of the
+            // real problem. Caught HERE, client-side, before even
+            // attempting the request — an older queued entry with no
+            // shop_id (from before this fix) just skips the check and
+            // syncs exactly as it always did.
+            const currentShopId = usePage().props.shop?.id;
+            if (entry.payload.shop_id && currentShopId && entry.payload.shop_id !== currentShopId) {
+                queue.value = markShopMismatch(
+                    queue.value,
+                    entry.id,
+                    `এই বিলটি "${entry.payload.shop_name || 'অজানা দোকান'}"-এর জন্য সারিবদ্ধ হয়েছিল — এই দোকানে সিঙ্ক করা যাবে না।`,
+                    entry.payload.shop_name,
+                );
+                await persist();
+                continue; // don't block the rest of the queue behind this one
+            }
+
             try {
                 const res = await fetch(route('app.pos.checkout'), {
                     method: 'POST',
@@ -65,7 +88,12 @@ async function trySync() {
                         'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
                         'Accept': 'application/json',
                     },
-                    body: JSON.stringify(entry.payload),
+                    // offline_replay: true marks this specifically as a
+                    // replay of a previously-queued sale (not a fresh live
+                    // checkout) — lets the server allow resolving a
+                    // product that's since been soft-deleted, since this
+                    // sale genuinely happened before that deletion.
+                    body: JSON.stringify({ ...entry.payload, offline_replay: true }),
                 });
                 const data = await res.json().catch(() => ({}));
 
@@ -78,9 +106,32 @@ async function trySync() {
                     const { toast } = useToast();
                     const { t } = useI18n();
                     toast('✅ ' + t('offline.syncedToast', { invoice: data?.sale?.invoice_no || '' }));
-                } else {
+                } else if (res.status === 409 && data.shop_mismatch) {
+                    // defense in depth — the pre-check above should catch
+                    // this first, but an entry queued by an older cached
+                    // build (before shop_id existed) could still reach
+                    // here and get this from the server instead
+                    queue.value = markShopMismatch(queue.value, entry.id, data.message, data.queued_for_shop_name);
+                } else if (res.status === 422 && Array.isArray(data.problem_items) && data.problem_items.length) {
+                    // A real business rejection — resubmitting this exact
+                    // payload will fail identically forever (see
+                    // retryEntry's own comment), so this is 'permanent',
+                    // not 'transient': the resolution sheet, not the plain
+                    // retry button, is the actual way out.
+                    queue.value = markFailed(queue.value, entry.id, data.message, 'permanent', data.problem_items);
+                } else if (res.status >= 400 && res.status < 500) {
+                    // Some other business-rule rejection (stock ran out,
+                    // unit/variant mismatch, etc.) — also permanent in the
+                    // sense that retrying unchanged won't help, but there's
+                    // no specific per-item fix the UI can offer beyond
+                    // showing the message and letting the cashier discard it.
                     const message = data.message || Object.values(data.errors || {})[0]?.[0] || 'সিঙ্ক ব্যর্থ হয়েছে।';
-                    queue.value = markFailed(queue.value, entry.id, message);
+                    queue.value = markFailed(queue.value, entry.id, message, 'permanent');
+                } else {
+                    // 5xx — the server's own problem, not this sale's;
+                    // worth an unmodified retry once it recovers.
+                    const message = data.message || 'সিঙ্ক ব্যর্থ হয়েছে। সার্ভারে সাময়িক সমস্যা, কিছুক্ষণ পর আবার চেষ্টা করুন।';
+                    queue.value = markFailed(queue.value, entry.id, message, 'transient');
                 }
             } catch {
                 // still offline (or the network dropped mid-sync) — stop
@@ -143,6 +194,48 @@ export function useOfflineSync() {
         await persist();
     }
 
+    // Resolution path for a 'permanent' failure's named problem item (see
+    // trySync's problem_items handling) — fixes the stuck line in place
+    // and immediately retries the whole bill, rather than discarding
+    // anything. Never drops a sale's OTHER lines just because one of them
+    // had a bad product id.
+    async function resolveItem(id, productId, newProductId, newProductName) {
+        queue.value = remapQueuedItem(queue.value, id, productId, newProductId, newProductName);
+        await persist();
+        trySync();
+    }
+
+    async function dropItem(id, productId) {
+        queue.value = dropQueuedItem(queue.value, id, productId);
+        await persist();
+        trySync();
+    }
+
+    // The queued sale never reached the server (that's the whole point of
+    // the offline queue), so there's no Sale row to void/reverse — this is
+    // purely a local removal. Logging the reason server-side (best-effort;
+    // a failure here never blocks the actual cancel) is the only trace
+    // that this bill existed and was deliberately abandoned, not lost.
+    async function cancelWithReason(id, reason) {
+        const entry = queue.value.find((s) => s.id === id);
+        try {
+            await fetch(route('app.pos.discardOffline'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({ reason, payload: entry?.payload }),
+            });
+        } catch {
+            // best-effort audit log only — the cancel itself must still
+            // succeed even if this request never reaches the server
+        }
+        queue.value = removeFromQueue(queue.value, id);
+        await persist();
+    }
+
     return {
         isOnline,
         syncing,
@@ -154,5 +247,8 @@ export function useOfflineSync() {
         trySync,
         retry,
         discard,
+        resolveItem,
+        dropItem,
+        cancelWithReason,
     };
 }
