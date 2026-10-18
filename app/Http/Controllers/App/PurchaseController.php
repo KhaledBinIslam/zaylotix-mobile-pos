@@ -48,6 +48,39 @@ class PurchaseController extends Controller
         $isPending = ($data['status'] ?? 'received') === 'pending';
 
         DB::transaction(function () use ($data, $imeis, $isPending) {
+            // Confirmed bug (see docs/FIX_PLAN.md Phase 4.1): the purchase
+            // form's own "not in list — type name below" field invites a
+            // free-text supplier name, but nothing ever turned that into a
+            // real Supplier row — supplier_id stayed null forever, so the
+            // new supplier never showed up in Suppliers/Index.vue, and a
+            // credit purchase against it tracked no payable anywhere
+            // (applyEffects() below only tracks payable when supplier_id is
+            // present). Resolving it here, inside the same transaction,
+            // means every downstream use of $data['supplier_id'] — payable,
+            // batch supplier traceability — just works with zero further
+            // changes.
+            if (empty($data['supplier_id']) && ! empty($data['supplier'])) {
+                $data['supplier_id'] = Supplier::firstOrCreate(['name' => $data['supplier']])->id;
+            }
+
+            // Missing feature (see docs/FIX_PLAN.md Phase 4.2): the purchase
+            // form's "also add stock" product field only ever accepted an
+            // already-created product — there was no one-step way to
+            // register a brand-new item while recording the purchase that
+            // brought it in. Deliberately minimal (name + selling price
+            // only, cost comes from the purchase's own cost field below) —
+            // a shop that wants the full Add Product form (category, unit,
+            // barcode, etc.) can still edit it afterward from the Stock
+            // page; this just removes the "has to exist first" blocker.
+            if (empty($data['product_id']) && ! empty($data['new_product_name'])) {
+                $data['product_id'] = Product::create([
+                    'name' => $data['new_product_name'],
+                    'cost' => $data['cost'] ?? 0,
+                    'price' => $data['new_product_price'],
+                    'stock' => 0,
+                ])->id;
+            }
+
             $purchase = Purchase::create([
                 'supplier' => $data['supplier'] ?? null,
                 'supplier_id' => $data['supplier_id'] ?? null,
@@ -226,9 +259,13 @@ class PurchaseController extends Controller
             // stock, so a purchase can still be money-only (e.g. a utility
             // bill) by leaving these out
             'product_id' => ['nullable', 'prohibits:ingredient_id', Rule::exists('products', 'id')->where('shop_id', Tenancy::id())],
+            // registers a brand-new product in the same submit when no
+            // existing product_id was picked — see store()'s own comment
+            'new_product_name' => ['nullable', 'string', 'max:255'],
+            'new_product_price' => ['nullable', 'numeric', 'min:0', 'required_with:new_product_name'],
             'product_variant_id' => ['nullable', Rule::exists('product_variants', 'id')->where('shop_id', Tenancy::id())],
             'ingredient_id' => ['nullable', Rule::exists('ingredients', 'id')->where('shop_id', Tenancy::id())],
-            'qty' => ['nullable', 'numeric', 'min:0.001', 'required_with:product_id,ingredient_id'],
+            'qty' => ['nullable', 'numeric', 'min:0.001', 'required_with:product_id,ingredient_id,new_product_name'],
             'cost' => ['nullable', 'numeric', 'min:0'],
             'batch_no' => ['nullable', 'string', 'max:100'],
             'expiry_date' => ['nullable', 'date'],

@@ -28,9 +28,19 @@ class SupplierReturnController extends Controller
             'amount' => ['required', 'numeric', 'min:0'],
         ]);
 
+        // Confirmed bug (see docs/FIX_PLAN.md Phase 4.7), same root cause as
+        // the purchase form's: a free-text supplier name never resolved to
+        // a real Supplier row, so settling a return against payable was
+        // blocked outright unless the supplier was already in the list.
+        // Resolving it up front means a brand-new supplier typed by name can
+        // now settle against payable too, exactly like one already on file.
+        if (empty($data['supplier_id']) && ! empty($data['supplier'])) {
+            $data['supplier_id'] = Supplier::firstOrCreate(['name' => $data['supplier']])->id;
+        }
+
         if ($data['settlement_method'] === 'payable' && empty($data['supplier_id'])) {
             throw ValidationException::withMessages([
-                'settlement_method' => 'বকেয়া থেকে বাদ দিতে হলে তালিকা থেকে সাপ্লায়ার বেছে নিন।',
+                'settlement_method' => 'বকেয়া থেকে বাদ দিতে হলে সাপ্লায়ারের নাম লিখুন বা তালিকা থেকে বেছে নিন।',
             ]);
         }
 

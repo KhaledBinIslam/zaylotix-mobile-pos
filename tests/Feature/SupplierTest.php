@@ -6,6 +6,8 @@ use App\Models\Product;
 use App\Models\ProductBatch;
 use App\Models\Purchase;
 use App\Models\Supplier;
+use App\Models\SupplierPayment;
+use App\Models\SupplierReturn;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\CreatesShops;
 use Tests\TestCase;
@@ -28,6 +30,59 @@ class SupplierTest extends TestCase
         $this->assertEquals(300.0, (float) $paying->fresh()->payable);
         $this->assertEquals(200.0, (float) $bystander->fresh()->payable); // unchanged
         $this->assertEquals(1000 - 200, (float) $shop->fresh()->cash_balance);
+    }
+
+    /** Phase 4.6 — see docs/FIX_PLAN.md. A settlement now leaves a structured, queryable record, not just an Activity log line. */
+    public function test_paying_a_supplier_records_a_structured_payment_row(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
+        $this->grantFeature($shop, 'suppliers');
+        $supplier = Supplier::create(['shop_id' => $shop->id, 'name' => 'Alpha Traders', 'payable' => 500]);
+
+        $this->actingAs($owner, 'web')->post("/app/suppliers/{$supplier->id}/payments", ['amount' => 200, 'method' => 'bkash'])
+            ->assertRedirect();
+
+        $payment = SupplierPayment::where('supplier_id', $supplier->id)->first();
+        $this->assertNotNull($payment);
+        $this->assertEquals(200, (float) $payment->amount);
+        $this->assertEquals(500, (float) $payment->payable_before);
+        $this->assertEquals(300, (float) $payment->payable_after);
+        $this->assertSame('bkash', $payment->method);
+        $this->assertSame($owner->id, $payment->user_id);
+    }
+
+    public function test_supplier_ledger_page_shows_purchase_return_and_payment_totals(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
+        $this->grantFeature($shop, 'suppliers');
+        $supplier = Supplier::create(['shop_id' => $shop->id, 'name' => 'Alpha Traders', 'payable' => 500]);
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 10, 'price' => 20, 'stock' => 50]);
+        Purchase::create(['shop_id' => $shop->id, 'supplier_id' => $supplier->id, 'amount' => 500, 'method' => 'cash', 'status' => 'received', 'date' => now()->toDateString()]);
+        Purchase::create(['shop_id' => $shop->id, 'supplier_id' => $supplier->id, 'amount' => 300, 'method' => 'cash', 'status' => 'pending', 'date' => now()->toDateString()]);
+        SupplierReturn::create(['shop_id' => $shop->id, 'supplier_id' => $supplier->id, 'product_id' => $product->id, 'qty' => 2, 'amount' => 40, 'settlement_method' => 'cash', 'date' => now()->toDateString()]);
+        $this->actingAs($owner, 'web')->post("/app/suppliers/{$supplier->id}/payments", ['amount' => 150]);
+
+        $response = $this->actingAs($owner, 'web')->get("/app/suppliers/{$supplier->id}");
+
+        $response->assertOk()->assertInertia(fn ($page) => $page
+            ->component('App/Suppliers/Show')
+            ->where('totals.purchased', 500) // only the received purchase counts
+            ->where('totals.returned', 40)
+            ->where('totals.paid', 150)
+            ->has('purchases', 2)
+            ->has('returns', 1)
+            ->has('payments', 1)
+        );
+    }
+
+    public function test_supplier_ledger_page_is_tenant_scoped(): void
+    {
+        [$shopA, $ownerA] = $this->createShopWithOwner();
+        $this->grantFeature($shopA, 'suppliers');
+        [$shopB] = $this->createShopWithOwner();
+        $supplierB = Supplier::create(['shop_id' => $shopB->id, 'name' => 'Not Yours']);
+
+        $this->actingAs($ownerA, 'web')->get("/app/suppliers/{$supplierB->id}")->assertNotFound();
     }
 
     public function test_paying_more_than_the_payable_is_rejected(): void

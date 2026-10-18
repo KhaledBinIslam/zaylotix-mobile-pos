@@ -490,6 +490,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
     Route::middleware(['perm:purchases', 'feature:suppliers'])->group(function () {
         Route::get('suppliers', [SupplierController::class, 'index'])->name('suppliers');
         Route::post('suppliers', [SupplierController::class, 'store'])->name('suppliers.store');
+        Route::get('suppliers/{supplier}', [SupplierController::class, 'show'])->name('suppliers.show');
         Route::post('suppliers/{supplier}/payments', [SupplierPaymentController::class, 'store'])->name('suppliers.payments.store');
         Route::post('supplier-returns', [SupplierReturnController::class, 'store'])->name('supplierReturns.store');
     });

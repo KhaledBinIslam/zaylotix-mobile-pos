@@ -4,6 +4,7 @@ namespace App\Http\Controllers\App;
 
 use App\Http\Controllers\Controller;
 use App\Models\Supplier;
+use App\Models\SupplierReturn;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -46,5 +47,45 @@ class SupplierController extends Controller
         ]);
 
         return back()->with('success', "{$data['name']} added.");
+    }
+
+    /**
+     * Phase 4.6 (see docs/FIX_PLAN.md) — confirmed missing from scratch:
+     * there was no way to see a supplier's purchase-by-purchase history,
+     * returns, or payment history anywhere — only the running payable
+     * total on the list page. total_purchased only counts 'received'
+     * purchases (a 'pending' order hasn't actually happened yet).
+     */
+    public function show(Supplier $supplier)
+    {
+        $this->authorize('view', $supplier);
+
+        $purchases = $supplier->purchases()
+            ->with('product:id,name,emoji')
+            ->orderByDesc('date')->orderByDesc('id')
+            ->get(['id', 'supplier_id', 'amount', 'method', 'status', 'date', 'product_id', 'qty', 'memo']);
+
+        $returns = SupplierReturn::where('supplier_id', $supplier->id)
+            ->with('product:id,name,emoji')
+            ->orderByDesc('date')->orderByDesc('id')
+            ->get(['id', 'supplier_id', 'product_id', 'qty', 'amount', 'settlement_method', 'reason', 'date']);
+
+        $payments = $supplier->supplierPayments()
+            ->with('user:id,name')
+            ->orderByDesc('date')->orderByDesc('id')
+            ->get(['id', 'supplier_id', 'user_id', 'amount', 'payable_before', 'payable_after', 'method', 'date']);
+
+        return Inertia::render('App/Suppliers/Show', [
+            'supplier' => $supplier,
+            'purchases' => $purchases,
+            'returns' => $returns,
+            'payments' => $payments,
+            'totals' => [
+                'purchased' => (float) $purchases->where('status', 'received')->sum('amount'),
+                'returned' => (float) $returns->sum('amount'),
+                'paid' => (float) $payments->sum('amount'),
+                'payable' => (float) $supplier->payable,
+            ],
+        ]);
     }
 }

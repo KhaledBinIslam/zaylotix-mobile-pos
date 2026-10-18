@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Purchase;
+use App\Models\Supplier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\CreatesShops;
 use Tests\TestCase;
@@ -40,6 +41,90 @@ class PurchaseOrderTest extends TestCase
             ->component('App/Purchases/Index')
             ->has('purchases', 2)
         );
+    }
+
+    /** Phase 4.1 — see docs/FIX_PLAN.md. Confirmed bug: a free-text supplier name never created a real Supplier record. */
+    public function test_a_free_text_supplier_name_creates_a_real_supplier_and_tracks_payable(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
+        $this->grantFeature($shop, 'purchases');
+
+        $response = $this->actingAs($owner, 'web')->post('/app/purchases', [
+            'supplier' => 'নতুন সাপ্লায়ার',
+            'amount' => 500,
+            'method' => 'credit',
+        ]);
+
+        $response->assertRedirect();
+        $supplier = Supplier::where('name', 'নতুন সাপ্লায়ার')->first();
+        $this->assertNotNull($supplier);
+        $this->assertEquals(500, (float) $supplier->payable);
+
+        $purchase = Purchase::first();
+        $this->assertSame($supplier->id, $purchase->supplier_id);
+    }
+
+    public function test_reusing_the_same_free_text_supplier_name_does_not_create_a_duplicate(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
+        $this->grantFeature($shop, 'purchases');
+
+        $this->actingAs($owner, 'web')->post('/app/purchases', ['supplier' => 'একই সাপ্লায়ার', 'amount' => 100, 'method' => 'credit']);
+        $this->actingAs($owner, 'web')->post('/app/purchases', ['supplier' => 'একই সাপ্লায়ার', 'amount' => 150, 'method' => 'credit']);
+
+        $this->assertSame(1, Supplier::where('name', 'একই সাপ্লায়ার')->count());
+        $this->assertEquals(250, (float) Supplier::where('name', 'একই সাপ্লায়ার')->first()->payable);
+    }
+
+    /** Phase 4.2 — see docs/FIX_PLAN.md. Missing feature: a purchase can now register a brand-new product in one submit. */
+    public function test_a_new_product_name_creates_the_product_and_applies_the_purchase_stock(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
+        $this->grantFeature($shop, 'purchases');
+
+        $response = $this->actingAs($owner, 'web')->post('/app/purchases', [
+            'amount' => 400,
+            'method' => 'cash',
+            'new_product_name' => 'Brand New Item',
+            'new_product_price' => 120,
+            'qty' => 10,
+            'cost' => 40,
+        ]);
+
+        $response->assertRedirect();
+        $product = Product::where('name', 'Brand New Item')->first();
+        $this->assertNotNull($product);
+        $this->assertEquals(120, (float) $product->price);
+        $this->assertEquals(40, (float) $product->cost);
+        $this->assertEquals(10, (float) $product->stock);
+        $this->assertSame($product->id, Purchase::first()->product_id);
+    }
+
+    public function test_a_new_product_purchase_can_also_be_pending(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
+        $this->grantFeature($shop, 'purchases');
+
+        $this->actingAs($owner, 'web')->post('/app/purchases', [
+            'amount' => 400,
+            'method' => 'cash',
+            'status' => 'pending',
+            'new_product_name' => 'Ordered Item',
+            'new_product_price' => 120,
+            'qty' => 10,
+            'cost' => 40,
+        ])->assertRedirect();
+
+        $product = Product::where('name', 'Ordered Item')->first();
+        $this->assertNotNull($product);
+        $this->assertEquals(0, (float) $product->stock); // not received yet
+        $this->assertEquals(1000, (float) $shop->fresh()->cash_balance); // not paid yet
+
+        $purchase = Purchase::first();
+        $this->actingAs($owner, 'web')->post("/app/purchases/{$purchase->id}/receive")->assertRedirect();
+
+        $this->assertEquals(10, (float) $product->fresh()->stock);
+        $this->assertEquals(600, (float) $shop->fresh()->cash_balance);
     }
 
     public function test_a_pending_purchase_withholds_stock_and_money_until_received(): void

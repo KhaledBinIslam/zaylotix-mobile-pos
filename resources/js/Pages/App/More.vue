@@ -258,9 +258,9 @@ function disconnectWa() {
 // --- purchase (stock-in from supplier) ---
 const purchaseSheet = ref(false);
 const purchaseAlsoStock = ref(false);
-const purchaseForm = useForm({ supplier: '', supplier_id: '', memo: '', amount: '', method: 'cash', status: 'received', product_id: '', qty: '', cost: '', batch_no: '', expiry_date: '' });
+const purchaseForm = useForm({ supplier: '', supplier_id: '', memo: '', amount: '', method: 'cash', status: 'received', product_id: '', new_product_name: '', new_product_price: '', qty: '', cost: '', batch_no: '', expiry_date: '' });
 function savePurchase() {
-    if (!purchaseAlsoStock.value) { purchaseForm.product_id = ''; purchaseForm.qty = ''; purchaseForm.cost = ''; purchaseForm.batch_no = ''; purchaseForm.expiry_date = ''; }
+    if (!purchaseAlsoStock.value) { purchaseForm.product_id = ''; purchaseForm.new_product_name = ''; purchaseForm.new_product_price = ''; purchaseForm.qty = ''; purchaseForm.cost = ''; purchaseForm.batch_no = ''; purchaseForm.expiry_date = ''; }
     purchaseForm.post(route('app.purchases.store'), {
         onSuccess: () => { purchaseSheet.value = false; purchaseForm.reset(); purchaseAlsoStock.value = false; },
     });
@@ -723,10 +723,22 @@ onMounted(() => {
                 <div class="field">
                     <label>{{ t('purchase.product') }}</label>
                     <select v-model="purchaseForm.product_id">
-                        <option value="">{{ t('stock.selectPlaceholder') }}</option>
+                        <option value="">{{ t('purchase.productFreeText') }}</option>
                         <option v-for="p in products" :key="p.id" :value="p.id">{{ p.emoji }} {{ p.name }}</option>
                     </select>
                 </div>
+                <template v-if="!purchaseForm.product_id">
+                    <div class="field">
+                        <label>{{ t('purchase.newProductName') }}</label>
+                        <input v-model="purchaseForm.new_product_name" :placeholder="t('purchase.newProductNamePlaceholder')">
+                        <div v-if="purchaseForm.errors.new_product_name" style="color:var(--rose);font-size:12px;margin-top:6px">{{ purchaseForm.errors.new_product_name }}</div>
+                    </div>
+                    <div v-if="purchaseForm.new_product_name" class="field">
+                        <label>{{ t('purchase.newProductPrice') }}</label>
+                        <input v-model="purchaseForm.new_product_price" type="number">
+                        <div v-if="purchaseForm.errors.new_product_price" style="color:var(--rose);font-size:12px;margin-top:6px">{{ purchaseForm.errors.new_product_price }}</div>
+                    </div>
+                </template>
                 <div class="f2">
                     <div class="field">
                         <label>{{ t('purchase.qty') }}</label>

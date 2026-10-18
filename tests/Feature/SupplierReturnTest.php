@@ -61,6 +61,27 @@ class SupplierReturnTest extends TestCase
         $this->assertEquals(1100.0, (float) $shop->fresh()->cash_balance); // 1000 + 100
     }
 
+    /** Phase 4.7 — see docs/FIX_PLAN.md. Same fix as the purchase form: a free-text supplier name can now settle against payable too. */
+    public function test_a_free_text_supplier_name_can_now_settle_against_payable(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'suppliers');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 10, 'price' => 20, 'stock' => 50]);
+
+        $response = $this->actingAs($owner, 'web')->post('/app/supplier-returns', [
+            'supplier' => 'নতুন সাপ্লায়ার',
+            'product_id' => $product->id,
+            'qty' => 5,
+            'settlement_method' => 'payable',
+            'amount' => 100,
+        ]);
+
+        $response->assertRedirect();
+        $supplier = Supplier::where('name', 'নতুন সাপ্লায়ার')->first();
+        $this->assertNotNull($supplier);
+        $this->assertEquals(-100.0, (float) $supplier->payable); // new supplier, payable starts at 0, return reduces it
+    }
+
     public function test_payable_settlement_requires_a_supplier_to_be_selected(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();

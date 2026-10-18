@@ -1,5 +1,5 @@
 <script setup>
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, Link, useForm } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
@@ -54,22 +54,23 @@ function pay() {
             <div v-for="s in withPayable" :key="s.id">
                 <div class="row">
                     <div class="ava">{{ s.name[0] }}</div>
-                    <div class="mid"><b>{{ s.name }}</b><span>📞 {{ s.phone || t('due.noNumber') }}</span></div>
+                    <Link :href="route('app.suppliers.show', s.id)" class="mid" style="text-decoration:none;color:inherit"><b>{{ s.name }}</b><span>📞 {{ s.phone || t('due.noNumber') }}</span></Link>
                     <div class="end"><b class="pill rose">{{ money(s.payable) }}</b></div>
                 </div>
                 <div class="btnrow" style="margin:-4px 0 12px 0;padding-left:54px">
                     <button class="btn sm" style="flex:1" @click="openPay(s)">{{ t('supplier.pay') }}</button>
+                    <Link :href="route('app.suppliers.show', s.id)" class="btn sm ghost" style="flex:1;text-align:center">{{ t('supplier.viewLedger') }}</Link>
                 </div>
             </div>
         </template>
 
         <template v-if="cleared.length">
             <div class="sechead"><h2>{{ t('supplier.allSuppliers') }}</h2></div>
-            <div v-for="s in cleared" :key="s.id" class="row">
+            <Link v-for="s in cleared" :key="s.id" :href="route('app.suppliers.show', s.id)" class="row" style="text-decoration:none;color:inherit">
                 <div class="ava">{{ s.name[0] }}</div>
                 <div class="mid"><b>{{ s.name }}</b><span>📞 {{ s.phone || t('due.noNumber') }}</span></div>
                 <div class="end"><span class="pill mint">{{ t('supplier.settled') }}</span></div>
-            </div>
+            </Link>
         </template>
 
         <div v-if="!suppliers.length" class="empty"><div class="big">🚚</div>{{ t('supplier.noSuppliers') }}</div>
