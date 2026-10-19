@@ -150,7 +150,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
 
     Route::middleware('perm:pos')->group(function () {
         Route::get('pos', [PosController::class, 'index'])->name('pos');
-        Route::post('pos/checkout', [PosController::class, 'checkout'])->name('pos.checkout');
+        Route::post('pos/checkout', [PosController::class, 'checkout'])->middleware('throttle:checkout')->name('pos.checkout');
         Route::post('pos/billing-preview', [PosController::class, 'billingPreview'])->name('pos.billingPreview');
         Route::post('pos/bogo-suggestions', [PosController::class, 'bogoSuggestions'])->name('pos.bogoSuggestions');
         Route::post('pos/discard-offline', [PosController::class, 'discardOffline'])->name('pos.discardOffline');
@@ -160,7 +160,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::get('customers/lookup', [CustomerController::class, 'lookup'])->name('customers.lookup');
         Route::get('customers/search', [CustomerController::class, 'search'])->name('customers.search');
 
-        Route::post('pos/gateway/{provider}/initiate', [GatewayCheckoutController::class, 'initiate'])->name('gatewayCheckout.initiate');
+        Route::post('pos/gateway/{provider}/initiate', [GatewayCheckoutController::class, 'initiate'])->middleware('throttle:checkout')->name('gatewayCheckout.initiate');
         Route::get('pos/gateway/status/{reference}', [GatewayCheckoutController::class, 'status'])->name('gatewayCheckout.status');
 
         Route::post('work-period/open', [WorkPeriodController::class, 'open'])->name('workPeriod.open');
@@ -203,7 +203,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
             Route::post('restaurant/tables/{restaurantTable}/merge', [RestaurantTableController::class, 'merge'])->name('restaurant.tables.merge');
 
             Route::get('restaurant/orders/{tableOrder}', [TableOrderController::class, 'show'])->name('restaurant.orders.show');
-            Route::post('restaurant/orders/{tableOrder}/items', [TableOrderController::class, 'addItem'])->name('restaurant.orders.items.store');
+            Route::post('restaurant/orders/{tableOrder}/items', [TableOrderController::class, 'addItem'])->middleware('throttle:checkout')->name('restaurant.orders.items.store');
             Route::delete('restaurant/order-items/{tableOrderItem}', [TableOrderController::class, 'removeItem'])->name('restaurant.orderItems.destroy');
             Route::patch('restaurant/order-items/{tableOrderItem}/decrement', [TableOrderController::class, 'decrementItem'])->name('restaurant.orderItems.decrement');
             Route::patch('restaurant/order-items/{tableOrderItem}/discount', [TableOrderController::class, 'updateItemDiscount'])->name('restaurant.orderItems.discount');
@@ -211,7 +211,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
             Route::patch('restaurant/orders/{tableOrder}/meta', [TableOrderController::class, 'updateMeta'])->name('restaurant.orders.meta');
             Route::patch('restaurant/orders/{tableOrder}/table', [TableOrderController::class, 'assignTable'])->name('restaurant.orders.assignTable');
             Route::post('restaurant/orders/{tableOrder}/kot', [TableOrderController::class, 'printKot'])->name('restaurant.orders.kot');
-            Route::post('restaurant/orders/{tableOrder}/bill', [TableOrderController::class, 'bill'])->name('restaurant.orders.bill');
+            Route::post('restaurant/orders/{tableOrder}/bill', [TableOrderController::class, 'bill'])->middleware('throttle:checkout')->name('restaurant.orders.bill');
             Route::post('restaurant/orders/{tableOrder}/cancel', [TableOrderController::class, 'cancel'])->name('restaurant.orders.cancel');
         });
     });
@@ -339,7 +339,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::post('returns', [ReturnController::class, 'store'])->name('returns.store');
         Route::get('returns/lookup', [ReturnController::class, 'lookup'])->name('returns.lookup');
         Route::get('returns/barcode/{barcode}', [ReturnController::class, 'barcodeLookup'])->name('returns.barcode');
-        Route::post('returns/process', [ReturnController::class, 'process'])->name('returns.process');
+        Route::post('returns/process', [ReturnController::class, 'process'])->middleware('throttle:checkout')->name('returns.process');
     });
 
     Route::middleware(['perm:stock_count', 'feature:stock_count'])->group(function () {

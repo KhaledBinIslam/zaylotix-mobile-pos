@@ -184,11 +184,20 @@ class Shop extends Model
         return $this->featureKeys()->contains($key);
     }
 
+    /**
+     * `$this->features` (the magic relation PROPERTY) — not `$this->features()->pluck(...)`
+     * (the relation query builder). Real bug found in a scale audit (see
+     * docs/SCALING_GUIDE.md): the query-builder form runs a fresh
+     * `shop_features` join every single call and never populates
+     * `$this->relations['features']`, so the docblock's "cached
+     * per-request" claim above was never actually true — every one of
+     * this request's `hasFeature()` calls (6+ inside one checkout, 9+ on
+     * the Reports page) re-queried from scratch. Property access lazy-
+     * loads once and Eloquent caches it on the instance from then on.
+     */
     public function featureKeys(): Collection
     {
-        return $this->relationLoaded('features')
-            ? $this->features->pluck('key')
-            : $this->features()->pluck('key');
+        return $this->features->pluck('key');
     }
 
     /**

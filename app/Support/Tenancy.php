@@ -21,6 +21,38 @@ use Illuminate\Support\Facades\Auth;
  */
 class Tenancy
 {
+    /**
+     * Per-request Shop lookup cache — see docs/SCALING_GUIDE.md. Confirmed
+     * via audit: HandleInertiaRequests::share() alone calls static::shop()
+     * twice every single request (the 'shop' and 'features' props), and
+     * EnsureFeatureEnabled calls it again for every feature:-gated route
+     * segment (31 across routes/web.php) — a request touching several
+     * feature-gated sections could re-run this identical, uncached
+     * Shop::find() 10+ times before this fix. Safe as a plain static array
+     * under this app's current PHP-FPM/shared-hosting deployment (one
+     * fresh process per request); would need clearing per-request (e.g. a
+     * request-start listener) if this app ever moves to Octane's
+     * persistent workers, since static state would then survive across
+     * requests. A handful of controllers mutate a shop's balance columns
+     * via a direct `Shop::whereKey(...)->increment()/->decrement()` query
+     * (bypassing any Eloquent instance, so this cache can't see it) and
+     * then `return back()` — a redirect, so the browser's follow-up GET is
+     * a new request with a fresh cache; nothing within the SAME request
+     * re-reads a stale balance through here. `Tenancy::shop()->update()`
+     * (the other mutation pattern, used by SettingController etc.) mutates
+     * this exact cached instance in place, so it can never go stale.
+     */
+    private static array $shopCache = [];
+
+    private static function findShop(int $id): ?Shop
+    {
+        if (! array_key_exists($id, self::$shopCache)) {
+            self::$shopCache[$id] = Shop::withoutGlobalScopes()->find($id);
+        }
+
+        return self::$shopCache[$id];
+    }
+
     public static function id(): ?int
     {
         if (app()->bound('currentShopId')) {
@@ -50,8 +82,8 @@ class Tenancy
      */
     public static function sameBusiness(int $shopId, int $otherId): bool
     {
-        $shop = Shop::withoutGlobalScopes()->find($shopId);
-        $other = Shop::withoutGlobalScopes()->find($otherId);
+        $shop = static::findShop($shopId);
+        $other = static::findShop($otherId);
         if (! $shop || ! $other) {
             return false;
         }
@@ -70,7 +102,7 @@ class Tenancy
             return [];
         }
 
-        $shop = Shop::withoutGlobalScopes()->find($shopId);
+        $shop = static::findShop($shopId);
         if (! $shop) {
             return [$shopId];
         }
@@ -86,7 +118,7 @@ class Tenancy
     {
         $id = static::id();
 
-        return $id ? Shop::withoutGlobalScopes()->find($id) : null;
+        return $id ? static::findShop($id) : null;
     }
 
     /** Explicitly set the tenant for the remainder of this request (admin impersonation, artisan commands, tests). */
@@ -100,5 +132,11 @@ class Tenancy
         if (app()->bound('currentShopId')) {
             app()->forgetInstance('currentShopId');
         }
+    }
+
+    /** Drops the per-request Shop cache — tests that fetch/mutate a shop by a fresh query and then expect static::shop() to see it need this; a real request never needs to call it. */
+    public static function forgetShopCache(): void
+    {
+        self::$shopCache = [];
     }
 }
