@@ -39,6 +39,13 @@ function setLang(value) {
     router.patch(route('app.settings.lang'), { lang: value }, { preserveScroll: true });
 }
 
+// Owner-only (docs/FIX_PLAN.md Phase 12) — unlike theme/language, this
+// changes how every cashier's offline sales behave shop-wide, so it's a
+// real server-side shop setting, not a personal/local display preference.
+function setSyncMode(value) {
+    router.patch(route('app.settings.offlineSyncMode'), { mode: value }, { preserveScroll: true });
+}
+
 // theme is client-only (localStorage, see useTheme.js) — purely a display
 // preference, not something that needs to sync across a shop's devices
 const theme = ref(resolvedTheme());
@@ -510,6 +517,16 @@ onMounted(() => {
                 <div class="seg" style="margin:0">
                     <button :class="{ on: theme === 'light' }" @click="setThemeChoice('light')">{{ t('more.themeLight') }}</button>
                     <button :class="{ on: theme === 'dark' }" @click="setThemeChoice('dark')">{{ t('more.themeDark') }}</button>
+                </div>
+            </div>
+        </div>
+        <div v-if="isOwner" class="row" style="cursor:default">
+            <div class="ava">{{ shop?.offline_sync_mode === 'review' ? '🔍' : '🔄' }}</div>
+            <div class="mid"><b>{{ t('more.offlineSyncMode') }}</b><span>{{ shop?.offline_sync_mode === 'review' ? t('more.offlineSyncModeReviewSub') : t('more.offlineSyncModeAutoSub') }}</span></div>
+            <div class="end">
+                <div class="seg" style="margin:0">
+                    <button :class="{ on: (shop?.offline_sync_mode || 'auto') === 'auto' }" @click="setSyncMode('auto')">{{ t('more.offlineSyncModeAuto') }}</button>
+                    <button :class="{ on: shop?.offline_sync_mode === 'review' }" @click="setSyncMode('review')">{{ t('more.offlineSyncModeReview') }}</button>
                 </div>
             </div>
         </div>

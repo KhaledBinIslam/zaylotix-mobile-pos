@@ -1,7 +1,32 @@
 # Changelog
 
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
-(Phases 0-9, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
+(Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
+
+## Phase 12 — Offline POS: navigation, bottom-nav labels, print/WhatsApp, Pending Sales review
+- Fixed a confusing generic error toast on a failed offline navigation —
+  now shows a clear "this page needs internet, keep selling" message and
+  correctly stays on the current page.
+- Fixed bottom-nav labels wrapping to two lines / misaligning icons on a
+  customized slot with a long name (Sales History, Purchase History,
+  etc.) — added short label variants and proper text-overflow handling.
+- Print and WhatsApp now actually work right after an offline sale (they
+  were completely unreachable before — the receipt sheet never opened),
+  clearly labeled as a provisional "OFF-XXXXXXXX" bill until it syncs.
+  Also fixed: `Clothing/Pos.vue`'s offline checkout had no idempotency
+  key or shop-pin protection at all — a real, independently-found gap,
+  now at parity with the main POS screen.
+- New: an owner-controlled "review before sync" mode (shop setting,
+  default unchanged/automatic) plus a real Pending Sales screen — review
+  every still-unsynced sale (full bill detail, print/WhatsApp, sync-now/
+  retry, cancel-with-reason) before or after it attempts to sync, with a
+  30-second last-chance countdown even in the default auto-sync mode.
+- Also fixed a real money bug found along the way: the POS payment
+  screen showed a second, disconnected payment-amount entry box that
+  wasn't actually read unless "split payment" mode was explicitly on — a
+  cashier typing a partial amount there had the FULL total silently
+  charged instead. Any past sale this affected can't be identified from
+  the data alone.
 
 ## Phase 9 — UI/UX design-token consolidation (`2da6267`)
 - Bridged Admin panel's Tailwind utilities onto the same CSS tokens the

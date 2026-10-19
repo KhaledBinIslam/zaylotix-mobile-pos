@@ -12,7 +12,7 @@ worker, or `PosController::performCheckout()`.
 
 ## Going offline mid-sale
 - [ ] Turn on Airplane Mode (or DevTools → Network → Offline) while POS is open with items in the cart.
-- [ ] Complete a sale. Confirm a "queued, sale pending" indicator appears (not a full receipt — no invoice number exists yet).
+- [ ] Complete a sale. Confirm the receipt sheet opens showing a placeholder "OFF-XXXXXXXX" invoice number, clearly marked "অফলাইন বিল — সিঙ্কের পর চূড়ান্ত নম্বর পাবেন" (Phase 12 — this used to just toast with no receipt at all).
 - [ ] Add another item, complete a second offline sale. Confirm it queues too.
 - [ ] Close the tab/app entirely while still offline, then reopen it. Confirm both queued sales are still pending (not lost).
 
@@ -41,3 +41,13 @@ Automated coverage: `tests/Feature/OfflineSyncProductResolutionTest.php`. Manual
 - [ ] From that same stuck entry, confirm "cancel this sale" (with an optional reason) removes it and the shop's Activity log gets a `pos.offlineSaleDiscarded` entry.
 - [ ] Soft-delete a product while a sale for it is genuinely queued offline (not yet synced), then go online. Confirm it still syncs successfully (historical sale, allowed) — but confirm a FRESH/live attempt to sell that same now-deleted product is still rejected normally.
 - [ ] Queue an offline sale with two different products, then (via DB or admin) make ONE of them unresolvable before syncing. Confirm the failed-queue sheet names that specific product, offers "match to another product" (search works, remapping fixes and auto-resyncs) and "drop item" (removes just that line, keeps the rest), without ever silently dropping the whole bill.
+
+## Offline navigation, bottom nav, print/WhatsApp, and the Pending Sales sheet (Phase 12, see docs/FIX_PLAN.md)
+Automated coverage: `resources/js/support/__tests__/navErrorMessage.test.js`, `offlineSaleSnapshot.test.js`, `syncModeDecision.test.js`, `offlineQueue.test.js`; `tests/Feature/OfflineSyncModeSettingTest.php`. Manual cross-checks:
+- [ ] While genuinely offline, tap a sidebar/bottom-nav item that goes to a page not already cached on this device (something other than POS/Stock/Sales History). Confirm a single, clear "এই পেজ দেখতে ইন্টারনেট লাগবে..." toast appears, you stay on the current page, and NOT the old generic "কিছু একটা ভুল হয়েছে" message.
+- [ ] On a narrow phone (≈360px wide), check the bottom nav with each of the longer-named customizable slots selected (Sales History, Purchase History, Customer List) in both Bengali and English. Confirm every label stays on one line (ellipsis instead of wrapping) and every icon lines up at the same height — check in both light and dark mode.
+- [ ] Complete an offline sale, then from the receipt sheet tap WhatsApp. Confirm (with internet actually off) it shows "ইন্টারনেট এলে পাঠানো যাবে" instead of silently failing; with internet on, confirm it opens wa.me with a message that includes the "⏳ অফলাইন বিল" note and the correct items/total.
+- [ ] Open the Pending Sales sheet (via the offline banner, or POS's own 🔄 button) while a sale is still queued. Confirm Print and WhatsApp both work from there too, not just right after checkout.
+- [ ] As owner, in More → অফলাইন সিঙ্ক মোড, switch to "যাচাই করে" (review). Queue an offline sale, go back online. Confirm it does NOT auto-sync — the pending banner stays up, and only tapping "সিঙ্ক করুন"/"এখনই সিঙ্ক করুন" in the sheet actually sends it. Switch back to "অটো" and confirm the 30-second countdown banner (with a "থামান" stop button) appears before it auto-sends, and that stopping it leaves the sale pending (unsent) until the next reconnect or a manual sync.
+- [ ] As a cashier (no `returns` permission), queue an offline sale under a DIFFERENT staff account on the same device (or check via the UI logic) — confirm you can discard your OWN queued sale but not someone else's (shown as "এটা আপনার তৈরি বিল নয়" instead of a cancel button). As the owner, confirm you CAN discard anyone's.
+- [ ] After a sale that was printed/shared as "OFF-XXXXXXXX" actually syncs, open the Pending Sales sheet's "সম্প্রতি সিঙ্ক হয়েছে" section and confirm that placeholder maps to the real INV- number.

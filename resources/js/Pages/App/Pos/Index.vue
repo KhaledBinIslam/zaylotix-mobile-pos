@@ -13,6 +13,8 @@ import { useOfflineSync } from '@/composables/useOfflineSync';
 import { usePollingReload } from '@/composables/usePollingReload';
 import { fetchWithSessionRetry } from '@/support/fetchWithSessionRetry';
 import { isStaleAutoFill } from '@/support/customerAutoFill';
+import { buildOfflineSaleSnapshot } from '@/support/offlineSaleSnapshot';
+import { buildReceiptWhatsAppText, whatsAppUrlFor } from '@/support/receiptMessage';
 
 const props = defineProps({
     products: Array,
@@ -742,8 +744,17 @@ async function submitCheckout() {
         // returns (see useOfflineSync), same as a cashier's paper backup
         // notebook, but self-syncing instead of needing manual re-entry.
         if (!navigator.onLine || e instanceof TypeError) {
-            await offlineSync.queueSale(payload);
+            // Real gap (docs/FIX_PLAN.md): print/WhatsApp were entirely
+            // missing after an offline sale — the cart just reset with a
+            // toast and nothing else offered. Built BEFORE
+            // resetCartAfterCheckout() clears the cart/customer/payment
+            // refs this reads indirectly through `payload`. Mirrors the
+            // online success path below (lastSale + receiptOpen), minus
+            // the router.reload() — there's nothing to reload from offline.
+            lastSale.value = buildOfflineSaleSnapshot(payload);
+            await offlineSync.queueSale(payload, { userId: page.props.auth?.user?.id, userName: page.props.auth?.user?.name });
             resetCartAfterCheckout();
+            receiptOpen.value = true;
             toast(t('pos.savedOffline'));
         } else {
             // A genuine fetch()-level failure that isn't a dropped
@@ -902,44 +913,18 @@ function printMemo() {
 function sendMemoWA() {
     const s = lastSale.value;
     if (!s) return;
-    const settings = shop.value?.memo_settings || {};
-    const phone = s.customer?.phone || '';
-    const num = phone ? '88' + phone.replace(/\D/g, '').replace(/^88/, '') : '';
-
-    const headerLines = [`*${shop.value?.name || 'Zaylotix POS'}*`];
-    if (shop.value?.phone) headerLines.push(`📞 ${shop.value.phone}${shop.value?.area ? ' • ' + shop.value.area : ''}`);
-    if (settings.show_email && shop.value?.email) headerLines.push(`✉️ ${shop.value.email}`);
-    if (settings.show_website && shop.value?.website) headerLines.push(`🌐 ${shop.value.website}`);
-    if (settings.show_bin && shop.value?.bin_no && s.vat > 0) headerLines.push(`BIN: ${shop.value.bin_no}`);
-    if (settings.show_trade_license && shop.value?.trade_license_no) headerLines.push(`Trade License: ${shop.value.trade_license_no}`);
-    if (settings.show_tin && shop.value?.tin_no) headerLines.push(`TIN: ${shop.value.tin_no}`);
-    if (settings.show_cashier && s.user?.name) headerLines.push(`বিক্রেতা: ${s.user.name}`);
-
-    const customerLine = `কাস্টমার: ${s.customer?.name || 'নগদ কাস্টমার'}${settings.show_customer_phone && s.customer?.phone ? ' • ' + s.customer.phone : ''}`;
-
-    const lines = s.items.map((l) => `${l.product_name}${(l.unit_label || l.variant_label) ? ' (' + (l.unit_label || l.variant_label) + ')' : ''}  ${l.qty}×${l.price} = ${money(l.price * l.qty - (l.discount || 0))}${l.discount > 0 ? ' (ছাড় −' + money(l.discount) + ')' : ''}`).join('\n');
-
-    const totals = [`Subtotal: ${money(s.subtotal)}`];
-    if (s.discount > 0) totals.push(`ছাড়: − ${money(s.discount)}`);
-    if (s.service_charge > 0) totals.push(`${t('pos.serviceCharge')}: + ${money(s.service_charge)}`);
-    if (s.vat > 0) totals.push(`VAT${settings.show_vat_inclusive_note ? ' (দামের মধ্যে অন্তর্ভুক্ত)' : ''}: ${money(s.vat)}`);
-    totals.push(`*মোট: ${money(s.total)}*`);
-
-    const tendered = (s.payments || []).reduce((sum, p) => sum + Number(p.amount), 0);
-    const change = Math.max(0, tendered - Number(s.total));
-    const due = Math.max(0, Number(s.total) - tendered);
-    if (settings.show_payment_method) totals.push(`পেমেন্ট: ${s.payment_mode}`);
-    if (settings.show_tendered_change && tendered > 0) totals.push(`দিয়েছেন: ${money(tendered)}`);
-    if (settings.show_tendered_change && change > 0) totals.push(`ফেরত: ${money(change)}`);
-    if (due > 0) totals.push(`বাকি বিল: ${money(due)}`);
-
-    const footerLines = [shop.value?.receipt_footer || 'ধন্যবাদ! আবার আসবেন 🙏'];
-    if (settings.show_exchange_policy && settings.exchange_policy_text) footerLines.push(settings.exchange_policy_text);
-
-    const divider = '─'.repeat(16);
-    const text = [...headerLines, divider, `মেমো: ${s.invoice_no}`, customerLine, divider, lines, divider, ...totals, '', ...footerLines].join('\n');
-
-    window.open('https://wa.me/' + num + '?text=' + encodeURIComponent(text), '_blank');
+    // wa.me itself needs a live connection to open (it's a real web page,
+    // not something the service worker can serve) — attempting it offline
+    // would just silently fail/open a blank tab. The composed message
+    // isn't lost though: it's rebuilt from `s` (and for a queued sale,
+    // ultimately from the same payload sitting in the offline queue) on
+    // whatever LATER tap of this same button actually succeeds — nothing
+    // extra needs to be "saved" separately for that to work.
+    if (!navigator.onLine) {
+        toast(t('pos.whatsappNeedsInternet'));
+        return;
+    }
+    window.open(whatsAppUrlFor(s, buildReceiptWhatsAppText(shop.value, s, t)), '_blank');
 }
 
 // as soon as a full-looking phone number is typed, check if this customer
@@ -1231,6 +1216,10 @@ useKeyboardShortcuts({
                     <button class="btn ghost lg:hidden" style="width:auto;padding:0 16px;position:relative" :title="t('pos.heldCarts')" @click="heldSheet = true">
                         📋
                         <span v-if="heldCarts.length" style="position:absolute;top:-4px;right:-4px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--rose);color:#fff;font-size:9.5px;font-weight:800;display:flex;align-items:center;justify-content:center">{{ heldCarts.length }}</span>
+                    </button>
+                    <button v-if="offlineSync.pendingCount.value || offlineSync.failedCount.value" class="btn ghost" style="width:auto;padding:0 16px;position:relative" :title="t('offline.pendingSalesTitle')" @click="offlineSync.pendingSheetOpen.value = true">
+                        🔄
+                        <span style="position:absolute;top:-4px;right:-4px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--rose);color:#fff;font-size:9.5px;font-weight:800;display:flex;align-items:center;justify-content:center">{{ offlineSync.pendingCount.value + offlineSync.failedCount.value }}</span>
                     </button>
                 </div>
 

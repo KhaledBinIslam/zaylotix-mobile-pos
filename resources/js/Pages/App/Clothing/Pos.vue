@@ -9,6 +9,8 @@ import { useToast } from '@/composables/useToast';
 import { useI18n } from '@/composables/useI18n';
 import { useHardwareScanner } from '@/composables/useHardwareScanner';
 import { useOfflineSync } from '@/composables/useOfflineSync';
+import { buildOfflineSaleSnapshot } from '@/support/offlineSaleSnapshot';
+import { buildReceiptWhatsAppText, whatsAppUrlFor } from '@/support/receiptMessage';
 
 /**
  * A dedicated, clothing-specific POS — category tabs -> product grid ->
@@ -333,7 +335,36 @@ function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]')?.content || '';
 }
 
+// Real gap, found while building the Pending Sales sheet (docs/FIX_PLAN.md
+// Phase 12): this screen's offline payload had no client_uuid at all —
+// zero replay-idempotency protection (Phase 1's fix never reached this
+// screen), no shop_id pin (the admin-impersonation wrong-shop bug Phase 11
+// fixed on Pos/Index.vue could still silently misfire here), and no
+// product name/barcode/price snapshot (every offline failure from this
+// screen showed only "unknown product"). Mirrors Pos/Index.vue's own
+// checkoutUuid()/lineSnapshot() exactly — same idempotency key convention,
+// same diagnostic-only snapshot shape.
+let pendingCheckoutUuid = null;
+function checkoutUuid() {
+    if (!pendingCheckoutUuid) {
+        pendingCheckoutUuid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+    }
+    return pendingCheckoutUuid;
+}
+function lineSnapshot(l) {
+    const p = props.products.find((pp) => pp.id === l.product_id);
+    const variant = p?.variants?.find((v) => v.id === l.product_variant_id);
+    return {
+        product_name: p?.name || '',
+        product_barcode: p?.barcode || '',
+        variant_label: variant ? [variant.size, variant.color].filter(Boolean).join(' / ') : '',
+        unit_label: null,
+        unit_price: variant?.price ?? p?.price ?? null,
+    };
+}
+
 function resetCartAfterCheckout() {
+    pendingCheckoutUuid = null;
     cart.value = [];
     discount.value = 0;
     customerPhone.value = '';
@@ -351,7 +382,10 @@ async function submitCheckout() {
     errorMsg.value = '';
 
     const payload = {
-        items: cart.value.map((l) => ({ product_id: l.product_id, product_variant_id: l.product_variant_id, qty: l.qty, discount: l.discount || 0 })),
+        client_uuid: checkoutUuid(),
+        shop_id: shop.value?.id ?? null,
+        shop_name: shop.value?.name ?? null,
+        items: cart.value.map((l) => ({ product_id: l.product_id, product_variant_id: l.product_variant_id, qty: l.qty, discount: l.discount || 0, ...lineSnapshot(l) })),
         discount: discount.value || 0,
         complimentary: payMode.value === 'complimentary',
         payments: buildPayments(),
@@ -387,8 +421,10 @@ async function submitCheckout() {
         // bug above) still surfaces as a real error instead of being
         // silently swallowed into an offline queue it doesn't belong in.
         if (!navigator.onLine || e instanceof TypeError) {
-            await offlineSync.queueSale(payload);
+            lastSale.value = buildOfflineSaleSnapshot(payload);
+            await offlineSync.queueSale(payload, { userId: page.props.auth?.user?.id, userName: page.props.auth?.user?.name });
             resetCartAfterCheckout();
+            receiptOpen.value = true;
             toast(t('pos.savedOffline'));
         } else {
             console.error('Checkout failed:', e);
@@ -545,44 +581,14 @@ function printMemo() {
 function sendMemoWA() {
     const s = lastSale.value;
     if (!s) return;
-    const settings = shop.value?.memo_settings || {};
-    const phone = s.customer?.phone || '';
-    const num = phone ? '88' + phone.replace(/\D/g, '').replace(/^88/, '') : '';
-
-    const headerLines = [`*${shop.value?.name || 'Zaylotix POS'}*`];
-    if (shop.value?.phone) headerLines.push(`📞 ${shop.value.phone}${shop.value?.area ? ' • ' + shop.value.area : ''}`);
-    if (settings.show_email && shop.value?.email) headerLines.push(`✉️ ${shop.value.email}`);
-    if (settings.show_website && shop.value?.website) headerLines.push(`🌐 ${shop.value.website}`);
-    if (settings.show_bin && shop.value?.bin_no && s.vat > 0) headerLines.push(`BIN: ${shop.value.bin_no}`);
-    if (settings.show_trade_license && shop.value?.trade_license_no) headerLines.push(`Trade License: ${shop.value.trade_license_no}`);
-    if (settings.show_tin && shop.value?.tin_no) headerLines.push(`TIN: ${shop.value.tin_no}`);
-    if (settings.show_cashier && s.user?.name) headerLines.push(`বিক্রেতা: ${s.user.name}`);
-
-    const customerLine = `কাস্টমার: ${s.customer?.name || 'নগদ কাস্টমার'}${settings.show_customer_phone && s.customer?.phone ? ' • ' + s.customer.phone : ''}`;
-
-    const lines = s.items.map((l) => `${l.product_name}${l.variant_label ? ' (' + l.variant_label + ')' : ''}  ${l.qty}×${l.price} = ${money(l.price * l.qty - (l.discount || 0))}${l.discount > 0 ? ' (ছাড় −' + money(l.discount) + ')' : ''}`).join('\n');
-
-    const totals = [`Subtotal: ${money(s.subtotal)}`];
-    if (s.discount > 0) totals.push(`ছাড়: − ${money(s.discount)}`);
-    if (s.service_charge > 0) totals.push(`${t('pos.serviceCharge')}: + ${money(s.service_charge)}`);
-    if (s.vat > 0) totals.push(`VAT${settings.show_vat_inclusive_note ? ' (দামের মধ্যে অন্তর্ভুক্ত)' : ''}: ${money(s.vat)}`);
-    totals.push(`*মোট: ${money(s.total)}*`);
-
-    const tendered = (s.payments || []).reduce((sum, p) => sum + Number(p.amount), 0);
-    const change = Math.max(0, tendered - Number(s.total));
-    const due = Math.max(0, Number(s.total) - tendered);
-    if (settings.show_payment_method) totals.push(`পেমেন্ট: ${s.payment_mode}`);
-    if (settings.show_tendered_change && tendered > 0) totals.push(`দিয়েছেন: ${money(tendered)}`);
-    if (settings.show_tendered_change && change > 0) totals.push(`ফেরত: ${money(change)}`);
-    if (due > 0) totals.push(`বাকি বিল: ${money(due)}`);
-
-    const footerLines = [shop.value?.receipt_footer || 'ধন্যবাদ! আবার আসবেন 🙏'];
-    if (settings.show_exchange_policy && settings.exchange_policy_text) footerLines.push(settings.exchange_policy_text);
-
-    const divider = '─'.repeat(16);
-    const text = [...headerLines, divider, `মেমো: ${s.invoice_no}`, customerLine, divider, lines, divider, ...totals, '', ...footerLines].join('\n');
-
-    window.open('https://wa.me/' + num + '?text=' + encodeURIComponent(text), '_blank');
+    // see Pos/Index.vue's identical guard for why — wa.me needs a live
+    // connection to open at all; nothing needs saving separately since
+    // this just rebuilds from `s` whenever the button is next tapped.
+    if (!navigator.onLine) {
+        toast(t('pos.whatsappNeedsInternet'));
+        return;
+    }
+    window.open(whatsAppUrlFor(s, buildReceiptWhatsAppText(shop.value, s, t)), '_blank');
 }
 </script>
 

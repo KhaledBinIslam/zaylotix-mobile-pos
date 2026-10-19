@@ -4,16 +4,23 @@ import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import Toast from '@/Components/Toast.vue';
 import ZaylotixMark from '@/Components/ZaylotixMark.vue';
 import Sheet from '@/Components/Sheet.vue';
+import ReceiptMemo from '@/Components/ReceiptMemo.vue';
 import { useToast } from '@/composables/useToast';
 import { useI18n } from '@/composables/useI18n';
 import { useOfflineSync } from '@/composables/useOfflineSync';
 import { usePermissions } from '@/composables/usePermissions';
+import { buildOfflineSaleSnapshot } from '@/support/offlineSaleSnapshot';
+import { buildReceiptWhatsAppText, whatsAppUrlFor } from '@/support/receiptMessage';
+import { canDiscardEntry as canDiscardQueuedEntry } from '@/support/offlineQueue';
 
 const props = defineProps({ active: { type: String, default: 'home' } });
 
 const page = usePage();
 const offlineSync = useOfflineSync();
-const failedSheet = ref(false);
+// Pending-sales sheet now shows every still-unsynced entry (pending AND
+// failed), not just failures — open state moved into useOfflineSync.js
+// itself (pendingSheetOpen) so Pos/Index.vue's own "pending sales" button
+// can open the SAME sheet this file renders, not a second instance.
 
 // Offline-sync resolution UI (see docs/FIX_PLAN.md — the "product not
 // found" fix). Only one remap-in-progress or one cancel-in-progress at a
@@ -109,6 +116,55 @@ function confirmCancel() {
     cancelingEntryId.value = null;
     cancelReason.value = '';
 }
+
+// "can this person discard this specific entry" (docs/FIX_PLAN.md Phase
+// 12): anyone with the shop's return/void permission (the same one that
+// already gates reversing a REAL synced sale) can discard any stuck
+// offline entry; a cashier without it can only discard their OWN —
+// queuedByUserId is local-only attribution (see offlineQueue.js), never
+// server-validated, because this data never reached the server to begin
+// with; this is a UI-level courtesy, not an enforceable security boundary.
+function canDiscardEntry(entry) {
+    return canDiscardQueuedEntry(entry, hasPerm('returns'), page.props.auth?.user?.id);
+}
+
+// Print/WhatsApp for a STILL-QUEUED (pending or failed) entry, reachable
+// any time later from the pending-sales sheet — not just the one-shot
+// moment right after checkout that Pos/Index.vue's own receipt sheet
+// already covers. Builds the same display-only snapshot either way.
+const printPreviewEntry = ref(null);
+const printPreviewOpen = ref(false);
+const printPreviewSale = computed(() => (printPreviewEntry.value ? buildOfflineSaleSnapshot(printPreviewEntry.value.payload) : null));
+function openPrintPreview(entry) {
+    printPreviewEntry.value = entry;
+    printPreviewOpen.value = true;
+}
+function printPendingMemo() {
+    window.print();
+}
+function sendPendingMemoWA() {
+    if (!printPreviewSale.value) return;
+    if (!offlineSync.isOnline.value) {
+        toast(t('pos.whatsappNeedsInternet'));
+        return;
+    }
+    window.open(whatsAppUrlFor(printPreviewSale.value, buildReceiptWhatsAppText(shop.value, printPreviewSale.value, t)), '_blank');
+}
+
+// Local→real invoice mapping (see useOfflineSync.js's trySync()) — loaded
+// fresh each time the sheet opens, not kept live-reactive, since it only
+// ever changes as a side effect of a sync this same session would already
+// be refreshing the sheet for anyway.
+const recentlySynced = ref([]);
+// pendingSheetOpen lives in useOfflineSync.js (module-level) specifically
+// so it can be opened from anywhere — this page's own banner, OR a
+// "pending sales" button on Pos/Index.vue/Clothing/Pos.vue — a plain
+// watch here (rather than a wrapper function every opener would need to
+// remember to call) means the synced-map refresh happens no matter which
+// one actually opened it.
+watch(() => offlineSync.pendingSheetOpen.value, (open) => {
+    if (open) offlineSync.getSyncedMap().then((map) => { recentlySynced.value = map; });
+});
 // "as of when" for the offline banner — a shop owner looking at possibly
 // hours-old stock/prices while offline needs to know how stale it is, not
 // just a bare "no internet" message
@@ -328,21 +384,21 @@ const sidebarGroups = computed(() => [
             { key: 'reservations', label: t('nav.reservations'), href: route('app.reservations.index'), icon: 'calendar', on: props.active === 'reservations', show: hasPerm('pos') && isRestaurant.value && hasFeature('restaurant_tables') },
             { key: 'kds', label: t('nav.kds'), href: route('app.kds.index'), icon: 'pot', on: props.active === 'kds', show: hasPerm('pos') && isRestaurant.value && hasFeature('restaurant_tables') },
             { key: 'cds', label: t('nav.cds'), href: route('app.cds.index'), icon: 'monitor', on: props.active === 'cds', show: hasPerm('pos') && isRestaurant.value && hasFeature('restaurant_tables') },
-            { key: 'sales', label: t('nav.salesHistory'), href: route('app.sales'), icon: 'receipt', on: props.active === 'sales', show: hasPerm('sales_history') },
-            { key: 'due', label: t('nav.dueFull'), href: route('app.customers'), icon: 'invoice', on: props.active === 'due', show: hasPerm('customers') },
-            { key: 'customerList', label: t('customerList.title'), href: route('app.customerList.index'), icon: 'users', on: props.active === 'customerList', show: hasPerm('customers') },
-            { key: 'promotions', label: t('nav.promotions'), href: route('app.promotions.index'), icon: 'gift', on: props.active === 'promotions', show: hasPerm('promotions') && hasFeature('promotions') },
+            { key: 'sales', label: t('nav.salesHistory'), navLabel: t('nav.salesHistoryShort'), href: route('app.sales'), icon: 'receipt', on: props.active === 'sales', show: hasPerm('sales_history') },
+            { key: 'due', label: t('nav.dueFull'), navLabel: t('nav.due'), href: route('app.customers'), icon: 'invoice', on: props.active === 'due', show: hasPerm('customers') },
+            { key: 'customerList', label: t('customerList.title'), navLabel: t('customerList.titleShort'), href: route('app.customerList.index'), icon: 'users', on: props.active === 'customerList', show: hasPerm('customers') },
+            { key: 'promotions', label: t('nav.promotions'), navLabel: t('nav.promotionsShort'), href: route('app.promotions.index'), icon: 'gift', on: props.active === 'promotions', show: hasPerm('promotions') && hasFeature('promotions') },
             { key: 'quotations', label: t('nav.quotations'), href: route('app.quotations.index'), icon: 'clipboard', on: props.active === 'quotations', show: hasPerm('pos') && hasFeature('quotations') },
         ],
     },
     {
         label: t('nav.category.inventory'),
         items: [
-            { key: 'stock', label: isRestaurant.value ? t('nav.stockFullRestaurant') : t('nav.stockFull'), href: route('app.stock'), icon: 'box', on: props.active === 'stock', show: hasPerm('stock') },
+            { key: 'stock', label: isRestaurant.value ? t('nav.stockFullRestaurant') : t('nav.stockFull'), navLabel: isRestaurant.value ? t('nav.stockRestaurant') : t('nav.stock'), href: route('app.stock'), icon: 'box', on: props.active === 'stock', show: hasPerm('stock') },
             { key: 'units', label: t('nav.units'), href: route('app.units.index'), icon: 'ruler', on: props.active === 'units', show: hasPerm('stock') },
             { key: 'barcode', label: t('nav.barcode'), href: route('app.barcodeLabels.index'), icon: 'tag', on: props.active === 'more' && page.url.startsWith('/app/barcode-labels'), show: hasPerm('barcode_labels') && hasFeature('barcode_printing') },
             { key: 'purchase', label: t('nav.purchase'), href: moreLink('purchase'), icon: 'truck', on: isMoreLinkActive('purchase'), show: hasPerm('purchases') && hasFeature('purchases') },
-            { key: 'purchaseHistory', label: t('nav.purchaseHistory'), href: route('app.purchases.index'), icon: 'history', on: props.active === 'purchaseHistory', show: hasPerm('purchases') && hasFeature('purchases') },
+            { key: 'purchaseHistory', label: t('nav.purchaseHistory'), navLabel: t('nav.purchaseHistoryShort'), href: route('app.purchases.index'), icon: 'history', on: props.active === 'purchaseHistory', show: hasPerm('purchases') && hasFeature('purchases') },
             { key: 'suppliers', label: t('nav.suppliers'), href: route('app.suppliers'), icon: 'factory', on: props.active === 'suppliers', show: hasPerm('purchases') && hasFeature('suppliers') },
             { key: 'serials', label: t('nav.serials'), href: route('app.serials.index'), icon: 'phone', on: props.active === 'serials', show: hasPerm('stock') && hasFeature('serial_tracking') },
             { key: 'damage', label: t('nav.damage'), href: moreLink('damage'), icon: 'trash', on: isMoreLinkActive('damage'), show: hasPerm('damages') && hasFeature('damages') },
@@ -356,7 +412,7 @@ const sidebarGroups = computed(() => [
     {
         label: t('nav.category.accounts'),
         items: [
-            { key: 'accounts', label: t('nav.accounts'), href: route('app.accounts'), icon: 'briefcase', on: props.active === 'accounts', show: hasPerm('accounts') && hasFeature('accounts') },
+            { key: 'accounts', label: t('nav.accounts'), navLabel: t('nav.accountsShort'), href: route('app.accounts'), icon: 'briefcase', on: props.active === 'accounts', show: hasPerm('accounts') && hasFeature('accounts') },
             { key: 'partners', label: t('nav.partners'), href: route('app.partners.index'), icon: 'handshake', on: props.active === 'partners', show: isOwner.value && hasFeature('partners') },
             { key: 'reports', label: t('nav.reports'), href: route('app.reports'), icon: 'barChart', on: props.active === 'reports', show: hasPerm('reports') && hasFeature('reports') },
             { key: 'expenses', label: t('nav.expenses'), href: route('app.expenses'), icon: 'trendingDown', on: props.active === 'expenses', show: hasPerm('expenses') && hasFeature('expenses') },
@@ -393,7 +449,11 @@ const mobileNavSlots = computed(() => {
     const picked = shop.value?.mobile_nav_items || ['stock', 'due'];
     return picked
         .map((key) => mobileNavCandidates.value.find((i) => i.key === key))
-        .filter((i) => i && i.show);
+        .filter((i) => i && i.show)
+        // navLabel (set on a handful of items above, see their own comment)
+        // is a short, bottom-nav-specific label — falls back to the item's
+        // normal sidebar label when no shorter variant was defined.
+        .map((i) => ({ ...i, label: i.navLabel || i.label }));
 });
 </script>
 
@@ -528,7 +588,16 @@ const mobileNavSlots = computed(() => {
                         📴 {{ t('offline.banner') }}
                         <span v-if="lastOnlineText">{{ t('offline.lastSyncedAt', { time: lastOnlineText }) }}</span>
                     </div>
-                    <button v-if="offlineSync.pendingCount.value || offlineSync.failedCount.value" class="expiry-banner" style="width:100%;text-align:left;cursor:pointer" @click="offlineSync.failedCount.value ? (failedSheet = true) : offlineSync.trySync()">
+                    <!-- Last-chance countdown before 'auto' mode actually
+                         sends anything (docs/FIX_PLAN.md Phase 12) — shown
+                         only in auto mode (maybeAutoSync() never starts it
+                         in review mode at all), separate from the plain
+                         pending/failed banner below. -->
+                    <div v-if="offlineSync.autoSyncCountdown.value !== null" class="expiry-banner" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                        <span>⏳ {{ t('offline.autoSyncCountdown', { n: offlineSync.pendingCount.value, s: offlineSync.autoSyncCountdown.value }) }}</span>
+                        <button type="button" class="btn sm ghost" style="width:auto;padding:4px 12px" @click="offlineSync.cancelAutoSync">{{ t('offline.stopSync') }}</button>
+                    </div>
+                    <button v-if="offlineSync.pendingCount.value || offlineSync.failedCount.value" class="expiry-banner" style="width:100%;text-align:left;cursor:pointer" @click="offlineSync.pendingSheetOpen.value = true">
                         <template v-if="offlineSync.failedCount.value">⚠️ {{ t('offline.failedCount', { n: offlineSync.failedCount.value }) }}</template>
                         <template v-else>🔄 {{ t('offline.pendingCount', { n: offlineSync.pendingCount.value }) }}</template>
                     </button>
@@ -593,13 +662,16 @@ const mobileNavSlots = computed(() => {
         </div>
     </template>
 
-    <Sheet v-model="failedSheet" :title="t('offline.failedTitle')">
-        <div v-for="entry in offlineSync.queue.value.filter(e => e.status === 'failed' || e.status === 'shop_mismatch')" :key="entry.id" class="card" style="margin-bottom:10px">
+    <Sheet v-model="offlineSync.pendingSheetOpen.value" :title="t('offline.pendingSalesTitle')">
+        <div v-if="shop?.offline_sync_mode === 'review'" style="font-size:12.5px;color:var(--mut);margin-bottom:10px">ℹ️ {{ t('offline.reviewModeHint') }}</div>
+        <div v-if="!offlineSync.queue.value.length" class="empty"><div class="big">✅</div>{{ t('offline.nothingPending') }}</div>
+        <div v-for="entry in offlineSync.queue.value" :key="entry.id" class="card" style="margin-bottom:10px">
             <div class="row" style="cursor:default;padding:0 0 8px">
-                <div class="ava pill rose" style="border-radius:12px;padding:0;width:42px;height:42px;font-size:18px">⚠️</div>
+                <div class="ava pill" :class="entry.status === 'pending' ? 'sky' : 'rose'" style="border-radius:12px;padding:0;width:42px;height:42px;font-size:18px">{{ entry.status === 'pending' ? '🔄' : '⚠️' }}</div>
                 <div class="mid">
                     <b>{{ t('offline.saleQueuedAt', { time: new Date(entry.queuedAt).toLocaleString() }) }}</b>
-                    <span>{{ entry.error }}</span>
+                    <span v-if="entry.error">{{ entry.error }}</span>
+                    <span v-else>{{ t('offline.waitingToSync') }}</span>
                 </div>
             </div>
 
@@ -656,16 +728,44 @@ const mobileNavSlots = computed(() => {
                     <button class="btn sm ghost" style="flex:1" @click="cancelingEntryId = null">{{ t('common.cancel') }}</button>
                 </div>
             </div>
-            <div v-else class="btnrow" style="margin-top:8px">
-                <!-- failureKind !== 'permanent' (not just === 'transient') deliberately
-                     also covers a legacy entry queued before this fix existed — it has
-                     no failureKind at all yet, so it still deserves a plain retry that
-                     re-attempts against the current (fixed) server logic, rather than
-                     only ever offering "cancel" for something that might now succeed. -->
-                <button v-if="entry.status === 'failed' && entry.failureKind !== 'permanent'" class="btn sm" style="flex:1" @click="offlineSync.retry(entry.id)">{{ t('offline.retryAll') }}</button>
-                <button class="btn sm ghost" style="flex:1" @click="startCancel(entry.id)">{{ t('offline.cancelThisSale') }}</button>
-            </div>
+            <template v-else>
+                <div v-if="entry.payload?.items?.length" class="btnrow" style="margin-top:8px">
+                    <button class="btn sm ghost" style="flex:1" @click="openPrintPreview(entry)">🖨️ {{ t('pos.print') }}</button>
+                    <button class="btn sm ghost" style="flex:1" @click="openPrintPreview(entry); sendPendingMemoWA()">📤 WhatsApp</button>
+                </div>
+                <div class="btnrow" style="margin-top:8px">
+                    <!-- failureKind !== 'permanent' (not just === 'transient') deliberately
+                         also covers a legacy entry queued before this fix existed — it has
+                         no failureKind at all yet, so it still deserves a plain retry that
+                         re-attempts against the current (fixed) server logic, rather than
+                         only ever offering "cancel" for something that might now succeed. -->
+                    <button v-if="entry.status === 'pending'" class="btn sm" style="flex:1" @click="offlineSync.trySync()">{{ t('offline.syncNow') }}</button>
+                    <button v-else-if="entry.status === 'shop_mismatch' || entry.failureKind !== 'permanent'" class="btn sm" style="flex:1" @click="offlineSync.retry(entry.id)">{{ t('offline.retryAll') }}</button>
+                    <button v-if="canDiscardEntry(entry)" class="btn sm ghost" style="flex:1" @click="startCancel(entry.id)">{{ t('offline.cancelThisSale') }}</button>
+                    <div v-else style="flex:1;font-size:11.5px;color:var(--dim);align-self:center;text-align:center">{{ t('offline.notYourSale') }}</div>
+                </div>
+            </template>
         </div>
+
+        <template v-if="recentlySynced.length">
+            <div class="sechead"><h2>{{ t('offline.recentlySynced') }}</h2></div>
+            <div style="font-size:11.5px;color:var(--dim);margin-bottom:6px">{{ t('offline.recentlySyncedHint') }}</div>
+            <div v-for="m in recentlySynced" :key="m.localInvoice" class="row" style="cursor:default">
+                <div class="mid"><b>{{ m.localInvoice }} → {{ m.realInvoice }}</b><span>{{ new Date(m.syncedAt).toLocaleString() }}</span></div>
+            </div>
+        </template>
+    </Sheet>
+
+    <Sheet v-model="printPreviewOpen" :title="t('offline.receiptPreviewTitle')">
+        <template v-if="printPreviewSale">
+            <div id="printable-memo" :class="'paper-' + (shop?.memo_settings?.paper_width || '58mm').replace('mm', '')">
+                <ReceiptMemo :shop="shop" :sale="printPreviewSale" :platform-logo-url="page.props.platformLogoUrl" id-suffix="-pending" />
+            </div>
+            <div class="no-print btnrow" style="margin-top:16px">
+                <button class="btn wa" style="flex:1" @click="sendPendingMemoWA">📤 WhatsApp</button>
+                <button class="btn ghost" style="flex:1" @click="printPendingMemo">{{ t('pos.print') }}</button>
+            </div>
+        </template>
     </Sheet>
 
     <Sheet v-model="closeShiftSheet" :title="t('workPeriod.closeTitle')">

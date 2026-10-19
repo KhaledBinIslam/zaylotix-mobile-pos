@@ -5,6 +5,7 @@ namespace App\Http\Controllers\App;
 use App\Http\Controllers\Controller;
 use App\Support\Tenancy;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 
@@ -234,6 +235,25 @@ class SettingController extends Controller
         Tenancy::shop()->update(['mobile_nav_items' => array_values(array_filter($data['items']))]);
 
         return back()->with('success', 'বটম মেনু সংরক্ষণ করা হয়েছে।');
+    }
+
+    /**
+     * 'auto' (default, unchanged existing behavior) vs 'review' — see
+     * docs/FIX_PLAN.md Phase 12. Owner-only: this changes how every
+     * cashier's offline sales on this shop behave, not a personal display
+     * preference like language/theme.
+     */
+    public function updateOfflineSyncMode(Request $request)
+    {
+        abort_unless(Auth::guard('web')->user()?->role === 'owner', 403);
+
+        $data = $request->validate([
+            'mode' => ['required', 'in:auto,review'],
+        ]);
+
+        Tenancy::shop()->update(['offline_sync_mode' => $data['mode']]);
+
+        return back()->with('success', 'অফলাইন সিঙ্ক মোড সংরক্ষণ করা হয়েছে।');
     }
 
     /** Shop logo, printed on POS receipts and barcode labels once uploaded. */

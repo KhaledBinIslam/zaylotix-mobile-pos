@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { enqueueSale, removeFromQueue, markFailed, markShopMismatch, retryEntry, remapQueuedItem, dropQueuedItem, pendingCount, failedCount } from '../offlineQueue.js';
+import { enqueueSale, removeFromQueue, markFailed, markShopMismatch, retryEntry, remapQueuedItem, dropQueuedItem, pendingCount, failedCount, canDiscardEntry } from '../offlineQueue.js';
 
 describe('offlineQueue', () => {
     it('enqueues a sale as pending', () => {
@@ -116,5 +116,44 @@ describe('offlineQueue', () => {
 
         expect(queue[0].status).toBe('pending');
         expect(queue[0].payload.items).toEqual([{ product_id: 9, qty: 1 }]);
+    });
+
+    // Phase 12 (docs/FIX_PLAN.md) — local-only attribution, used by
+    // canDiscardEntry() below; never sent to the server.
+    it('records who queued a sale when given', () => {
+        const queue = enqueueSale([], { items: [] }, { userId: 7, userName: 'Karim' });
+
+        expect(queue[0].queuedByUserId).toBe(7);
+        expect(queue[0].queuedByUserName).toBe('Karim');
+    });
+
+    it('defaults attribution to null when no meta is given (an older cached client)', () => {
+        const queue = enqueueSale([], { items: [] });
+
+        expect(queue[0].queuedByUserId).toBeNull();
+    });
+
+    describe('canDiscardEntry', () => {
+        const entry = { queuedByUserId: 7 };
+
+        it('allows anyone with the shop\'s return/void permission, regardless of who queued it', () => {
+            expect(canDiscardEntry(entry, true, 99)).toBe(true);
+        });
+
+        it('allows the cashier who queued it themselves, without that permission', () => {
+            expect(canDiscardEntry(entry, false, 7)).toBe(true);
+        });
+
+        it('denies a different cashier without the permission', () => {
+            expect(canDiscardEntry(entry, false, 99)).toBe(false);
+        });
+
+        it('denies when there is no logged-in user id to compare at all', () => {
+            expect(canDiscardEntry(entry, false, null)).toBe(false);
+        });
+
+        it('denies a legacy entry with no attribution, even for the cashier who likely queued it', () => {
+            expect(canDiscardEntry({ queuedByUserId: null }, false, 7)).toBe(false);
+        });
     });
 });

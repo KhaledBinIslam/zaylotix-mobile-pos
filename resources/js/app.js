@@ -7,7 +7,9 @@ import { createApp, h } from 'vue';
 import { ZiggyVue } from '../../vendor/tightenco/ziggy';
 import { isInApp } from './composables/useInApp';
 import { useToast } from './composables/useToast';
+import { useI18n } from './composables/useI18n';
 import { reportClientError } from './support/reportClientError';
+import { navErrorMessage } from './support/navErrorMessage';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
@@ -44,9 +46,30 @@ isInApp();
 // to a component's setup context), so this works globally, before any page
 // has even mounted. This is purely additive feedback — it doesn't change
 // what any individual page's own onError/onSuccess handlers already do.
-router.on('exception', () => {
+// Real bug, reported with a screenshot (docs/FIX_PLAN.md): tapping a
+// sidebar/bottom-nav link while offline left the cashier stuck on the
+// current page with a confusing "কিছু একটা ভুল হয়েছে" toast — generic,
+// scary-sounding, and not the actual message this handler was writing.
+// Root cause traced through Inertia's own internals: `event` here is
+// Inertia's cancelable `inertia:exception` DOM event, and this handler
+// never called `event.preventDefault()` — so even though this ran and
+// IS the code "catching" the failed navigation, Inertia's router treats
+// an unprevented exception event as "not handled" and re-throws it as a
+// genuine unhandled promise rejection afterward, which the OTHER, more
+// generic safety-net handler below (window 'unhandledrejection') then
+// ALSO catches and displays instead — its toast overwrites this one's
+// within the same tick, since useToast() holds one shared message ref.
+// preventDefault() stops that double-handling, making this the one true
+// message the cashier actually sees. A failed Inertia visit never swaps
+// the page (Inertia's own Response.handle() is only reached on success),
+// so the user staying on their current page needs no extra code here —
+// that was already true; only the WRONG, less-actionable message was the
+// actual bug.
+router.on('exception', (event) => {
+    event.preventDefault();
     const { toast } = useToast();
-    toast('📴 নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন');
+    const { t } = useI18n();
+    toast(t(navErrorMessage(navigator.onLine)));
 });
 
 // Broader safety net than the Inertia-specific one above — any raw-fetch

@@ -332,8 +332,15 @@ body {
    account). flex + flex:1 on each tab below shares the row evenly no
    matter how many tabs actually exist. */
 #nav { position: sticky; bottom: 0; z-index: 30; display: flex; background: rgba(255, 255, 255, .94); backdrop-filter: blur(12px); border-top: 1px solid var(--line); padding: 8px 6px calc(8px + env(safe-area-inset-bottom)); }
-.tab { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0; color: var(--dim); font-size: 10.5px; font-weight: 600; border-radius: 12px; }
-.tab svg { width: 23px; height: 23px; stroke: currentColor; fill: none; stroke-width: 1.9; }
+/* min-width:0 is load-bearing, not decoration — a flex item defaults to
+   min-width:auto (its content's natural width), which silently defeats
+   text-overflow:ellipsis on the label span below; without it a long
+   label (a shop owner's own customized bottom-nav slot, e.g. "Sales
+   History"/"বিক্রির ইতিহাস") wraps to two lines and pushes every tab's
+   icon out of alignment with its neighbors instead of truncating. */
+.tab { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0; color: var(--dim); font-size: 10.5px; font-weight: 600; border-radius: 12px; }
+.tab svg { width: 23px; height: 23px; stroke: currentColor; fill: none; stroke-width: 1.9; flex: 0 0 auto; }
+.tab span { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tab.on { color: var(--gold); }
 .tab.sell { position: relative; }
 /* flat gold, not a gradient — this is the one nav icon that's meant to

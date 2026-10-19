@@ -2,7 +2,7 @@
 // unit-testable the same way scannerBuffer.js is. offlineDb.js is the thin
 // persistence layer that actually stores whatever array these return.
 
-export function enqueueSale(queue, payload) {
+export function enqueueSale(queue, payload, meta = {}) {
     // the payload already carries its own idempotency key (client_uuid —
     // see PosController::performCheckout()'s matching check), generated once
     // per checkout attempt in Pos/Index.vue's buildCheckoutPayload() —
@@ -15,6 +15,13 @@ export function enqueueSale(queue, payload) {
         payload,
         status: 'pending', // 'pending' | 'failed' | 'shop_mismatch'
         error: null,
+        // Local-only attribution (never sent to the server, which has no
+        // record of this sale at all until it syncs) — see
+        // docs/FIX_PLAN.md Phase 12: the pending-sales sheet only offers
+        // "discard" on a cashier's OWN queued sale unless they also hold
+        // the shop's return/void permission.
+        queuedByUserId: meta.userId ?? null,
+        queuedByUserName: meta.userName ?? null,
         // 'transient' (network/5xx — safe to auto-retry as-is) or
         // 'permanent' (a real business rejection — resubmitting the exact
         // same payload will fail identically forever; see docs/FIX_PLAN.md).
@@ -77,6 +84,16 @@ export function dropQueuedItem(queue, id, productId) {
         const items = s.payload.items.filter((item) => item.product_id !== productId);
         return { ...s, payload: { ...s.payload, items }, status: 'pending', error: null, failureKind: null, problemItems: [] };
     });
+}
+
+// "Can this person discard this specific queued entry" (docs/FIX_PLAN.md
+// Phase 12): anyone with the shop's return/void permission can discard
+// any stuck entry; a cashier without it can only discard their OWN.
+// Pure so AppLayout.vue's template logic is unit-testable without
+// mounting the component.
+export function canDiscardEntry(entry, hasReturnsPermission, currentUserId) {
+    if (hasReturnsPermission) return true;
+    return !!currentUserId && entry.queuedByUserId === currentUserId;
 }
 
 export function pendingCount(queue) {

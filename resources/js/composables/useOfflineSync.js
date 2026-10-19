@@ -2,6 +2,7 @@ import { ref, computed } from 'vue';
 import { usePage } from '@inertiajs/vue3';
 import { enqueueSale, removeFromQueue, markFailed, markShopMismatch, retryEntry, remapQueuedItem, dropQueuedItem, pendingCount, failedCount } from '@/support/offlineQueue';
 import { kvGet, kvSet, KEYS } from '@/support/offlineDb';
+import { shouldAutoSync } from '@/support/syncModeDecision';
 import { useToast } from '@/composables/useToast';
 import { useI18n } from '@/composables/useI18n';
 
@@ -26,6 +27,10 @@ async function touchLastOnlineAt() {
 const queue = ref([]);
 const isOnline = ref(typeof navigator === 'undefined' ? true : navigator.onLine);
 const syncing = ref(false);
+// Module-level so any page (not just AppLayout.vue, which owns the actual
+// <Sheet>) can open the pending-sales sheet — e.g. a "pending sales"
+// button on Pos/Index.vue itself (docs/FIX_PLAN.md Phase 12).
+const pendingSheetOpen = ref(false);
 let loaded = false;
 let listenersBound = false;
 
@@ -106,6 +111,21 @@ async function trySync() {
                     const { toast } = useToast();
                     const { t } = useI18n();
                     toast('✅ ' + t('offline.syncedToast', { invoice: data?.sale?.invoice_no || '' }));
+                    // A receipt printed/WhatsApp'd before sync shows the
+                    // local "OFF-XXXXXXXX" placeholder — this is the only
+                    // record of what it became, so a cashier can later look
+                    // it up (docs/FIX_PLAN.md Phase 12). Best-effort, capped
+                    // so this never grows unbounded.
+                    if (entry.payload.client_uuid && data?.sale?.invoice_no) {
+                        const map = await kvGet(KEYS.SYNCED_MAP, []);
+                        const next = [{
+                            localInvoice: 'OFF-' + entry.payload.client_uuid.replace(/-/g, '').slice(0, 8).toUpperCase(),
+                            realInvoice: data.sale.invoice_no,
+                            saleId: data.sale.id,
+                            syncedAt: Date.now(),
+                        }, ...map].slice(0, 20);
+                        await kvSet(KEYS.SYNCED_MAP, next);
+                    }
                 } else if (res.status === 409 && data.shop_mismatch) {
                     // defense in depth — the pre-check above should catch
                     // this first, but an entry queued by an older cached
@@ -145,16 +165,57 @@ async function trySync() {
     }
 }
 
+// null when not counting down; otherwise seconds remaining — drives a
+// dismissible "N sales syncing in Ns — stop" banner (docs/FIX_PLAN.md
+// Phase 12) so a cashier gets one last look before an auto-sync (the
+// default behavior, unchanged) actually sends anything.
+const autoSyncCountdown = ref(null);
+let autoSyncTimer = null;
+
+function stopAutoSyncCountdown() {
+    if (autoSyncTimer) clearInterval(autoSyncTimer);
+    autoSyncTimer = null;
+    autoSyncCountdown.value = null;
+}
+
+/**
+ * The actual entry point coming back online (or loading the page while
+ * already online) now goes through — NOT straight into trySync() anymore.
+ * 'review' mode (shop setting, owner opt-in, see Shop::offline_sync_mode)
+ * skips auto-syncing entirely; pendingCount's existing banner already
+ * tells the owner/cashier sales are waiting, and they open the pending-
+ * sales sheet and tap "sync all" themselves. 'auto' (default — identical
+ * to this app's behavior before this fix) still ends up calling trySync(),
+ * just after a 30s countdown that can be stopped.
+ */
+async function maybeAutoSync() {
+    await ensureLoaded();
+    if (!queue.value.some((s) => s.status === 'pending')) return;
+    if (!shouldAutoSync(usePage().props.shop?.offline_sync_mode)) return;
+    if (autoSyncCountdown.value !== null) return; // already counting down
+
+    autoSyncCountdown.value = 30;
+    autoSyncTimer = setInterval(() => {
+        if (autoSyncCountdown.value === null) return;
+        autoSyncCountdown.value -= 1;
+        if (autoSyncCountdown.value <= 0) {
+            stopAutoSyncCountdown();
+            trySync();
+        }
+    }, 1000);
+}
+
 function bindListeners() {
     if (listenersBound || typeof window === 'undefined') return;
     listenersBound = true;
     window.addEventListener('online', () => {
         isOnline.value = true;
         touchLastOnlineAt();
-        trySync();
+        maybeAutoSync();
     });
     window.addEventListener('offline', () => {
         isOnline.value = false;
+        stopAutoSyncCountdown();
     });
 }
 
@@ -172,13 +233,13 @@ export function useOfflineSync() {
     ensureLoaded().then(() => {
         if (isOnline.value) {
             touchLastOnlineAt();
-            trySync();
+            maybeAutoSync();
         }
     });
 
-    async function queueSale(payload) {
+    async function queueSale(payload, meta = {}) {
         await ensureLoaded();
-        queue.value = enqueueSale(queue.value, payload);
+        queue.value = enqueueSale(queue.value, payload, meta);
         await persist();
         return queue.value[queue.value.length - 1];
     }
@@ -236,11 +297,17 @@ export function useOfflineSync() {
         await persist();
     }
 
+    async function getSyncedMap() {
+        return kvGet(KEYS.SYNCED_MAP, []);
+    }
+
     return {
         isOnline,
         syncing,
         queue,
         lastOnlineAt,
+        autoSyncCountdown,
+        pendingSheetOpen,
         pendingCount: computed(() => pendingCount(queue.value)),
         failedCount: computed(() => failedCount(queue.value)),
         queueSale,
@@ -250,5 +317,7 @@ export function useOfflineSync() {
         resolveItem,
         dropItem,
         cancelWithReason,
+        cancelAutoSync: stopAutoSyncCountdown,
+        getSyncedMap,
     };
 }

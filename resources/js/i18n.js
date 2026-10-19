@@ -21,7 +21,16 @@ export const translations = {
     'nav.due': { bn: 'বাকি', en: 'Due' },
     'nav.dueFull': { bn: 'বাকির খাতা', en: 'Due Ledger' },
     'nav.salesHistory': { bn: 'বিক্রির ইতিহাস', en: 'Sales History' },
+    // Short variants (Phase 12, docs/FIX_PLAN.md) — the mobile bottom nav's
+    // two flexible slots reuse these same sidebar item definitions, but
+    // have far less horizontal width (5 tabs across a phone screen) than
+    // the desktop sidebar; the full-length label wrapped to two lines and
+    // broke icon alignment with its neighbors. navLabel (AppLayout.vue's
+    // sidebarGroups) falls back to the full label when a short one isn't
+    // defined here, so this is additive — the sidebar's own text is unchanged.
+    'nav.salesHistoryShort': { bn: 'ইতিহাস', en: 'History' },
     'nav.accounts': { bn: 'হিসাব-নিকাশ', en: 'Accounts' },
+    'nav.accountsShort': { bn: 'হিসাব', en: 'Accounts' },
     'nav.cashLedger': { bn: 'ক্যাশ/ব্যাংক লেনদেন', en: 'Cash/Bank Ledger' },
     'nav.loans': { bn: 'ঋণ হিসাব', en: 'Loans' },
     'nav.reports': { bn: 'রিপোর্ট', en: 'Reports' },
@@ -37,6 +46,7 @@ export const translations = {
     'nav.activity': { bn: 'অ্যাক্টিভিটি লগ', en: 'Activity log' },
     'nav.suppliers': { bn: 'সাপ্লায়ার', en: 'Suppliers' },
     'nav.promotions': { bn: 'অফার/কুপন', en: 'Promotions' },
+    'nav.promotionsShort': { bn: 'অফার', en: 'Offers' },
     'nav.quotations': { bn: 'কোটেশন', en: 'Quotations' },
     'nav.serials': { bn: 'IMEI/ওয়ারেন্টি খুঁজুন', en: 'IMEI/Warranty lookup' },
     'nav.restaurant': { bn: 'টেবিল', en: 'Tables' },
@@ -670,6 +680,7 @@ export const translations = {
     'more.customerListSub': { bn: 'বাছাই করে WhatsApp পাঠান বা এক্সপোর্ট করুন', en: 'Select customers to WhatsApp or export' },
 
     'customerList.title': { bn: 'কাস্টমার তালিকা', en: 'Customer list' },
+    'customerList.titleShort': { bn: 'কাস্টমার', en: 'Customers' },
     'customerList.subtitle': { bn: 'আপনার সব কাস্টমার — বাছাই করে WhatsApp পাঠান বা এক্সপোর্ট করুন', en: 'All your customers — select to send WhatsApp or export' },
     'customerList.search': { bn: 'নাম বা নম্বর খুঁজুন', en: 'Search name or number' },
     'customerList.selectAll': { bn: 'সব বাছাই', en: 'Select all' },
@@ -707,6 +718,11 @@ export const translations = {
     'more.themeSub': { bn: 'লাইট বা ডার্ক মোড বেছে নিন', en: 'Choose light or dark mode' },
     'more.themeLight': { bn: 'লাইট', en: 'Light' },
     'more.themeDark': { bn: 'ডার্ক', en: 'Dark' },
+    'more.offlineSyncMode': { bn: 'অফলাইন সিঙ্ক মোড', en: 'Offline sync mode' },
+    'more.offlineSyncModeAuto': { bn: 'অটো', en: 'Auto' },
+    'more.offlineSyncModeReview': { bn: 'যাচাই করে', en: 'Review first' },
+    'more.offlineSyncModeAutoSub': { bn: 'ইন্টারনেট এলে অফলাইন বিক্রি নিজে থেকে সিঙ্ক হবে', en: 'Offline sales sync automatically once online' },
+    'more.offlineSyncModeReviewSub': { bn: 'ইন্টারনেট এলে অপেক্ষা করবে — আপনাকে যাচাই করে "সিঙ্ক করুন" চাপতে হবে', en: 'Waits for you to review and tap "Sync" before sending' },
     'more.shopLogo': { bn: 'দোকানের লোগো', en: 'Shop logo' },
     'more.shopLogoSub': { bn: 'মেমো ও বারকোড লেবেলে দেখাবে', en: 'Shown on memos and barcode labels' },
     'more.mobileNav': { bn: 'বটম মেনু কাস্টমাইজ করুন', en: 'Customize bottom nav' },
@@ -871,6 +887,7 @@ export const translations = {
     'purchase.statusReceivedHint': { bn: 'টাকা ও স্টক এখনই হিসাবে যোগ হবে।', en: "Money and stock update right away." },
     'purchase.statusPendingHint': { bn: 'মাল হাতে না আসা পর্যন্ত টাকা/স্টক কিছুই যোগ হবে না — পরে "গ্রহণ করুন" চাপলে যোগ হবে।', en: "Nothing moves until you mark it received later, once the goods actually arrive." },
     'nav.purchaseHistory': { bn: 'ক্রয়ের ইতিহাস', en: 'Purchase History' },
+    'nav.purchaseHistoryShort': { bn: 'ক্রয়', en: 'Purchases' },
     'purchase.historyTitle': { bn: 'ক্রয়ের ইতিহাস', en: 'Purchase History' },
     'purchase.historySubtitle': { bn: 'সব ক্রয় এবং অর্ডার-পেন্ডিং তালিকা', en: 'Every purchase, including what\'s still on order' },
     'purchase.noSupplier': { bn: 'সরবরাহকারী উল্লেখ নেই', en: 'No supplier noted' },
@@ -1048,13 +1065,26 @@ export const translations = {
     'pos.cartRestored': { bn: '✅ আপনার কার্ট ফিরিয়ে আনা হয়েছে — আবার "বিল করুন" চাপুন', en: '✅ Your cart was restored — tap Checkout again' },
     'pos.changeVariant': { bn: 'পরিবর্তন করুন', en: 'change' },
     'pos.savedOffline': { bn: '📴 নেট নেই — বিক্রিটি সংরক্ষিত হয়েছে, নেট আসলে অটো পাঠানো হবে', en: "📴 Offline — sale saved, will auto-send once you're back online" },
+    'pos.whatsappNeedsInternet': { bn: '📴 ইন্টারনেট এলে WhatsApp বার্তা পাঠানো যাবে', en: "📴 WhatsApp message can be sent once you're back online" },
 
     // ---- offline mode ----
     'offline.banner': { bn: 'নেট সংযোগ নেই — বিক্রি করলে ফোনেই সংরক্ষণ হবে। দ্রুত ইন্টারনেট চালু করুন, যাতে ডেটা নিরাপদে সার্ভারে ব্যাকআপ হয়ে যায়।', en: "No internet — sales made now are saved on this phone. Turn your internet back on soon so this data safely backs up to the server." },
+    'offlineNav.needsInternet': { bn: 'এই পেজ দেখতে ইন্টারনেট লাগবে। বিক্রি চালিয়ে যেতে পারবেন, ইন্টারনেট এলে নিজে থেকে সিঙ্ক হবে।', en: "This page needs internet to open. You can keep selling — it'll sync automatically once you're back online." },
+    'offlineNav.genericError': { bn: '📴 নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন', en: '📴 Network issue — try again' },
     'offline.lastSyncedAt': { bn: ' শেষ আপডেট: {time}', en: ' Last updated: {time}' },
-    'offline.pendingCount': { bn: '{n} টি বিক্রি পাঠানো হচ্ছে...', en: 'Sending {n} queued sale(s)...' },
+    'offline.pendingCount': { bn: '{n} টি বিক্রি অপেক্ষমাণ — দেখতে চাপুন', en: '{n} sale(s) pending — tap to review' },
     'offline.failedCount': { bn: '{n} টি বিক্রি সিঙ্ক ব্যর্থ হয়েছে — দেখতে চাপুন', en: '{n} sale(s) failed to sync — tap to review' },
-    'offline.failedTitle': { bn: 'সিঙ্ক ব্যর্থ হওয়া বিক্রি', en: 'Sales that failed to sync' },
+    'offline.pendingSalesTitle': { bn: 'অপেক্ষমাণ বিক্রি', en: 'Pending sales' },
+    'offline.reviewModeHint': { bn: '"যাচাই করে" মোড চালু আছে — ইন্টারনেট এলেও এগুলো নিজে থেকে পাঠানো হবে না, আপনাকে যাচাই করে পাঠাতে হবে।', en: '"Review first" mode is on — these won\'t auto-send even once online; review and sync them yourself.' },
+    'offline.nothingPending': { bn: 'কোনো অপেক্ষমাণ বিক্রি নেই', en: 'Nothing pending' },
+    'offline.waitingToSync': { bn: 'সিঙ্কের অপেক্ষায়', en: 'Waiting to sync' },
+    'offline.syncNow': { bn: 'এখনই সিঙ্ক করুন', en: 'Sync now' },
+    'offline.notYourSale': { bn: 'এটা আপনার তৈরি বিল নয়', en: "Not your sale" },
+    'offline.recentlySynced': { bn: 'সম্প্রতি সিঙ্ক হয়েছে', en: 'Recently synced' },
+    'offline.recentlySyncedHint': { bn: 'এগুলো ইতিমধ্যে সার্ভারে চলে গেছে — এখান থেকে বাতিল করা যাবে না; বদল করতে হলে স্বাভাবিক বিক্রি ভয়েড/রিটার্ন থেকে করুন।', en: 'These already reached the server — cannot be cancelled here; use the normal sale void/return flow for changes.' },
+    'offline.receiptPreviewTitle': { bn: 'রসিদ', en: 'Receipt' },
+    'offline.autoSyncCountdown': { bn: '{n} টি বিক্রি {s} সেকেন্ডে সিঙ্ক হবে', en: '{n} sale(s) syncing in {s}s' },
+    'offline.stopSync': { bn: 'থামান', en: 'Stop' },
     'offline.saleQueuedAt': { bn: 'অফলাইনে বিক্রি — {time}', en: 'Offline sale — {time}' },
     'offline.retryAll': { bn: 'আবার চেষ্টা করুন', en: 'Retry' },
     'offline.syncedToast': { bn: 'অফলাইন বিক্রি {invoice} সার্ভারে পাঠানো হয়েছে।', en: 'Offline sale {invoice} has synced.' },

@@ -12,6 +12,11 @@ export const KEYS = {
     PRODUCT_CACHE: 'product-cache',
     LAST_ONLINE_AT: 'last-online-at',
     ACTION_QUEUE: 'action-queue',
+    // Local→real invoice number mapping, written once per successful sync
+    // (see useOfflineSync.js's trySync()) — lets a cashier who printed/
+    // shared an "OFF-XXXXXXXX" placeholder receipt before sync later find
+    // out what it actually became (docs/FIX_PLAN.md Phase 12).
+    SYNCED_MAP: 'synced-invoice-map',
 };
 
 function openDb() {

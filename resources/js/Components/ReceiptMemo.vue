@@ -71,6 +71,7 @@ watch(() => [props.sale.id, props.sale.invoice_no], renderCodes);
             <template v-if="settings.show_trade_license && shop?.trade_license_no"><br>Trade License: {{ shop.trade_license_no }}</template>
             <template v-if="settings.show_tin && shop?.tin_no"><br>TIN: {{ shop.tin_no }}</template>
             <br>মেমো — {{ sale.invoice_no }} • {{ sale.date }} {{ sale.time }}
+            <template v-if="sale.isOfflinePending"><br><span class="rm-offline-pending">⏳ অফলাইন বিল — সিঙ্কের পর চূড়ান্ত নম্বর পাবেন</span></template>
             <template v-if="settings.show_cashier && sale.user?.name"><br>বিক্রেতা: {{ sale.user.name }}</template>
             <template v-if="tableOrder">
                 <br>{{ t('restaurant.orderNo', { id: tableOrder.id }) }} • {{ tableOrder.order_source === 'delivery' ? t('restaurant.sourceDelivery') : tableOrder.order_source === 'takeaway' ? t('restaurant.sourceTakeaway') : t('restaurant.sourceDineIn') }}{{ tableOrder.table?.name ? ' — ' + tableOrder.table.name : '' }}
@@ -130,6 +131,7 @@ watch(() => [props.sale.id, props.sale.invoice_no], renderCodes);
 .rm-meta-line { display: flex; justify-content: space-between; padding: 1px 0; font-size: 10.5px; color: #555; }
 .rm-points { text-align: center; color: #555; margin-top: 6px; font-size: 10.5px; }
 .rm-due { text-align: center; color: #c0392b; font-weight: 700; margin-top: 8px; font-size: 12px; }
+.rm-offline-pending { color: #c0392b; font-weight: 700; }
 .receipt-memo .rc-f { text-align: center; color: #555; margin-top: 8px; font-size: 10.5px; white-space: pre-wrap; }
 .rm-exchange { text-align: center; color: #555; margin-top: 4px; font-size: 9.5px; white-space: pre-wrap; }
 .rm-barcode-wrap { display: flex; justify-content: center; margin-top: 8px; }
