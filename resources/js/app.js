@@ -87,6 +87,34 @@ window.addEventListener('unhandledrejection', (event) => {
     toast('⚠️ কিছু একটা ভুল হয়েছে — আবার চেষ্টা করুন। সমস্যা থাকলে পেজ রিলোড করুন।');
 });
 
+// Real gap, reported live with a screenshot (docs/FIX_PLAN.md Phase 12):
+// a cashier who went offline while sitting on Home (or any page other
+// than Sell itself) tapped "Sell" and got the new, correctly-worded
+// "needs internet" message — technically working as designed, but wrong
+// in spirit, since Sell is the one screen offline selling specifically
+// exists for. The service worker (public/sw.js) only ever caches a page
+// as a side effect of someone actually visiting it online first — no
+// guarantee Sell was ever the page that happened to be open last. This
+// uses Inertia's own real prefetch (router.prefetch — a genuine request
+// with the correct X-Inertia headers, so the service worker's fetch
+// handler caches it exactly the way a real visit would, not a
+// hand-rolled fetch() that would produce a differently-shaped, never-
+// matched cache entry) to top up Sell's cached copy on every cold load
+// while online, regardless of which page is actually open. Same
+// isRestaurant logic as AppLayout.vue's own mobileSellHref, since a
+// restaurant shop's "Sell" is a different route entirely.
+function prefetchSellPage(initialProps) {
+    if (!navigator.onLine || !initialProps) return;
+    const isRestaurant = initialProps.shop?.business_type_slug === 'restaurant';
+    const href = isRestaurant ? route('app.restaurant.tables.index') : route('app.pos');
+    // What Inertia itself does with the response (its own in-memory
+    // prefetch cache, governed by cacheFor) doesn't matter here — the
+    // point is purely the side effect of a real request flowing through
+    // the service worker's fetch handler, which caches it in Cache
+    // Storage independently of anything Inertia does afterward.
+    router.prefetch(href, { method: 'get' });
+}
+
 createInertiaApp({
     title: (title) => `${title} - ${appName}`,
     resolve: (name) =>
@@ -100,6 +128,7 @@ createInertiaApp({
             .use(ZiggyVue)
             .mount(el);
         removeBootSplash();
+        prefetchSellPage(props.initialPage?.props);
         return app;
     },
     // Matches --green — this file can't read CSS custom properties, Inertia's
