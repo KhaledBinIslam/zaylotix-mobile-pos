@@ -22,7 +22,7 @@ class Customer extends Model
 {
     use SoftDeletes;
 
-    protected $fillable = ['shop_id', 'name', 'phone', 'due', 'total_spent', 'visits', 'loyalty_points'];
+    protected $fillable = ['shop_id', 'name', 'phone', 'due', 'total_spent', 'visits', 'loyalty_points', 'no_marketing'];
 
     protected static function booted(): void
     {
@@ -40,6 +40,7 @@ class Customer extends Model
         return [
             'due' => 'decimal:2',
             'total_spent' => 'decimal:2',
+            'no_marketing' => 'boolean',
         ];
     }
 

@@ -280,6 +280,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         // due-ledger page above — reported live: "customer list" in the
         // menu shouldn't land on a page titled/framed as "due ledger"
         Route::get('customer-list', [CustomerListController::class, 'index'])->name('customerList.index');
+        Route::patch('customer-list/{customer}/toggle-marketing', [CustomerListController::class, 'toggleMarketing'])->name('customerList.toggleMarketing');
     });
 
     Route::middleware(['perm:export', 'feature:export'])->group(function () {

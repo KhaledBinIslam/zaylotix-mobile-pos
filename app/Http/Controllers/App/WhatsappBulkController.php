@@ -41,7 +41,7 @@ class WhatsappBulkController extends Controller
 
         return Inertia::render('App/WhatsappBulk/Index', [
             'connected' => (bool) $credential,
-            'customers' => Customer::orderByDesc('total_spent')->get(['id', 'name', 'phone', 'due', 'total_spent', 'visits']),
+            'customers' => Customer::orderByDesc('total_spent')->get(['id', 'name', 'phone', 'due', 'total_spent', 'visits', 'no_marketing']),
             'recentLogs' => WhatsappBulkLog::with('user:id,name')->latest('id')->limit(20)->get(),
             'templates' => WhatsappMessageTemplate::orderBy('label')->get(),
         ]);
@@ -231,7 +231,7 @@ class WhatsappBulkController extends Controller
             abort(422, 'আগে WhatsApp Business সংযুক্ত করুন (সেটিংস থেকে)।');
         }
 
-        $customers = Customer::whereIn('id', $data['customer_ids'])->whereNotNull('phone')->where('phone', '!=', '')->get();
+        $customers = Customer::whereIn('id', $data['customer_ids'])->where('no_marketing', false)->whereNotNull('phone')->where('phone', '!=', '')->get();
         if ($customers->isEmpty()) {
             abort(422, 'কোনো বৈধ মোবাইল নম্বরসহ কাস্টমার বাছাই করা হয়নি।');
         }

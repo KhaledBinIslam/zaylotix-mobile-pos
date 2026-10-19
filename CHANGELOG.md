@@ -3,6 +3,35 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## Bulk WhatsApp messaging fix (see `docs/WHATSAPP_BULK_PLAN.md`)
+- Fixed a real bug: selecting multiple customers and sending a free
+  (wa.me) WhatsApp message only ever opened the first person's chat —
+  every other `window.open()` was silently popup-blocked, because the
+  old code fired them from a staggered `setTimeout` loop, which loses
+  the "real user tap" status a browser/TWA requires before it'll allow
+  a new window. Fixed in both places this pattern existed
+  (`CustomerList/Index.vue`'s bulk send and `Customers/Index.vue`'s due
+  "অফার পাঠান"): replaced with a "পরবর্তী জনকে পাঠান" (send to next) queue
+  — exactly one `window.open()` per direct tap, resumable across app
+  restarts, with a progress bar and skip/stop.
+- New: message templates now support `{name}`, `{due}`, `{shop}`
+  variables instead of a hardcoded "প্রিয় {name}," prefix.
+- New: invalid phone numbers are skipped automatically (shown as a count,
+  not silently dropped), duplicate phone numbers across two customer
+  records are sent to only once, and a non-blocking reminder appears
+  every 30 sends about WhatsApp's own anti-spam number blocking.
+- New: a `.vcf` contact-card export (`customer-list/export?format=vcf`)
+  so selected customers can be imported into the phone's Contacts app in
+  one action and messaged via WhatsApp's own native "New broadcast"
+  feature — zero cost, no automation, fully within WhatsApp's own rules.
+- New: a per-customer "মার্কেটিং মেসেজ চান না" opt-out flag (`customers.no_marketing`,
+  additive migration) — excluded from the free-send queue, the `.vcf`
+  export, and the existing WhatsApp Business (Meta Cloud API) bulk send.
+- Documented and deliberately did NOT build: WhatsApp Business Cloud API
+  automation beyond what already existed (`WhatsappBulkController`), and
+  explicitly ruled out whatsapp-web.js/Baileys/headless-browser automation
+  as a ToS violation with real number-ban risk — see the plan doc.
+
 ## Phase 12 — Offline POS: navigation, bottom-nav labels, print/WhatsApp, Pending Sales review
 - Fixed a confusing generic error toast on a failed offline navigation —
   now shows a clear "this page needs internet, keep selling" message and

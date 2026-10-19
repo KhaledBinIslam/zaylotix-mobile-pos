@@ -91,6 +91,24 @@ class WhatsappBulkTest extends TestCase
         $this->assertSame(0, $log->failed_count);
     }
 
+    /** docs/WHATSAPP_BULK_PLAN.md part D — opted-out customers never get an automated send either, not just the free wa.me queue. */
+    public function test_send_skips_a_customer_who_opted_out_of_marketing(): void
+    {
+        [$shop, $owner] = $this->shopWithWhatsapp();
+        $wants = Customer::create(['shop_id' => $shop->id, 'name' => 'Karim', 'phone' => '01700000001']);
+        $optedOut = Customer::create(['shop_id' => $shop->id, 'name' => 'Salma', 'phone' => '01700000002', 'no_marketing' => true]);
+
+        Http::fake(['graph.facebook.com/*' => Http::response(['messages' => [['id' => 'wamid.1']]], 200)]);
+
+        $this->actingAs($owner, 'web')->post('/app/whatsapp-bulk/send', [
+            'send_type' => 'text', 'message' => 'hi', 'customer_ids' => [$wants->id, $optedOut->id],
+        ])->assertRedirect();
+
+        $log = WhatsappBulkLog::first();
+        $this->assertSame(1, $log->recipients_count);
+        $this->assertSame(1, $log->sent_count);
+    }
+
     public function test_send_with_an_image_uploads_it_and_uses_sendimage_not_sendtext(): void
     {
         [$shop, $owner] = $this->shopWithWhatsapp();

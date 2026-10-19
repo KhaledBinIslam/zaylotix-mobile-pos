@@ -98,4 +98,66 @@ class CustomerListTest extends TestCase
             ->where('customers.0.name', 'A-Customer')
         );
     }
+
+    /** docs/WHATSAPP_BULK_PLAN.md part D — a flagged customer must never reach the vCard/Broadcast export, even if explicitly selected. */
+    public function test_vcard_export_excludes_a_customer_who_opted_out_of_marketing(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'export');
+        $wants = Customer::create(['shop_id' => $shop->id, 'name' => 'Karim', 'phone' => '01700000001']);
+        $optedOut = Customer::create(['shop_id' => $shop->id, 'name' => 'Salma', 'phone' => '01700000002', 'no_marketing' => true]);
+
+        $response = $this->actingAs($owner, 'web')
+            ->get('/app/customer-list/export?customer_ids[]='.$wants->id.'&customer_ids[]='.$optedOut->id.'&format=vcf');
+
+        $response->assertOk();
+        $this->assertStringContainsString('vcard', $response->headers->get('Content-Type'));
+        $body = $response->streamedContent();
+        $this->assertStringContainsString('Karim', $body);
+        $this->assertStringNotContainsString('Salma', $body);
+    }
+
+    public function test_vcard_export_skips_a_customer_with_no_phone(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'export');
+        $noPhone = Customer::create(['shop_id' => $shop->id, 'name' => 'No Phone', 'phone' => null]);
+
+        $response = $this->actingAs($owner, 'web')
+            ->get('/app/customer-list/export?customer_ids[]='.$noPhone->id.'&format=vcf');
+
+        $response->assertOk();
+        $this->assertStringNotContainsString('No Phone', $response->streamedContent());
+    }
+
+    public function test_toggle_marketing_flips_the_flag(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $customer = Customer::create(['shop_id' => $shop->id, 'name' => 'Karim', 'phone' => '01700000001']);
+        $this->assertFalse($customer->refresh()->no_marketing);
+
+        $this->actingAs($owner, 'web')->patch("/app/customer-list/{$customer->id}/toggle-marketing")->assertRedirect();
+        $this->assertTrue($customer->refresh()->no_marketing);
+
+        $this->actingAs($owner, 'web')->patch("/app/customer-list/{$customer->id}/toggle-marketing")->assertRedirect();
+        $this->assertFalse($customer->refresh()->no_marketing);
+    }
+
+    public function test_toggle_marketing_requires_the_customers_permission(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $customer = Customer::create(['shop_id' => $shop->id, 'name' => 'Karim', 'phone' => '01700000001']);
+        $staff = User::create(['shop_id' => $shop->id, 'name' => 'Cashier', 'phone' => '019'.random_int(10000000, 99999999), 'password' => 'password', 'role' => 'staff', 'permissions' => [], 'lang' => 'bn']);
+
+        $this->actingAs($staff, 'web')->patch("/app/customer-list/{$customer->id}/toggle-marketing")->assertForbidden();
+    }
+
+    public function test_cannot_toggle_marketing_for_another_shops_customer(): void
+    {
+        [$shopA, $ownerA] = $this->createShopWithOwner();
+        [$shopB] = $this->createShopWithOwner();
+        $customerB = Customer::create(['shop_id' => $shopB->id, 'name' => 'B-Customer', 'phone' => '01700000009']);
+
+        $this->actingAs($ownerA, 'web')->patch("/app/customer-list/{$customerB->id}/toggle-marketing")->assertNotFound();
+    }
 }

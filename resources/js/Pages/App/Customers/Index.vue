@@ -8,6 +8,20 @@ import { useToast } from '@/composables/useToast';
 import { useI18n } from '@/composables/useI18n';
 import { usePermissions } from '@/composables/usePermissions';
 import { reportClientError } from '@/support/reportClientError';
+import {
+    buildQueueTargets,
+    currentTarget,
+    initQueueState,
+    isQueueDone,
+    markCurrent,
+    renderTemplate,
+    sameTargetSet,
+    sentCount,
+    shouldShowPauseReminder,
+    skippedCount,
+    stateFromItems,
+    waLink,
+} from '@/support/whatsappQueue';
 
 const props = defineProps({ customers: Array });
 const { toast } = useToast();
@@ -19,7 +33,8 @@ const { hasPerm } = usePermissions();
 // with `customers` but not `due` must not see those actions at all, not
 // just have them fail server-side when tapped
 const canDue = computed(() => hasPerm('due'));
-const hasLoyaltyPoints = computed(() => (usePage().props.features || []).includes('loyalty_points'));
+const page = usePage();
+const hasLoyaltyPoints = computed(() => (page.props.features || []).includes('loyalty_points'));
 
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 
@@ -128,25 +143,86 @@ function selectAll() {
 function clearSelect() {
     selected.value = {};
 }
+// Real bug, same root cause as CustomerList/Index.vue's bulk send (see
+// docs/WHATSAPP_BULK_PLAN.md): a window.open() fired from a setTimeout
+// callback, even staggered, loses the "user gesture" that popup blockers
+// require — only the first (sometimes none) of these ever actually
+// opened. Fixed the same way: one wa.me window.open() per direct tap on
+// "পরবর্তী জনকে পাঠান", via the shared whatsappQueue.js queue logic.
+const queueSheet = ref(false);
+const queueState = ref(null);
+const queueSkippedInvalid = ref([]);
+const queueStorageKey = computed(() => `zaylotix_wa_queue_due_${page.props.shop?.id ?? 0}_${page.props.auth?.user?.id ?? 0}`);
+
+function loadSavedQueue() {
+    try {
+        const raw = localStorage.getItem(queueStorageKey.value);
+        return raw ? JSON.parse(raw) : null;
+    } catch {
+        return null;
+    }
+}
+function saveQueue() {
+    try {
+        if (!queueState.value) {
+            localStorage.removeItem(queueStorageKey.value);
+            return;
+        }
+        localStorage.setItem(queueStorageKey.value, JSON.stringify({ items: queueState.value.items, template: offerText.value }));
+    } catch {
+        // resuming is a convenience, not a correctness requirement
+    }
+}
+
 function sendOffer() {
     if (!offerText.value.trim()) {
         toast('❌ ' + t('due.writeMessageError'));
         return;
     }
-    const targets = props.customers.filter((c) => selected.value[c.id] && c.phone);
-    if (!targets.length) {
+    const chosen = props.customers.filter((c) => selected.value[c.id]);
+    const built = buildQueueTargets(chosen);
+    if (!built.targets.length) {
         toast('❌ ' + t('due.noPhoneSelected'));
         return;
     }
-    targets.forEach((c, i) => {
-        setTimeout(() => {
-            const num = '88' + c.phone.replace(/\D/g, '').replace(/^88/, '');
-            const text = `প্রিয় ${c.name},\n\n${offerText.value}`;
-            window.open('https://wa.me/' + num + '?text=' + encodeURIComponent(text), '_blank');
-        }, i * 600);
-    });
-    toast(`📤 ${targets.length} ${t('due.sendingOffer')}`);
+    queueSkippedInvalid.value = built.skippedInvalid;
+
+    const saved = loadSavedQueue();
+    if (saved && sameTargetSet(saved.items, built.targets) && saved.items.some((i) => i.status === 'pending')) {
+        queueState.value = stateFromItems(saved.items);
+        if (saved.template) offerText.value = saved.template;
+        toast('↩️ ' + t('due.resumedQueue'));
+    } else {
+        queueState.value = initQueueState(built.targets);
+    }
+    saveQueue();
     offerSheet.value = false;
+    queueSheet.value = true;
+}
+
+const queueCurrent = computed(() => (queueState.value ? currentTarget(queueState.value) : null));
+const queueSent = computed(() => (queueState.value ? sentCount(queueState.value) : 0));
+const queueSkipped = computed(() => (queueState.value ? skippedCount(queueState.value) : 0));
+const queueTotal = computed(() => (queueState.value ? queueState.value.items.length : 0));
+const queueDone = computed(() => (queueState.value ? isQueueDone(queueState.value) : false));
+const showPauseReminder = computed(() => queueState.value && shouldShowPauseReminder(queueSent.value));
+
+function sendToCurrent() {
+    const target = queueCurrent.value;
+    if (!target) return;
+    const text = renderTemplate(offerText.value, target, page.props.shop?.name);
+    window.open(waLink(target.phone, text), '_blank');
+    queueState.value = markCurrent(queueState.value, 'sent');
+    saveQueue();
+}
+function skipCurrent() {
+    if (!queueCurrent.value) return;
+    queueState.value = markCurrent(queueState.value, 'skipped');
+    saveQueue();
+}
+function closeQueue() {
+    if (queueDone.value) saveQueue();
+    queueSheet.value = false;
     offerText.value = '';
     selectMode.value = false;
     selected.value = {};
@@ -178,7 +254,7 @@ function sendOffer() {
                 <button class="btn ghost sm" style="flex:1" @click="selectAll">{{ t('due.selectAll') }}</button>
                 <button class="btn ghost sm" style="flex:1" @click="clearSelect">{{ t('due.cancelSelect') }}</button>
             </div>
-            <button class="btn sm" style="width:100%" :disabled="!selectedCount" @click="offerSheet = true">
+            <button class="btn sm" style="width:100%" :disabled="!selectedCount" @click="offerText = offerText.trim() ? offerText : `প্রিয় {name},\n\n`; offerSheet = true">
                 {{ selectedCount }} {{ t('due.selectedWriteOffer') }}
             </button>
         </div>
@@ -286,9 +362,43 @@ function sendOffer() {
         </Sheet>
 
         <Sheet v-model="offerSheet" :title="t('due.offerSheetTitle')" :subtitle="t('due.offerSheetSub')">
-            <div class="field"><label>{{ t('due.writeMessage') }}</label><textarea v-model="offerText" rows="4" :placeholder="t('due.messagePlaceholder')"></textarea></div>
+            <div class="field">
+                <label>{{ t('due.writeMessage') }}</label>
+                <textarea v-model="offerText" rows="4" :placeholder="t('due.messagePlaceholder')"></textarea>
+                <div style="font-size:11.5px;color:var(--mut);margin-top:4px">{{ t('customerList.templateVarsHint') }}</div>
+            </div>
             <button class="btn wa" @click="sendOffer">{{ t('due.sendToWA') }} ({{ selectedCount }})</button>
             <button class="btn ghost" style="margin-top:10px" @click="offerSheet = false">{{ t('common.cancel') }}</button>
+        </Sheet>
+
+        <Sheet v-model="queueSheet" :title="t('customerList.queueSheetTitle')">
+            <div v-if="queueSkippedInvalid.length" class="card" style="margin-bottom:12px;background:var(--roseSoft);color:var(--rose);font-size:12.5px">
+                {{ t('customerList.queueSkippedInvalid', { n: queueSkippedInvalid.length }) }}
+            </div>
+
+            <div class="card" style="margin-bottom:12px;font-size:12.5px;color:var(--mut)">{{ t('customerList.queueSpamWarning') }}</div>
+
+            <div v-if="showPauseReminder" class="card" style="margin-bottom:12px;background:var(--goldSoft);font-size:12.5px">
+                ⏸️ {{ t('customerList.queuePauseReminder') }}
+            </div>
+
+            <div style="font-size:13px;color:var(--mut);margin-bottom:10px">{{ t('customerList.queueProgress', { sent: queueSent, total: queueTotal }) }}</div>
+
+            <template v-if="!queueDone">
+                <div class="card" style="margin-bottom:14px">
+                    <b>{{ queueCurrent?.name }}</b>
+                    <div style="font-size:13px;color:var(--mut)">📞 {{ queueCurrent?.phone }}</div>
+                </div>
+                <button class="btn wa" style="margin-bottom:8px" @click="sendToCurrent">
+                    💬 {{ t('customerList.queueSendNext', { current: queueSent + queueSkipped + 1, total: queueTotal }) }}
+                </button>
+                <button class="btn ghost sm" style="margin-bottom:8px" @click="skipCurrent">{{ t('customerList.queueSkip') }}</button>
+            </template>
+            <div v-else class="card" style="margin-bottom:14px;background:var(--goldSoft)">
+                ✅ {{ t('customerList.queueDoneSummary', { sent: queueSent, skipped: queueSkipped }) }}
+            </div>
+
+            <button class="btn ghost" @click="closeQueue">{{ queueDone ? t('common.close') : t('customerList.queueStop') }}</button>
         </Sheet>
     </AppLayout>
 </template>
