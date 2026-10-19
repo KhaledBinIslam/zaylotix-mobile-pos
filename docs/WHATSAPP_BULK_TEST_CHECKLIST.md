@@ -6,14 +6,21 @@ Automated coverage: `resources/js/support/__tests__/whatsappQueue.test.js`,
 These need a real phone/TWA build (popup-blocking behavior varies by
 browser/WebView, so this can't be fully trusted from a desktop browser).
 
-## The "পরবর্তী জনকে পাঠান" queue (both CustomerList and due/Customers pages)
+## The "পরবর্তী জনকে পাঠান" queue (both CustomerList and due/Customers pages, shared via useWhatsappSendQueue.js)
 - [ ] Select 3+ customers with real phone numbers, write a message, start
   the queue. Tap "পরবর্তী জনকে পাঠান" once. Confirm exactly one WhatsApp
   chat opens (not zero, not more than one) with the message filled in,
   `{name}` replaced with that customer's actual name.
-- [ ] Return to the app, tap "পরবর্তী জনকে পাঠান" again for the 2nd
-  customer. Confirm it opens THAT customer's chat (not the 1st again),
-  and the progress counter advanced.
+- [ ] On a PHONE: after the chat opens (handing off to the WhatsApp app),
+  come back to this app. Confirm the sheet auto-advanced to the 2nd
+  customer with the 1st now counted as sent — no extra tap needed.
+- [ ] On DESKTOP: after the chat opens in a new browser tab, this original
+  tab never goes "hidden" (so the auto-advance above can't fire here).
+  Confirm a manual "✓ পাঠানো হয়েছে" button is shown instead, and tapping
+  it advances to the next customer.
+- [ ] Tap "✓ পাঠানো হয়েছে" by mistake (or let it auto-confirm) for the
+  wrong reason, then tap "আগের জনকে ফিরিয়ে আনুন" (undo). Confirm that
+  customer is back at the front of the queue, not counted as sent.
 - [ ] Repeat until the queue reports "done", with the correct sent count.
 - [ ] Mid-queue, tap "থামুন" (stop) and close the sheet. Re-select the
   SAME customers and reopen the send sheet — confirm it resumes exactly

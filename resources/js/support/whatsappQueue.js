@@ -118,3 +118,8 @@ export function sameTargetSet(savedItems, freshTargets) {
 
     return freshTargets.every((t) => savedIds.has(t.id));
 }
+
+/** Reverses a mark-as-sent/skipped — puts that one entry back to 'pending' and lets the cursor find it again, same as every other pending entry. Used for the "ভুল করে sent চিহ্নিত হয়ে গেছে" undo. */
+export function undoMarked(state, id) {
+    return stateFromItems(state.items.map((i) => (i.id === id ? { ...i, status: 'pending' } : i)));
+}

@@ -11,6 +11,7 @@ import {
     sentCount,
     shouldShowPauseReminder,
     skippedCount,
+    undoMarked,
     waLink,
 } from '../whatsappQueue.js';
 
@@ -160,5 +161,30 @@ describe('sameTargetSet', () => {
 
     it('is false when the count differs', () => {
         expect(sameTargetSet([{ id: 1 }], [{ id: 1 }, { id: 2 }])).toBe(false);
+    });
+});
+
+describe('undoMarked', () => {
+    const targets = [
+        { id: 1, name: 'A', phone: '8801711111111', due: 0 },
+        { id: 2, name: 'B', phone: '8801722222222', due: 0 },
+        { id: 3, name: 'C', phone: '8801733333333', due: 0 },
+    ];
+
+    it('puts a sent entry back to pending and the cursor finds it again', () => {
+        let state = initQueueState(targets);
+        state = markCurrent(state, 'sent'); // sends #1, cursor now on #2
+        state = undoMarked(state, 1);
+        expect(currentTarget(state).id).toBe(1);
+        expect(sentCount(state)).toBe(0);
+    });
+
+    it('does not disturb entries other than the one being undone', () => {
+        let state = initQueueState(targets);
+        state = markCurrent(state, 'sent'); // #1 sent
+        state = markCurrent(state, 'skipped'); // #2 skipped, cursor on #3
+        state = undoMarked(state, 1);
+        expect(state.items.find((i) => i.id === 2).status).toBe('skipped');
+        expect(currentTarget(state).id).toBe(1); // the undone one is next again, before #3
     });
 });

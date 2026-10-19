@@ -1,30 +1,15 @@
 <script setup>
-import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
+import { Head, Link, useForm, router } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import { useI18n } from '@/composables/useI18n';
 import { useToast } from '@/composables/useToast';
-import {
-    buildQueueTargets,
-    currentTarget,
-    initQueueState,
-    isQueueDone,
-    markCurrent,
-    renderTemplate,
-    sameTargetSet,
-    sentCount,
-    shouldShowPauseReminder,
-    skippedCount,
-    stateFromItems,
-    waLink,
-} from '@/support/whatsappQueue';
+import { useWhatsappSendQueue } from '@/composables/useWhatsappSendQueue';
 
 const props = defineProps({ customers: Array, whatsappApiReady: Boolean });
 const { t } = useI18n();
 const { toast } = useToast();
-const page = usePage();
-
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 
 const q = ref('');
@@ -100,86 +85,22 @@ function openSendSheet() {
     sendSheet.value = true;
 }
 
-// ---------------- "পরবর্তী জনকে পাঠান" queue — one wa.me tab per direct
-// tap, resumable across app restarts (localStorage, scoped per shop+user
-// so two staff members on the same device never collide) ----------------
-const queueSheet = ref(false);
-const queueState = ref(null);
-const queueSkippedInvalid = ref([]);
-
-const storageKey = computed(() => `zaylotix_wa_queue_cl_${page.props.shop?.id ?? 0}_${page.props.auth?.user?.id ?? 0}`);
-
-function loadSavedQueue() {
-    try {
-        const raw = localStorage.getItem(storageKey.value);
-        return raw ? JSON.parse(raw) : null;
-    } catch {
-        return null;
-    }
-}
-function saveQueue() {
-    try {
-        if (!queueState.value) {
-            localStorage.removeItem(storageKey.value);
-            return;
-        }
-        localStorage.setItem(storageKey.value, JSON.stringify({ items: queueState.value.items, template: freeText.value }));
-    } catch {
-        // localStorage can throw (private mode, quota) — resuming is a
-        // convenience, not a correctness requirement, so this stays silent.
-    }
-}
-
+// ---------------- "পরবর্তী জনকে পাঠান" queue — see useWhatsappSendQueue.js ----------------
+const wa = useWhatsappSendQueue('cl');
 function startQueue() {
     if (!freeText.value.trim()) {
         toast('❌ ' + t('customerList.writeMessageError'));
         return;
     }
     const chosen = props.customers.filter((c) => selected.value[c.id]);
-    const built = buildQueueTargets(chosen);
-    if (!built.targets.length) {
+    if (!wa.start(chosen, freeText.value)) {
         toast('❌ ' + t('customerList.noPhoneSelected'));
         return;
     }
-    queueSkippedInvalid.value = built.skippedInvalid;
-
-    const saved = loadSavedQueue();
-    if (saved && sameTargetSet(saved.items, built.targets) && saved.items.some((i) => i.status === 'pending')) {
-        queueState.value = stateFromItems(saved.items);
-        if (saved.template) freeText.value = saved.template;
-        toast('↩️ ' + t('customerList.resumedQueue'));
-    } else {
-        queueState.value = initQueueState(built.targets);
-    }
-    saveQueue();
     sendSheet.value = false;
-    queueSheet.value = true;
-}
-
-const queueCurrent = computed(() => (queueState.value ? currentTarget(queueState.value) : null));
-const queueSent = computed(() => (queueState.value ? sentCount(queueState.value) : 0));
-const queueSkipped = computed(() => (queueState.value ? skippedCount(queueState.value) : 0));
-const queueTotal = computed(() => (queueState.value ? queueState.value.items.length : 0));
-const queueDone = computed(() => (queueState.value ? isQueueDone(queueState.value) : false));
-const showPauseReminder = computed(() => queueState.value && shouldShowPauseReminder(queueSent.value));
-
-/** The one and only window.open() in this whole queue flow — called directly from the "পরবর্তী জনকে পাঠান" button's own click, so it always carries a real user gesture. */
-function sendToCurrent() {
-    const target = queueCurrent.value;
-    if (!target) return;
-    const text = renderTemplate(freeText.value, target, page.props.shop?.name);
-    window.open(waLink(target.phone, text), '_blank');
-    queueState.value = markCurrent(queueState.value, 'sent');
-    saveQueue();
-}
-function skipCurrent() {
-    if (!queueCurrent.value) return;
-    queueState.value = markCurrent(queueState.value, 'skipped');
-    saveQueue();
 }
 function closeQueue() {
-    if (queueDone.value) saveQueue();
-    queueSheet.value = false;
+    wa.close();
     clearSelection();
     freeText.value = '';
 }
@@ -295,34 +216,40 @@ function exportSelected(fmt) {
             <button class="btn ghost" style="margin-top:10px" @click="sendSheet = false">{{ t('common.cancel') }}</button>
         </Sheet>
 
-        <Sheet v-model="queueSheet" :title="t('customerList.queueSheetTitle')">
-            <div v-if="queueSkippedInvalid.length" class="card" style="margin-bottom:12px;background:var(--roseSoft);color:var(--rose);font-size:12.5px">
-                {{ t('customerList.queueSkippedInvalid', { n: queueSkippedInvalid.length }) }}
+        <Sheet v-model="wa.sheet.value" :title="t('customerList.queueSheetTitle')">
+            <div v-if="wa.skippedInvalid.value.length" class="card" style="margin-bottom:12px;background:var(--roseSoft);color:var(--rose);font-size:12.5px">
+                {{ t('customerList.queueSkippedInvalid', { n: wa.skippedInvalid.value.length }) }}
             </div>
 
             <div class="card" style="margin-bottom:12px;font-size:12.5px;color:var(--mut)">{{ t('customerList.queueSpamWarning') }}</div>
 
-            <div v-if="showPauseReminder" class="card" style="margin-bottom:12px;background:var(--goldSoft);font-size:12.5px">
+            <div v-if="wa.showPauseReminder.value" class="card" style="margin-bottom:12px;background:var(--goldSoft);font-size:12.5px">
                 ⏸️ {{ t('customerList.queuePauseReminder') }}
             </div>
 
-            <div style="font-size:13px;color:var(--mut);margin-bottom:10px">{{ t('customerList.queueProgress', { sent: queueSent, total: queueTotal }) }}</div>
+            <div style="font-size:13px;color:var(--mut);margin-bottom:10px">{{ t('customerList.queueProgress', { sent: wa.sent.value, total: wa.total.value }) }}</div>
 
-            <template v-if="!queueDone">
+            <template v-if="!wa.done.value">
                 <div class="card" style="margin-bottom:14px">
-                    <b>{{ queueCurrent?.name }}</b>
-                    <div style="font-size:13px;color:var(--mut)">📞 {{ queueCurrent?.phone }}</div>
+                    <b>{{ wa.current.value?.name }}</b>
+                    <div style="font-size:13px;color:var(--mut)">📞 {{ wa.current.value?.phone }}</div>
                 </div>
-                <button class="btn wa" style="margin-bottom:8px" @click="sendToCurrent">
-                    💬 {{ t('customerList.queueSendNext', { current: queueSent + queueSkipped + 1, total: queueTotal }) }}
+                <template v-if="wa.awaitingConfirmId.value">
+                    <div class="card" style="margin-bottom:8px;font-size:12.5px;color:var(--mut)">{{ t('customerList.queueAwaitingConfirm') }}</div>
+                    <button class="btn" style="margin-bottom:8px" @click="wa.confirmSent()">✓ {{ t('customerList.queueConfirmSent') }}</button>
+                </template>
+                <button v-else class="btn wa" style="margin-bottom:8px" @click="wa.sendToCurrent()">
+                    💬 {{ t('customerList.queueSendNext', { current: wa.sent.value + wa.skipped.value + 1, total: wa.total.value }) }}
                 </button>
-                <button class="btn ghost sm" style="margin-bottom:8px" @click="skipCurrent">{{ t('customerList.queueSkip') }}</button>
+                <button class="btn ghost sm" style="margin-bottom:8px" @click="wa.skipCurrent()">{{ t('customerList.queueSkip') }}</button>
             </template>
             <div v-else class="card" style="margin-bottom:14px;background:var(--goldSoft)">
-                ✅ {{ t('customerList.queueDoneSummary', { sent: queueSent, skipped: queueSkipped }) }}
+                ✅ {{ t('customerList.queueDoneSummary', { sent: wa.sent.value, skipped: wa.skipped.value }) }}
             </div>
 
-            <button class="btn ghost" @click="closeQueue">{{ queueDone ? t('common.close') : t('customerList.queueStop') }}</button>
+            <button v-if="wa.lastConfirmedId.value" class="btn ghost sm" style="margin-bottom:8px" @click="wa.undoLastConfirm()">↩️ {{ t('customerList.queueUndoLastSent') }}</button>
+
+            <button class="btn ghost" @click="closeQueue">{{ wa.done.value ? t('common.close') : t('customerList.queueStop') }}</button>
         </Sheet>
     </AppLayout>
 </template>

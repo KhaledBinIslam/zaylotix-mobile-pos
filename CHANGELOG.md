@@ -45,6 +45,23 @@ Entries below cover the 2026-10 comprehensive audit-and-fix effort
   response, or status code changed, only logging. The next occurrence of
   this bug will leave a real log line to read instead of a dead end.
 
+## Bulk WhatsApp queue: match the originally-planned confirm UX, dedupe the two pages
+- The queue's own plan (`docs/WHATSAPP_BULK_PLAN.md`) always called for
+  marking a customer "sent" on returning from WhatsApp (`visibilitychange`),
+  not the instant the button is tapped — the actual first implementation
+  deviated from this. Fixed: marking now waits for the tab to become
+  visible again (the real phone case — wa.me hands off to the WhatsApp
+  app entirely), with a manual "✓ পাঠানো হয়েছে" button for desktop (where
+  `window.open()` opens a new tab and this one never leaves "visible"),
+  and an "আগের জনকে ফিরিয়ে আনুন" undo in case either path marks the wrong
+  one.
+- `CustomerList/Index.vue` and `Customers/Index.vue` had this entire
+  queue copy-pasted — extracted into a shared
+  `resources/js/composables/useWhatsappSendQueue.js` so the two pages
+  can't drift apart again.
+- Spam-pacing hint now explicitly says "দিনে ২০০ জনের কম রাখুন" to match
+  Khaled's own stated guidance, not just a generic "pace yourself".
+
 ## Bulk WhatsApp messaging fix (see `docs/WHATSAPP_BULK_PLAN.md`)
 - Fixed a real bug: selecting multiple customers and sending a free
   (wa.me) WhatsApp message only ever opened the first person's chat —
