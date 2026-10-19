@@ -10,6 +10,7 @@ import { useToast } from './composables/useToast';
 import { useI18n } from './composables/useI18n';
 import { reportClientError } from './support/reportClientError';
 import { navErrorMessage } from './support/navErrorMessage';
+import { startSessionKeepAlive } from './support/sessionKeepAlive';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
@@ -129,6 +130,11 @@ createInertiaApp({
             .mount(el);
         removeBootSplash();
         prefetchSellPage(props.initialPage?.props);
+        // Only for an actually logged-in shop session — the public
+        // landing/login pages have no csrf-token route to usefully reach
+        // (it sits behind the 'shop' auth middleware) and nobody is
+        // realistically idle on them for the 10+ minutes this is for.
+        if (props.initialPage?.props?.auth?.user) startSessionKeepAlive();
         return app;
     },
     // Matches --green — this file can't read CSS custom properties, Inertia's

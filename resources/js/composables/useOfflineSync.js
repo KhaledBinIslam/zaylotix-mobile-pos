@@ -1,8 +1,9 @@
 import { ref, computed } from 'vue';
 import { usePage } from '@inertiajs/vue3';
-import { enqueueSale, removeFromQueue, markFailed, markShopMismatch, retryEntry, remapQueuedItem, dropQueuedItem, pendingCount, failedCount } from '@/support/offlineQueue';
+import { enqueueSale, removeFromQueue, markFailed, markShopMismatch, retryEntry, remapQueuedItem, dropQueuedItem, pendingCount, failedCount, offlineSyncFailureKind } from '@/support/offlineQueue';
 import { kvGet, kvSet, KEYS } from '@/support/offlineDb';
 import { shouldAutoSync } from '@/support/syncModeDecision';
+import { fetchWithSessionRetry } from '@/support/fetchWithSessionRetry';
 import { useToast } from '@/composables/useToast';
 import { useI18n } from '@/composables/useI18n';
 
@@ -86,7 +87,19 @@ async function trySync() {
             }
 
             try {
-                const res = await fetch(route('app.pos.checkout'), {
+                // fetchWithSessionRetry: a sale can sit queued for hours
+                // (the entire point of this queue) before the device comes
+                // back online to replay it — exactly the scenario where the
+                // X-CSRF-TOKEN below, read from a meta tag that may not have
+                // been refreshed in all that time, goes stale. See
+                // docs/SESSION_FIX.md: this is believed to be the real
+                // cause of a reported "sale(s) failed to sync" with nothing
+                // in the server log — a 401/419 used to fall into the same
+                // generic 4xx bucket as a real business rejection (stock
+                // gone, bad product) below, marked 'permanent' and shown as
+                // a scary, misleading "needs review" instead of what it
+                // actually was: a transient auth hiccup that fixes itself.
+                const res = await fetchWithSessionRetry(route('app.pos.checkout'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -139,19 +152,21 @@ async function trySync() {
                     // not 'transient': the resolution sheet, not the plain
                     // retry button, is the actual way out.
                     queue.value = markFailed(queue.value, entry.id, data.message, 'permanent', data.problem_items);
-                } else if (res.status >= 400 && res.status < 500) {
-                    // Some other business-rule rejection (stock ran out,
-                    // unit/variant mismatch, etc.) — also permanent in the
-                    // sense that retrying unchanged won't help, but there's
-                    // no specific per-item fix the UI can offer beyond
-                    // showing the message and letting the cashier discard it.
-                    const message = data.message || Object.values(data.errors || {})[0]?.[0] || 'সিঙ্ক ব্যর্থ হয়েছে।';
-                    queue.value = markFailed(queue.value, entry.id, message, 'permanent');
                 } else {
-                    // 5xx — the server's own problem, not this sale's;
-                    // worth an unmodified retry once it recovers.
-                    const message = data.message || 'সিঙ্ক ব্যর্থ হয়েছে। সার্ভারে সাময়িক সমস্যা, কিছুক্ষণ পর আবার চেষ্টা করুন।';
-                    queue.value = markFailed(queue.value, entry.id, message, 'transient');
+                    // offlineSyncFailureKind (see docs/SESSION_FIX.md): a
+                    // 401/419 means fetchWithSessionRetry's own one recovery
+                    // attempt above already failed, or this really is a
+                    // logout — either way it's a session/CSRF hiccup, not a
+                    // rejection of the SALE, so it's 'transient' exactly
+                    // like a 5xx is, never the permanent/needs-review
+                    // bucket an actual business rejection (stock ran out,
+                    // unit/variant mismatch, etc.) below still correctly
+                    // gets.
+                    const kind = offlineSyncFailureKind(res.status);
+                    const message = kind === 'transient' && (res.status === 401 || res.status === 419)
+                        ? 'সেশনের সমস্যা — ইন্টারনেট/লগইন ঠিক থাকলে এটি নিজে থেকেই সিঙ্ক হয়ে যাবে।'
+                        : data.message || Object.values(data.errors || {})[0]?.[0] || 'সিঙ্ক ব্যর্থ হয়েছে। সার্ভারে সাময়িক সমস্যা হলে কিছুক্ষণ পর আবার চেষ্টা করুন।';
+                    queue.value = markFailed(queue.value, entry.id, message, kind);
                 }
             } catch {
                 // still offline (or the network dropped mid-sync) — stop

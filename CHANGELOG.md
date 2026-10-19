@@ -3,6 +3,36 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## Session/419 ("Page Expired") permanent fix — see `docs/SESSION_FIX.md`
+- Root cause: a prior fix (Aug 17) raised `config/session.php`'s
+  SESSION_LIFETIME default from 120 to 720 minutes, but never updated
+  the actual `.env` file (gitignored, never touched by a deploy) — so
+  the real effective session lifetime silently stayed at 120 the whole
+  time. Fixed `.env`/`.env.example`; **production's `.env` needs a
+  manual one-line edit** (see SESSION_FIX.md's deploy notes) — safe, no
+  forced logout.
+- Every raw-fetch call site (POS/Clothing checkout, offline-sync replay)
+  built its CSRF header from a `<meta>` tag captured once at page load
+  and never refreshed — the real reason a POS tab left open a full
+  shift could hit an unrecoverable 419. New `GET /app/csrf-token` +
+  `fetchWithSessionRetry.js` now refreshes it and retries once; a new
+  `sessionKeepAlive.js` proactively refreshes it every 10 minutes (and
+  on tab-focus/reconnect) so this is rarely even needed in practice.
+- `Clothing/Pos.vue`'s checkout/gateway-checkout fetches now go through
+  `fetchWithSessionRetry` too (parity gap — `Pos/Index.vue`,
+  `Restaurant/Order.vue`, `Returns/Index.vue` already had it).
+- `useOfflineSync.js`'s `trySync()` used a bare `fetch()` (no retry
+  protection at all) and classified a 401/419 as `'permanent'` —
+  believed to be the real cause of the earlier unexplained "1 sale(s)
+  failed to sync" report with nothing in the server log. Now uses
+  `fetchWithSessionRetry` and a new `offlineSyncFailureKind()` helper
+  correctly marks it `'transient'`: the sale stays queued and retryable,
+  never routed into the per-item "match this product" resolution screen
+  over something that had nothing to do with the sale's contents.
+- A genuinely logged-out visit now remembers where you were
+  (`EnsureShopUser`'s `redirect()->guest()`) and returns you there after
+  login, instead of just the generic home page.
+
 ## Offline sync failure diagnostics
 - Reported live: "1 sale(s) failed to sync" with nothing matching in
   `storage/logs/laravel.log` — a deliberate validation/business rejection

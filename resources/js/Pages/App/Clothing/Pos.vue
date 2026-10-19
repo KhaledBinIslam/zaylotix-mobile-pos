@@ -9,6 +9,7 @@ import { useToast } from '@/composables/useToast';
 import { useI18n } from '@/composables/useI18n';
 import { useHardwareScanner } from '@/composables/useHardwareScanner';
 import { useOfflineSync } from '@/composables/useOfflineSync';
+import { fetchWithSessionRetry } from '@/support/fetchWithSessionRetry';
 import { buildOfflineSaleSnapshot } from '@/support/offlineSaleSnapshot';
 import { buildReceiptWhatsAppText, whatsAppUrlFor } from '@/support/receiptMessage';
 
@@ -394,7 +395,10 @@ async function submitCheckout() {
     };
 
     try {
-        const res = await fetch(route('app.pos.checkout'), {
+        // fetchWithSessionRetry: one safe, automatic retry on a 401 or a
+        // stale-CSRF 419 (see its own docblock and docs/SESSION_FIX.md) —
+        // this screen was missing it entirely before, unlike Pos/Index.vue.
+        const res = await fetchWithSessionRetry(route('app.pos.checkout'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken(), Accept: 'application/json' },
             body: JSON.stringify(payload),
@@ -441,7 +445,7 @@ async function payViaGateway(provider) {
     gatewaySubmitting.value = true;
     errorMsg.value = '';
     try {
-        const res = await fetch(route('app.gatewayCheckout.initiate', provider), {
+        const res = await fetchWithSessionRetry(route('app.gatewayCheckout.initiate', provider), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken(), Accept: 'application/json' },
             body: JSON.stringify({

@@ -6,6 +6,7 @@ use App\Http\Controllers\App\AccountsController;
 use App\Http\Controllers\App\ActivityLogController;
 use App\Http\Controllers\App\BarcodeLabelController;
 use App\Http\Controllers\App\BranchController;
+use App\Http\Controllers\App\CsrfTokenController;
 use App\Http\Controllers\App\CustomerController;
 use App\Http\Controllers\App\CustomerListController;
 use App\Http\Controllers\App\DamageController;
@@ -143,6 +144,9 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
     Route::get('stock-transfers', [StockTransferController::class, 'index'])->name('stockTransfers.index');
     Route::post('stock-transfers', [StockTransferController::class, 'store'])->name('stockTransfers.store');
     Route::post('client-error-log', [ClientErrorLogController::class, 'store'])->name('clientErrorLog.store')->middleware('throttle:30,1');
+    // see docs/SESSION_FIX.md — lets fetchWithSessionRetry.js recover a
+    // stale CSRF meta tag on a long-open tab instead of failing with 419
+    Route::get('csrf-token', [CsrfTokenController::class, 'show'])->name('csrfToken');
 
     Route::middleware('perm:pos')->group(function () {
         Route::get('pos', [PosController::class, 'index'])->name('pos');

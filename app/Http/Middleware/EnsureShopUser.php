@@ -38,7 +38,13 @@ class EnsureShopUser
                 abort(401, 'সেশনের মেয়াদ শেষ হয়ে গেছে — আবার login করুন।');
             }
 
-            return redirect()->route('login');
+            // ->guest() (not a plain redirect()->route()) stashes this URL
+            // as the session's "intended" destination — LoginController's
+            // own redirect()->intended() already reads it back after a
+            // successful login, so someone genuinely logged out mid-browse
+            // lands back where they actually were, not just the generic
+            // home page (see docs/SESSION_FIX.md).
+            return redirect()->guest(route('login'));
         }
 
         // Deliberately does NOT call Tenancy::set() here — that binds a

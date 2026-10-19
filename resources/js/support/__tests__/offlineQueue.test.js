@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { enqueueSale, removeFromQueue, markFailed, markShopMismatch, retryEntry, remapQueuedItem, dropQueuedItem, pendingCount, failedCount, canDiscardEntry } from '../offlineQueue.js';
+import { enqueueSale, removeFromQueue, markFailed, markShopMismatch, retryEntry, remapQueuedItem, dropQueuedItem, pendingCount, failedCount, canDiscardEntry, offlineSyncFailureKind } from '../offlineQueue.js';
 
 describe('offlineQueue', () => {
     it('enqueues a sale as pending', () => {
@@ -154,6 +154,29 @@ describe('offlineQueue', () => {
 
         it('denies a legacy entry with no attribution, even for the cashier who likely queued it', () => {
             expect(canDiscardEntry({ queuedByUserId: null }, false, 7)).toBe(false);
+        });
+    });
+
+    // see docs/SESSION_FIX.md — this is the fix for the earlier unexplained
+    // "sale(s) failed to sync" report with nothing in the server log
+    describe('offlineSyncFailureKind', () => {
+        it('treats a 401 (real/transient logout) as transient, not a sale-content problem', () => {
+            expect(offlineSyncFailureKind(401)).toBe('transient');
+        });
+
+        it('treats a 419 (stale CSRF token) as transient', () => {
+            expect(offlineSyncFailureKind(419)).toBe('transient');
+        });
+
+        it('treats any 5xx as transient (the server\'s own problem)', () => {
+            expect(offlineSyncFailureKind(500)).toBe('transient');
+            expect(offlineSyncFailureKind(503)).toBe('transient');
+        });
+
+        it('treats any other 4xx (stock gone, bad product, validation) as permanent', () => {
+            expect(offlineSyncFailureKind(400)).toBe('permanent');
+            expect(offlineSyncFailureKind(404)).toBe('permanent');
+            expect(offlineSyncFailureKind(422)).toBe('permanent');
         });
     });
 });

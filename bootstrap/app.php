@@ -85,7 +85,13 @@ return Application::configure(basePath: dirname(__DIR__))
             }
 
             if ($status === 419) {
-                return back()->with('error', $generic);
+                // withInput so a form that happened to hit this (most
+                // commonly: a login page left open/stale for a long time
+                // before being submitted) doesn't also lose what was
+                // already typed — never the password itself, which has no
+                // business round-tripping through a flashed session value.
+                // See docs/SESSION_FIX.md.
+                return back()->with('error', $generic)->withInput($request->except(['password', '_token']));
             }
 
             // Never forward a raw framework/DB exception message to the

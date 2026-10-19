@@ -241,6 +241,33 @@ Full spec from Khaled, four numbered problems. Logic-safe, additive throughout �
 
 ---
 
+## Phase 13 — Session/419 ("Page Expired") permanent fix — see docs/SESSION_FIX.md
+
+Khaled's own master-prompt numbering calls this "Phase 0.1" — logged here
+as 13 instead because this file already has an UNRELATED, pre-existing
+"Phase 0 / 0.1-0.6" (ShopProvisioner idempotency, business-type drift —
+section starting at line 9) from an earlier master prompt. Same numbers,
+completely different work — see docs/SESSION_FIX.md's own note.
+
+Full root-cause writeup, fix list, and deploy notes live in
+`docs/SESSION_FIX.md` (Khaled's required structure: root cause with file:
+line citations, then the fix, then tests). Short version: the real,
+demonstrable root cause is that a prior fix (`ebd1eef`, 2026-08-17) bumped
+`config/session.php`'s SESSION_LIFETIME default from 120 to 720 minutes,
+but never touched the actual `.env` file (gitignored, never updated by a
+deploy's `git pull`) — so the effective session lifetime stayed at 120
+the whole time. Combined with every raw-fetch call site (POS checkout,
+offline-sync replay) reading its CSRF token from a `<meta>` tag captured
+once at page load and never refreshed, a POS tab left open for a normal
+shift could easily outlive its own session and hit a 419 with no way to
+recover other than reloading the page. Also found and fixed along the
+way: `useOfflineSync.js`'s `trySync()` used a bare `fetch()` (no 401/419
+retry at all) and classified a 401/419 as `'permanent'` (the generic 4xx
+bucket) — almost certainly the real cause of the earlier unexplained "1
+sale(s) failed to sync" report with nothing in the server log.
+
+---
+
 ## Definition-of-done checklist (tracked across all phases, per master prompt)
 
 - [ ] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test`, Phase 0.6)

@@ -53,6 +53,26 @@ export function markShopMismatch(queue, id, error, queuedForShopName) {
     return queue.map((s) => (s.id === id ? { ...s, status: 'shop_mismatch', error, queuedForShopName: queuedForShopName || s.queuedForShopName } : s));
 }
 
+/**
+ * Which failureKind an offline-sync replay's HTTP status maps to — pulled
+ * out of useOfflineSync.js's trySync() so this one decision is unit-
+ * testable without mocking fetch/IndexedDB/Inertia's usePage(). See
+ * docs/SESSION_FIX.md: a 401/419 is a session/CSRF hiccup, not a real
+ * rejection of the sale itself — fetchWithSessionRetry already attempts
+ * one recovery before this is even reached, so landing here means either
+ * a genuine logout or a failed-offline recovery attempt, and either way
+ * resubmitting the exact same payload once that's sorted out will very
+ * likely just work. Treating it as 'permanent' (the old behavior — it fell
+ * into the generic 4xx bucket below) wrongly sent a cashier into the
+ * per-item "match this product" resolution screen over something that had
+ * nothing to do with the sale's contents at all.
+ */
+export function offlineSyncFailureKind(status) {
+    if (status === 401 || status === 419) return 'transient';
+    if (status >= 500) return 'transient';
+    return 'permanent';
+}
+
 // a failed entry (e.g. stock ran out by the time it synced) can be retried
 // once the cashier has resolved it (adjusted stock, etc.) — flips it back
 // to 'pending' so the next auto-sync picks it up again. Pointless (and
