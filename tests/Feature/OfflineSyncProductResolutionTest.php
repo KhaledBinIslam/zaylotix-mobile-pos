@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Product;
 use App\Models\Sale;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use Tests\Concerns\CreatesShops;
 use Tests\TestCase;
 
@@ -184,5 +185,77 @@ class OfflineSyncProductResolutionTest extends TestCase
 
         $response->assertOk();
         $this->assertCount(0, $response->json('results'));
+    }
+
+    // ---------------- diagnostic logging (see docs/FIX_PLAN.md: "1 sale(s)
+    // failed to sync" reported live with nothing matching in the server
+    // log, since a deliberate validation/business rejection was never
+    // reported the way a real crash is) ----------------
+
+    public function test_offline_replay_shop_mismatch_is_logged(): void
+    {
+        [$shopA] = $this->createShopWithOwner(['name' => 'Shop A']);
+        [$shopB, $ownerB] = $this->createShopWithOwner(['name' => 'Shop B']);
+        $product = Product::create(['shop_id' => $shopA->id, 'name' => 'Rice', 'cost' => 100, 'price' => 150, 'stock' => 10]);
+
+        Log::shouldReceive('warning')->once()->with(
+            'Offline sync replay rejected: shop mismatch',
+            \Mockery::on(fn ($context) => $context['current_shop_id'] === $shopB->id && $context['queued_shop_id'] === $shopA->id),
+        );
+
+        $this->actingAs($ownerB, 'web')->postJson('/app/pos/checkout', [
+            'offline_replay' => true,
+            'shop_id' => $shopA->id,
+            'shop_name' => 'Shop A',
+            'items' => [['product_id' => $product->id, 'qty' => 1]],
+            'payments' => [['method' => 'cash', 'amount' => 150]],
+        ])->assertStatus(409);
+    }
+
+    public function test_offline_replay_request_validation_failure_is_logged(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+
+        Log::shouldReceive('warning')->once()->with(
+            'Offline sync replay rejected: request validation failed',
+            \Mockery::on(fn ($context) => array_key_exists('items', $context['errors'])),
+        );
+
+        // 'items' is required — omitted here to trip the FormRequest's own
+        // validation, before the controller (and performCheckout()) ever run
+        $this->actingAs($owner, 'web')->postJson('/app/pos/checkout', [
+            'offline_replay' => true,
+            'payments' => [['method' => 'cash', 'amount' => 150]],
+        ])->assertStatus(422);
+    }
+
+    public function test_offline_replay_business_rejection_at_checkout_is_logged(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+
+        Log::shouldReceive('warning')->once()->with(
+            'Offline sync replay rejected at checkout',
+            \Mockery::on(fn ($context) => $context['exception'] === \Illuminate\Http\Exceptions\HttpResponseException::class
+                && str_contains($context['response_body'], 'problem_items')),
+        );
+
+        $this->actingAs($owner, 'web')->postJson('/app/pos/checkout', [
+            'offline_replay' => true,
+            'items' => [['product_id' => 99999, 'qty' => 1, 'product_name' => 'পুরনো পণ্য']],
+            'payments' => [['method' => 'cash', 'amount' => 100]],
+        ])->assertStatus(422);
+    }
+
+    /** The same rejection on a LIVE (non-replay) checkout needs no log — the cashier sees it immediately, right there on screen. */
+    public function test_a_live_checkout_rejection_is_not_logged(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+
+        Log::shouldReceive('warning')->never();
+
+        $this->actingAs($owner, 'web')->postJson('/app/pos/checkout', [
+            'items' => [['product_id' => 99999, 'qty' => 1, 'product_name' => 'পুরনো পণ্য']],
+            'payments' => [['method' => 'cash', 'amount' => 100]],
+        ])->assertStatus(422);
     }
 }

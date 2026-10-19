@@ -3,6 +3,18 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## Offline sync failure diagnostics
+- Reported live: "1 sale(s) failed to sync" with nothing matching in
+  `storage/logs/laravel.log` — a deliberate validation/business rejection
+  (stock gone, a 422, a shop mismatch) was never logged the way a real
+  crash is, so there was no trace to diagnose it from. Added targeted
+  `Log::warning()` calls, only for an offline-sync replay (never a live
+  checkout — the cashier already sees that immediately): on a shop
+  mismatch, on the request failing its own validation, and on anything
+  `performCheckout()` itself rejects. Purely additive — no behavior,
+  response, or status code changed, only logging. The next occurrence of
+  this bug will leave a real log line to read instead of a dead end.
+
 ## Bulk WhatsApp messaging fix (see `docs/WHATSAPP_BULK_PLAN.md`)
 - Fixed a real bug: selecting multiple customers and sending a free
   (wa.me) WhatsApp message only ever opened the first person's chat —

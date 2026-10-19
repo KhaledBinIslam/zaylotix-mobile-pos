@@ -2,13 +2,37 @@
 
 namespace App\Http\Requests\App;
 
+use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Log;
 
 class CheckoutRequest extends FormRequest
 {
     public function authorize(): bool
     {
         return true; // gated by the `shop` + `subscription` middleware on the route
+    }
+
+    /**
+     * A FormRequest's own validation failure (422) happens before the
+     * controller ever runs, so it was invisible in the logs when an
+     * offline-sync replay silently failed this way — see
+     * PosController::checkout()'s own diagnostic logging for the matching
+     * gap on the controller side. Only logs for an offline replay, never a
+     * live checkout (those failures are visible to the cashier immediately,
+     * no log needed).
+     */
+    protected function failedValidation(Validator $validator)
+    {
+        if ($this->boolean('offline_replay')) {
+            Log::warning('Offline sync replay rejected: request validation failed', [
+                'shop_id' => $this->input('shop_id'),
+                'client_uuid' => $this->input('client_uuid'),
+                'errors' => $validator->errors()->toArray(),
+            ]);
+        }
+
+        parent::failedValidation($validator);
     }
 
     public function rules(): array

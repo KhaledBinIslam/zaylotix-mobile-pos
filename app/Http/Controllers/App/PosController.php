@@ -25,6 +25,7 @@ use App\Support\Tenancy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
 class PosController extends Controller
@@ -159,11 +160,46 @@ class PosController extends Controller
         // entry with no shop_id simply skips this check — never worse
         // than before.
         if (! empty($data['shop_id']) && (int) $data['shop_id'] !== $shopId) {
+            if (! empty($data['offline_replay'])) {
+                Log::warning('Offline sync replay rejected: shop mismatch', [
+                    'current_shop_id' => $shopId,
+                    'queued_shop_id' => $data['shop_id'],
+                    'client_uuid' => $data['client_uuid'] ?? null,
+                ]);
+            }
+
             return response()->json([
                 'message' => 'এই বিলটি অন্য একটি দোকানের জন্য সারিবদ্ধ হয়েছিল'.(! empty($data['shop_name']) ? " ({$data['shop_name']})" : '').' — এই দোকানের সেশনে সিঙ্ক করা যাবে না। সঠিক দোকানে লগইন/ইমপারসোনেট করে আবার চেষ্টা করুন, অথবা এই বিলটি বাতিল করুন।',
                 'shop_mismatch' => true,
                 'queued_for_shop_name' => $data['shop_name'] ?? null,
             ], 409);
+        }
+
+        // Diagnostic-only (not business logic — never changes what's
+        // returned): a sync replay that gets rejected (stock ran out,
+        // validation, anything performCheckout() throws) used to leave NO
+        // trace in the server log at all, since a deliberate abort()/422 is
+        // never reported the way a real crash is. Reported live ("1 sale(s)
+        // failed to sync" with nothing matching in storage/logs/laravel.log)
+        // — this exists so the NEXT occurrence actually leaves something to
+        // read instead of another silent dead end.
+        if (! empty($data['offline_replay'])) {
+            try {
+                $sale = self::performCheckout($data, $shopId, $userId);
+            } catch (\Throwable $e) {
+                Log::warning('Offline sync replay rejected at checkout', [
+                    'shop_id' => $shopId,
+                    'client_uuid' => $data['client_uuid'] ?? null,
+                    'exception' => get_class($e),
+                    'message' => $e->getMessage(),
+                    'response_body' => $e instanceof \Illuminate\Http\Exceptions\HttpResponseException
+                        ? $e->getResponse()->getContent()
+                        : null,
+                ]);
+                throw $e;
+            }
+
+            return response()->json(['sale' => $sale]);
         }
 
         $sale = self::performCheckout($data, $shopId, $userId);
