@@ -54,6 +54,12 @@ class CheckoutRequest extends FormRequest
             'items.*.product_barcode' => ['nullable', 'string', 'max:100'],
             'items.*.unit_label' => ['nullable', 'string', 'max:100'],
             'items.*.variant_label' => ['nullable', 'string', 'max:100'],
+            // Diagnostic-only, same as the fields above — what the price
+            // LOOKED like when the cart was built, shown on a stuck bill's
+            // resolution screen so the cashier can see what was actually
+            // being sold/charged. The real price is always resolved fresh
+            // server-side in performCheckout(); this is never read there.
+            'items.*.unit_price' => ['nullable', 'numeric'],
             // Which shop this cart was built under — set by the client from
             // its own current session at the moment checkout is attempted
             // (not the server's). Lets checkout() catch an offline sale

@@ -1066,6 +1066,12 @@ export const translations = {
     'offline.cancelReasonPlaceholder': { bn: 'বাতিলের কারণ (ঐচ্ছিক)', en: 'Reason for cancelling (optional)' },
     'offline.confirmCancel': { bn: 'নিশ্চিতভাবে বাতিল করুন', en: 'Confirm cancel' },
     'offline.stockAbbrev': { bn: 'স্টক', en: 'Stock' },
+    'offline.discountAbbrev': { bn: 'ছাড়', en: 'off' },
+    'offline.approxTotal': { bn: 'আনুমানিক বিল', en: 'Approx. bill' },
+    'offline.priceUnknownHint': { bn: 'দাম জানা নেই (পুরনো বিল) — এই মোট নির্ভরযোগ্য নয়', en: 'Price unknown (old bill) — this total is not reliable' },
+    'offline.complimentarySale': { bn: 'ফ্রি/কমপ্লিমেন্টারি বিল', en: 'Complimentary (free) sale' },
+    'offline.fullyDue': { bn: 'সম্পূর্ণ বাকিতে (কোনো পেমেন্ট ছিল না)', en: 'Fully on credit (no payment given)' },
+    'offline.approxDue': { bn: 'আনুমানিক বাকি', en: 'Approx. due' },
 
     // ---- admin impersonation banner (shop side) ----
     'impersonate.banner': { bn: '{admin} এডমিন হিসেবে আপনি এই দোকানটি দেখছেন — বের হতে চাপুন', en: "You're viewing this shop as admin {admin} — tap to exit" },

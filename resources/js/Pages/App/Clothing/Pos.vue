@@ -759,7 +759,14 @@ function sendMemoWA() {
                         <button type="button" class="btn sm ghost" style="margin-top:8px" @click="payMode = 'cash'">{{ t('common.cancel') }}</button>
                     </div>
 
-                    <div v-else style="margin-top:6px">
+                    <!-- Same real bug as Pos/Index.vue (see its own comment
+                         here) — this was a bare v-else, rendering whenever
+                         NOT complimentary regardless of splitMode, letting a
+                         cashier type a partial amount that buildPayments()
+                         silently ignores in single-method mode (it always
+                         sends the full total). Gated on splitMode to match
+                         what actually gets submitted. -->
+                    <div v-else-if="splitMode" style="margin-top:6px">
                         <div style="display:flex;gap:8px;margin-bottom:6px">
                             <div style="flex:1"><label style="font-size:12px">{{ t('pay.cash') }}</label><input v-model.number="splitAmounts.cash" type="number" inputmode="numeric" placeholder="0" min="0" @input="onSplitCashInput"></div>
                             <div style="flex:1"><label style="font-size:12px">{{ t('pay.bkash') }}</label><input v-model.number="splitAmounts.bkash" type="number" inputmode="numeric" placeholder="0" min="0"></div>

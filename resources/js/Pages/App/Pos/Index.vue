@@ -597,6 +597,13 @@ function lineSnapshot(l) {
         product_barcode: p?.barcode || '',
         variant_label: variant ? [variant.size, variant.color].filter(Boolean).join(' / ') : '',
         unit_label: unit?.unit?.name || '',
+        // Display-only — the real price is always resolved server-side at
+        // actual sync time (checkout never trusts a client-sent price).
+        // This is just what the price LOOKED like when the cart was built,
+        // so a stuck/failed bill's own resolution screen (AppLayout.vue)
+        // can show the cashier what was actually being sold/charged,
+        // instead of just a bare product name with no amounts at all.
+        unit_price: unit?.price ?? variant?.price ?? p?.price ?? null,
     };
 }
 
@@ -1510,7 +1517,22 @@ useKeyboardShortcuts({
                         <button type="button" class="btn sm ghost" style="margin-top:8px" @click="payMode = 'cash'">{{ t('common.cancel') }}</button>
                     </div>
 
-                    <div v-else style="margin-top:6px">
+                    <!-- Real bug, confirmed live: this was a bare v-else (only
+                         excluding complimentary), so it rendered whenever NOT
+                         complimentary — including when splitMode was OFF. A
+                         cashier could type a partial amount into this cash
+                         box, see the "বাকি থাকবে" warning update live (it's
+                         computed from splitAmounts regardless of splitMode),
+                         and reasonably believe the system understood a
+                         partial tender — but buildPayments() only reads
+                         splitAmounts when splitMode is actually true; in
+                         single-method mode it always sends the FULL total as
+                         one payment of whichever method is selected,
+                         silently ignoring whatever was typed here. Gating
+                         this on splitMode too means these boxes (and the
+                         live due/phone-needed hint) only ever appear when
+                         they actually control what gets submitted. -->
+                    <div v-else-if="splitMode" style="margin-top:6px">
                         <div style="display:flex;gap:8px;margin-bottom:6px">
                             <div style="flex:1">
                                 <label style="font-size:12px">{{ t('pay.cash') }}</label>
@@ -1588,7 +1610,7 @@ useKeyboardShortcuts({
                         <b>{{ money(total) }}</b>
                     </div>
 
-                    <button class="btn" :disabled="submitting || (cartNeedsPrescription && !prescriptionConfirmed)" @click="submitCheckout">
+                    <button class="btn" :disabled="submitting || (cartNeedsPrescription && !prescriptionConfirmed) || (splitMode && splitRemainder > 0 && !customerPhone.trim())" @click="submitCheckout">
                         {{ submitting ? t('pos.processing') : `${t('pos.checkoutButton')} ${money(total)}` }}
                     </button>
                     <button class="btn ghost" style="margin-top:10px" :disabled="submitting" @click="holdCart">

@@ -56,6 +56,48 @@ function pickRemapResult(product) {
     closeRemap();
 }
 
+// Full read-only bill breakdown for a failed entry — the cashier asked:
+// seeing just a bare product name isn't enough to decide whether to
+// drop/remap/cancel a stuck sale; they need to see what was actually in
+// it (qty, price, discount, how it was being paid) the same way they'd
+// look at any other receipt. Everything here reads straight from the
+// already-stored payload (no server round-trip) — unit_price is a
+// display-only snapshot (see Pos/Index.vue's lineSnapshot()), never the
+// authoritative price, so the total shown here is clearly labeled
+// approximate; the real figure is only ever decided at actual sync time.
+function billSummary(entry) {
+    const problemIds = new Set((entry.problemItems || []).map((p) => p.product_id));
+    const items = (entry.payload.items || []).map((item) => {
+        const price = item.unit_price;
+        const lineTotal = price != null ? price * item.qty - (item.discount || 0) : null;
+        return {
+            ...item,
+            isProblem: problemIds.has(item.product_id),
+            lineTotal,
+        };
+    });
+    const knownTotal = items.reduce((sum, i) => (i.lineTotal != null ? sum + i.lineTotal : sum), 0);
+    const hasUnknownPrice = items.some((i) => i.lineTotal == null);
+    const overallDiscount = entry.payload.discount || 0;
+    const payments = entry.payload.payments || [];
+    const tendered = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    const approxTotal = Math.max(0, knownTotal - overallDiscount);
+    return {
+        items,
+        hasUnknownPrice,
+        overallDiscount,
+        couponCode: entry.payload.coupon_code || null,
+        payments,
+        tendered,
+        approxTotal,
+        isCredit: payments.length === 0 && !entry.payload.complimentary,
+        approxDue: Math.max(0, approxTotal - tendered),
+        customerName: entry.payload.customer_name || null,
+        customerPhone: entry.payload.customer_phone || null,
+        complimentary: !!entry.payload.complimentary,
+    };
+}
+
 const cancelingEntryId = ref(null);
 const cancelReason = ref('');
 function startCancel(entryId) {
@@ -558,6 +600,33 @@ const mobileNavSlots = computed(() => {
                 <div class="mid">
                     <b>{{ t('offline.saleQueuedAt', { time: new Date(entry.queuedAt).toLocaleString() }) }}</b>
                     <span>{{ entry.error }}</span>
+                </div>
+            </div>
+
+            <!-- Full read-only bill breakdown — see billSummary()'s own
+                 comment for why this exists: a bare product name isn't
+                 enough to decide what to do with a stuck sale. -->
+            <div v-if="entry.payload?.items?.length" style="padding:8px 0;border-top:1px solid var(--line)">
+                <div v-for="item in billSummary(entry).items" :key="item.product_id" class="row" style="cursor:default;padding:4px 0" :style="item.isProblem ? 'background:var(--roseSoft);border-radius:8px' : ''">
+                    <div class="mid">
+                        <b>{{ item.isProblem ? '❓ ' : '' }}{{ item.product_name || t('offline.unknownProduct') }}<span v-if="item.variant_label"> ({{ item.variant_label }})</span></b>
+                        <span>{{ item.qty }}{{ item.unit_label ? ' ' + item.unit_label : '' }} × {{ item.unit_price != null ? '৳' + item.unit_price : '—' }}<template v-if="item.discount"> − ৳{{ item.discount }} {{ t('offline.discountAbbrev') }}</template></span>
+                    </div>
+                    <div class="end">{{ item.lineTotal != null ? '৳' + item.lineTotal.toFixed(2) : '—' }}</div>
+                </div>
+
+                <div class="row" style="cursor:default;padding:6px 0;border-top:1px dashed var(--line2)">
+                    <div class="mid">
+                        <b>{{ t('offline.approxTotal') }}</b>
+                        <span v-if="billSummary(entry).hasUnknownPrice">{{ t('offline.priceUnknownHint') }}</span>
+                        <span v-else-if="billSummary(entry).complimentary">{{ t('offline.complimentarySale') }}</span>
+                        <span v-else-if="billSummary(entry).payments.length">{{ billSummary(entry).payments.map(p => `${p.method}: ৳${p.amount}`).join(', ') }}</span>
+                        <span v-else>{{ t('offline.fullyDue') }}{{ billSummary(entry).customerName ? ' — ' + billSummary(entry).customerName : '' }}{{ billSummary(entry).customerPhone ? ' (' + billSummary(entry).customerPhone + ')' : '' }}</span>
+                    </div>
+                    <div class="end"><b>৳{{ billSummary(entry).approxTotal.toFixed(2) }}</b></div>
+                </div>
+                <div v-if="!billSummary(entry).complimentary && billSummary(entry).approxDue > 0 && !billSummary(entry).hasUnknownPrice" style="font-size:12.5px;color:var(--rose);padding:2px 0 0">
+                    {{ t('offline.approxDue') }}: ৳{{ billSummary(entry).approxDue.toFixed(2) }}
                 </div>
             </div>
 
