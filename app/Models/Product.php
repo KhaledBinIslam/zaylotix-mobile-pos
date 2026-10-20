@@ -16,7 +16,7 @@ class Product extends Model
         'shop_id', 'category_id', 'unit_id', 'name', 'name_en', 'generic_name', 'company', 'shelf_location', 'requires_prescription', 'emoji', 'photo_path', 'barcode',
         'sold_by_weight', 'weight_unit', 'track_serial',
         'cost', 'price', 'wholesale_price', 'discount_price', 'stock', 'stock_mode', 'expiry_date', 'batch_no', 'size', 'color', 'imei',
-        'reorder_point',
+        'reorder_point', 'show_in_catalog',
     ];
 
     /** 'toggle' mode's stock column doesn't hold a real count — 1 means available, 0 means marked sold out today (see the add_stock_mode_to_products_table migration and TableOrderController). */
@@ -45,6 +45,7 @@ class Product extends Model
             'requires_prescription' => 'boolean',
             'sold_by_weight' => 'boolean',
             'track_serial' => 'boolean',
+            'show_in_catalog' => 'boolean',
         ];
     }
 

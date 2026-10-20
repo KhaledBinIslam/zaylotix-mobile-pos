@@ -304,6 +304,17 @@ class ProductController extends Controller
         return back()->with('success', $data['available'] ? "{$product->name} আবার চালু করা হয়েছে।" : "{$product->name} আজকের জন্য শেষ করা হয়েছে।");
     }
 
+    /** Quick per-product toggle on the catalog settings page (CatalogSettingController::index) — see docs/FIX_PLAN.md's "ডিজিটাল ক্যাটালগ" design note. */
+    public function updateCatalogVisibility(Request $request, Product $product)
+    {
+        $this->authorize('update', $product);
+
+        $data = $request->validate(['show_in_catalog' => ['required', 'boolean']]);
+        $product->update(['show_in_catalog' => $data['show_in_catalog']]);
+
+        return back();
+    }
+
     /** Pick a product, add received qty ("stock in"). */
     public function stockIn(Product $product)
     {

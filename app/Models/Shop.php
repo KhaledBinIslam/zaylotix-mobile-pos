@@ -18,7 +18,7 @@ class Shop extends Model
         'subscription_start', 'subscription_expiry',
         'cash_balance', 'bank_balance', 'capital',
         'vat_mode', 'vat_rate', 'turnover_rate', 'invoice_counter', 'service_charge_rate',
-        'loyalty_earn_rate', 'loyalty_point_value', 'referral_bonus_points', 'return_window_days', 'dead_stock_days', 'onboarded_at',
+        'loyalty_earn_rate', 'loyalty_point_value', 'referral_bonus_points', 'return_window_days', 'dead_stock_days', 'catalog_slug', 'onboarded_at',
     ];
 
     protected $appends = ['logo_url', 'business_type_slug'];
@@ -268,6 +268,12 @@ class Shop extends Model
     protected function logoUrl(): Attribute
     {
         return Attribute::get(fn () => $this->logo_path ? Storage::disk('public')->url($this->logo_path) : null);
+    }
+
+    /** Null until the owner first opens the catalog settings page (CatalogSettingController::index lazily assigns catalog_slug) — see docs/FIX_PLAN.md's "ডিজিটাল ক্যাটালগ" design note. */
+    public function catalogUrl(): ?string
+    {
+        return $this->catalog_slug ? route('catalog.show', $this->catalog_slug) : null;
     }
 
     /**

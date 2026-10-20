@@ -34,6 +34,8 @@ use App\Http\Controllers\App\PreparationController;
 use App\Http\Controllers\App\ReservationController;
 use App\Http\Controllers\App\WorkPeriodController;
 use App\Http\Controllers\RatingController;
+use App\Http\Controllers\CatalogController;
+use App\Http\Controllers\App\CatalogSettingController;
 use App\Http\Controllers\App\MoreController;
 use App\Http\Controllers\App\NotificationController;
 use App\Http\Controllers\App\OnboardingController;
@@ -128,6 +130,13 @@ Route::middleware('guest')->group(function () {
 Route::middleware(['signed', 'throttle:20,1'])->group(function () {
     Route::get('rate/{sale}', [RatingController::class, 'show'])->name('rate.show');
     Route::post('rate/{sale}', [RatingController::class, 'store'])->name('rate.store');
+});
+
+// Public — no auth, no signature (meant to be shared freely on WhatsApp/
+// Facebook, unlike the rate link above). {slug} is a random token, not a
+// sequential id, so there's nothing to enumerate — see CatalogController.
+Route::middleware('throttle:60,1')->group(function () {
+    Route::get('catalog/{slug}', [CatalogController::class, 'show'])->name('catalog.show');
 });
 
 Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(function () {
@@ -239,6 +248,12 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::patch('dead-stock/days', [DeadStockController::class, 'updateDays'])->name('deadStock.updateDays');
         Route::post('dead-stock/markdown', [DeadStockController::class, 'markdown'])->name('deadStock.markdown');
         Route::post('dead-stock/clear-markdown', [DeadStockController::class, 'clearMarkdown'])->name('deadStock.clearMarkdown');
+    });
+
+    // "ডিজিটাল ক্যাটালগ লিঙ্ক" — see docs/FIX_PLAN.md's design note.
+    Route::middleware(['perm:stock', 'feature:digital_catalog'])->group(function () {
+        Route::get('catalog', [CatalogSettingController::class, 'index'])->name('catalog.index');
+        Route::patch('products/{product}/catalog-visibility', [ProductController::class, 'updateCatalogVisibility'])->name('products.catalogVisibility');
     });
 
     Route::middleware('perm:stock')->group(function () {

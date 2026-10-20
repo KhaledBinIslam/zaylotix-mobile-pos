@@ -3,6 +3,15 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## Phase 3, feature 7: ডিজিটাল ক্যাটালগ লিঙ্ক (digital catalog link)
+- New: an opt-in `digital_catalog` feature. A new "ডিজিটাল ক্যাটালগ" page
+  shows a public, no-login link the owner can share on WhatsApp/Facebook
+  — customers see whichever products the owner opted in (name, photo,
+  price, in-stock/out-of-stock), with a one-tap "WhatsApp-এ অর্ডার"
+  button per product and a general one at the top. Cost price,
+  wholesale price, and the exact stock count are never sent to this
+  public page — only an in-stock/out-of-stock flag.
+
 ## Phase 3, feature 6: রেফারেল (customer-to-customer referral)
 - New: an opt-in `customer_referrals` feature. When adding a customer,
   the owner/cashier can now search-and-pick "কে রেফার করেছে" (who

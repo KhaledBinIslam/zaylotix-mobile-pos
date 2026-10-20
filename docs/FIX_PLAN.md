@@ -498,6 +498,53 @@ referral recorded correctly at creation.
 
 ---
 
+## Phase 21 — Phase 3 feature 7: "ডিজিটাল ক্যাটালগ লিঙ্ক" (digital catalog link)
+
+**Design note**: reuses the existing `Product` model entirely — no new
+catalog-specific product table. Two new columns: `products.show_in_catalog`
+(default false — the owner opts products in one at a time, nothing
+becomes public just because the feature gets granted) and
+`shops.catalog_slug` (nullable/unique, lazily assigned the first time
+the owner opens the new catalog settings page — a shop that never turns
+the feature on never gets one).
+
+**Public page, same pattern as the existing rate/{sale} QR flow**
+(`RatingController`): a new top-level (not `App\Http\Controllers\App`)
+`CatalogController@show($slug)` reached at `GET /catalog/{slug}`, no
+auth, no signature (unlike the rate link, this is meant to be shared
+freely on WhatsApp/Facebook — `{slug}` is a random token, not a
+sequential id, so there's nothing to enumerate). `Shop`/`Product` are
+tenant-scoped models but there's no authenticated shop context on a
+public request, so the controller explicitly bypasses the global scope
+the same way `RatingController` already does — `$shop->products()`'s
+own `shop_id` foreign-key constraint still fully isolates one shop's
+catalog from another's regardless.
+
+**Never exposes cost price or any other money-in figure** — the public
+response only ever carries `id/name/emoji/photo_url/price/
+original_price/in_stock`, never `cost`, `wholesale_price`, or the raw
+`stock` count (only a boolean in/out-of-stock flag). `price` resolves
+`discount_price ?? price` so the catalog always matches what checkout
+would actually charge (same discount_price fix as Phase 16).
+
+**Owner-side control panel**: a new `App/Catalog/Index.vue` page
+(`CatalogSettingController@index`, gated `perm:stock` +
+`feature:digital_catalog`) shows the public link (copy/WhatsApp-share
+buttons) and every product with a one-tap visibility toggle
+(`ProductController::updateCatalogVisibility`, same lightweight-PATCH
+pattern as the existing `products/{product}/availability` toggle).
+
+**New opt-in feature flag**: `digital_catalog` (never auto-granted).
+
+Tests: `tests/Feature/DigitalCatalogTest.php` (9) — only visible
+products listed, cost price never exposed, discount price /
+out-of-stock reflected correctly, 404 without the feature granted, 404
+for an inactive shop, 404 for an unknown slug, settings page lazily
+assigns a slug, owner can toggle visibility, cross-shop toggle rejected
+(404, route-model-binding tenant scoping).
+
+---
+
 ## Definition-of-done checklist (tracked across all phases, per master prompt)
 
 - [ ] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test`, Phase 0.6)
