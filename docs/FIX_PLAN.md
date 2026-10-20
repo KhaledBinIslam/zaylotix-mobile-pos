@@ -268,6 +268,47 @@ sale(s) failed to sync" report with nothing in the server log.
 
 ---
 
+## Phase 14 — Phase 3 feature 1: "সিজন ক্যাম্পেইন কিট" (season campaign kit)
+
+**Design note** (written per the master prompt's "আগে ডিজাইন নোট, তারপর
+বানাও" rule): a campaign is a saved bundle of an existing `Promotion` +
+an existing customer segment filter + a WhatsApp message template, grouped
+under an owner-defined `Season` (a name + date window they reuse year to
+year — "ঈদুল ফিতর ২০২৭", not a hardcoded holiday list). Nothing new was
+built for discounts (`PromotionController`/`Promotion` own that entirely)
+or for messaging (the same segment filter + WhatsApp send queue
+`CustomerList/Index.vue` already used) — "launching" a campaign just
+flips its linked promotion active and opens that same send queue with the
+resolved segment + rendered template.
+
+**Reused, not duplicated**:
+- `Promotion` model/engine — a campaign's `promotion_id` just points at
+  one, created/edited via the existing `PromotionController`.
+- Customer segmentation — pulled OUT of `CustomerList/Index.vue`'s own
+  inline filter into `resources/js/support/customerSegments.js`
+  (`applySegment()`), now shared by both pages instead of existing in
+  only one of them.
+- WhatsApp sending — `useWhatsappSendQueue.js` (already built for the
+  WhatsApp bulk fix), used exactly as-is on the new Campaigns page.
+
+**New, minimal**: `seasons` + `campaigns` tables (both `BelongsToTenant`),
+`Season`/`Campaign` models, `SeasonController`/`CampaignController`, a new
+`season_campaigns` feature flag (opt-in, gated with the existing
+`promotions` permission — not auto-granted to any shop), and
+`resources/js/Pages/App/Campaigns/Index.vue`.
+
+**Real bug caught before shipping**: `season_id`/`promotion_id` validated
+with a table-wide `Rule::exists(...)` would have accepted another shop's
+id (the `exists` rule ignores Eloquent's tenant global scope entirely —
+the exact class of bug already fixed once in the offline-sync work).
+Scoped both with `->where('shop_id', Tenancy::id())` before this ever
+shipped; `test_a_shop_cannot_link_a_campaign_to_another_shops_season_or_promotion`
+locks it in.
+
+Tests: `tests/Feature/SeasonCampaignTest.php` (10), `customerSegments.test.js` (7).
+
+---
+
 ## Definition-of-done checklist (tracked across all phases, per master prompt)
 
 - [ ] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test`, Phase 0.6)

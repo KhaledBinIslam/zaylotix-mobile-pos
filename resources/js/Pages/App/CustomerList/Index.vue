@@ -6,6 +6,7 @@ import Sheet from '@/Components/Sheet.vue';
 import { useI18n } from '@/composables/useI18n';
 import { useToast } from '@/composables/useToast';
 import { useWhatsappSendQueue } from '@/composables/useWhatsappSendQueue';
+import { applySegment, daysSince } from '@/support/customerSegments';
 
 const props = defineProps({ customers: Array, whatsappApiReady: Boolean });
 const { t } = useI18n();
@@ -19,19 +20,11 @@ const q = ref('');
 // on Customer, just never exposed as a sort/filter. 'all' keeps the exact
 // previous behavior (alphabetical, no filtering) unchanged.
 const segment = ref('all');
-const INACTIVE_DAYS = 30;
-function daysSince(dateStr) {
-    return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
-}
 const filtered = computed(() => {
-    let rows = props.customers.filter((c) =>
+    const rows = props.customers.filter((c) =>
         !q.value || c.name.toLowerCase().includes(q.value.toLowerCase()) || (c.phone || '').includes(q.value)
     );
-    if (segment.value === 'topSpenders') rows = [...rows].sort((a, b) => b.total_spent - a.total_spent);
-    else if (segment.value === 'mostVisits') rows = [...rows].sort((a, b) => b.visits - a.visits);
-    else if (segment.value === 'highestDue') rows = rows.filter((c) => c.due > 0).sort((a, b) => b.due - a.due);
-    else if (segment.value === 'inactive') rows = rows.filter((c) => daysSince(c.updated_at) >= INACTIVE_DAYS).sort((a, b) => daysSince(b.updated_at) - daysSince(a.updated_at));
-    return rows;
+    return applySegment(rows, segment.value);
 });
 
 const selected = ref({});

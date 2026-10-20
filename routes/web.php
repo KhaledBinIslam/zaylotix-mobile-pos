@@ -15,6 +15,7 @@ use App\Http\Controllers\App\ExportController;
 use App\Http\Controllers\App\GatewayCheckoutController;
 use App\Http\Controllers\App\GatewayWebhookController;
 use App\Http\Controllers\App\AttendanceController;
+use App\Http\Controllers\App\CampaignController;
 use App\Http\Controllers\App\CashTransactionController;
 use App\Http\Controllers\App\EmployeeController;
 use App\Http\Controllers\App\HeldCartController;
@@ -38,6 +39,7 @@ use App\Http\Controllers\App\OnboardingController;
 use App\Http\Controllers\App\PaymentController;
 use App\Http\Controllers\App\PaymentGatewayController;
 use App\Http\Controllers\App\InstallmentController;
+use App\Http\Controllers\App\SeasonController;
 use App\Http\Controllers\App\ServiceTicketController;
 use App\Http\Controllers\App\ShopBackupController;
 use App\Http\Controllers\App\StockHistoryController;
@@ -495,6 +497,21 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::post('promotions', [PromotionController::class, 'store'])->name('promotions.store');
         Route::put('promotions/{promotion}', [PromotionController::class, 'update'])->name('promotions.update');
         Route::delete('promotions/{promotion}', [PromotionController::class, 'destroy'])->name('promotions.destroy');
+    });
+
+    // "সিজন ক্যাম্পেইন কিট" — reuses the promotions permission since a
+    // campaign's whole point is bundling an existing promo with a segment
+    // + message; see docs/FIX_PLAN.md's design note.
+    Route::middleware(['perm:promotions', 'feature:season_campaigns'])->group(function () {
+        Route::get('campaigns', [CampaignController::class, 'index'])->name('campaigns.index');
+        Route::post('campaigns', [CampaignController::class, 'store'])->name('campaigns.store');
+        Route::put('campaigns/{campaign}', [CampaignController::class, 'update'])->name('campaigns.update');
+        Route::delete('campaigns/{campaign}', [CampaignController::class, 'destroy'])->name('campaigns.destroy');
+        Route::post('campaigns/{campaign}/launch', [CampaignController::class, 'launch'])->name('campaigns.launch');
+
+        Route::post('seasons', [SeasonController::class, 'store'])->name('seasons.store');
+        Route::put('seasons/{season}', [SeasonController::class, 'update'])->name('seasons.update');
+        Route::delete('seasons/{season}', [SeasonController::class, 'destroy'])->name('seasons.destroy');
     });
 
     Route::middleware(['perm:purchases', 'feature:suppliers'])->group(function () {

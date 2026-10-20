@@ -3,6 +3,18 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## Phase 3, feature 1: সিজন ক্যাম্পেইন কিট (season campaign kit)
+- New: bundle an existing offer/coupon + a customer segment (top
+  spenders, most visits, highest due, inactive, all) + a WhatsApp
+  message template under a named, reusable season ("ঈদুল ফিতর ২০২৭"),
+  and launch all three together in one place — Campaigns page, under
+  a new opt-in `season_campaigns` feature flag.
+- Nothing new for discounts or messaging: launching activates the
+  existing Promotion engine and opens the existing WhatsApp send queue.
+- Extracted the customer-segment filter out of `CustomerList/Index.vue`
+  into a shared `customerSegments.js` so both pages use the exact same
+  logic instead of two copies.
+
 ## Session/419 ("Page Expired") permanent fix — see `docs/SESSION_FIX.md`
 - Root cause: a prior fix (Aug 17) raised `config/session.php`'s
   SESSION_LIFETIME default from 120 to 720 minutes, but never updated
