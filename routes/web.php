@@ -512,6 +512,14 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::post('seasons', [SeasonController::class, 'store'])->name('seasons.store');
         Route::put('seasons/{season}', [SeasonController::class, 'update'])->name('seasons.update');
         Route::delete('seasons/{season}', [SeasonController::class, 'destroy'])->name('seasons.destroy');
+        Route::get('seasons/{season}/stock-plan', [SeasonController::class, 'stockPlan'])->name('seasons.stockPlan');
+    });
+
+    // "সিজন স্টক প্ল্যানার"-এর draft purchase action শুধু 'purchases'
+    // পারমিশনেই গেটেড (campaigns-এর 'promotions' না) — এটা সত্যিকারের
+    // একটা purchase order তৈরি করে, campaigns.* রুটের থেকে ভিন্ন।
+    Route::middleware(['perm:purchases', 'feature:season_campaigns'])->group(function () {
+        Route::post('seasons/{season}/stock-plan/draft-purchases', [SeasonController::class, 'draftPurchases'])->name('seasons.draftPurchases');
     });
 
     Route::middleware(['perm:purchases', 'feature:suppliers'])->group(function () {

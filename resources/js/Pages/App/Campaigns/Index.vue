@@ -1,5 +1,5 @@
 <script setup>
-import { Head, useForm, router } from '@inertiajs/vue3';
+import { Head, Link, useForm, router } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
@@ -130,11 +130,12 @@ function sendCampaign(c) {
         <button class="btn ghost sm" style="margin-bottom:16px" @click="openNewSeason">➕ {{ t('campaign.addSeason') }}</button>
 
         <template v-for="season in seasons" :key="season.id">
-            <div class="sechead" @click="openEditSeason(season)" style="cursor:pointer">
-                <h2>{{ season.name }} <span v-if="season.tag" class="pill mut" style="margin-left:6px">{{ season.tag }}</span></h2>
+            <div class="sechead">
+                <h2 @click="openEditSeason(season)" style="cursor:pointer">{{ season.name }} <span v-if="season.tag" class="pill mut" style="margin-left:6px">{{ season.tag }}</span></h2>
                 <span v-if="season.starts_at || season.expires_at" style="font-size:12px;color:var(--mut)">
                     {{ season.starts_at }} – {{ season.expires_at }}
                 </span>
+                <Link :href="route('app.seasons.stockPlan', season.id)" class="btn ghost sm" style="width:auto;padding:0 10px;margin-top:6px">📦 {{ t('seasonPlan.title') }}</Link>
             </div>
 
             <div v-for="c in season.campaigns" :key="c.id" class="card" style="margin-bottom:10px">

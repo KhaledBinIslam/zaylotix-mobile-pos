@@ -3,6 +3,18 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## Phase 3, feature 2: সিজন স্টক প্ল্যানার (season stock planner)
+- New: for a season, see a reorder suggestion per product based purely
+  on what actually sold during the same date window last year, minus
+  what's currently in stock. Review/adjust the quantities, pick a
+  supplier, and turn the approved ones into real pending purchase
+  orders in one action — nothing new for purchasing, these land exactly
+  where every other purchase order already does.
+- Deliberately excludes any product with size/color variants (its stock
+  isn't on the base product, and the existing purchase-receive flow
+  would reject it without a variant chosen that this planner doesn't
+  collect) rather than generating a draft order guaranteed to fail.
+
 ## Phase 3, feature 1: সিজন ক্যাম্পেইন কিট (season campaign kit)
 - New: bundle an existing offer/coupon + a customer segment (top
   spenders, most visits, highest due, inactive, all) + a WhatsApp

@@ -307,6 +307,41 @@ locks it in.
 
 Tests: `tests/Feature/SeasonCampaignTest.php` (10), `customerSegments.test.js` (7).
 
+## Phase 15 — Phase 3 feature 2: "সিজন স্টক প্ল্যানার" (season stock planner)
+
+**Design note**: no new source of truth — the suggested reorder qty for
+each product is just last year's actual `SaleItem` qty for the exact same
+date window (shifted back one year) minus the product's current stock,
+read live via the same `whereHas('sale', ...)` pattern
+`Reports::productStats()` already uses. The owner reviews/adjusts the
+suggested qty in the UI, then "convert to PO draft" creates ordinary
+`pending`-status `Purchase` rows (the existing purchase-order mechanism,
+`PurchaseController::markReceived()` applies stock/money exactly as it
+already does for any other pending purchase) — no new purchasing system.
+
+**Reused**: `Purchase` model + its existing pending/received lifecycle,
+`Supplier` picker, `Season` (from feature 1).
+
+**New, minimal**: `SeasonController::stockPlan()` (GET, read-only
+suggestion) + `::draftPurchases()` (POST, creates the Purchase rows),
+`resources/js/Pages/App/Seasons/StockPlan.vue`.
+
+**Deliberately excluded**: a product with size/color variants — its
+stock lives per-variant, not on the base product, and
+`PurchaseController::markReceived()` hard-aborts a variant product's
+purchase unless a specific `product_variant_id` was chosen (which this
+planner doesn't ask for). Shipping a draft purchase that's guaranteed to
+fail on receipt would be worse than just not suggesting it; flagged as a
+known gap rather than guessed at.
+
+**Caught before shipping**: `purchases.qty` is a plain `unsignedInteger`
+— a weight-based product's suggestion can be fractional, which would
+either truncate silently or error depending on SQL strictness. Rounds
+UP (`ceil`) when creating the draft, since under-ordering defeats the
+suggestion's whole purpose.
+
+Tests: `tests/Feature/SeasonStockPlanTest.php` (9).
+
 ---
 
 ## Definition-of-done checklist (tracked across all phases, per master prompt)
