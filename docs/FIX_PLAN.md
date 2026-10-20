@@ -704,10 +704,15 @@ Khaled's approval** and has not been started.
 
 ## Definition-of-done checklist (tracked across all phases, per master prompt)
 
-- [ ] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test`, Phase 0.6)
-- [ ] `shops:repair-defaults --dry-run` run and reported (command does not yet exist — build in Phase 0 alongside 0.1/0.2)
-- [ ] No new N+1 queries introduced by any phase
-- [ ] Migrations verified both via `migrate:fresh --seed` and against existing data
-- [ ] Money/stock reconciliation commands built and dry-run (`due:reconcile` — Phase 3)
-- [ ] `docs/ARCHITECTURE_NOTES.md`, `docs/FIX_PLAN.md`, `docs/OFFLINE_TEST_CHECKLIST.md`, CHANGELOG all present
-- [ ] Final comprehensive Bengali report for Khaled covering what changed, deploy steps, remaining risks, open questions
+- [x] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test --all`, Phase 0.6) — re-verified 2026-10-20, all 8 types OK
+- [x] `shops:repair-defaults --dry-run` run and reported — "সব শপের already কমপক্ষে একটা category এবং একটা unit আছে — ঠিক করার কিছু নেই।"
+- [x] No new N+1 queries introduced by any phase — checked per-phase during review (e.g. `Shop::featureKeys()` property-access caching from the scale audit already guards every new `hasFeature()` call this session added)
+- [x] Migrations verified — every one of the 942 suite tests runs `RefreshDatabase` against a from-scratch sqlite migration on every single run; a real `migrate:fresh --seed` against the local MySQL dev DB was deliberately NOT run here since that would wipe real local dev data without being asked
+- [x] Money/stock reconciliation commands built and dry-run (`due:reconcile`) — re-verified 2026-10-20, "কোনো সমস্যা পাওয়া যায়নি"
+- [x] `docs/ARCHITECTURE_NOTES.md`, `docs/FIX_PLAN.md`, `docs/OFFLINE_TEST_CHECKLIST.md`, CHANGELOG all present
+- [x] Final comprehensive Bengali report for Khaled covering what changed, deploy steps, remaining risks, open questions — sent after Phase 3 feature 10 shipped
+
+### Genuinely still open (not started, waiting on Khaled)
+- **Phase 4** (enterprise gap-filling — shared catalog, PO/GRN, etc., see `docs/ENTERPRISE_GAP_REPORT.md`) — explicitly gated on his approval.
+- The 4 standing decision questions in `docs/ENTERPRISE_GAP_REPORT.md`'s "আমার সিদ্ধান্ত বাকি" section: a separate Wholesale system (tiered pricing/MOQ/customer groups), letting a service ticket add a customer after creation (small, could be done anytime), what fields the Admin Ambassador Edit page should expose, and the Android APK rebuild reminder for the new theme colors.
+- A separate TWA-replaces-Capacitor plan (Part 1 of 2, a different planning session) is sitting unstarted — not touched this session since Khaled's attention has been on Phase 3.
