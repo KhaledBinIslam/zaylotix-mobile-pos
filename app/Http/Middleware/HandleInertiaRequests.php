@@ -63,6 +63,7 @@ class HandleInertiaRequests extends Middleware
                     'id' => $n->id,
                     'title' => $n->data['title'] ?? '',
                     'message' => $n->data['message'] ?? '',
+                    'whatsapp_url' => $n->data['whatsapp_url'] ?? null,
                     'read' => $n->read_at !== null,
                     'created_at' => $n->created_at->diffForHumans(),
                 ])->values(),

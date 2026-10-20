@@ -269,6 +269,9 @@ function markNotificationRead(n) {
     if (n.read) return;
     router.post(route('app.notifications.read', n.id), {}, { preserveScroll: true });
 }
+function openNotificationWhatsapp(n) {
+    window.open(n.whatsapp_url, '_blank');
+}
 function markAllRead() {
     if (!unreadCount.value) return;
     router.post(route('app.notifications.readAll'), {}, { preserveScroll: true });
@@ -650,15 +653,18 @@ const mobileNavSlots = computed(() => {
                 <button v-if="unreadCount" class="notif-markall" @click="markAllRead">{{ t('notif.markAll') }}</button>
             </div>
             <div v-if="notificationItems.length" class="notif-list">
-                <button
+                <div
                     v-for="n in notificationItems" :key="n.id"
                     class="notif-item" :class="{ unread: !n.read }"
                     @click="markNotificationRead(n)"
                 >
                     <b>{{ n.title }}</b>
-                    <span>{{ n.message }}</span>
+                    <span style="white-space:pre-line">{{ n.message }}</span>
                     <span class="notif-time">{{ n.created_at }}</span>
-                </button>
+                    <button v-if="n.whatsapp_url" type="button" class="btn wa sm" style="margin-top:6px" @click.stop="openNotificationWhatsapp(n)">
+                        💬 {{ t('notif.sendWhatsapp') }}
+                    </button>
+                </div>
             </div>
             <div v-else class="notif-empty">🔔 {{ t('notif.empty') }}</div>
         </div>

@@ -33,6 +33,7 @@ Schedule::call(fn () => Artisan::call('zaylotix:low-stock-alerts'))->dailyAt('09
 Schedule::call(fn () => Artisan::call('zaylotix:expiry-alerts'))->dailyAt('09:00');
 Schedule::call(fn () => Artisan::call('zaylotix:installment-late-fees'))->dailyAt('00:10');
 Schedule::call(fn () => Artisan::call('zaylotix:backup'))->dailyAt('02:00');
+Schedule::call(fn () => Artisan::call('zaylotix:daily-owner-summary'))->dailyAt('23:30');
 
 // Production-readiness audit: this app's QUEUE_CONNECTION=database has
 // been configured since early on but nothing was ever actually dispatched

@@ -3,6 +3,20 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## Phase 3, feature 4: দৈনিক মালিক সারাংশ (daily owner summary)
+- New: a nightly (11:30pm) in-app notification summarizing today's
+  sales, profit, top/slowest-moving product, how many products are
+  low on stock, and total customer due — every number read from the
+  existing reports/low-stock logic, nothing new computed. Opt-in
+  per shop (`daily_owner_summary` feature).
+- When the owner has a phone on file, the notification also shows a
+  "WhatsApp-এ পাঠান" button that opens a wa.me chat with their own
+  number, prefilled with the summary — zero cost, a real tap, no
+  automation (same rule as the WhatsApp bulk fix).
+- Never sent twice in one day; scheduled via the same
+  proc_open-disabled-host-safe pattern every other scheduled job on
+  this host already uses.
+
 ## Phase 3, feature 3: ডেড স্টক ক্লিয়ারেন্স (dead stock clearance) + a real pricing bug fix
 - Fixed a real bug found while designing this feature, confirmed with
   Khaled: `products.discount_price` (settable in Stock/Index.vue,

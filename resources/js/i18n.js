@@ -377,6 +377,7 @@ export const translations = {
     'notif.title': { bn: 'নোটিফিকেশন', en: 'Notifications' },
     'notif.empty': { bn: 'কোনো নোটিফিকেশন নেই', en: 'No notifications' },
     'notif.markAll': { bn: 'সব পড়া হয়েছে', en: 'Mark all read' },
+    'notif.sendWhatsapp': { bn: 'WhatsApp-এ পাঠান', en: 'Send via WhatsApp' },
     'expiry.trialWord': { bn: 'ফ্রি ট্রায়াল', en: 'free trial' },
     'expiry.subWord': { bn: 'সাবস্ক্রিপশন', en: 'subscription' },
     'expiry.expired': { bn: 'মেয়াদ শেষ হয়ে গেছে — এখনই যোগাযোগ করুন, না হলে অ্যাকাউন্ট বন্ধ হয়ে যাবে।', en: 'Already expired — contact us now or the account will be shut off.' },

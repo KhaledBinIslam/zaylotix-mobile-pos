@@ -393,6 +393,33 @@ actually do what it looks like it does.
 
 Tests: `tests/Feature/DeadStockTest.php` (13).
 
+## Phase 18 — Phase 3 feature 4: "দৈনিক মালিক সারাংশ" (daily owner summary)
+
+**Design note**: no new source of truth — every figure (sales, profit,
+top/slow product, low-stock count, total due) is read straight from
+`Reports::rangeStats()`/`topProducts()`/`bottomProducts()` (the exact
+helper every report page already uses) and the same low-stock query
+`SendLowStockAlerts` already runs. Delivered purely as an in-app
+database notification (reusing the existing `Notification`/bell system
+— `LowStockAlert`'s own pattern copied as-is) plus, when the owner has a
+phone on file, a `wa.me` link in the notification that opens a chat with
+their OWN number prefilled with the summary — a real tap-triggered
+`window.open()`, same ground rules as the WhatsApp bulk work
+(`docs/WHATSAPP_BULK_PLAN.md`): no paid Cloud API, no automation.
+
+**Reused, not duplicated**: `Reports::*`, the existing `Notification`
+bell UI (extended with one new optional WhatsApp button, shown only
+when a notification's data carries a `whatsapp_url`), the low-stock
+query, the "never alert twice in one day" dedup pattern from
+`SendLowStockAlerts`.
+
+**Host constraint respected**: `routes/console.php` already documents
+that this host has `proc_open`/`exec` disabled, so every scheduled
+command MUST go through `Schedule::call(fn () => Artisan::call(...))`,
+never `Schedule::command()` — followed exactly, scheduled `23:30` daily.
+
+Tests: `tests/Feature/DailyOwnerSummaryTest.php` (6).
+
 ---
 
 ## Definition-of-done checklist (tracked across all phases, per master prompt)
