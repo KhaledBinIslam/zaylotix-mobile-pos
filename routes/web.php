@@ -10,6 +10,7 @@ use App\Http\Controllers\App\CsrfTokenController;
 use App\Http\Controllers\App\CustomerController;
 use App\Http\Controllers\App\CustomerListController;
 use App\Http\Controllers\App\DamageController;
+use App\Http\Controllers\App\DeadStockController;
 use App\Http\Controllers\App\ExpenseController;
 use App\Http\Controllers\App\ExportController;
 use App\Http\Controllers\App\GatewayCheckoutController;
@@ -231,7 +232,16 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
 
         Route::get('medicine-catalog/search', [MedicineCatalogController::class, 'search'])->name('medicineCatalog.search');
         Route::get('products/barcode-lookup/{barcode}', [ProductController::class, 'barcodeLookup'])->name('products.barcodeLookup');
+    });
 
+    Route::middleware(['perm:stock', 'feature:dead_stock_clearance'])->group(function () {
+        Route::get('dead-stock', [DeadStockController::class, 'index'])->name('deadStock.index');
+        Route::patch('dead-stock/days', [DeadStockController::class, 'updateDays'])->name('deadStock.updateDays');
+        Route::post('dead-stock/markdown', [DeadStockController::class, 'markdown'])->name('deadStock.markdown');
+        Route::post('dead-stock/clear-markdown', [DeadStockController::class, 'clearMarkdown'])->name('deadStock.clearMarkdown');
+    });
+
+    Route::middleware('perm:stock')->group(function () {
         // standalone unit management — not gated by unit_conversion, since
         // a product's own base unit (pc/kg/etc.) is set regardless of
         // whether pack-size conversion is on

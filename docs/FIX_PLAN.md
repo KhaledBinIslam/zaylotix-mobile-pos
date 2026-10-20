@@ -342,6 +342,57 @@ suggestion's whole purpose.
 
 Tests: `tests/Feature/SeasonStockPlanTest.php` (9).
 
+## Phase 16 — real bug found mid-build: `discount_price` never applied at checkout
+
+While designing Phase 3 feature 3 (dead stock clearance — see Phase 17
+below), found that `products.discount_price` — settable in
+`Stock/Index.vue`'s edit form, shown on barcode labels and in exports —
+was never actually read by `PosController::performCheckout()`. A cashier
+always charged the full `price` regardless of what was set; the field
+was pure decoration. Confirmed with Khaled this was unintentional (not a
+"reference-only" field) before fixing, since it's a real money-handling
+change for any shop that had already set it.
+
+Fixed: `performCheckout()`'s base-product-line price now resolves to
+`discount_price ?? price` (never for wholesale, which already has its
+own separate, usually-lower price; never for a pack-unit or variant
+line, each priced independently). `BillingPreview::compute()` needed no
+change — it already runs the exact same `performCheckout()` logic then
+rolls back, so it can never drift from this fix. The frontend cart math
+(`Pos/Index.vue`'s `unitOf()`, `Clothing/Pos.vue`'s `lineUnitPrice()`)
+and the product-tile price display both needed the identical fix, or
+the cashier's on-screen total would disagree with what checkout actually
+charges — the exact class of bug `BillingPreview` itself was originally
+built to prevent for coupons/loyalty points.
+
+Tests: `tests/Feature/DiscountPriceCheckoutTest.php` (5).
+
+## Phase 17 — Phase 3 feature 3: "ডেড স্টক ক্লিয়ারেন্স" (dead stock clearance)
+
+**Design note**: no new discount mechanism — "মার্কডাউন" sets the
+existing `products.discount_price` (now real, per Phase 16 above) in
+bulk across however many slow-moving products the owner selects. "Dead"
+means no `sale_items` row in the shop-configurable `dead_stock_days`
+window (new, same shape as the existing `shops.return_window_days`,
+default 60 — no existing shop's behavior changes until they open the
+new page). Sorted nearest-expiry-first when `batch_tracking` is on,
+matching the master prompt's own ordering requirement.
+
+**Deliberately out of scope**: a "বান্ডেল সাজেশন" (bundle) algorithm —
+the existing Promotions page's BOGO/combo tool already covers this need
+fully; this page links to it rather than building a second, speculative
+bundling engine with no real usage signal yet.
+
+**Deliberately excluded from the dead-stock list**: a product with
+size/color variants or `sold_by_weight` set — same reasoning as the
+stock planner (Phase 15): a flat `discount_price` on the base product
+doesn't unambiguously mean anything for either (a variant's price is
+its own; a weighed product's "price" is per base-unit, not per sale
+line), so surfacing them here would invite a markdown that doesn't
+actually do what it looks like it does.
+
+Tests: `tests/Feature/DeadStockTest.php` (13).
+
 ---
 
 ## Definition-of-done checklist (tracked across all phases, per master prompt)

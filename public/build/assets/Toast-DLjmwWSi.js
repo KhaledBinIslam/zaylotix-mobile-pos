@@ -1,1 +1,0 @@
-import{j as a,K as o,u as s,o as c,c as i,t as r,C as n}from"./app-DY_VYd1m.js";const u={__name:"Toast",setup(_){const{message:t,visible:e}=n();return(l,p)=>a((c(),i("div",{id:"toast",style:{display:"block"}},r(s(t)),513)),[[o,s(e)]])}};export{u as _};

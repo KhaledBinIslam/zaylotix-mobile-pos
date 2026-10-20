@@ -203,10 +203,26 @@ function qtyInCart(productId) {
     return cart.value.filter((l) => l.product_id === productId).reduce((s, l) => s + l.qty, 0);
 }
 
+// Real bug found while building dead-stock clearance (docs/FIX_PLAN.md):
+// discount_price was settable on a product (Stock/Index.vue, barcode
+// labels, exports) but this screen's own cart math never read it, so the
+// cart/receipt total would have silently kept charging full price even
+// after PosController::performCheckout() was fixed to honor it — the
+// classic "server total != what the cashier saw on screen" drift. Only
+// the base (no pack-unit) price is affected; a pack unit has its own
+// independent price already.
+// same discount_price fix as unitOf() below, for the product tile's own
+// displayed price — without this the tile would keep showing the old
+// full price even though tapping it now actually charges the markdown
+function displayPrice(p) {
+    return p.discount_price ?? p.price;
+}
+
 function unitOf(product, productUnitId) {
-    if (!productUnitId) return { label: product.unit?.name || '', price: product.price, factor: 1 };
+    const basePrice = product.discount_price ?? product.price;
+    if (!productUnitId) return { label: product.unit?.name || '', price: basePrice, factor: 1 };
     const pu = product.product_units?.find((u) => u.id === productUnitId);
-    return pu ? { label: pu.unit?.name, price: pu.price, factor: pu.factor } : { label: '', price: product.price, factor: 1 };
+    return pu ? { label: pu.unit?.name, price: pu.price, factor: pu.factor } : { label: '', price: basePrice, factor: 1 };
 }
 
 function variantOf(product, productVariantId) {
@@ -1237,7 +1253,9 @@ useKeyboardShortcuts({
                             <img v-if="p.photo_url" :src="p.photo_url" class="pimg" :alt="p.name">
                             <div v-else class="em">{{ p.emoji }}</div>
                             <div class="pn">{{ p.name }}</div>
-                            <div class="pp">{{ money(p.price) }} <span style="color:var(--dim);font-weight:500">/ {{ weightBigUnit(p) }}</span></div>
+                            <div class="pp">
+                                <s v-if="p.discount_price != null" style="color:var(--dim);font-weight:500;margin-right:4px">{{ money(p.price) }}</s>{{ money(displayPrice(p)) }} <span style="color:var(--dim);font-weight:500">/ {{ weightBigUnit(p) }}</span>
+                            </div>
                             <div class="ps">
                                 <span v-if="stockLevel(p) === 'out'" style="color:var(--rose)">{{ t('pos.outOfStock') }}</span>
                                 <span v-else-if="hasLowStockAlerts && stockLevel(p) === 'low'" style="color:var(--gold2);font-weight:700">⚠ {{ formatWeightQty(p, p.stock) }} {{ t('pos.lowStock') }}</span>
@@ -1255,7 +1273,9 @@ useKeyboardShortcuts({
                                  screen; a cashier hunting for a specific medicine on a shelf full
                                  of them is exactly what this is for -->
                             <div v-if="p.shelf_location" class="pgeneric">📍 {{ p.shelf_location }}</div>
-                            <div class="pp">{{ money(p.price) }} <span style="color:var(--dim);font-weight:500">/ {{ p.unit?.name || t('pos.unit') }}</span></div>
+                            <div class="pp">
+                                <s v-if="p.discount_price != null" style="color:var(--dim);font-weight:500;margin-right:4px">{{ money(p.price) }}</s>{{ money(displayPrice(p)) }} <span style="color:var(--dim);font-weight:500">/ {{ p.unit?.name || t('pos.unit') }}</span>
+                            </div>
                             <div class="ps">
                                 <span v-if="stockLevel(p) === 'out'" style="color:var(--rose)">{{ t('pos.outOfStock') }}</span>
                                 <span v-else-if="hasLowStockAlerts && stockLevel(p) === 'low'" style="color:var(--gold2);font-weight:700">⚠ {{ t('pos.inStock', { n: Math.round(Number(p.stock)), u: p.unit?.name || t('pos.unit') }) }} {{ t('pos.lowStock') }}</span>

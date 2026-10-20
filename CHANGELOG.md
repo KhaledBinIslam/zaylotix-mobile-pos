@@ -3,6 +3,26 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## Phase 3, feature 3: ডেড স্টক ক্লিয়ারেন্স (dead stock clearance) + a real pricing bug fix
+- Fixed a real bug found while designing this feature, confirmed with
+  Khaled: `products.discount_price` (settable in Stock/Index.vue,
+  shown on barcode labels/exports) was never actually applied at
+  checkout — a cashier always charged the full price regardless.
+  Fixed on both the server (`PosController::performCheckout()`) and
+  the POS/Clothing-POS cart math and product-tile display, so a set
+  discount now really is what gets charged, and the cashier's own
+  screen shows it too.
+- New: a Dead Stock page lists products with no sale in the last N
+  days (shop-configurable, default 60), nearest-expiry-first when
+  batch tracking is on, with tied-up stock value shown per product.
+  Select several, pick a % off, apply in one action — sets
+  discount_price in bulk (and a one-click undo). Products with
+  variants or sold-by-weight are excluded (a flat markdown doesn't
+  unambiguously apply to either).
+- Deliberately didn't build a bundle/combo suggestion engine — the
+  existing Promotions page's BOGO/combo tool already covers that,
+  linked from this page instead of duplicated.
+
 ## Phase 3, feature 2: সিজন স্টক প্ল্যানার (season stock planner)
 - New: for a season, see a reorder suggestion per product based purely
   on what actually sold during the same date window last year, minus

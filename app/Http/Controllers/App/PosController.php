@@ -496,7 +496,21 @@ class PosController extends Controller
                 }
 
                 $factor = 1;
-                $unitPrice = ($isWholesale && $product->wholesale_price !== null) ? (float) $product->wholesale_price : (float) $product->price;
+                // Real bug, found while building dead-stock clearance (see
+                // docs/FIX_PLAN.md): discount_price has existed for a while
+                // (settable in Stock/Index.vue, shown on barcode labels and
+                // exports) but was never actually read here — a cashier
+                // always charged the full `price` regardless, silently
+                // ignoring whatever markdown the owner had set. Confirmed
+                // with Khaled this was never intentional. Only applies to a
+                // retail base-product line (never wholesale, which already
+                // has its own, usually-lower price; never a pack-unit or
+                // variant line, each priced independently below) — and only
+                // when actually set, so a shop that's never touched this
+                // field sees zero behavior change.
+                $unitPrice = ($isWholesale && $product->wholesale_price !== null)
+                    ? (float) $product->wholesale_price
+                    : (float) ($product->discount_price ?? $product->price);
                 if (isset($quotedNetUnitByProduct[$product->id])) {
                     $unitPrice = min($unitPrice, $quotedNetUnitByProduct[$product->id]);
                 }

@@ -198,10 +198,14 @@ function lineProduct(l) {
 function lineVariant(l) {
     return l.product_variant_id ? variantOf(lineProduct(l), l.product_variant_id) : null;
 }
+// discount_price fix (see Pos/Index.vue's unitOf() for the full story,
+// docs/FIX_PLAN.md) — only the no-variant base-product line is affected;
+// a variant's own price is independent and untouched.
 function lineUnitPrice(l) {
     const v = lineVariant(l);
-    if (v) return Number(v.price ?? lineProduct(l)?.price ?? 0);
-    return Number(lineProduct(l)?.price ?? 0);
+    const p = lineProduct(l);
+    if (v) return Number(v.price ?? p?.price ?? 0);
+    return Number(p?.discount_price ?? p?.price ?? 0);
 }
 function lineTotal(l) {
     return Math.max(0, lineUnitPrice(l) * l.qty - (l.discount || 0));
@@ -636,7 +640,7 @@ function sendMemoWA() {
                             <img v-if="p.photo_url" :src="p.photo_url" class="pimg" :alt="p.name">
                             <div v-else class="em">{{ p.emoji || '👕' }}</div>
                             <div class="pn">{{ p.name }}</div>
-                            <div class="pp">{{ money(p.price) }}</div>
+                            <div class="pp"><s v-if="p.discount_price != null" style="color:var(--dim);font-weight:500;margin-right:4px">{{ money(p.price) }}</s>{{ money(p.discount_price ?? p.price) }}</div>
                             <div v-if="hasProductVariants && p.variants?.length" class="ps">{{ t('pos.pickVariant') }} ({{ p.variants.length }})</div>
                             <div v-else-if="p.stock <= 0" class="ps" style="color:var(--rose)">{{ t('pos.outOfStock') }}</div>
                             <div v-else-if="hasLowStockAlerts && stockLevel(p.stock, p.reorder_point) === 'low'" class="ps" style="color:var(--gold2);font-weight:700">⚠ {{ t('pos.inStock', { n: Math.round(Number(p.stock)), u: t('pos.unit') }) }} {{ t('pos.lowStock') }}</div>
