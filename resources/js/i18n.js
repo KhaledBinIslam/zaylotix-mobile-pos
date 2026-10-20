@@ -1090,6 +1090,7 @@ export const translations = {
     'pos.mobileHint': { bn: '(ঐচ্ছিক — মেমো ও বাকির জন্য)', en: '(optional — for memo & due)' },
     'pos.oldCustomer': { bn: 'পুরাতন কাস্টমার —', en: 'Returning customer —' },
     'pos.dueExists': { bn: '(বাকি আছে {due})', en: '(due: {due})' },
+    'pos.creditLimitInfo': { bn: 'ক্রেডিট লিমিট {limit} — বাকি রাখা যাবে আর {room}', en: 'Credit limit {limit} — can still carry {room} more due' },
     'pos.customerName': { bn: 'কাস্টমারের নাম', en: "Customer's name" },
     'pos.addCustomerInfo': { bn: 'কাস্টমারের তথ্য যোগ করুন (ঐচ্ছিক)', en: 'Add customer info (optional)' },
     'pos.payment': { bn: 'পেমেন্ট', en: 'Payment' },
@@ -1426,6 +1427,9 @@ export const translations = {
     'due.startingDue': { bn: 'শুরুর বাকি', en: 'Starting due' },
     'due.referredBy': { bn: 'কে রেফার করেছে', en: 'Referred by' },
     'due.referredByPlaceholder': { bn: 'রেফারারের নাম লিখুন', en: "Type the referrer's name" },
+    'due.creditLimit': { bn: 'ক্রেডিট লিমিট', en: 'Credit limit' },
+    'due.creditLimitPlaceholder': { bn: 'শপের ডিফল্ট ব্যবহার হবে', en: "Shop's default will apply" },
+    'due.creditLimitSheetSub': { bn: 'খালি রাখলে শপের ডিফল্ট লিমিট প্রযোজ্য হবে', en: "Leave empty to use the shop's default limit" },
     'due.currentDue': { bn: 'বর্তমান বাকি', en: 'Current due' },
     'due.collectAmount': { bn: 'টাকার পরিমাণ (তুলুন)', en: 'Amount to collect' },
     'due.collectSubmit': { bn: '💵 টাকা জমা নিন', en: '💵 Collect payment' },
@@ -1500,6 +1504,9 @@ export const translations = {
     'acc.serviceChargeSection': { bn: '🍽️ সার্ভিস চার্জ', en: '🍽️ Service charge' },
     'acc.serviceChargeHint': { bn: 'বিলের উপর যোগ হবে (যেমন ৫%) — খালি রাখলে বন্ধ থাকবে', en: 'Added on top of the bill (e.g. 5%) — leave empty to turn off' },
     'acc.serviceChargeOffPlaceholder': { bn: 'বন্ধ', en: 'Off' },
+    'acc.creditLimitSection': { bn: '💳 ক্রেডিট লিমিট (ডিফল্ট)', en: '💳 Credit limit (default)' },
+    'acc.creditLimitHint': { bn: 'একজন কাস্টমার সর্বোচ্চ কত টাকা বাকি রাখতে পারবে, শপ-ওয়াইড ডিফল্ট — খালি রাখলে কোনো লিমিট নেই। প্রতি কাস্টমারের জন্য আলাদা করে ওভাররাইডও সেট করা যাবে।', en: 'Shop-wide default ceiling on how much due one customer can carry — leave empty for no limit. Can be overridden per customer.' },
+    'acc.creditLimitOffPlaceholder': { bn: 'কোনো লিমিট নেই', en: 'No limit' },
 
     // ---- reports ----
     'rep.subtitle': { bn: 'তারিখ বাছাই করুন', en: 'Select a date range' },

@@ -3,6 +3,14 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## Phase 3, feature 8: ক্রেডিট লিমিট (customer credit limit)
+- New: an opt-in `credit_limit` feature. A shop-wide default ceiling
+  (Accounts page) on how much due one customer can carry, with an
+  optional per-customer override (a new 💳 quick-edit button on the Due
+  page). Checkout warns the cashier up front (current due vs. limit,
+  shown as soon as the customer resolves) and hard-blocks with a clear
+  message if a new credit sale would push the customer past it.
+
 ## Phase 3, feature 7: ডিজিটাল ক্যাটালগ লিঙ্ক (digital catalog link)
 - New: an opt-in `digital_catalog` feature. A new "ডিজিটাল ক্যাটালগ" page
   shows a public, no-login link the owner can share on WhatsApp/Facebook

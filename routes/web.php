@@ -312,6 +312,10 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         // menu shouldn't land on a page titled/framed as "due ledger"
         Route::get('customer-list', [CustomerListController::class, 'index'])->name('customerList.index');
         Route::patch('customer-list/{customer}/toggle-marketing', [CustomerListController::class, 'toggleMarketing'])->name('customerList.toggleMarketing');
+
+        Route::middleware('feature:credit_limit')->group(function () {
+            Route::patch('customers/{customer}/credit-limit', [CustomerController::class, 'updateCreditLimit'])->name('customers.creditLimit');
+        });
     });
 
     Route::middleware(['perm:export', 'feature:export'])->group(function () {
@@ -448,6 +452,10 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
 
         Route::middleware('feature:loyalty_points')->group(function () {
             Route::patch('settings/loyalty', [SettingController::class, 'updateLoyalty'])->name('settings.loyalty');
+        });
+
+        Route::middleware('feature:credit_limit')->group(function () {
+            Route::patch('settings/credit-limit', [SettingController::class, 'updateCreditLimit'])->name('settings.creditLimit');
         });
 
         Route::middleware('feature:restaurant_tables')->group(function () {

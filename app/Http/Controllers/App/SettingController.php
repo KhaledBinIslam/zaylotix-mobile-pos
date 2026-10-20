@@ -262,6 +262,18 @@ class SettingController extends Controller
         return back()->with('success', 'অফলাইন সিঙ্ক মোড সংরক্ষণ করা হয়েছে।');
     }
 
+    /** Shop-wide fallback a customer's own credit_limit override falls back to when unset — see docs/FIX_PLAN.md's "ক্রেডিট লিমিট" design note. Null (default) means no limit at all. */
+    public function updateCreditLimit(Request $request)
+    {
+        $data = $request->validate([
+            'default_credit_limit' => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        Tenancy::shop()->update(['default_credit_limit' => $data['default_credit_limit'] ?? null]);
+
+        return back()->with('success', 'ক্রেডিট লিমিট সংরক্ষণ করা হয়েছে।');
+    }
+
     /** Shop logo, printed on POS receipts and barcode labels once uploaded. */
     public function updateLogo(Request $request)
     {

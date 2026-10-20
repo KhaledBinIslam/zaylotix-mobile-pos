@@ -36,6 +36,9 @@ class CustomerController extends Controller
             // themselves" is structurally impossible here; there's no
             // edit endpoint that could ever retarget it later either)
             'referred_by_customer_id' => ['nullable', Rule::exists('customers', 'id')->where('shop_id', Tenancy::id())],
+            // see docs/FIX_PLAN.md's "ক্রেডিট লিমিট" design note — null
+            // (the default) means "use the shop-wide default", not zero
+            'credit_limit' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         // Same phone-based find-or-create the POS checkout uses — without
@@ -56,9 +59,21 @@ class CustomerController extends Controller
             'phone' => $phone,
             'due' => $data['due'] ?? 0,
             'referred_by_customer_id' => $data['referred_by_customer_id'] ?? null,
+            'credit_limit' => $data['credit_limit'] ?? null,
         ]);
 
         return back()->with('success', "{$data['name']} added.");
+    }
+
+    /** See docs/FIX_PLAN.md's "ক্রেডিট লিমিট" design note — sets this one customer's own override; leaving it blank again falls back to the shop-wide default. */
+    public function updateCreditLimit(Request $request, Customer $customer)
+    {
+        $this->authorize('update', $customer);
+
+        $data = $request->validate(['credit_limit' => ['nullable', 'numeric', 'min:0']]);
+        $customer->update(['credit_limit' => $data['credit_limit'] ?? null]);
+
+        return back()->with('success', "{$customer->name}-এর ক্রেডিট লিমিট সংরক্ষণ করা হয়েছে।");
     }
 
     /** Used by the POS checkout sheet to auto-fill an existing customer's name as soon as their phone number is typed. */
@@ -77,6 +92,10 @@ class CustomerController extends Controller
             'name' => $customer->name,
             'due' => (float) $customer->due,
             'loyalty_points' => $customer->loyalty_points,
+            // null = no limit — see docs/FIX_PLAN.md's "ক্রেডিট লিমিট"
+            // design note. Harmless to always send; the frontend only
+            // shows it when the shop actually has the feature on.
+            'credit_limit' => $customer->effectiveCreditLimit(),
         ]);
     }
 
@@ -97,7 +116,11 @@ class CustomerController extends Controller
         $customers = Customer::where('name', 'like', '%'.$q.'%')
             ->orderBy('name')
             ->limit(8)
-            ->get(['id', 'name', 'phone', 'due', 'loyalty_points']);
+            ->get(['id', 'name', 'phone', 'due', 'loyalty_points', 'credit_limit', 'shop_id'])
+            ->map(fn ($c) => [
+                'id' => $c->id, 'name' => $c->name, 'phone' => $c->phone, 'due' => (float) $c->due,
+                'loyalty_points' => $c->loyalty_points, 'credit_limit' => $c->effectiveCreditLimit(),
+            ]);
 
         return response()->json(['results' => $customers]);
     }

@@ -22,7 +22,7 @@ class Customer extends Model
 {
     use SoftDeletes;
 
-    protected $fillable = ['shop_id', 'name', 'phone', 'due', 'total_spent', 'visits', 'loyalty_points', 'no_marketing', 'referred_by_customer_id', 'referral_rewarded_at'];
+    protected $fillable = ['shop_id', 'name', 'phone', 'due', 'credit_limit', 'total_spent', 'visits', 'loyalty_points', 'no_marketing', 'referred_by_customer_id', 'referral_rewarded_at'];
 
     protected static function booted(): void
     {
@@ -39,6 +39,7 @@ class Customer extends Model
     {
         return [
             'due' => 'decimal:2',
+            'credit_limit' => 'decimal:2',
             'total_spent' => 'decimal:2',
             'no_marketing' => 'boolean',
             'referral_rewarded_at' => 'datetime',
@@ -58,6 +59,18 @@ class Customer extends Model
     public function payments()
     {
         return $this->hasMany(Payment::class);
+    }
+
+    /** This customer's own override, or the shop-wide default (either may be null = no limit) — see docs/FIX_PLAN.md's "ক্রেডিট লিমিট" design note. */
+    public function effectiveCreditLimit(): ?float
+    {
+        if ($this->credit_limit !== null) {
+            return (float) $this->credit_limit;
+        }
+
+        $default = $this->shop?->default_credit_limit;
+
+        return $default !== null ? (float) $default : null;
     }
 
     public function referredBy()

@@ -736,6 +736,17 @@ class PosController extends Controller
                     abort(422, 'বাকি রাখতে হলে কাস্টমারের ফোন নম্বর দিন।');
                 }
 
+                // "ক্রেডিট লিমিট" — see docs/FIX_PLAN.md's design note. A
+                // null limit (the default, on every shop until the owner
+                // sets one) means unlimited, identical to today's behavior
+                // — this only ever blocks once a real ceiling is on file.
+                if ($dueRemainder > 0 && $customer && $shop->hasFeature('credit_limit')) {
+                    $limit = $customer->effectiveCreditLimit();
+                    if ($limit !== null && round((float) $customer->due + $dueRemainder, 2) > round($limit, 2) + 0.01) {
+                        abort(422, "ক্রেডিট লিমিট ৳".round($limit)." অতিক্রম করবে (বর্তমান বাকি ৳{$customer->due})।");
+                    }
+                }
+
                 // payment_mode stays a quick-glance single value for backward-
                 // compatible display/filtering: the specific method when there's
                 // exactly one, 'credit' when it's entirely on due, 'split'

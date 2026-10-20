@@ -23,6 +23,7 @@ const canDue = computed(() => hasPerm('due'));
 const page = usePage();
 const hasLoyaltyPoints = computed(() => (page.props.features || []).includes('loyalty_points'));
 const hasReferrals = computed(() => (page.props.features || []).includes('customer_referrals'));
+const hasCreditLimit = computed(() => (page.props.features || []).includes('credit_limit'));
 
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 
@@ -32,7 +33,7 @@ const totalDue = computed(() => props.customers.reduce((s, c) => s + Number(c.du
 
 // --- add customer sheet ---
 const addSheet = ref(false);
-const addForm = useForm({ name: '', phone: '', due: 0, referred_by_customer_id: null });
+const addForm = useForm({ name: '', phone: '', due: 0, referred_by_customer_id: null, credit_limit: '' });
 
 // "referred by" name-search-as-you-type — same pattern as Pos/Index.vue's
 // customer-name search (see docs/FIX_PLAN.md's "রেফারেল" design note):
@@ -67,7 +68,8 @@ function resetAddSheet() {
     referredSearchResults.value = [];
 }
 function saveCustomer() {
-    addForm.post(route('app.customers.store'), { onSuccess: resetAddSheet });
+    addForm.transform((data) => ({ ...data, credit_limit: data.credit_limit === '' ? null : data.credit_limit }))
+        .post(route('app.customers.store'), { onSuccess: resetAddSheet });
 }
 
 // --- collect payment sheet ---
@@ -108,6 +110,24 @@ function collect() {
         onSuccess: () => (collectSheet.value = false),
     });
 }
+// --- credit limit quick-edit (see docs/FIX_PLAN.md's "ক্রেডিট লিমিট"
+// design note) — a per-customer override; leaving it blank again falls
+// back to the shop-wide default set on the Accounts page. ---
+const creditLimitSheet = ref(false);
+const editingCreditLimit = ref(null);
+const creditLimitForm = useForm({ credit_limit: '' });
+function openCreditLimit(c) {
+    editingCreditLimit.value = c;
+    creditLimitForm.reset();
+    creditLimitForm.clearErrors();
+    creditLimitForm.credit_limit = c.credit_limit ?? '';
+    creditLimitSheet.value = true;
+}
+function saveCreditLimit() {
+    creditLimitForm.transform((data) => ({ ...data, credit_limit: data.credit_limit === '' ? null : data.credit_limit }))
+        .patch(route('app.customers.creditLimit', editingCreditLimit.value.id), { onSuccess: () => (creditLimitSheet.value = false) });
+}
+
 function markPaid(c) {
     if (!confirm(`${c.name}${t('due.markPaidConfirm', { amount: money(c.due) })}`)) return;
     markingPaid.value = true;
@@ -233,6 +253,7 @@ function closeQueue() {
                 <div v-if="!selectMode && canDue" class="btnrow" style="margin:-4px 0 12px 0;padding-left:54px">
                     <button class="btn sm" style="flex:1" @click="openCollect(c)">{{ t('due.collectMoney') }}</button>
                     <button class="btn wa sm" style="flex:1" @click="remindWA(c)">{{ t('due.waReminder') }}</button>
+                    <button v-if="hasCreditLimit" class="btn ghost sm" @click="openCreditLimit(c)">💳</button>
                 </div>
             </div>
         </template>
@@ -260,6 +281,11 @@ function closeQueue() {
                 <div v-if="addForm.errors.phone" style="color:var(--rose);font-size:12px;margin-top:6px">{{ addForm.errors.phone }}</div>
             </div>
             <div class="field"><label>{{ t('due.startingDue') }}</label><input v-model="addForm.due" type="number" placeholder="0"></div>
+            <div v-if="hasCreditLimit" class="field">
+                <label>{{ t('due.creditLimit') }} <span style="color:var(--dim);font-weight:400">({{ t('stock.optional') }})</span></label>
+                <input v-model="addForm.credit_limit" type="number" min="0" :placeholder="t('due.creditLimitPlaceholder')">
+                <div v-if="addForm.errors.credit_limit" style="color:var(--rose);font-size:12px;margin-top:6px">{{ addForm.errors.credit_limit }}</div>
+            </div>
             <div v-if="hasReferrals" class="field" style="position:relative">
                 <label>{{ t('due.referredBy') }} <span style="color:var(--dim);font-weight:400">({{ t('stock.optional') }})</span></label>
                 <input v-model="referredByName" :placeholder="t('due.referredByPlaceholder')" autocomplete="off">
@@ -280,6 +306,16 @@ function closeQueue() {
                 {{ addForm.processing ? '...' : t('stock.save') }}
             </button>
             <button class="btn ghost" style="margin-top:10px" @click="resetAddSheet">{{ t('common.cancel') }}</button>
+        </Sheet>
+
+        <Sheet v-model="creditLimitSheet" :title="editingCreditLimit?.name" :subtitle="t('due.creditLimitSheetSub')">
+            <div class="field">
+                <label>{{ t('due.creditLimit') }}</label>
+                <input v-model="creditLimitForm.credit_limit" type="number" min="0" :placeholder="t('due.creditLimitPlaceholder')">
+                <div v-if="creditLimitForm.errors.credit_limit" style="color:var(--rose);font-size:12px;margin-top:6px">{{ creditLimitForm.errors.credit_limit }}</div>
+            </div>
+            <button class="btn" :disabled="creditLimitForm.processing" @click="saveCreditLimit">{{ creditLimitForm.processing ? '...' : t('stock.save') }}</button>
+            <button class="btn ghost" style="margin-top:10px" @click="creditLimitSheet = false">{{ t('common.cancel') }}</button>
         </Sheet>
 
         <Sheet v-model="collectSheet" :title="collecting?.name">

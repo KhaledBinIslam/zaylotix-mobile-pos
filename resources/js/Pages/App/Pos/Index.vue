@@ -41,6 +41,7 @@ const hasBatchTracking = computed(() => features.value.includes('batch_tracking'
 const hasLowStockAlerts = computed(() => features.value.includes('low_stock_alerts'));
 const hasPromotions = computed(() => features.value.includes('promotions'));
 const hasLoyaltyPoints = computed(() => features.value.includes('loyalty_points'));
+const hasCreditLimit = computed(() => features.value.includes('credit_limit'));
 const hasWholesalePricing = computed(() => features.value.includes('wholesale_pricing'));
 const { toast } = useToast();
 const { t } = useI18n();
@@ -1011,7 +1012,7 @@ function pickCustomerFromSearch(c) {
     nameSearchResults.value = [];
     customerPhone.value = c.phone || '';
     customerName.value = c.name;
-    customerLookup.value = { found: true, name: c.name, due: Number(c.due), loyalty_points: c.loyalty_points };
+    customerLookup.value = { found: true, name: c.name, due: Number(c.due), loyalty_points: c.loyalty_points, credit_limit: c.credit_limit };
 }
 
 /* ---------------- barcode scanner ---------------- */
@@ -1472,6 +1473,9 @@ useKeyboardShortcuts({
                     <input v-model="customerPhone" inputmode="tel" placeholder="01XXXXXXXXX">
                     <div v-if="customerLookup?.found" style="font-size:12px;color:var(--green);margin-top:5px;font-weight:600">
                         ✅ {{ t('pos.oldCustomer') }} {{ customerLookup.name }}<span v-if="customerLookup.due > 0"> {{ t('pos.dueExists', { due: money(customerLookup.due) }) }}</span>
+                    </div>
+                    <div v-if="hasCreditLimit && customerLookup?.found && customerLookup.credit_limit != null" style="font-size:12px;margin-top:5px;font-weight:600" :style="{ color: customerLookup.due >= customerLookup.credit_limit ? 'var(--rose)' : 'var(--mut)' }">
+                        💳 {{ t('pos.creditLimitInfo', { limit: money(customerLookup.credit_limit), room: money(Math.max(0, customerLookup.credit_limit - customerLookup.due)) }) }}
                     </div>
                 </div>
 

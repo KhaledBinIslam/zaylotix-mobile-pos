@@ -545,6 +545,50 @@ assigns a slug, owner can toggle visibility, cross-shop toggle rejected
 
 ---
 
+## Phase 22 — Phase 3 feature 8: "ক্রেডিট লিমিট" (customer credit limit)
+
+**Design note**: reuses the existing `customers.due`/checkout-credit
+flow entirely — no new ledger, no separate "credit account" concept.
+Two new nullable columns, both defaulting to null (= no limit, today's
+exact unlimited-due behavior, unchanged even once the feature is
+granted until the owner actually sets a number):
+`shops.default_credit_limit` (shop-wide fallback) and
+`customers.credit_limit` (per-customer override — wins over the shop
+default when set; `Customer::effectiveCreditLimit()` resolves which
+one actually applies).
+
+**Hard block, not just a warning, at the point real money is on the
+line**: `PosController::performCheckout()` checks, right alongside the
+existing "due needs a customer phone" guard, whether
+`customer.due + this sale's new due` would cross the effective limit,
+and `abort(422, ...)` if so — the same guard pattern every other
+money-safety check in this controller already uses (loyalty-point
+over-redemption, over-tender, etc.). The **warning** half of the master
+prompt's "warning/block" ask lives in the UI instead: Pos/Index.vue's
+customer-lookup panel shows the customer's current due against their
+effective limit (and how much room is left) as soon as their phone/name
+resolves, before checkout is ever attempted — so a cashier sees it
+coming rather than being surprised by a 422.
+
+**Where it's configured**: the shop-wide default lives in
+Accounts/Index.vue alongside the other money-policy settings
+(VAT/service charge, same page, same pattern). The per-customer override
+is a quick-edit sheet on the Due page's (`Customers/Index.vue`)
+collect-money action row.
+
+**New opt-in feature flag**: `credit_limit` (never auto-granted).
+
+Tests: `tests/Feature/CreditLimitTest.php` (10) — blocked once a
+customer's own limit would be exceeded, allowed while under it, shop
+default applies without a customer override, customer override wins
+over the shop default, no block with no limit set anywhere, no block
+without the feature granted, a partial cash tender still counts the
+remaining due against the limit, owner can set the shop default, owner
+can set a customer's own limit, cross-shop set rejected (404,
+BusinessScope).
+
+---
+
 ## Definition-of-done checklist (tracked across all phases, per master prompt)
 
 - [ ] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test`, Phase 0.6)

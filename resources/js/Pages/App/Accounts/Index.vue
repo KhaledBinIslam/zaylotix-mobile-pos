@@ -40,6 +40,13 @@ function saveServiceCharge() {
         service_charge_rate: serviceChargeRate.value === '' ? null : serviceChargeRate.value,
     }, { preserveScroll: true });
 }
+
+const defaultCreditLimit = ref(props.shop?.default_credit_limit ?? '');
+function saveCreditLimit() {
+    router.patch(route('app.settings.creditLimit'), {
+        default_credit_limit: defaultCreditLimit.value === '' ? null : defaultCreditLimit.value,
+    }, { preserveScroll: true });
+}
 </script>
 
 <template>
@@ -94,6 +101,17 @@ function saveServiceCharge() {
                 <div style="display:flex;gap:8px">
                     <input v-model="serviceChargeRate" type="number" inputmode="decimal" min="0" max="100" step="0.5" :placeholder="t('acc.serviceChargeOffPlaceholder')" style="flex:1;margin:0">
                     <button class="btn sm" style="width:auto;padding:0 16px" @click="saveServiceCharge">{{ t('stock.save') }}</button>
+                </div>
+            </div>
+        </template>
+
+        <template v-if="features.includes('credit_limit')">
+            <div class="sechead"><h2>{{ t('acc.creditLimitSection') }}</h2></div>
+            <div class="card">
+                <div style="font-size:12.5px;color:var(--mut);margin-bottom:10px">{{ t('acc.creditLimitHint') }}</div>
+                <div style="display:flex;gap:8px">
+                    <input v-model="defaultCreditLimit" type="number" inputmode="decimal" min="0" step="50" :placeholder="t('acc.creditLimitOffPlaceholder')" style="flex:1;margin:0">
+                    <button class="btn sm" style="width:auto;padding:0 16px" @click="saveCreditLimit">{{ t('stock.save') }}</button>
                 </div>
             </div>
         </template>
