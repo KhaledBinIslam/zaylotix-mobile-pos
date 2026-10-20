@@ -43,6 +43,20 @@ const hasPromotions = computed(() => features.value.includes('promotions'));
 const hasLoyaltyPoints = computed(() => features.value.includes('loyalty_points'));
 const hasCreditLimit = computed(() => features.value.includes('credit_limit'));
 const hasWholesalePricing = computed(() => features.value.includes('wholesale_pricing'));
+const hasGenericSubstitute = computed(() => features.value.includes('generic_substitute_suggestions'));
+
+// Phase 3 feature 9 — "ধরন-ভিত্তিক সুবিধা" (pharmacy vertical, see
+// docs/FIX_PLAN.md's design note). A cashier can already manually search
+// by generic name (see the `filtered` computed above), but this
+// surfaces an in-stock alternative automatically right on an out-of-
+// stock product's own tile, with no extra typing.
+function genericAlternative(p) {
+    if (!p.generic_name) return null;
+    return props.products.find((other) => other.id !== p.id
+        && other.generic_name
+        && other.generic_name.trim().toLowerCase() === p.generic_name.trim().toLowerCase()
+        && Number(other.stock) > 0) || null;
+}
 const { toast } = useToast();
 const { t } = useI18n();
 const offlineSync = useOfflineSync();
@@ -1287,6 +1301,9 @@ useKeyboardShortcuts({
                                  Index.vue already uses, so a cashier can warn a customer or reach
                                  for a different brand without leaving this screen -->
                             <div v-if="hasBatchTracking && p.nearest_batch?.expiry_date" class="ps" style="color:var(--rose);font-weight:600">⏳ {{ t('stock.expiresOn') }} {{ p.nearest_batch.expiry_date.slice(0, 10) }}</div>
+                            <div v-if="hasGenericSubstitute && stockLevel(p) === 'out' && genericAlternative(p)" class="ps" style="color:var(--green);font-weight:600" @click.stop="addToCart(genericAlternative(p).id, null)">
+                                ✅ {{ t('pos.genericSubstituteAvailable', { name: genericAlternative(p).name }) }}
+                            </div>
                         </button>
                         <div v-else class="pcard-main" style="cursor:default">
                             <img v-if="p.photo_url" :src="p.photo_url" class="pimg" :alt="p.name">

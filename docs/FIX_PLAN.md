@@ -589,6 +589,52 @@ BusinessScope).
 
 ---
 
+## Phase 23 — Phase 3 feature 9: "ধরন-ভিত্তিক সুবিধা" (business-type-specific features)
+
+**Scope clarified with Khaled** (this item was ambiguous on its own —
+`config/business_types.php` already does provisioning-time
+category/unit/field/feature-default seeding per vertical, which could
+have been mistaken for "done"): he confirmed he wants genuinely NEW,
+small, concrete features added per vertical, not a restatement of that
+existing provisioning infrastructure. Two picked, after checking what's
+already covered (clothing's per-variant low-stock alert and bulk
+variant stock-in, restaurant's tables/KOT/toggle-availability, and
+mobile's on-demand IMEI/warranty lookup via SerialLookupController all
+turned out to already exist — ruled out as "already covered" rather
+than rebuilt):
+
+1. **Pharmacy — automatic generic substitute suggestion.** A cashier
+   could already manually search by generic name (`Pos/Index.vue`'s
+   `filtered` computed already matches `generic_name`), but nothing
+   surfaced an alternative automatically. Now, an out-of-stock
+   product's own tile shows an in-stock alternative sharing its
+   `generic_name` right there, one tap to add it instead — pure
+   client-side (`genericAlternative()`), since `Pos/Index.vue` already
+   loads the shop's full product list. No backend change at all.
+
+2. **Mobile/electronics — proactive warranty expiry alerts.** The
+   lookup screen only ever answered "is THIS specific IMEI still under
+   warranty" when someone typed it in; nothing told the owner ahead of
+   time. `SendWarrantyExpiryAlerts` mirrors `SendExpiryAlerts`' own
+   30/7/0-day tiered, dedup-by-tier structure exactly, just checking a
+   sold `ProductSerial.warranty_expiry` instead of a batch's
+   `expiry_date` — same `Notification` (database channel), same
+   `Schedule::call()` registration pattern (`routes/console.php`,
+   `dailyAt('09:00')`, this host's `proc_open`-disabled constraint).
+
+**New opt-in feature flags**: `generic_substitute_suggestions`,
+`warranty_expiry_alerts` (neither auto-granted).
+
+Tests: `tests/Feature/WarrantyExpiryAlertTest.php` (4) — tightest tier
+per serial, already-expired gets the 0-day tier, no alert without the
+feature, no duplicate alert for the same tier. The generic-substitute
+suggestion is pure client-side template logic reading already-loaded
+props (same category as other feature-flag-gated UI in this codebase,
+e.g. `hasLowStockAlerts`'s own tile styling) — no new backend surface
+to test.
+
+---
+
 ## Definition-of-done checklist (tracked across all phases, per master prompt)
 
 - [ ] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test`, Phase 0.6)

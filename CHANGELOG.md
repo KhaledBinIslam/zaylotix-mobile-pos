@@ -3,6 +3,15 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## Phase 3, feature 9: ধরন-ভিত্তিক সুবিধা (business-type-specific features)
+- New: an opt-in `generic_substitute_suggestions` feature (pharmacy) —
+  an out-of-stock medicine's tile in POS now shows an in-stock
+  alternative that shares its generic name, one tap to add it instead.
+- New: an opt-in `warranty_expiry_alerts` feature (mobile/electronics)
+  — the owner gets notified as a sold unit's IMEI warranty approaches
+  expiry (30/7/0-day tiers), in time to reach out for a service or
+  extended-warranty upsell.
+
 ## Phase 3, feature 8: ক্রেডিট লিমিট (customer credit limit)
 - New: an opt-in `credit_limit` feature. A shop-wide default ceiling
   (Accounts page) on how much due one customer can carry, with an

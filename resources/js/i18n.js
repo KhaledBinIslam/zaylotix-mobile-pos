@@ -1068,6 +1068,7 @@ export const translations = {
     'pos.unit': { bn: 'পিস', en: 'pc' },
     'pos.inStock': { bn: '{n} {u} আছে', en: '{n} {u} in stock' },
     'pos.outOfStock': { bn: 'শেষ', en: 'Out of stock' },
+    'pos.genericSubstituteAvailable': { bn: 'বদলে আছে: {name} (ট্যাপ করে যুক্ত করুন)', en: 'Alternative available: {name} (tap to add)' },
     'pos.alwaysAvailable': { bn: 'সবসময় পাওয়া যায়', en: 'Always available' },
     'pos.availableToday': { bn: 'আজ আছে', en: 'Available today' },
     'pos.soldOutToday': { bn: 'আজ শেষ', en: 'Sold out today' },
