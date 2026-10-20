@@ -10,18 +10,20 @@ class InstallmentPlan extends Model
     use BelongsToTenant;
 
     protected $fillable = [
-        'shop_id', 'customer_id', 'sale_id', 'total_amount', 'down_payment',
+        'shop_id', 'customer_id', 'sale_id', 'booking', 'total_amount', 'down_payment',
         'installment_count', 'frequency', 'start_date', 'late_fee_type', 'late_fee_amount',
-        'status', 'notes', 'user_id',
+        'status', 'picked_up_at', 'notes', 'user_id',
     ];
 
     protected function casts(): array
     {
         return [
+            'booking' => 'boolean',
             'total_amount' => 'decimal:2',
             'down_payment' => 'decimal:2',
             'late_fee_amount' => 'decimal:2',
             'start_date' => 'date:Y-m-d',
+            'picked_up_at' => 'datetime',
         ];
     }
 

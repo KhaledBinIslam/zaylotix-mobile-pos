@@ -315,6 +315,8 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::post('installments', [InstallmentController::class, 'store'])->name('installments.store');
         Route::get('installments/{plan}', [InstallmentController::class, 'show'])->name('installments.show');
         Route::post('installments/{plan}/cancel', [InstallmentController::class, 'cancel'])->name('installments.cancel');
+        Route::post('installments/{plan}/pickup', [InstallmentController::class, 'pickup'])->name('installments.pickup');
+        Route::post('installments/{plan}/undo-pickup', [InstallmentController::class, 'undoPickup'])->name('installments.undoPickup');
     });
 
     Route::middleware('feature:ingredient_tracking')->group(function () {

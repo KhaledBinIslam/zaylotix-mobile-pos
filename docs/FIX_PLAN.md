@@ -420,6 +420,34 @@ never `Schedule::command()` — followed exactly, scheduled `23:30` daily.
 
 Tests: `tests/Feature/DailyOwnerSummaryTest.php` (6).
 
+## Phase 19 — Phase 3 feature 5: "অ্যাডভান্স বুকিং/লে-অ্যাওয়ে" (advance booking/layaway)
+
+**Design note**: deliberately NOT a new table/model. Mechanically, a
+layaway IS the existing installment flow — a sale already happened
+(stock already decremented at that checkout, which is exactly how
+"স্টক reserved" is satisfied: nobody else can buy an item that's already
+been sold), a down payment was taken, and `InstallmentPlan` tracks the
+rest. The only genuinely new concept is whether the item has physically
+been picked up yet — a financed sale's item is normally taken home
+immediately; a booked one often sits at the shop until paid off. So
+this phase just adds two nullable/defaulted columns to the existing
+table (`booking`, `picked_up_at` — both false/null by default, zero
+behavior change for every existing plan) and a pickup/undo-pickup
+action, reusing 100% of `InstallmentController::store()`'s existing
+schedule-building, due-ceiling, and idempotency logic.
+
+**UI simplification for the booking case**: the installment-creation
+sheet (`Sales/Show.vue`) hides the multi-installment-count/frequency
+pickers when "booking" is checked (a layaway is normally one lump
+payment at pickup, not a recurring schedule) and auto-sets
+`installment_count = 1`; the owner can still use the full multi-
+installment picker if they genuinely want a payment plan AND to mark it
+as a reserved item.
+
+Tests: `tests/Feature/AdvanceBookingTest.php` (7) — `InstallmentPlanTest.php`'s
+existing 15 re-run unchanged to confirm zero regression on the plain
+(non-booking) flow.
+
 ---
 
 ## Definition-of-done checklist (tracked across all phases, per master prompt)

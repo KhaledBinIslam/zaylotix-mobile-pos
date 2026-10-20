@@ -32,23 +32,24 @@ const statusLabel = (s) => ({ active: t('installment.statusActive'), completed: 
         <div class="pgttl">📅 {{ t('installment.title') }}</div>
         <div class="pgsub">{{ t('installment.subtitle') }}</div>
 
-        <div class="seg" style="margin-bottom:14px">
+        <div class="seg" style="margin-bottom:14px;overflow-x:auto">
             <Link :href="route('app.installments.index', { tab: 'active' })" :class="{ on: tab === 'active' }">{{ t('installment.statusActive') }}</Link>
             <Link :href="route('app.installments.index', { tab: 'overdue' })" :class="{ on: tab === 'overdue' }">{{ t('installment.tabOverdue') }}</Link>
+            <Link :href="route('app.installments.index', { tab: 'booking' })" :class="{ on: tab === 'booking' }">{{ t('installment.tabBooking') }}</Link>
             <Link :href="route('app.installments.index', { tab: 'completed' })" :class="{ on: tab === 'completed' }">{{ t('installment.statusCompleted') }}</Link>
         </div>
 
         <Link v-for="plan in plans.data" :key="plan.id" :href="route('app.installments.show', plan.id)" class="row">
-            <div class="ava">📅</div>
+            <div class="ava">{{ plan.booking ? '📦' : '📅' }}</div>
             <div class="mid">
-                <b>{{ plan.customer?.name }}</b>
+                <b>{{ plan.customer?.name }}</b><span v-if="plan.booking" class="pill mut" style="margin-left:6px;font-size:10px">{{ t('installment.bookingBadge') }}</span>
                 <span :style="isOverdue(plan) ? 'color:var(--rose);font-weight:700' : ''">
                     {{ isOverdue(plan) ? t('installment.overdueTag') + ' • ' : '' }}{{ statusLabel(plan.status) }} • {{ t('installment.remainingLabel') }} {{ money(remaining(plan)) }}
                 </span>
             </div>
             <div class="end">›</div>
         </Link>
-        <div v-if="!plans.data.length" class="empty"><div class="big">📅</div>{{ t('installment.noPlans') }}</div>
+        <div v-if="!plans.data.length" class="empty"><div class="big">{{ tab === 'booking' ? '📦' : '📅' }}</div>{{ tab === 'booking' ? t('installment.noBookings') : t('installment.noPlans') }}</div>
         <Pagination :links="plans.links" />
     </AppLayout>
 </template>

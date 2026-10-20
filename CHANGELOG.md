@@ -3,6 +3,19 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## Phase 3, feature 5: অ্যাডভান্স বুকিং/লে-অ্যাওয়ে (advance booking/layaway)
+- New: the existing installment-plan flow (Sales/Show.vue, right after
+  a sale with leftover due) now has a "📦 এটা একটা অ্যাডভান্স বুকিং"
+  checkbox — same mechanism (a down payment now, stock already held
+  since the sale already happened, the rest tracked on a schedule),
+  just tagged as a booking and simplified to one lump payment by
+  default instead of a multi-month schedule.
+- New: a "📦 বুকিং (পিকআপ বাকি)" tab on the Installments page lists
+  bookings still sitting at the shop, with a "পণ্য ডেলিভারি হয়েছে"
+  button (and undo) to mark pickup — pure bookkeeping, never touches
+  stock/money again, since those already moved at the original
+  checkout.
+
 ## Phase 3, feature 4: দৈনিক মালিক সারাংশ (daily owner summary)
 - New: a nightly (11:30pm) in-app notification summarizing today's
   sales, profit, top/slowest-moving product, how many products are

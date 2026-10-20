@@ -43,6 +43,7 @@ const installmentSheet = ref(false);
 const installmentForm = useForm({
     sale_id: props.sale.id,
     customer_id: props.sale.customer_id,
+    booking: false,
     total_amount: dueRemainder.value,
     down_payment: 0,
     installment_count: 3,
@@ -245,13 +246,18 @@ const justBilled = ref(false);
             {{ t('sales.voidButton') }}
         </button>
 
-        <Sheet v-model="installmentSheet" :title="t('installment.splitButton')">
+        <Sheet v-model="installmentSheet" :title="installmentForm.booking ? t('installment.bookingTitle') : t('installment.splitButton')">
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:14px;padding:10px;background:var(--goldSoft);border-radius:10px">
+                <input type="checkbox" v-model="installmentForm.booking" @change="installmentForm.booking && (installmentForm.installment_count = 1)">
+                {{ t('installment.bookingCheckbox') }}
+            </label>
+            <div v-if="installmentForm.booking" style="font-size:12px;color:var(--mut);margin-bottom:12px">{{ t('installment.bookingHint') }}</div>
             <div class="field">
                 <label>{{ t('installment.totalAmount') }}</label>
                 <input v-model.number="installmentForm.total_amount" type="number" step="0.01">
                 <div v-if="installmentForm.errors.total_amount" style="color:var(--rose);font-size:12px;margin-top:6px">{{ installmentForm.errors.total_amount }}</div>
             </div>
-            <div class="f2">
+            <div v-if="!installmentForm.booking" class="f2">
                 <div class="field"><label>{{ t('installment.installmentCount') }}</label><input v-model.number="installmentForm.installment_count" type="number" min="1" max="60"></div>
                 <div class="field">
                     <label>{{ t('installment.frequency') }}</label>
@@ -261,7 +267,7 @@ const justBilled = ref(false);
                     </select>
                 </div>
             </div>
-            <div class="field"><label>{{ t('installment.startDate') }}</label><input v-model="installmentForm.start_date" type="date"></div>
+            <div class="field"><label>{{ installmentForm.booking ? t('installment.pickupDueDate') : t('installment.startDate') }}</label><input v-model="installmentForm.start_date" type="date"></div>
             <div class="f2">
                 <div class="field">
                     <label>{{ t('installment.lateFeeType') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>

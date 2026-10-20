@@ -35,6 +35,12 @@ class InstallmentController extends Controller
             ->when($tab === 'active', fn ($q) => $q->where('status', 'active'))
             ->when($tab === 'overdue', fn ($q) => $q->where('status', 'active')
                 ->whereHas('items', fn ($q2) => $q2->where('status', 'pending')->whereDate('due_date', '<', now()->toDateString())))
+            // "বুকিং" — reserved items still sitting at the shop, waiting on
+            // the customer to come collect them (see the booking migration's
+            // own docblock) — active bookings specifically, not every past
+            // one, since a completed/cancelled booking has nothing left to
+            // act on here
+            ->when($tab === 'booking', fn ($q) => $q->where('booking', true)->where('status', 'active')->whereNull('picked_up_at'))
             ->orderByDesc('id')
             ->paginate(30)
             ->withQueryString();
@@ -51,6 +57,7 @@ class InstallmentController extends Controller
         $data = $request->validate([
             'sale_id' => ['nullable', 'exists:sales,id'],
             'customer_id' => ['required', 'exists:customers,id'],
+            'booking' => ['nullable', 'boolean'],
             'total_amount' => ['required', 'numeric', 'min:0.01'],
             'down_payment' => ['nullable', 'numeric', 'min:0'],
             'installment_count' => ['required', 'integer', 'min:1', 'max:60'],
@@ -110,6 +117,7 @@ class InstallmentController extends Controller
                     'shop_id' => Tenancy::id(),
                     'customer_id' => $data['customer_id'],
                     'sale_id' => $data['sale_id'] ?? null,
+                    'booking' => $data['booking'] ?? false,
                     'total_amount' => $data['total_amount'],
                     'down_payment' => $data['down_payment'] ?? 0,
                     'installment_count' => $data['installment_count'],
@@ -184,5 +192,25 @@ class InstallmentController extends Controller
         Activity::log('installment.cancel', "{$plan->customer->name}-এর কিস্তির প্ল্যান বাতিল করা হয়েছে।", $plan);
 
         return back()->with('success', 'প্ল্যান বাতিল করা হয়েছে।');
+    }
+
+    /** Pure bookkeeping, same as creating the plan itself — never touches stock/money, those already moved at the original checkout. Only meaningful for a booking (see the migration's docblock); a plain financed sale was never "held" in the first place. */
+    public function pickup(InstallmentPlan $plan)
+    {
+        abort_unless($plan->booking, 422, 'এটি একটি বুকিং প্ল্যান নয়।');
+
+        $plan->update(['picked_up_at' => now()]);
+        Activity::log('installment.pickup', "{$plan->customer->name}-এর বুকিং করা পণ্য ডেলিভারি/গ্রহণ করা হয়েছে।", $plan);
+
+        return back()->with('success', 'পণ্য ডেলিভারি হয়েছে হিসেবে চিহ্নিত করা হয়েছে।');
+    }
+
+    public function undoPickup(InstallmentPlan $plan)
+    {
+        abort_unless($plan->booking, 422, 'এটি একটি বুকিং প্ল্যান নয়।');
+
+        $plan->update(['picked_up_at' => null]);
+
+        return back()->with('success', 'ডেলিভারি স্ট্যাটাস ফিরিয়ে নেওয়া হয়েছে।');
     }
 }

@@ -36,13 +36,26 @@ function cancelPlan() {
     if (!confirm(t('installment.cancelConfirm'))) return;
     router.post(route('app.installments.cancel', props.plan.id));
 }
+
+function markPickedUp() {
+    router.post(route('app.installments.pickup', props.plan.id), {}, { preserveScroll: true });
+}
+function undoPickup() {
+    router.post(route('app.installments.undoPickup', props.plan.id), {}, { preserveScroll: true });
+}
 </script>
 
 <template>
     <Head :title="`${t('installment.title')} — ${plan.customer?.name}`" />
     <AppLayout active="more">
-        <div class="pgttl">📅 {{ plan.customer?.name }}</div>
-        <div class="pgsub">{{ statusLabel(plan.status) }}</div>
+        <div class="pgttl">{{ plan.booking ? '📦' : '📅' }} {{ plan.customer?.name }}</div>
+        <div class="pgsub">{{ statusLabel(plan.status) }}<span v-if="plan.booking"> • {{ t('installment.bookingBadge') }}</span></div>
+
+        <div v-if="plan.booking" class="card" style="margin-bottom:14px" :style="plan.picked_up_at ? 'background:var(--greenSoft)' : 'background:var(--goldSoft)'">
+            <div style="font-weight:700;margin-bottom:8px">{{ plan.picked_up_at ? t('installment.pickedUpLabel') : t('installment.notPickedUpLabel') }}</div>
+            <button v-if="!plan.picked_up_at" class="btn sm" @click="markPickedUp">{{ t('installment.pickupButton') }}</button>
+            <button v-else class="btn ghost sm" @click="undoPickup">{{ t('installment.undoPickupButton') }}</button>
+        </div>
 
         <div class="card" style="margin-bottom:14px">
             <div v-if="plan.customer" style="margin-bottom:6px"><b>{{ t('service.customer') }}</b> {{ plan.customer.name }} ({{ plan.customer.phone }})</div>
