@@ -634,6 +634,13 @@ class PosController extends Controller
                 }
             }
 
+            // Referral reward (see docs/FIX_PLAN.md's "রেফারেল" design
+            // note) fires on this customer's FIRST real sale, never a
+            // later one — captured here, before this checkout's own Sale
+            // row exists, so "did they have any prior sale" can't
+            // possibly see this transaction's own row.
+            $isCustomersFirstSale = $customer && ! Sale::where('customer_id', $customer->id)->exists();
+
             // loyalty point redemption — a flat taka discount, same as a
             // coupon, but paid for out of the customer's own point balance
             // instead of the shop's margin
@@ -873,6 +880,27 @@ class PosController extends Controller
                 }
                 if ($pointsEarned > 0) {
                     $customer->increment('loyalty_points', $pointsEarned);
+                }
+
+                // Abuse-prevention: $isCustomersFirstSale was captured
+                // before this Sale existed (never true again for this
+                // customer after this point), and referral_rewarded_at
+                // ensures this specific referral is only ever paid out
+                // once — a self-referral is already structurally
+                // impossible (CustomerController::store() only lets
+                // referred_by_customer_id be set at creation, before this
+                // row has an id of its own to match against).
+                if ($isCustomersFirstSale && $customer->referred_by_customer_id && ! $customer->referral_rewarded_at
+                    && $shop->hasFeature('customer_referrals') && $shop->hasFeature('loyalty_points') && (int) $shop->referral_bonus_points > 0) {
+                    $referrer = Customer::whereKey($customer->referred_by_customer_id)->lockForUpdate()->first();
+                    if ($referrer) {
+                        $referrer->increment('loyalty_points', (int) $shop->referral_bonus_points);
+                        Activity::log('customer.referralReward', "{$referrer->name} {$customer->name}-কে রেফার করায় {$shop->referral_bonus_points} পয়েন্ট পুরস্কার পেয়েছেন।", $referrer, [
+                            'referred_customer_id' => $customer->id,
+                            'points' => $shop->referral_bonus_points,
+                        ]);
+                    }
+                    $customer->update(['referral_rewarded_at' => now()]);
                 }
             }
 

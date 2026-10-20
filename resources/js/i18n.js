@@ -684,6 +684,8 @@ export const translations = {
     'promotion.earnRateHint': { bn: '(যেমন: ১ = ১০০ টাকায় ১ পয়েন্ট)', en: '(e.g. 1 = 1 point per 100tk)' },
     'promotion.pointValue': { bn: '১ পয়েন্টের মূল্য (টাকা)', en: 'Value of 1 point (taka)' },
     'promotion.pointValueHint': { bn: '(যেমন: ১ = ১ পয়েন্ট = ১ টাকা ছাড়)', en: '(e.g. 1 = 1 point = 1tk off)' },
+    'promotion.referralBonus': { bn: 'রেফারেল বোনাস পয়েন্ট', en: 'Referral bonus points' },
+    'promotion.referralBonusHint': { bn: '(রেফার করা কাস্টমার প্রথম কিনলেই রেফারার এই পয়েন্ট পাবেন)', en: "(referrer gets this many points once the referred customer's first purchase completes)" },
 
     'campaign.subtitle': { bn: 'সিজন অনুযায়ী অফার + কাস্টমার তালিকা + মেসেজ একসাথে সাজিয়ে এক ক্লিকে চালু করুন', en: 'Bundle an offer + customer list + message by season and launch in one click' },
     'campaign.addSeason': { bn: 'নতুন সিজন', en: 'New season' },
@@ -1411,6 +1413,8 @@ export const translations = {
     'due.namePlaceholder': { bn: 'করিম মিয়া', en: "Customer's name" },
     'due.mobile': { bn: 'মোবাইল', en: 'Mobile' },
     'due.startingDue': { bn: 'শুরুর বাকি', en: 'Starting due' },
+    'due.referredBy': { bn: 'কে রেফার করেছে', en: 'Referred by' },
+    'due.referredByPlaceholder': { bn: 'রেফারারের নাম লিখুন', en: "Type the referrer's name" },
     'due.currentDue': { bn: 'বর্তমান বাকি', en: 'Current due' },
     'due.collectAmount': { bn: 'টাকার পরিমাণ (তুলুন)', en: 'Amount to collect' },
     'due.collectSubmit': { bn: '💵 টাকা জমা নিন', en: '💵 Collect payment' },

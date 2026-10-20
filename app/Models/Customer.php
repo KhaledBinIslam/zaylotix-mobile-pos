@@ -22,7 +22,7 @@ class Customer extends Model
 {
     use SoftDeletes;
 
-    protected $fillable = ['shop_id', 'name', 'phone', 'due', 'total_spent', 'visits', 'loyalty_points', 'no_marketing'];
+    protected $fillable = ['shop_id', 'name', 'phone', 'due', 'total_spent', 'visits', 'loyalty_points', 'no_marketing', 'referred_by_customer_id', 'referral_rewarded_at'];
 
     protected static function booted(): void
     {
@@ -41,6 +41,7 @@ class Customer extends Model
             'due' => 'decimal:2',
             'total_spent' => 'decimal:2',
             'no_marketing' => 'boolean',
+            'referral_rewarded_at' => 'datetime',
         ];
     }
 
@@ -57,5 +58,15 @@ class Customer extends Model
     public function payments()
     {
         return $this->hasMany(Payment::class);
+    }
+
+    public function referredBy()
+    {
+        return $this->belongsTo(Customer::class, 'referred_by_customer_id');
+    }
+
+    public function referrals()
+    {
+        return $this->hasMany(Customer::class, 'referred_by_customer_id');
     }
 }

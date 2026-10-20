@@ -46,6 +46,12 @@ class SettingController extends Controller
         $data = $request->validate([
             'loyalty_earn_rate' => ['required', 'numeric', 'min:0'],
             'loyalty_point_value' => ['required', 'numeric', 'min:0'],
+            // referral bonus rides the same settings card/call since it
+            // pays out through this exact loyalty-points balance (see
+            // docs/FIX_PLAN.md's "রেফারেল" design note) — nullable so a
+            // shop without the customer_referrals feature granted never
+            // needs to send it
+            'referral_bonus_points' => ['nullable', 'integer', 'min:0'],
         ]);
 
         Tenancy::shop()->update($data);

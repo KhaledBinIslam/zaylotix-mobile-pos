@@ -1,6 +1,6 @@
 <script setup>
 import { Head, useForm, router, usePage } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import HowToHint from '@/Components/HowToHint.vue';
@@ -22,6 +22,7 @@ const { hasPerm } = usePermissions();
 const canDue = computed(() => hasPerm('due'));
 const page = usePage();
 const hasLoyaltyPoints = computed(() => (page.props.features || []).includes('loyalty_points'));
+const hasReferrals = computed(() => (page.props.features || []).includes('customer_referrals'));
 
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 
@@ -31,9 +32,42 @@ const totalDue = computed(() => props.customers.reduce((s, c) => s + Number(c.du
 
 // --- add customer sheet ---
 const addSheet = ref(false);
-const addForm = useForm({ name: '', phone: '', due: 0 });
+const addForm = useForm({ name: '', phone: '', due: 0, referred_by_customer_id: null });
+
+// "referred by" name-search-as-you-type — same pattern as Pos/Index.vue's
+// customer-name search (see docs/FIX_PLAN.md's "রেফারেল" design note):
+// find an existing customer by typing their name, pick them from the
+// dropdown. referredByName is only ever a display string; the id that
+// actually gets submitted lives on addForm.referred_by_customer_id.
+const referredByName = ref('');
+const referredSearchResults = ref([]);
+let referredSearchTimer = null;
+watch(referredByName, (val) => {
+    clearTimeout(referredSearchTimer);
+    addForm.referred_by_customer_id = null;
+    const q = (val || '').trim();
+    if (q.length < 2) { referredSearchResults.value = []; return; }
+    referredSearchTimer = setTimeout(async () => {
+        try {
+            const res = await fetch(route('app.customers.search') + '?q=' + encodeURIComponent(q), { headers: { Accept: 'application/json' } });
+            const data = await res.json();
+            referredSearchResults.value = data.results || [];
+        } catch (e) { reportClientError(e, 'referredByName search'); }
+    }, 400);
+});
+function pickReferrer(c) {
+    referredSearchResults.value = [];
+    referredByName.value = c.name;
+    addForm.referred_by_customer_id = c.id;
+}
+function resetAddSheet() {
+    addSheet.value = false;
+    addForm.reset();
+    referredByName.value = '';
+    referredSearchResults.value = [];
+}
 function saveCustomer() {
-    addForm.post(route('app.customers.store'), { onSuccess: () => { addSheet.value = false; addForm.reset(); } });
+    addForm.post(route('app.customers.store'), { onSuccess: resetAddSheet });
 }
 
 // --- collect payment sheet ---
@@ -226,10 +260,26 @@ function closeQueue() {
                 <div v-if="addForm.errors.phone" style="color:var(--rose);font-size:12px;margin-top:6px">{{ addForm.errors.phone }}</div>
             </div>
             <div class="field"><label>{{ t('due.startingDue') }}</label><input v-model="addForm.due" type="number" placeholder="0"></div>
+            <div v-if="hasReferrals" class="field" style="position:relative">
+                <label>{{ t('due.referredBy') }} <span style="color:var(--dim);font-weight:400">({{ t('stock.optional') }})</span></label>
+                <input v-model="referredByName" :placeholder="t('due.referredByPlaceholder')" autocomplete="off">
+                <div v-if="referredSearchResults.length" style="position:absolute;z-index:5;left:0;right:0;top:100%;margin-top:4px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.12)">
+                    <button
+                        v-for="c in referredSearchResults" :key="c.id" type="button"
+                        style="display:block;width:100%;text-align:left;padding:9px 12px;font-size:13px;border-bottom:1px solid var(--line)"
+                        @click="pickReferrer(c)"
+                    >
+                        <b>{{ c.name }}</b>
+                        <span style="color:var(--mut)"> {{ c.phone }}</span>
+                    </button>
+                </div>
+                <div v-if="addForm.referred_by_customer_id" style="font-size:12px;color:var(--green);margin-top:5px;font-weight:600">✅ {{ referredByName }}</div>
+                <div v-if="addForm.errors.referred_by_customer_id" style="color:var(--rose);font-size:12px;margin-top:6px">{{ addForm.errors.referred_by_customer_id }}</div>
+            </div>
             <button class="btn" :disabled="addForm.processing" @click="saveCustomer">
                 {{ addForm.processing ? '...' : t('stock.save') }}
             </button>
-            <button class="btn ghost" style="margin-top:10px" @click="addSheet = false">{{ t('common.cancel') }}</button>
+            <button class="btn ghost" style="margin-top:10px" @click="resetAddSheet">{{ t('common.cancel') }}</button>
         </Sheet>
 
         <Sheet v-model="collectSheet" :title="collecting?.name">

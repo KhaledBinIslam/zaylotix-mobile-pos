@@ -4,7 +4,9 @@ namespace App\Http\Controllers\App;
 
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
+use App\Support\Tenancy;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class CustomerController extends Controller
@@ -29,6 +31,11 @@ class CustomerController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:20'],
             'due' => ['nullable', 'numeric', 'min:0'],
+            // see docs/FIX_PLAN.md's "রেফারেল" design note — only settable
+            // at creation (this customer has no id yet, so "referring
+            // themselves" is structurally impossible here; there's no
+            // edit endpoint that could ever retarget it later either)
+            'referred_by_customer_id' => ['nullable', Rule::exists('customers', 'id')->where('shop_id', Tenancy::id())],
         ]);
 
         // Same phone-based find-or-create the POS checkout uses — without
@@ -48,6 +55,7 @@ class CustomerController extends Controller
             'name' => $data['name'],
             'phone' => $phone,
             'due' => $data['due'] ?? 0,
+            'referred_by_customer_id' => $data['referred_by_customer_id'] ?? null,
         ]);
 
         return back()->with('success', "{$data['name']} added.");

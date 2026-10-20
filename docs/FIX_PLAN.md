@@ -450,6 +450,54 @@ existing 15 re-run unchanged to confirm zero regression on the plain
 
 ---
 
+## Phase 20 — Phase 3 feature 6: "রেফারেল" (customer-to-customer referral)
+
+**Design note**: reuses the existing loyalty-points engine as the only
+reward mechanism — no new ledger, no new currency. Two new nullable/
+defaulted `customers` columns (`referred_by_customer_id`,
+`referral_rewarded_at`) and one new defaulted `shops` column
+(`referral_bonus_points`, default 50 — same "sensible preset, not a
+forced zero" precedent as `loyalty_earn_rate`/`loyalty_point_value`).
+
+**Abuse prevention** (explicitly required by the master prompt):
+- *Self-referral is structurally impossible*: `referred_by_customer_id`
+  can only ever be set at `CustomerController::store()` time, before the
+  row has an id of its own to match against — there is no edit endpoint
+  that could retarget it later, so it can never be pointed at the
+  customer's own (not-yet-existing) id.
+- *Exactly-once payout per referral*: `referral_rewarded_at` is stamped
+  the moment the reward is paid and checked before paying it again — a
+  replayed or repeated checkout for the same customer can never pay
+  twice.
+- *Requires a real purchase, not just a referral record*: the reward
+  fires on the referred customer's FIRST real sale
+  (`PosController::performCheckout()`'s `$isCustomersFirstSale`, captured
+  BEFORE that checkout's own `Sale` row is created — so it can never see
+  its own transaction). Paying out at referral-creation time instead
+  would be trivially abusable: fake customer records referring each
+  other for free points with no purchase requirement at all.
+- *Cross-shop referrer injection blocked*: `referred_by_customer_id`'s
+  validation uses `Rule::exists('customers','id')->where('shop_id',
+  Tenancy::id())`, not a bare `exists:customers,id` — a bare rule is
+  table-wide and would let shop A's form reference shop B's customer id
+  (same tenant-scoping bug class caught earlier this session in the
+  Season Campaign and Stock Planner features).
+- *Feature-gated on both flags*: the reward only pays out when both
+  `customer_referrals` AND `loyalty_points` are enabled on the shop
+  (a shop can have referrals on without loyalty points meaning anything
+  — the reward silently does nothing rather than erroring) and
+  `referral_bonus_points > 0`.
+
+**New opt-in feature flag**: `customer_referrals` (never auto-granted to
+any existing shop, per the master prompt's explicit rule).
+
+Tests: `tests/Feature/CustomerReferralTest.php` (7) — first-sale reward,
+no double-reward on a second sale, no reward without a referral on file,
+no reward with either feature flag off, cross-shop referrer rejected,
+referral recorded correctly at creation.
+
+---
+
 ## Definition-of-done checklist (tracked across all phases, per master prompt)
 
 - [ ] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test`, Phase 0.6)

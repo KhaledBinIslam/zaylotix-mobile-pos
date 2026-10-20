@@ -11,7 +11,12 @@ const { t } = useI18n();
 const page = usePage();
 const shop = computed(() => page.props.shop);
 const hasLoyaltyPoints = computed(() => (page.props.features || []).includes('loyalty_points'));
-const loyaltyForm = useForm({ loyalty_earn_rate: shop.value?.loyalty_earn_rate ?? 1, loyalty_point_value: shop.value?.loyalty_point_value ?? 1 });
+const hasReferrals = computed(() => (page.props.features || []).includes('customer_referrals'));
+const loyaltyForm = useForm({
+    loyalty_earn_rate: shop.value?.loyalty_earn_rate ?? 1,
+    loyalty_point_value: shop.value?.loyalty_point_value ?? 1,
+    referral_bonus_points: shop.value?.referral_bonus_points ?? 50,
+});
 function saveLoyalty() {
     loyaltyForm.patch(route('app.settings.loyalty'), { preserveScroll: true });
 }
@@ -97,6 +102,11 @@ function summary(p) {
                         <input v-model="loyaltyForm.loyalty_point_value" type="number">
                         <div v-if="loyaltyForm.errors.loyalty_point_value" style="color:var(--rose);font-size:12px;margin-top:6px">{{ loyaltyForm.errors.loyalty_point_value }}</div>
                     </div>
+                </div>
+                <div v-if="hasReferrals" class="field">
+                    <label>{{ t('promotion.referralBonus') }} <span style="color:var(--dim);font-weight:400">{{ t('promotion.referralBonusHint') }}</span></label>
+                    <input v-model="loyaltyForm.referral_bonus_points" type="number">
+                    <div v-if="loyaltyForm.errors.referral_bonus_points" style="color:var(--rose);font-size:12px;margin-top:6px">{{ loyaltyForm.errors.referral_bonus_points }}</div>
                 </div>
                 <button class="btn sm" :disabled="loyaltyForm.processing" @click="saveLoyalty">{{ loyaltyForm.processing ? '...' : t('stock.save') }}</button>
             </div>

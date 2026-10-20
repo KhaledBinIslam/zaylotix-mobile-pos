@@ -3,6 +3,17 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## Phase 3, feature 6: রেফারেল (customer-to-customer referral)
+- New: an opt-in `customer_referrals` feature. When adding a customer,
+  the owner/cashier can now search-and-pick "কে রেফার করেছে" (who
+  referred them, by name — Customers/Index.vue's add-customer sheet).
+  Once that new customer's FIRST-EVER purchase completes, the referrer
+  is automatically credited `referral_bonus_points` loyalty points
+  (settable in Promotions/Index.vue's loyalty card, default 50) — a
+  one-time reward per referral, never repeated on later purchases, and
+  never payable for a self-referral (structurally impossible — see
+  `docs/FIX_PLAN.md` Phase 20).
+
 ## Phase 3, feature 5: অ্যাডভান্স বুকিং/লে-অ্যাওয়ে (advance booking/layaway)
 - New: the existing installment-plan flow (Sales/Show.vue, right after
   a sale with leftover due) now has a "📦 এটা একটা অ্যাডভান্স বুকিং"
