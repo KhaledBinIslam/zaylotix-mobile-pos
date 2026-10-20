@@ -3,6 +3,17 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## Phase 3, feature 10: অ্যাম্বাসেডর টুলস (ambassador tools)
+- New: every ambassador now has an auto-generated referral code and a
+  shareable signup link (visible on Admin/Ambassadors, with a one-tap
+  copy button). A shop that signs up through it is automatically
+  credited to that ambassador — both the one-time bonus and the
+  ongoing recurring commission — with no extra admin step needed.
+  (Scope note: the fuller "ambassador tools" wishlist — lead tracker,
+  demo mode, pitch calculator, seasonal offers — was confirmed with
+  Khaled as a separate, larger decision since it needs ambassadors to
+  have their own login; deferred for now.)
+
 ## Phase 3, feature 9: ধরন-ভিত্তিক সুবিধা (business-type-specific features)
 - New: an opt-in `generic_substitute_suggestions` feature (pharmacy) —
   an out-of-stock medicine's tile in POS now shows an in-stock

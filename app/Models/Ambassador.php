@@ -8,7 +8,7 @@ class Ambassador extends Model
 {
     // Not tenant-scoped — ambassadors are a platform-level, super-admin-only
     // concept with no relation to any shop's own tenant boundary.
-    protected $fillable = ['name', 'employee_id', 'phone', 'email', 'note', 'one_time_bonus', 'recurring_percent', 'status'];
+    protected $fillable = ['name', 'employee_id', 'referral_code', 'phone', 'email', 'note', 'one_time_bonus', 'recurring_percent', 'status'];
 
     protected function casts(): array
     {
@@ -16,6 +16,12 @@ class Ambassador extends Model
             'one_time_bonus' => 'decimal:2',
             'recurring_percent' => 'decimal:2',
         ];
+    }
+
+    /** The public self-signup link that credits this ambassador automatically — see docs/FIX_PLAN.md's "অ্যাম্বাসেডর টুলস" design note. */
+    public function signupUrl(): ?string
+    {
+        return $this->referral_code ? route('signup').'?ref='.$this->referral_code : null;
     }
 
     public function commissions()

@@ -1,5 +1,6 @@
 <script setup>
 import { Head, Link, useForm, router } from '@inertiajs/vue3';
+import { ref } from 'vue';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 
 const props = defineProps({
@@ -19,15 +20,34 @@ function markMonthPaid(month) {
     if (!confirm(`"${month}" মাসের সব unpaid কমিশন paid মার্ক করবেন?`)) return;
     router.post(route('admin.ambassadors.markPaid', props.ambassador.id), { month });
 }
+
+// see docs/FIX_PLAN.md's "অ্যাম্বাসেডর টুলস" design note — a shop that
+// signs up through this link automatically gets brought_by_ambassador_id
+// set to this ambassador (one-time bonus + recurring assignment both
+// applied, same as SignupController::store() manually tying them
+// together would do).
+const linkCopied = ref(false);
+async function copySignupLink() {
+    try {
+        await navigator.clipboard.writeText(props.ambassador.signup_url);
+        linkCopied.value = true;
+        setTimeout(() => (linkCopied.value = false), 1500);
+    } catch (e) { /* clipboard unavailable — nothing to fall back to here */ }
+}
 </script>
 
 <template>
     <Head :title="ambassador.name" />
     <AdminLayout active="ambassadors">
-        <div class="flex items-center gap-3 mb-6">
+        <div class="flex items-center gap-3 mb-2">
             <Link :href="route('admin.ambassadors.index')" class="text-gray-500">←</Link>
             <h1 class="text-2xl font-bold">{{ ambassador.name }}</h1>
             <a :href="route('admin.ambassadors.export', ambassador.id)" class="ml-auto px-3 py-1.5 rounded-lg bg-sky-50 text-sky-700 text-xs font-semibold">📊 Export (Excel)</a>
+        </div>
+        <div v-if="ambassador.signup_url" class="flex items-center gap-2 mb-6 text-xs text-gray-500">
+            <span>Signup link:</span>
+            <span class="font-mono text-gray-700">{{ ambassador.signup_url }}</span>
+            <button class="font-semibold text-brand-purple-700 hover:underline" @click="copySignupLink">{{ linkCopied ? 'Copied!' : 'Copy' }}</button>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">

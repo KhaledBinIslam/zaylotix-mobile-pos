@@ -635,6 +635,73 @@ to test.
 
 ---
 
+## Phase 24 — Phase 3 feature 10: "অ্যাম্বাসেডর টুলস" (ambassador tools)
+
+**Scope clarified with Khaled**: the master prompt's full list (lead
+tracker, referral code, demo mode, pitch calculator, WhatsApp signup
+link, seasonal offers) would require ambassadors to have their own
+login/portal — a genuinely new authentication surface and a large
+scope on its own. He confirmed the smallest real piece instead: just
+the referral code + signup link, so a shop that signs up through it
+gets credited automatically instead of needing an admin to manually
+tie `brought_by_ambassador_id` together afterward.
+
+**Design note**: `ambassadors.referral_code` (nullable/unique) is
+generated once, automatically, at `Admin\AmbassadorController::store()`
+time — derived from the employee ID (already effectively unique) with
+a random-suffix fallback only on a genuine collision. Existing
+ambassadors (created before this migration) are backfilled the same
+way directly in the migration's `up()`, so every ambassador — old or
+new — has a working link with no extra admin step.
+
+`Ambassador::signupUrl()` is just `route('signup').'?ref='.code`.
+`SignupController::create()` passes `?ref=` through as an Inertia prop;
+`Signup.vue` carries it as an invisible, uneditable field on the
+existing form (`form.ref`) so it survives a validation-error round
+trip, not just the first page load. `SignupController::store()` looks
+up an **active** ambassador by that code — a bad/stale/unknown code is
+never a hard validation error (the shop owner has no way to know their
+code didn't resolve and must not be blocked from signing up over it) —
+and, when found, applies the exact same two effects
+`Admin\AmbassadorController::assignToShop()` already applies when an
+admin manually sets `brought_by_ambassador_id`: the one-time bonus
+commission row (`AmbassadorCommissionService::handleBroughtByChange()`)
+and becoming the shop's currently-assigned ambassador, which drives the
+recurring-%  commission on every future subscription payment
+(`AmbassadorCommissionService::assign()`). A self-signup via referral
+link is credited exactly as much as if an admin had done it by hand.
+
+Admin/Ambassadors/Index.vue and Show.vue both show the referral code
+and a one-tap copy-to-clipboard for the signup link, so Khaled/his team
+can hand it to an ambassador to share on WhatsApp themselves.
+
+Tests: `tests/Feature/AmbassadorReferralTest.php` (6) — a new
+ambassador auto-gets a code, signing up through a valid code credits
+both the one-time bonus and the recurring assignment, an unknown code
+still lets signup succeed (just uncredited), no `ref` at all still
+works exactly as before, an *inactive* ambassador's code does not
+credit them, the signup page's `ref` prop passes the query param
+through correctly.
+
+**Everything else on the master prompt's list for this item (lead
+tracker, demo mode, pitch calculator, seasonal offers) is explicitly
+deferred** — each would need its own design discussion once Khaled
+decides whether ambassadors get a real self-serve portal at all.
+
+---
+
+## Phase 3 complete — all 10 features shipped
+
+Every item on the master prompt's Phase 3 list (season campaign kit,
+season stock planner, dead stock clearance, daily owner summary,
+advance booking/layaway, customer referrals, digital catalog link,
+credit limit, business-type-specific features, ambassador tools) is
+now designed, built, tested, and deployed. Per the master prompt's own
+rule, **Phase 4 (enterprise gap-filling) is explicitly gated on
+Khaled's approval** and has not been started.
+
+---
+
 ## Definition-of-done checklist (tracked across all phases, per master prompt)
 
 - [ ] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test`, Phase 0.6)

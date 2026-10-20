@@ -4,7 +4,7 @@ import ZaylotixLogo from '@/Components/ZaylotixLogo.vue';
 import Spinner from '@/Components/Spinner.vue';
 import { useI18n } from '@/composables/useI18n';
 
-defineProps({ businessTypes: Array });
+const props = defineProps({ businessTypes: Array, ref: { type: String, default: null } });
 const { t } = useI18n();
 
 const TYPE_ICONS = {
@@ -12,8 +12,11 @@ const TYPE_ICONS = {
     mobile: '📱', cosmetics: '💄', general: '📦', restaurant: '🍽️',
 };
 
+// see docs/FIX_PLAN.md's "অ্যাম্বাসেডর টুলস" design note — a hidden
+// pass-through, never shown or editable; carries an ambassador's
+// referral_code from the URL all the way to SignupController::store().
 const form = useForm({
-    name: '', business_type_id: '', owner_name: '', phone: '', password: '', area: '',
+    name: '', business_type_id: '', owner_name: '', phone: '', password: '', area: '', ref: props.ref,
 });
 
 function submit() {

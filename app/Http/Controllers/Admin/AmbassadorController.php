@@ -29,7 +29,8 @@ class AmbassadorController extends Controller
         // live data (see show()), just not dumped on this admin list view
         // alongside a per-row DB hit each for unpaid_total/brought_this_month
         $ambassadors = Ambassador::orderBy('name')
-            ->get(['id', 'name', 'employee_id', 'phone', 'email']);
+            ->get(['id', 'name', 'employee_id', 'phone', 'email', 'referral_code'])
+            ->map(fn (Ambassador $a) => [...$a->toArray(), 'signup_url' => $a->signupUrl()]);
 
         return Inertia::render('Admin/Ambassadors/Index', [
             'ambassadors' => $ambassadors,
@@ -55,7 +56,11 @@ class AmbassadorController extends Controller
             'shop_id' => ['required', 'exists:shops,id'],
         ]);
 
-        $ambassador = Ambassador::create(['name' => $data['name'], 'employee_id' => $data['employee_id']]);
+        $ambassador = Ambassador::create([
+            'name' => $data['name'],
+            'employee_id' => $data['employee_id'],
+            'referral_code' => $this->generateUniqueReferralCode($data['employee_id']),
+        ]);
 
         $shop = Shop::withoutGlobalScopes()->findOrFail($data['shop_id']);
         AmbassadorCommissionService::assign($shop, $ambassador);
@@ -63,6 +68,22 @@ class AmbassadorController extends Controller
         AdminActivity::log('ambassador.create', "Added ambassador '{$ambassador->name}' ({$ambassador->employee_id}) for shop '{$shop->name}'.", $ambassador);
 
         return back()->with('success', "Ambassador '{$ambassador->name}' added for '{$shop->name}'.");
+    }
+
+    /** Human-readable where possible (the employee ID itself, sanitized) — falls back to a random suffix only on a genuine collision, which in practice never happens since employee_id is already effectively unique. */
+    private function generateUniqueReferralCode(string $employeeId): string
+    {
+        $base = Str::upper(Str::slug($employeeId, ''));
+        if ($base === '') {
+            $base = 'AMB';
+        }
+
+        $code = $base;
+        while (Ambassador::where('referral_code', $code)->exists()) {
+            $code = $base.Str::upper(Str::random(3));
+        }
+
+        return $code;
     }
 
     public function update(Request $request, Ambassador $ambassador)
@@ -113,7 +134,7 @@ class AmbassadorController extends Controller
             ->values();
 
         return Inertia::render('Admin/Ambassadors/Show', [
-            'ambassador' => $ambassador,
+            'ambassador' => [...$ambassador->toArray(), 'signup_url' => $ambassador->signupUrl()],
             'broughtShops' => $broughtShops,
             'currentShops' => $currentShops,
             'commissions' => $commissions,
