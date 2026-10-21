@@ -3,6 +3,19 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## Phase 4 item #3: ব্রাঞ্চ-জুড়ে প্রোমোশন পুলিং (cross-branch promotions)
+- New: an opt-in `shared_promotions` feature (grant to a main shop).
+  A coupon-code promotion created on the main shop now syncs to every
+  branch automatically — one chain-wide discount code instead of
+  recreating it per branch — while each branch keeps tracking its own
+  usage count independently. A branch can locally pause/resume its own
+  copy but not edit or delete it. BOGO/combo promotions stay
+  shop-local, unaffected.
+- (Research note: branch price overrides, the other half of this gap
+  report item, turned out to already be possible via the existing
+  `discount_price` field, which Phase 4 item #1 deliberately kept
+  branch-editable — no new field was needed.)
+
 ## Phase 4 item #2: real PO/GRN (পারচেজ অর্ডার)
 - New: an opt-in `purchase_orders` feature. A new "পারচেজ অর্ডার" screen
   lets the owner place a multi-item order against a supplier (one PO,

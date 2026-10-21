@@ -10,7 +10,7 @@ class Promotion extends Model
     use BelongsToTenant;
 
     protected $fillable = [
-        'shop_id', 'name', 'type', 'active',
+        'shop_id', 'master_promotion_id', 'name', 'type', 'active',
         'code', 'discount_type', 'discount_value', 'min_purchase', 'usage_limit',
         'buy_product_id', 'buy_qty', 'get_product_id', 'get_qty', 'get_discount_percent',
         'used_count', 'starts_at', 'expires_at',

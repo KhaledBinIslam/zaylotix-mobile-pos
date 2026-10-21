@@ -5,6 +5,7 @@ namespace App\Http\Controllers\App;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\Promotion;
+use App\Models\Shop;
 use App\Support\Tenancy;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -59,7 +60,9 @@ class PromotionController extends Controller
         $data = $request->validate($this->rules());
         $this->guardPercentRange($data);
 
-        Promotion::create($this->fields($data));
+        $promotion = Promotion::create($this->fields($data));
+
+        $this->syncToBranchesIfShared($promotion);
 
         return back()->with('success', 'অফার যোগ করা হয়েছে।');
     }
@@ -69,16 +72,69 @@ class PromotionController extends Controller
         $data = $request->validate($this->rules($promotion));
         $this->guardPercentRange($data);
 
+        // see docs/FIX_PLAN.md's "ব্রাঞ্চ-জুড়ে প্রোমোশন পুলিং" design note —
+        // a branch's own linked copy has its shared fields owned by the
+        // main shop from now on; only `active` (pause/resume locally)
+        // survives an edit made here. Silent, not an error — same
+        // defense-in-depth the linked-Product lock already uses.
+        if ($promotion->master_promotion_id) {
+            $promotion->update(['active' => $data['active'] ?? true]);
+
+            return back()->with('success', 'অফার হালনাগাদ করা হয়েছে।');
+        }
+
         $promotion->update($this->fields($data));
+
+        $this->syncToBranchesIfShared($promotion);
 
         return back()->with('success', 'অফার হালনাগাদ করা হয়েছে।');
     }
 
     public function destroy(Promotion $promotion)
     {
+        if ($promotion->master_promotion_id) {
+            abort(422, 'এটি ব্রাঞ্চ থেকে মুছে ফেলা যাবে না — মূল দোকান থেকে মুছুন।');
+        }
+
+        Promotion::withoutGlobalScopes()->where('master_promotion_id', $promotion->id)->delete();
         $promotion->delete();
 
         return back()->with('success', 'অফার মুছে ফেলা হয়েছে।');
+    }
+
+    /**
+     * See docs/FIX_PLAN.md's "ব্রাঞ্চ-জুড়ে প্রোমোশন পুলিং" design note —
+     * only a main shop (no parent_shop_id) with the opt-in
+     * shared_promotions feature ever propagates, and only a `coupon`
+     * (a BOGO's buy/get product ids would need the same per-branch
+     * mapping CatalogSync already does for StockTransfer, deliberately
+     * deferred) — a no-op for every other shop/type.
+     */
+    private function syncToBranchesIfShared(Promotion $promotion): void
+    {
+        $shop = Tenancy::shop();
+        if ($promotion->type !== 'coupon' || $shop->parent_shop_id || ! $shop->hasFeature('shared_promotions')) {
+            return;
+        }
+
+        $branches = Shop::withoutGlobalScopes()->where('parent_shop_id', $shop->id)->get();
+        $attrs = [
+            'name' => $promotion->name, 'type' => $promotion->type, 'active' => $promotion->active,
+            'code' => $promotion->code, 'discount_type' => $promotion->discount_type, 'discount_value' => $promotion->discount_value,
+            'min_purchase' => $promotion->min_purchase, 'usage_limit' => $promotion->usage_limit,
+            'starts_at' => $promotion->starts_at, 'expires_at' => $promotion->expires_at,
+            'master_promotion_id' => $promotion->id,
+        ];
+
+        foreach ($branches as $branch) {
+            $existing = Promotion::withoutGlobalScopes()->where('shop_id', $branch->id)->where('master_promotion_id', $promotion->id)->first();
+            if ($existing) {
+                // used_count deliberately excluded -- each branch's own usage tally is never overwritten by a sync
+                $existing->update($attrs);
+            } else {
+                Promotion::create(['shop_id' => $branch->id, 'used_count' => 0, ...$attrs]);
+            }
+        }
     }
 
     private function fields(array $data): array

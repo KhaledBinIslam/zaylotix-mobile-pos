@@ -985,6 +985,88 @@ every route 403s without the feature granted.
 
 ---
 
+## Phase 29 — Phase 4 item #3: branch/channel price lists
+
+**Research first, re-reading the gap report's own #3 section with
+Phase 4 item #1 (shared catalog) already shipped**: its "নেই" list
+actually bundles three distinct complaints, and shared catalog already
+resolves the root cause of the first:
+
+1. *"No branch/channel price list, because every branch has its own
+   Product row"* — the root cause (no linkage between a branch's row
+   and the main shop's) is exactly what Phase 26 fixed. A price now
+   propagates identically to every branch by default. The remaining
+   question is whether a branch can still deliberately charge
+   something different — and it already can: Phase 26 deliberately
+   kept `discount_price` branch-local-editable (for the dead-stock-
+   clearance use case), and checkout/POS/the digital catalog already
+   all prefer `discount_price ?? price` uniformly (the Phase 16 fix).
+   A branch that genuinely needs its own everyday price can already
+   set it via `discount_price` today. Building a second,
+   parallel "price override" field purely to rename this same
+   mechanic would be exactly the kind of duplicate source of truth
+   the master prompt's own ground rules warn against — so this is
+   marked **already covered**, not rebuilt.
+2. *"No scheduled markdown engine — `discount_price` is a static
+   field, not date-windowed like `Promotion`"* — real, medium-sized,
+   genuinely still open. **Deliberately deferred** (not pulled into
+   this phase) to keep item #3 shippable; noted here so it isn't lost.
+3. *"No cross-branch promotion pooling — `Promotion` is shop-scoped,
+   so a chain-wide offer has to be recreated on every branch by
+   hand"* — real, not covered by anything shipped so far, and the
+   natural companion to shared catalog's own shape. **This is what
+   item #3 actually builds.**
+
+**Design**: mirrors shared catalog's own pattern closely —
+`promotions.master_promotion_id` (nullable, self-referential FK,
+`nullOnDelete()`), a new opt-in `shared_promotions` feature (main shop
+only), propagation on save. **Scoped to `type = 'coupon'` only** —
+a BOGO promotion references `buy_product_id`/`get_product_id`, which
+would need the same per-branch product-id mapping `CatalogSync`
+already does for `StockTransfer`'s destination matching; deferring
+that mapping keeps this phase's risk down, and a chain-wide discount
+*code* ("EID10" valid everywhere) is the far more common real request
+anyway — a BOGO still works exactly as before, purely shop-local,
+regardless of the feature.
+
+- `PromotionController::store()` — a main shop with the feature on,
+  creating a coupon, also creates a linked copy on every branch
+  (same code/discount_type/discount_value/min_purchase/usage_limit/
+  dates, `used_count` always starts at 0).
+- `::update()` — editing the master propagates every field except
+  `used_count` to each linked branch copy (never overwritten — same
+  "never touch what's branch-local" rule as `CatalogSync`'s own
+  exclusion of `stock`). Editing a **branch's own linked copy**
+  silently keeps only `active` (so one branch can pause/resume
+  locally, e.g. it's run out of the deal) — everything else is
+  dropped, same defense-in-depth lock Phase 26 already applies to a
+  linked `Product`.
+- `::destroy()` — deleting the master also deletes every linked
+  branch copy (a hard delete, matching `Promotion`'s own existing
+  hard-delete behavior — no soft-delete lifecycle to preserve).
+  A branch cannot delete its own linked copy at all; must come from
+  the main shop.
+- **No change needed in `PromotionEngine::resolveCoupon()`** — a
+  branch's linked copy is a real row with its own `shop_id`, found by
+  the exact same tenant-scoped `code` lookup checkout already does;
+  propagating as real rows (not a cross-shop reference) is what makes
+  this a zero-touch change for the checkout path, exactly like shared
+  catalog needed no change to `PosController` either.
+
+Tests: `tests/Feature/SharedPromotionTest.php` (8 new) — creating a
+coupon on the main shop propagates to every branch, editing the main
+coupon updates every linked copy, a branch's own `used_count` is never
+overwritten by a sync, a branch can only toggle `active` on its own
+linked copy (everything else silently ignored), a branch cannot delete
+its own linked copy, deleting the master deletes every linked copy, a
+BOGO promotion never propagates even with the feature on, no
+propagation without the feature granted. All 22 pre-existing
+`PromotionTest` cases re-run clean. No frontend change needed —
+propagation is fully automatic from the existing create/edit/delete
+flow, nothing new for the owner to operate.
+
+---
+
 ## Definition-of-done checklist (tracked across all phases, per master prompt)
 
 - [x] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test --all`, Phase 0.6) — re-verified 2026-10-20, all 8 types OK
@@ -996,6 +1078,6 @@ every route 403s without the feature granted.
 - [x] Final comprehensive Bengali report for Khaled covering what changed, deploy steps, remaining risks, open questions — sent after Phase 3 feature 10 shipped
 
 ### Genuinely still open
-- **Phase 4** (enterprise gap-filling, see `docs/ENTERPRISE_GAP_REPORT.md`) — approved and in progress. Done: item #1, both parts (shared catalog sync + branch transfer accept/reject). Still to come, in order: item #2 (PO/GRN), item #3 (branch price lists), the full Wholesale system (tiered pricing/MOQ/customer groups/invoices — approved, not yet started).
+- **Phase 4** (enterprise gap-filling, see `docs/ENTERPRISE_GAP_REPORT.md`) — approved and in progress. Done: item #1 (shared catalog sync + branch transfer accept/reject), item #2 (PO/GRN), item #3 (cross-branch promotion pooling — branch price override turned out already covered). Still to come: the full Wholesale system (tiered pricing/MOQ/customer groups/invoices — approved, not yet started). Separately noted-but-deferred: a scheduled/date-windowed markdown engine (item #3's other sub-gap).
 - The Android APK rebuild reminder (new theme colors) — not a code task, tracked against the separate TWA plan below.
 - A separate TWA-replaces-Capacitor plan (Part 1 of 2, a different planning session) is sitting unstarted — not touched this session since Khaled's attention has been on Phase 3/4.

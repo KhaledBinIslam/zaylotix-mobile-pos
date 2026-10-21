@@ -56,6 +56,9 @@ class FeatureSeeder extends Seeder
             // system alongside the existing single-line Purchase flow,
             // which keeps working unchanged for a shop that doesn't need this.
             ['key' => 'purchase_orders', 'label_bn' => 'পারচেজ অর্ডার (PO/GRN)', 'label_en' => 'Purchase orders (PO/GRN)', 'category' => 'inventory', 'description' => "Place a multi-line purchase order against a supplier and receive it partially over time — each line tracks how much has arrived so far versus how much was ordered, with proportional stock and supplier-payable updates on every receipt."],
+            // Phase 4 item #3 — "ব্রাঞ্চ-জুড়ে প্রোমোশন পুলিং" — grant to a MAIN
+            // shop only, same convention as shared_catalog.
+            ['key' => 'shared_promotions', 'label_bn' => 'ব্রাঞ্চ-জুড়ে প্রোমোশন', 'label_en' => 'Cross-branch promotions', 'category' => 'billing', 'description' => "A coupon-code promotion created on the main shop syncs to every branch automatically — one chain-wide discount code instead of recreating it per branch. Each branch tracks its own usage count independently. BOGO/combo promotions stay shop-local regardless."],
             // Phase 3 feature 9 — "ধরন-ভিত্তিক সুবিধা" (business-type-specific
             // features): a small, genuinely new capability per vertical, not
             // a re-statement of config/business_types.php's existing
