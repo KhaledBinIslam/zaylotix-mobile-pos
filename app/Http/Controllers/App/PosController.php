@@ -362,8 +362,17 @@ class PosController extends Controller
             $allowTrashedProducts = ! empty($data['offline_replay']);
             $productsQuery = fn () => $allowTrashedProducts ? Product::withTrashed() : Product::query();
 
+            // whole-cart toggle, not per-line — a product with no
+            // wholesale_price of its own just always sells at its normal
+            // price regardless of this flag. Computed here (not just once
+            // at the pricing loop below) so priceTiers only gets eager-
+            // loaded for a shop that can actually use them.
+            $isWholesale = $shop->hasFeature('wholesale_pricing') && ($data['sale_type'] ?? 'retail') === 'wholesale';
+            $tiersOn = $isWholesale && $shop->hasFeature('wholesale_tiers');
+
             $products = $productsQuery()->whereIn('id', $productIds)
                 ->withCount('variants')
+                ->when($tiersOn, fn ($query) => $query->with('priceTiers'))
                 ->lockForUpdate()
                 ->get()
                 ->keyBy('id');
@@ -483,16 +492,22 @@ class PosController extends Controller
                 : ['discounts' => [], 'triggeredIds' => []];
             $autoDiscounts = $bogoResult['discounts'];
 
-            // whole-cart toggle, not per-line — a product with no
-            // wholesale_price of its own just always sells at its normal
-            // price regardless of this flag
-            $isWholesale = $shop->hasFeature('wholesale_pricing') && ($data['sale_type'] ?? 'retail') === 'wholesale';
-
             foreach ($data['items'] as $index => $item) {
                 $product = $products->get($item['product_id']);
 
                 if (! $product) {
                     abort(422, 'পণ্যটি খুঁজে পাওয়া যায়নি — হয়তো এই মুহূর্তে মুছে ফেলা হয়েছে। তালিকা রিলোড করে আবার চেষ্টা করুন।');
+                }
+
+                // MOQ is a hard gate, not a soft fallback (see docs/
+                // FIX_PLAN.md's Phase 30 design note, Part A) — a wholesale
+                // line below its own product's minimum is rejected outright,
+                // never silently sold at retail. A product with no MOQ set
+                // (the overwhelming majority, including every shop that
+                // never turned wholesale_tiers on) has none enforced, same
+                // as today.
+                if ($isWholesale && $product->wholesale_moq !== null && (float) $item['qty'] < $product->wholesale_moq) {
+                    abort(422, "{$product->name}-এর পাইকারি সর্বনিম্ন পরিমাণ {$product->wholesale_moq}, আপনি দিয়েছেন {$item['qty']}।");
                 }
 
                 $factor = 1;
@@ -508,9 +523,17 @@ class PosController extends Controller
                 // variant line, each priced independently below) — and only
                 // when actually set, so a shop that's never touched this
                 // field sees zero behavior change.
-                $unitPrice = ($isWholesale && $product->wholesale_price !== null)
-                    ? (float) $product->wholesale_price
-                    : (float) ($product->discount_price ?? $product->price);
+                // Tier takes priority over the flat wholesale_price when
+                // both exist — a product with no tier defined (or whose
+                // qty doesn't clear any tier's min_qty) falls straight
+                // through to the exact same flat-price logic as before, so
+                // a shop using only the simple flat price sees zero change.
+                $tierPrice = ($tiersOn && $isWholesale) ? $product->wholesaleTierPriceForQty((float) $item['qty']) : null;
+                $unitPrice = match (true) {
+                    $tierPrice !== null => $tierPrice,
+                    $isWholesale && $product->wholesale_price !== null => (float) $product->wholesale_price,
+                    default => (float) ($product->discount_price ?? $product->price),
+                };
                 if (isset($quotedNetUnitByProduct[$product->id])) {
                     $unitPrice = min($unitPrice, $quotedNetUnitByProduct[$product->id]);
                 }

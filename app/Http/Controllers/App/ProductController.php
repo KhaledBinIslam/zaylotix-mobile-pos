@@ -7,6 +7,7 @@ use App\Http\Requests\App\StoreProductRequest;
 use App\Models\Product;
 use App\Models\ProductBatch;
 use App\Models\ProductCategory;
+use App\Models\ProductPriceTier;
 use App\Models\Unit;
 use App\Support\CatalogSync;
 use App\Support\Tenancy;
@@ -46,6 +47,9 @@ class ProductController extends Controller
         $with = ['category', 'unit', 'productUnits.unit', 'variants'];
         if (Tenancy::shop()?->hasFeature('batch_tracking')) {
             $with[] = 'nearestBatch';
+        }
+        if (Tenancy::shop()?->hasFeature('wholesale_tiers')) {
+            $with[] = 'priceTiers';
         }
 
         $q = trim((string) $request->get('q', ''));
@@ -162,6 +166,7 @@ class ProductController extends Controller
             'cost' => $data['cost'],
             'price' => $data['price'],
             'wholesale_price' => $data['wholesale_price'] ?? null,
+            'wholesale_moq' => $data['wholesale_moq'] ?? null,
             'discount_price' => $data['discount_price'] ?? null,
             'expiry_date' => $data['expiry_date'] ?? null,
             'batch_no' => $data['batch_no'] ?? null,
@@ -172,6 +177,7 @@ class ProductController extends Controller
             ...$this->resolveStock($data),
         ]);
 
+        $this->syncPriceTiers($product, $data['price_tiers'] ?? []);
         $this->syncToBranchesIfSharedCatalog($product);
 
         return back()->with('success', "{$product->name} added.");
@@ -231,6 +237,7 @@ class ProductController extends Controller
             'cost' => $data['cost'],
             'price' => $data['price'],
             'wholesale_price' => $data['wholesale_price'] ?? null,
+            'wholesale_moq' => $data['wholesale_moq'] ?? null,
             'discount_price' => $data['discount_price'] ?? null,
             'expiry_date' => $data['expiry_date'] ?? null,
             'batch_no' => $data['batch_no'] ?? null,
@@ -270,9 +277,31 @@ class ProductController extends Controller
 
         $product->update($fields);
 
+        // a branch's own copy never owns its tiers — same reasoning as
+        // wholesale_price above, enforced here too since price_tiers isn't
+        // a plain column $fields already guards
+        if (! $product->master_product_id) {
+            $this->syncPriceTiers($product, $data['price_tiers'] ?? []);
+        }
+
         $this->syncToBranchesIfSharedCatalog($product);
 
         return back()->with('success', "{$product->name} updated.");
+    }
+
+    /** Full replace — simplest correct option for a handful of rows per product, same approach ProductVariantController takes for a product's whole variant set on certain bulk edits. */
+    private function syncPriceTiers(Product $product, array $tiers): void
+    {
+        $product->priceTiers()->delete();
+
+        foreach ($tiers as $tier) {
+            ProductPriceTier::create([
+                'shop_id' => $product->shop_id,
+                'product_id' => $product->id,
+                'min_qty' => $tier['min_qty'],
+                'price' => $tier['price'],
+            ]);
+        }
     }
 
     /** See docs/FIX_PLAN.md's "শেয়ার্ড ক্যাটালগ" design note — only a main shop (no parent_shop_id) with the opt-in shared_catalog feature and at least one branch ever propagates; a no-op for every other shop. */

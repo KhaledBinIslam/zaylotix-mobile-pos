@@ -27,6 +27,7 @@ const hasSerialTracking = computed(() => features.value.includes('serial_trackin
 const hasPrescriptionRecords = computed(() => features.value.includes('prescription_records'));
 const hasWeightBasedSelling = computed(() => features.value.includes('weight_based_selling'));
 const hasWholesalePricing = computed(() => features.value.includes('wholesale_pricing'));
+const hasWholesaleTiers = computed(() => features.value.includes('wholesale_tiers'));
 // gates the stock-mode picker below — a cooked dish's "stock" doesn't mean
 // a count the way it does for every other vertical (see Product::STOCK_MODE_*
 // and TableOrderController), so only a restaurant shop's form offers it;
@@ -185,12 +186,29 @@ const editingHasVariants = computed(() => (editing.value?.variants?.length ?? 0)
 const preExistingUnallocatedStock = computed(() => (!editingHasVariants.value && Number(editing.value?.stock) > 0) ? Number(editing.value.stock) : 0);
 const form = useForm({
     name: '', name_en: '', generic_name: '', company: '', shelf_location: '', requires_prescription: false, emoji: '📦', photo: null, remove_photo: false, category_id: '', new_category_name: '',
-    unit_id: '', new_unit_name: '', barcode: '', cost: '', price: '', wholesale_price: '', discount_price: '', stock: '',
+    unit_id: '', new_unit_name: '', barcode: '', cost: '', price: '', wholesale_price: '', wholesale_moq: '', discount_price: '', stock: '',
     reorder_point: '', sold_by_weight: false, weight_unit: 'kg', track_serial: false,
     // restaurant-only (see isRestaurant) — 'tracked' everywhere else,
     // unchanged from before this field existed
     stock_mode: 'tracked', available: true,
+    // quantity-break wholesale prices — only meaningful under
+    // wholesale_tiers (see docs/FIX_PLAN.md's Phase 30 design note); an
+    // array of {min_qty, price} rows, empty for a product with none set
+    price_tiers: [],
 });
+
+// a blank sheet to append to price_tiers — kept as a plain function (not a
+// shared constant) so each push gets its own object, never one shared
+// reference several rows would silently mutate together
+function blankTier() {
+    return { min_qty: '', price: '' };
+}
+function addTier() {
+    form.price_tiers.push(blankTier());
+}
+function removeTier(index) {
+    form.price_tiers.splice(index, 1);
+}
 
 // live preview of a newly-picked photo, before it's actually uploaded —
 // falls back to the product's already-saved photo (when editing) or nothing
@@ -265,7 +283,8 @@ function openEdit(p) {
     form.name = p.name; form.name_en = p.name_en; form.emoji = p.emoji;
     form.generic_name = p.generic_name; form.company = p.company; form.shelf_location = p.shelf_location; form.requires_prescription = p.requires_prescription;
     form.category_id = p.category_id; form.unit_id = p.unit_id; form.barcode = p.barcode;
-    form.cost = p.cost; form.price = p.price; form.wholesale_price = p.wholesale_price; form.discount_price = p.discount_price;
+    form.cost = p.cost; form.price = p.price; form.wholesale_price = p.wholesale_price; form.wholesale_moq = p.wholesale_moq; form.discount_price = p.discount_price;
+    form.price_tiers = (p.price_tiers || []).map(tier => ({ min_qty: tier.min_qty, price: tier.price }));
     // p.stock comes back from the server as a decimal-cast string ("124.000")
     // even for a piece-counted product — prefilling that raw into the form
     // meant just opening and re-saving without touching this field failed
@@ -716,6 +735,21 @@ useKeyboardShortcuts({
                 <label>{{ t('stock.wholesalePrice') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.wholesalePriceHint') }}</span></label>
                 <input v-model="form.wholesale_price" type="number" step="0.01">
                 <div v-if="form.errors.wholesale_price" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.wholesale_price }}</div>
+            </div>
+            <div v-if="hasWholesaleTiers && !form.sold_by_weight" class="field">
+                <label>{{ t('stock.wholesaleMoq') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.wholesaleMoqHint') }}</span></label>
+                <input v-model="form.wholesale_moq" type="number" min="1" step="1">
+                <div v-if="form.errors.wholesale_moq" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.wholesale_moq }}</div>
+            </div>
+            <div v-if="hasWholesaleTiers && !form.sold_by_weight" class="field">
+                <label>{{ t('stock.priceTiers') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.priceTiersHint') }}</span></label>
+                <div v-for="(tier, i) in form.price_tiers" :key="i" style="display:flex;gap:8px;align-items:center;margin-top:6px">
+                    <input v-model="tier.min_qty" type="number" min="1" step="1" :placeholder="t('stock.minQty')" style="flex:1">
+                    <input v-model="tier.price" type="number" min="0" step="0.01" :placeholder="t('stock.tierPrice')" style="flex:1">
+                    <button type="button" class="btn sm rose" @click="removeTier(i)" style="flex:0 0 auto">✕</button>
+                </div>
+                <button type="button" class="btn ghost sm" style="width:100%;margin-top:8px" @click="addTier">+ {{ t('stock.addTier') }}</button>
+                <div v-if="form.errors['price_tiers']" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors['price_tiers'] }}</div>
             </div>
             <!-- restaurant-only: a cooked dish's "stock" isn't a count anyone
                  can know ahead of time (a pot's yield varies), so this picks

@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Models\ProductPriceTier;
 use App\Models\ProductVariant;
 use App\Models\Shop;
 use App\Models\Unit;
@@ -50,7 +51,8 @@ class CatalogSync
             $categoryMap = static::syncCategories($mainShop, $branch);
             $unitMap = static::syncUnits($mainShop, $branch);
             $existing = static::findExistingBranchProduct($branch, $product);
-            static::upsertBranchProduct($branch, $product, $existing, $categoryMap, $unitMap);
+            $branchProduct = static::upsertBranchProduct($branch, $product, $existing, $categoryMap, $unitMap);
+            static::syncPriceTiersForProduct($product, $branchProduct);
         }
     }
 
@@ -115,7 +117,9 @@ class CatalogSync
                 ?? (filled($p->barcode) ? $byBarcode->get($p->barcode) : null)
                 ?? $byName->get($p->name);
 
-            $map[$p->id] = static::upsertBranchProduct($branch, $p, $existing, $categoryMap, $unitMap)->id;
+            $branchProduct = static::upsertBranchProduct($branch, $p, $existing, $categoryMap, $unitMap);
+            static::syncPriceTiersForProduct($p, $branchProduct);
+            $map[$p->id] = $branchProduct->id;
         }
 
         return $map;
@@ -166,6 +170,7 @@ class CatalogSync
             'photo_path' => $p->photo_path, 'barcode' => $p->barcode,
             'sold_by_weight' => $p->sold_by_weight ?? false, 'weight_unit' => $p->weight_unit,
             'cost' => $p->cost, 'price' => $p->price, 'wholesale_price' => $p->wholesale_price,
+            'wholesale_moq' => $p->wholesale_moq,
             'discount_price' => $p->discount_price, 'reorder_point' => $p->reorder_point,
             'master_product_id' => $p->id,
         ];
@@ -215,5 +220,35 @@ class CatalogSync
                 }
             }
         }
+    }
+
+    /**
+     * Wholesale quantity-tier rows (Phase 30 / wholesale_tiers) are owned by
+     * the main shop the same way wholesale_price already is — matched by
+     * min_qty (there's nothing else to match a tier row by), synced on
+     * every product save exactly like a variant's size+color match above. A
+     * branch tier whose min_qty no longer exists on the main shop's product
+     * is deleted — tiers have no independent branch-local meaning the way a
+     * variant's own stock does, so there's nothing worth preserving.
+     */
+    private static function syncPriceTiersForProduct(Product $mainProduct, Product $branchProduct): void
+    {
+        $branchTiers = ProductPriceTier::withoutGlobalScopes()->where('shop_id', $branchProduct->shop_id)->where('product_id', $branchProduct->id)->get()->keyBy('min_qty');
+        $keptMinQtys = [];
+
+        foreach (ProductPriceTier::withoutGlobalScopes()->where('shop_id', $mainProduct->shop_id)->where('product_id', $mainProduct->id)->get() as $tier) {
+            $keptMinQtys[] = $tier->min_qty;
+            $existing = $branchTiers->get($tier->min_qty);
+
+            if ($existing) {
+                $existing->update(['price' => $tier->price]);
+            } else {
+                ProductPriceTier::create(['shop_id' => $branchProduct->shop_id, 'product_id' => $branchProduct->id, 'min_qty' => $tier->min_qty, 'price' => $tier->price]);
+            }
+        }
+
+        ProductPriceTier::withoutGlobalScopes()->where('shop_id', $branchProduct->shop_id)->where('product_id', $branchProduct->id)
+            ->whereNotIn('min_qty', $keptMinQtys)
+            ->delete();
     }
 }

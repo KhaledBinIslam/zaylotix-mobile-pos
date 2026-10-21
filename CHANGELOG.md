@@ -3,6 +3,16 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## Phase 30 part A: পাইকারি পরিমাণ-ভিত্তিক মূল্য ও MOQ (wholesale tiers)
+- New opt-in `wholesale_tiers` feature (requires `wholesale_pricing`
+  already on). Set several quantity-break prices per product (e.g.
+  10+ units at one rate, 50+ at a lower rate) and a minimum order
+  quantity POS enforces as a hard gate on wholesale checkout — a line
+  below it is rejected outright, never silently sold at retail. A
+  product with no tiers/MOQ set behaves exactly as the existing flat
+  `wholesale_price` always has. Syncs to branches the same way
+  `wholesale_price` already does.
+
 ## Fix: admin impersonation bounced to login on an inactive shop
 - Likely cause of a live report: impersonating a demo/inactive shop
   from Admin tripped the normal "shop subscription inactive" check on

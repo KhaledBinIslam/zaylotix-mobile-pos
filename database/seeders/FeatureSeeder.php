@@ -28,6 +28,10 @@ class FeatureSeeder extends Seeder
             ['key' => 'serial_tracking', 'label_bn' => 'IMEI/সিরিয়াল ট্র্যাকিং', 'label_en' => 'IMEI/serial tracking', 'category' => 'inventory', 'description' => 'Track each unit\'s IMEI/serial and warranty period, and look one up later for after-sales service.'],
             ['key' => 'weight_based_selling', 'label_bn' => 'ওজন/আয়তন হিসেবে বিক্রি (কেজি, গ্রাম, লিটার)', 'label_en' => 'Weight/volume-based selling (kg, gram, litre)', 'category' => 'inventory', 'description' => 'Mark a product as loose-sold — price becomes "per kg"/"per litre" and the POS gets a quick gram/ml weight-entry pad instead of a whole-unit stepper.'],
             ['key' => 'wholesale_pricing', 'label_bn' => 'পাইকারি মূল্য (Wholesale)', 'label_en' => 'Wholesale pricing', 'category' => 'inventory', 'description' => 'Set a separate wholesale price per product and mark a whole checkout as retail or wholesale — POS uses the wholesale rate on every line for that sale.'],
+            // requires wholesale_pricing already granted — layered on top,
+            // never auto-granted, never replaces the flat wholesale_price a
+            // shop may already be using (see docs/FIX_PLAN.md Phase 30)
+            ['key' => 'wholesale_tiers', 'label_bn' => 'পাইকারি পরিমাণ-ভিত্তিক মূল্য ও MOQ', 'label_en' => 'Wholesale quantity tiers & MOQ', 'category' => 'inventory', 'description' => 'Set several price breaks by quantity per product (e.g. 10+ units at one rate, 50+ at a lower rate) and a minimum order quantity that POS enforces at wholesale checkout. Requires Wholesale pricing to already be on.'],
             ['key' => 'prescription_records', 'label_bn' => 'প্রেসক্রিপশন রেকর্ড', 'label_en' => 'Prescription records', 'category' => 'inventory', 'description' => 'Flag drug-control products so the cashier is reminded to check a prescription, and record a note about it at checkout.'],
             // opt-in only — electronics/mobile-repair shops turn this on;
             // billing a ticket creates an ordinary Sale (sale_type='service'),

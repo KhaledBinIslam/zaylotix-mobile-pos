@@ -15,7 +15,7 @@ class Product extends Model
     protected $fillable = [
         'shop_id', 'master_product_id', 'category_id', 'unit_id', 'name', 'name_en', 'generic_name', 'company', 'shelf_location', 'requires_prescription', 'emoji', 'photo_path', 'barcode',
         'sold_by_weight', 'weight_unit', 'track_serial',
-        'cost', 'price', 'wholesale_price', 'discount_price', 'stock', 'stock_mode', 'expiry_date', 'batch_no', 'size', 'color', 'imei',
+        'cost', 'price', 'wholesale_price', 'wholesale_moq', 'discount_price', 'stock', 'stock_mode', 'expiry_date', 'batch_no', 'size', 'color', 'imei',
         'reorder_point', 'show_in_catalog',
     ];
 
@@ -34,6 +34,7 @@ class Product extends Model
             'cost' => 'decimal:2',
             'price' => 'decimal:2',
             'wholesale_price' => 'decimal:2',
+            'wholesale_moq' => 'integer',
             'discount_price' => 'decimal:2',
             // 3 decimal places — enough to record a single gram (0.001 kg)
             // or millilitre (0.001 litre) precisely; every other quantity
@@ -116,6 +117,20 @@ class Product extends Model
     public function variants()
     {
         return $this->hasMany(ProductVariant::class);
+    }
+
+    /** Quantity-break wholesale prices (see docs/FIX_PLAN.md's Phase 30 design note, Part A) — only meaningful under the wholesale_tiers feature; empty for a product that only uses the flat wholesale_price. */
+    public function priceTiers()
+    {
+        return $this->hasMany(ProductPriceTier::class)->orderBy('min_qty');
+    }
+
+    /** The richest tier this qty clears, or null if no tier applies (falls back to the flat wholesale_price/retail price). Tiers are expected pre-sorted ascending by min_qty — callers that already eager-loaded priceTiers() via the orderBy above get that for free. */
+    public function wholesaleTierPriceForQty(float $qty): ?float
+    {
+        $applicable = $this->priceTiers->filter(fn (ProductPriceTier $tier) => $qty >= $tier->min_qty);
+
+        return $applicable->isEmpty() ? null : (float) $applicable->last()->price;
     }
 
     /** Per-unit IMEI/serial records — only meaningful for shops with the serial_tracking feature. */

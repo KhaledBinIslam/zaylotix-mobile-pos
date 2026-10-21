@@ -1149,7 +1149,81 @@ navigation) re-runs unaffected — the bypass only activates when
 
 ---
 
-## Definition-of-done checklist (tracked across all phases, per master prompt)
+## Phase 30 — Phase 4's last approved item: the full Wholesale system
+
+Khaled explicitly approved the FULL system (not the lighter "just
+tiered pricing" option) — tiered pricing by quantity, MOQ, wholesale
+customer groups, separate wholesale invoices. Built as three
+serially-shipped parts, each additive on top of the existing flat
+`wholesale_pricing` feature (`products.wholesale_price` + the
+whole-cart `sale_type` toggle), which stays completely unchanged for
+any shop that only ever wanted that simple version — every part below
+gates behind a NEW feature, `wholesale_tiers`, layered on top of (not
+replacing) `wholesale_pricing`.
+
+### Part A — tiered quantity pricing + MOQ
+
+- New `product_price_tiers` table (`shop_id`, `product_id`, `min_qty`,
+  `price`) — a product can have several tiers (e.g. 1-9 units @ ৳20,
+  10-49 @ ৳18, 50+ @ ৳15). At wholesale checkout, the line's own qty
+  picks the richest tier whose `min_qty` it clears; a product with no
+  tiers defined falls straight back to the existing flat
+  `wholesale_price` (or retail, if that's unset too) — zero change for
+  a shop using only the simple flat price.
+- MOQ is a **hard gate, not a soft fallback**: `products.wholesale_moq`
+  (nullable) — at wholesale checkout, a line below its product's own
+  MOQ is rejected outright (clear error naming the product and the
+  minimum), not silently sold at retail. A product with no MOQ set has
+  none enforced, matching today's behavior exactly.
+- Both are per-product, additive, opt-in — a shop that never defines a
+  tier or MOQ for a given product sees that product behave exactly as
+  the existing flat-price mechanism already does.
+
+### Part B — wholesale customer groups
+
+- `customers.is_wholesale` (boolean, default false) — marks a
+  customer as a standing wholesale account. Scoped deliberately
+  narrow: a binary flag that auto-defaults `sale_type` to `wholesale`
+  at checkout once that customer is attached (still manually
+  overridable, never forced) — not a speculative multi-tier customer-
+  group hierarchy with its own separate rate schedules, which nothing
+  in the ask specifies beyond the phrase itself. A customer without
+  this flag behaves exactly as today.
+
+### Part C — separate wholesale invoice numbering
+
+- New `shops.wholesale_invoice_counter` (default 1000, same pattern as
+  `invoice_counter`/`quotation_counter`/`po_counter`). A wholesale sale
+  (under `wholesale_tiers`) gets `'WS-'.++counter` instead of
+  `'INV-'.++counter` — a retail sale, and a wholesale sale on a shop
+  that only has the base `wholesale_pricing` feature (not the fuller
+  `wholesale_tiers`), both keep the exact `INV-` series unchanged.
+
+**New opt-in feature**: `wholesale_tiers`, requires `wholesale_pricing`
+already granted (checked, not just assumed) — never auto-granted.
+
+**Part A — shipped 2026-10-21.** `product_price_tiers` table +
+`products.wholesale_moq`; `Product::priceTiers()`/`wholesaleTierPriceForQty()`;
+`PosController::performCheckout()` resolves the richest tier the line's
+qty clears (falling straight back to flat `wholesale_price`/retail when
+none applies) and hard-rejects any wholesale line below its product's own
+MOQ (abort 422, naming the product and the minimum) before anything is
+written. `wholesale_tiers` feature added to `FeatureSeeder`. Branch sync:
+`CatalogSync` now also carries `wholesale_moq` and diffs/syncs each
+product's tier rows to every branch (matched by `min_qty`, since there's
+nothing else to match a tier by) — same main-shop-owns-it rule as
+`wholesale_price` already follows; a branch's own product edit still
+can't touch either. Frontend: Stock/Index.vue gets an MOQ input and an
+add/remove tier-row list (gated on `wholesale_tiers`), synced in
+`ProductController::store()/update()` via a full replace-the-rows helper
+(skipped for a branch's own linked copy, same as every other main-shop-
+owned field). Tests: `tests/Feature/WholesaleTiersTest.php`, 9 passing —
+richest-tier selection, fallback below the lowest tier, no-tiers-defined
+parity with the flat price, feature-gating, MOQ hard-reject/allow/retail-
+exempt/unset-means-none, and tenant scoping.
+
+Parts B (wholesale customer groups) and C (separate wholesale invoice
+numbering) — not yet started.
 
 - [x] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test --all`, Phase 0.6) — re-verified 2026-10-20, all 8 types OK
 - [x] `shops:repair-defaults --dry-run` run and reported — "সব শপের already কমপক্ষে একটা category এবং একটা unit আছে — ঠিক করার কিছু নেই।"

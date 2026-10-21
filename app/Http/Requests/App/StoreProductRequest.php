@@ -50,6 +50,18 @@ class StoreProductRequest extends FormRequest
             'cost' => ['required', 'numeric', 'min:0'],
             'price' => ['required', 'numeric', 'min:0'],
             'wholesale_price' => ['nullable', 'numeric', 'min:0'],
+            // hard gate, not a soft fallback — see docs/FIX_PLAN.md's
+            // Phase 30 design note; only meaningful under wholesale_tiers,
+            // but accepted from anyone the same way wholesale_price itself
+            // already is — harmless to set on a shop without that feature
+            'wholesale_moq' => ['nullable', 'integer', 'min:1'],
+            // a product can carry several tiers (10+ @ rate, 50+ @ a lower
+            // rate, ...) — validated as a flat array here, then diffed
+            // against the product's existing rows in the controller the
+            // same way product_units/variants already are elsewhere
+            'price_tiers' => ['nullable', 'array'],
+            'price_tiers.*.min_qty' => ['required', 'integer', 'min:1'],
+            'price_tiers.*.price' => ['required', 'numeric', 'min:0'],
             'discount_price' => ['nullable', 'numeric', 'min:0', 'lt:price'],
             // 'untracked'/'toggle' only make sense for a restaurant's own
             // cooked-food products (see Stock/Index.vue's isRestaurant
