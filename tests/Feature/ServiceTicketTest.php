@@ -216,6 +216,67 @@ class ServiceTicketTest extends TestCase
         $this->assertSame(1, Sale::count());
     }
 
+    /** See docs/ENTERPRISE_GAP_REPORT.md's "সার্ভিস টিকিটে পরে কাস্টমার যুক্ত করা" gap. */
+    public function test_a_customer_can_be_attached_to_a_walk_in_ticket_after_intake(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'service_billing');
+        $ticket = ServiceTicket::create(['shop_id' => $shop->id, 'device_label' => 'Phone', 'status' => 'received', 'received_at' => now()]);
+        $this->assertNull($ticket->customer_id);
+
+        $this->actingAs($owner, 'web')->patch(route('app.serviceTickets.updateCustomer', $ticket->id), [
+            'customer_phone' => '01722222222', 'customer_name' => 'Rahim',
+        ])->assertRedirect();
+
+        $this->assertSame('Rahim', $ticket->refresh()->customer->name);
+    }
+
+    public function test_attaching_a_customer_reuses_an_existing_one_by_phone(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'service_billing');
+        $existing = Customer::create(['shop_id' => $shop->id, 'name' => 'Rahim', 'phone' => '01722222222']);
+        $ticket = ServiceTicket::create(['shop_id' => $shop->id, 'device_label' => 'Phone', 'status' => 'received', 'received_at' => now()]);
+
+        $this->actingAs($owner, 'web')->patch(route('app.serviceTickets.updateCustomer', $ticket->id), [
+            'customer_phone' => '01722222222',
+        ])->assertRedirect();
+
+        $this->assertSame($existing->id, $ticket->refresh()->customer_id);
+        $this->assertSame(1, Customer::count());
+    }
+
+    public function test_a_walk_in_ticket_with_a_customer_attached_later_can_then_bill_on_credit(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'service_billing');
+        $ticket = ServiceTicket::create(['shop_id' => $shop->id, 'device_label' => 'Phone', 'status' => 'ready', 'received_at' => now()]);
+        $this->actingAs($owner, 'web')->post(route('app.serviceTickets.items.store', $ticket->id), ['is_labor' => true, 'label' => 'Labor', 'qty' => 1, 'price' => 1000]);
+
+        // without a customer, billing on credit must still fail exactly as before
+        $this->actingAs($owner, 'web')->postJson(route('app.serviceTickets.bill', $ticket->id), ['payments' => []])->assertStatus(422);
+
+        $this->actingAs($owner, 'web')->patch(route('app.serviceTickets.updateCustomer', $ticket->id), ['customer_phone' => '01733333333']);
+
+        $this->actingAs($owner, 'web')->post(route('app.serviceTickets.bill', $ticket->id), ['payments' => []])->assertRedirect();
+
+        $customer = Customer::where('phone', '01733333333')->first();
+        $this->assertEquals(1000.0, (float) $customer->due);
+    }
+
+    public function test_cannot_attach_a_customer_to_an_already_delivered_ticket(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'service_billing');
+        $ticket = ServiceTicket::create(['shop_id' => $shop->id, 'device_label' => 'Phone', 'status' => 'delivered', 'received_at' => now(), 'delivered_at' => now()]);
+
+        $this->actingAs($owner, 'web')->patchJson(route('app.serviceTickets.updateCustomer', $ticket->id), [
+            'customer_phone' => '01744444444',
+        ])->assertStatus(422);
+
+        $this->assertNull($ticket->refresh()->customer_id);
+    }
+
     public function test_history_shows_previous_tickets_for_the_same_customer_not_everyone_elses(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();

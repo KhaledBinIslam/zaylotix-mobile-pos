@@ -24,6 +24,19 @@ const statusColor = (s) => ({
     ready: 'var(--green)', delivered: 'var(--green)', cancelled: 'var(--rose)',
 }[s] || 'var(--mut)');
 
+// --- attach/change customer (see docs/ENTERPRISE_GAP_REPORT.md's "সার্ভিস
+// টিকিটে পরে কাস্টমার যুক্ত করা" gap — intake doesn't force a phone
+// number up front, so a walk-in device needs a way to attach one later,
+// e.g. right before billing, if the repair is going to leave a due). ---
+const customerSheet = ref(false);
+const customerForm = useForm({ customer_phone: props.ticket.customer?.phone || '', customer_name: props.ticket.customer?.name || '' });
+function saveCustomer() {
+    customerForm.patch(route('app.serviceTickets.updateCustomer', props.ticket.id), {
+        preserveScroll: true,
+        onSuccess: () => (customerSheet.value = false),
+    });
+}
+
 // --- status/technician/promise-date update ---
 const statusForm = useForm({ status: props.ticket.status, technician_name: props.ticket.technician_name || '', promised_at: fmtDate(props.ticket.promised_at) });
 function saveStatus() {
@@ -72,7 +85,13 @@ function submitBill() {
         <div class="pgsub"><b :style="{ color: statusColor(ticket.status) }">{{ statusLabel(ticket.status) }}</b></div>
 
         <div class="card" style="margin-bottom:14px">
-            <div v-if="ticket.customer" style="margin-bottom:8px"><b>{{ t('service.customer') }}</b> {{ ticket.customer.name }} ({{ ticket.customer.phone }})</div>
+            <div v-if="ticket.customer" style="margin-bottom:8px">
+                <b>{{ t('service.customer') }}</b> {{ ticket.customer.name }} ({{ ticket.customer.phone }})
+                <button v-if="isOpen" class="btn ghost sm" style="width:auto;padding:2px 10px;margin-left:6px;font-size:11px" @click="customerSheet = true">{{ t('common.edit') }}</button>
+            </div>
+            <div v-else-if="isOpen" style="margin-bottom:8px">
+                <button class="btn ghost sm" style="width:auto" @click="customerSheet = true">👤 {{ t('service.addCustomer') }}</button>
+            </div>
             <div v-if="ticket.serial" style="margin-bottom:8px"><b>IMEI</b> {{ ticket.serial.imei }}</div>
             <div v-if="ticket.problem_description" style="margin-bottom:8px"><b>{{ t('service.problem') }}</b> {{ ticket.problem_description }}</div>
             <div style="font-size:12px;color:var(--mut)">{{ t('service.receivedAt') }} {{ fmt(ticket.received_at) }}</div>
@@ -169,6 +188,20 @@ function submitBill() {
             </div>
             <div v-if="billForm.errors.payments" style="color:var(--rose);font-size:12px;margin-bottom:8px">{{ billForm.errors.payments }}</div>
             <button class="btn" :disabled="billForm.processing" @click="submitBill">{{ billForm.processing ? '...' : t('service.billButton') }}</button>
+        </Sheet>
+
+        <Sheet v-model="customerSheet" :title="t('service.addCustomer')">
+            <div class="field">
+                <label>{{ t('due.mobile') }}</label>
+                <input v-model="customerForm.customer_phone" placeholder="01812-111222">
+                <div v-if="customerForm.errors.customer_phone" style="color:var(--rose);font-size:12px;margin-top:6px">{{ customerForm.errors.customer_phone }}</div>
+            </div>
+            <div class="field">
+                <label>{{ t('due.name') }} <span style="color:var(--dim);font-weight:400">({{ t('stock.optional') }})</span></label>
+                <input v-model="customerForm.customer_name" :placeholder="t('due.namePlaceholder')">
+            </div>
+            <button class="btn" :disabled="customerForm.processing" @click="saveCustomer">{{ customerForm.processing ? '...' : t('stock.save') }}</button>
+            <button class="btn ghost" style="margin-top:10px" @click="customerSheet = false">{{ t('common.cancel') }}</button>
         </Sheet>
     </AppLayout>
 </template>

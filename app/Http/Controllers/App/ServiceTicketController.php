@@ -222,6 +222,41 @@ class ServiceTicketController extends Controller
         return back()->with('success', 'বাদ দেওয়া হয়েছে।');
     }
 
+    /**
+     * See docs/ENTERPRISE_GAP_REPORT.md's "সার্ভিস টিকিটে পরে কাস্টমার যুক্ত
+     * করা" gap — store() only ever captured a customer at intake time, so a
+     * walk-in device with no phone given up front could never later carry a
+     * due (bill()'s own "বাকি রাখতে হলে কাস্টমারের তথ্য দিন" guard had no way
+     * to be satisfied after the fact). Same find-or-create-by-phone as
+     * store() — also lets the technician correct a typo'd phone/name on an
+     * already-attached customer, not just attach a brand-new one.
+     */
+    public function updateCustomer(Request $request, ServiceTicket $ticket)
+    {
+        if (in_array($ticket->status, ['delivered', 'cancelled'], true)) {
+            abort(422, 'এই টিকেটটি আর খোলা নেই।');
+        }
+
+        $data = $request->validate([
+            'customer_phone' => ['required', 'string', 'max:20'],
+            'customer_name' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $customer = Customer::where('phone', $data['customer_phone'])->first();
+        if (! $customer) {
+            $customer = Customer::create([
+                'shop_id' => Tenancy::id(),
+                'name' => trim($data['customer_name'] ?? '') ?: 'Customer',
+                'phone' => $data['customer_phone'],
+                'due' => 0,
+            ]);
+        }
+
+        $ticket->update(['customer_id' => $customer->id]);
+
+        return back()->with('success', "{$customer->name} টিকেটে যুক্ত হয়েছে।");
+    }
+
     /** Status/technician/promise-date changes — pure metadata+workflow, no stock/money involved. */
     public function updateStatus(Request $request, ServiceTicket $ticket)
     {

@@ -386,6 +386,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::post('service-tickets/{ticket}/items', [ServiceTicketController::class, 'addItem'])->name('serviceTickets.items.store');
         Route::delete('service-ticket-items/{item}', [ServiceTicketController::class, 'removeItem'])->name('serviceTickets.items.destroy');
         Route::patch('service-tickets/{ticket}', [ServiceTicketController::class, 'updateStatus'])->name('serviceTickets.update');
+        Route::patch('service-tickets/{ticket}/customer', [ServiceTicketController::class, 'updateCustomer'])->name('serviceTickets.updateCustomer');
         Route::post('service-tickets/{ticket}/bill', [ServiceTicketController::class, 'bill'])->name('serviceTickets.bill');
         Route::post('service-tickets/{ticket}/cancel', [ServiceTicketController::class, 'cancel'])->name('serviceTickets.cancel');
     });

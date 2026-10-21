@@ -122,6 +122,7 @@ export const translations = {
     'service.isWarrantyClaim': { bn: 'ওয়ারেন্টি ক্লেইম', en: 'Warranty claim' },
     'service.createButton': { bn: 'টিকেট তৈরি করুন', en: 'Create Ticket' },
     'service.customer': { bn: 'কাস্টমার', en: 'Customer' },
+    'service.addCustomer': { bn: 'কাস্টমার যুক্ত করুন', en: 'Add customer' },
     'service.receivedAt': { bn: 'রিসিভ করা হয়েছে', en: 'Received' },
     'service.statusAndAssignment': { bn: 'স্ট্যাটাস ও দায়িত্ব', en: 'Status & Assignment' },
     'service.status': { bn: 'স্ট্যাটাস', en: 'Status' },

@@ -702,6 +702,44 @@ Khaled's approval** and has not been started.
 
 ---
 
+## Phase 25 — small fix: attach a customer to a service ticket after intake
+
+Khaled approved clearing the standing decision items — this one (see
+`docs/ENTERPRISE_GAP_REPORT.md`'s "সার্ভিস টিকিটে পরে কাস্টমার যুক্ত করা"
+gap) was explicitly flagged there as small and doable immediately, so
+it went first.
+
+**Design note**: `ServiceTicketController::store()` only ever captured
+a customer at intake time (`customer_phone`); `bill()`'s own "বাকি
+রাখতে হলে কাস্টমারের তথ্য দিন" guard had no way to be satisfied
+afterward for a walk-in device nobody got a phone number from up
+front. New `updateCustomer()` method, same find-or-create-by-phone as
+`store()` (also doubles as a way to correct a typo'd phone/name on an
+already-attached customer), blocked once the ticket is
+`delivered`/`cancelled` — same guard every other mutating method on
+this controller already has. `ServiceTickets/Show.vue` gets an "👤
+কাস্টমার যুক্ত করুন" button when none is attached yet, or a small
+"এডিট" link next to the existing customer line when one already is.
+
+**Also checked, no action needed** — the other two small decision
+items from the same report section:
+- Admin Ambassador Edit page already has both `one_time_bonus` and
+  `recurring_percent` fields (`Admin/Ambassadors/Show.vue`, built in
+  an earlier session) — decision #3's main question was already
+  answered in practice. There is also no delete action for an
+  ambassador at all right now, so its hard-vs-soft-delete sub-question
+  doesn't currently apply to anything.
+- The Android APK rebuild reminder (decision #4) isn't a code task —
+  it's tracked against the separate TWA-replaces-Capacitor plan.
+
+Tests: `tests/Feature/ServiceTicketTest.php` gains 4 — a customer can
+be attached to a walk-in ticket, attaching reuses an existing customer
+by phone rather than duplicating, a ticket with a customer attached
+after the fact can then bill on credit (previously impossible), and
+attaching is blocked on an already-delivered ticket.
+
+---
+
 ## Definition-of-done checklist (tracked across all phases, per master prompt)
 
 - [x] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test --all`, Phase 0.6) — re-verified 2026-10-20, all 8 types OK
