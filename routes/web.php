@@ -319,6 +319,10 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::middleware('feature:credit_limit')->group(function () {
             Route::patch('customers/{customer}/credit-limit', [CustomerController::class, 'updateCreditLimit'])->name('customers.creditLimit');
         });
+
+        Route::middleware('feature:wholesale_pricing')->group(function () {
+            Route::patch('customers/{customer}/wholesale', [CustomerController::class, 'updateWholesale'])->name('customers.wholesale');
+        });
     });
 
     Route::middleware(['perm:export', 'feature:export'])->group(function () {

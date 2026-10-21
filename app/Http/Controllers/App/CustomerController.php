@@ -39,6 +39,10 @@ class CustomerController extends Controller
             // see docs/FIX_PLAN.md's "ক্রেডিট লিমিট" design note — null
             // (the default) means "use the shop-wide default", not zero
             'credit_limit' => ['nullable', 'numeric', 'min:0'],
+            // see docs/FIX_PLAN.md's Phase 30 design note, Part B — a
+            // standing wholesale account; auto-defaults POS's sale_type
+            // toggle once this customer is attached, never forces it
+            'is_wholesale' => ['nullable', 'boolean'],
         ]);
 
         // Same phone-based find-or-create the POS checkout uses — without
@@ -60,6 +64,7 @@ class CustomerController extends Controller
             'due' => $data['due'] ?? 0,
             'referred_by_customer_id' => $data['referred_by_customer_id'] ?? null,
             'credit_limit' => $data['credit_limit'] ?? null,
+            'is_wholesale' => $data['is_wholesale'] ?? false,
         ]);
 
         return back()->with('success', "{$data['name']} added.");
@@ -74,6 +79,19 @@ class CustomerController extends Controller
         $customer->update(['credit_limit' => $data['credit_limit'] ?? null]);
 
         return back()->with('success', "{$customer->name}-এর ক্রেডিট লিমিট সংরক্ষণ করা হয়েছে।");
+    }
+
+    /** Quick toggle on the Due/Customers page — see docs/FIX_PLAN.md's Phase 30 design note, Part B. */
+    public function updateWholesale(Request $request, Customer $customer)
+    {
+        $this->authorize('update', $customer);
+
+        $data = $request->validate(['is_wholesale' => ['required', 'boolean']]);
+        $customer->update(['is_wholesale' => $data['is_wholesale']]);
+
+        return back()->with('success', $data['is_wholesale']
+            ? "{$customer->name} এখন থেকে পাইকারি কাস্টমার।"
+            : "{$customer->name}-এর পাইকারি স্ট্যাটাস বাতিল করা হয়েছে।");
     }
 
     /** Used by the POS checkout sheet to auto-fill an existing customer's name as soon as their phone number is typed. */
@@ -96,6 +114,9 @@ class CustomerController extends Controller
             // design note. Harmless to always send; the frontend only
             // shows it when the shop actually has the feature on.
             'credit_limit' => $customer->effectiveCreditLimit(),
+            // see Phase 30 design note, Part B — harmless to always send;
+            // the frontend only acts on it when wholesale_pricing is on
+            'is_wholesale' => $customer->is_wholesale,
         ]);
     }
 
@@ -116,10 +137,11 @@ class CustomerController extends Controller
         $customers = Customer::where('name', 'like', '%'.$q.'%')
             ->orderBy('name')
             ->limit(8)
-            ->get(['id', 'name', 'phone', 'due', 'loyalty_points', 'credit_limit', 'shop_id'])
+            ->get(['id', 'name', 'phone', 'due', 'loyalty_points', 'credit_limit', 'is_wholesale', 'shop_id'])
             ->map(fn ($c) => [
                 'id' => $c->id, 'name' => $c->name, 'phone' => $c->phone, 'due' => (float) $c->due,
                 'loyalty_points' => $c->loyalty_points, 'credit_limit' => $c->effectiveCreditLimit(),
+                'is_wholesale' => $c->is_wholesale,
             ]);
 
         return response()->json(['results' => $customers]);

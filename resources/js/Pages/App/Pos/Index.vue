@@ -992,6 +992,14 @@ watch(customerPhone, (val) => {
                 customerName.value = data.name;
                 lastAutoFilledName = data.name;
             }
+            // wholesale customer groups (see docs/FIX_PLAN.md's Phase 30
+            // design note, Part B) — a preset, not a lock: attaching a
+            // standing wholesale customer flips the toggle for convenience,
+            // but the cashier can still click back to retail for this one
+            // sale same as always.
+            if (data.found && data.is_wholesale && hasWholesalePricing.value) {
+                saleType.value = 'wholesale';
+            }
         } catch (e) { /* not critical to checkout — silently skip */ }
     }, 400);
 });
@@ -1027,6 +1035,9 @@ function pickCustomerFromSearch(c) {
     customerPhone.value = c.phone || '';
     customerName.value = c.name;
     customerLookup.value = { found: true, name: c.name, due: Number(c.due), loyalty_points: c.loyalty_points, credit_limit: c.credit_limit };
+    if (c.is_wholesale && hasWholesalePricing.value) {
+        saleType.value = 'wholesale';
+    }
 }
 
 /* ---------------- barcode scanner ---------------- */

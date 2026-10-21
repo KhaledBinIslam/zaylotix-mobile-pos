@@ -3,6 +3,13 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## Phase 30 part B: পাইকারি কাস্টমার গ্রুপ (wholesale customer groups)
+- A customer can now be flagged "wholesale" (toggle on the Due/Customers
+  page). Attaching a flagged customer at POS auto-defaults the sale to
+  wholesale mode as a convenience — the cashier can still switch it back
+  to retail for that one sale. Doesn't change how wholesale pricing
+  itself is calculated, only what the toggle defaults to.
+
 ## Phase 30 part A: পাইকারি পরিমাণ-ভিত্তিক মূল্য ও MOQ (wholesale tiers)
 - New opt-in `wholesale_tiers` feature (requires `wholesale_pricing`
   already on). Set several quantity-break prices per product (e.g.

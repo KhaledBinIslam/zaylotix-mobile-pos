@@ -1469,6 +1469,7 @@ export const translations = {
     'due.referredBy': { bn: 'কে রেফার করেছে', en: 'Referred by' },
     'due.referredByPlaceholder': { bn: 'রেফারারের নাম লিখুন', en: "Type the referrer's name" },
     'due.creditLimit': { bn: 'ক্রেডিট লিমিট', en: 'Credit limit' },
+    'due.isWholesale': { bn: 'পাইকারি কাস্টমার', en: 'Wholesale customer' },
     'due.creditLimitPlaceholder': { bn: 'শপের ডিফল্ট ব্যবহার হবে', en: "Shop's default will apply" },
     'due.creditLimitSheetSub': { bn: 'খালি রাখলে শপের ডিফল্ট লিমিট প্রযোজ্য হবে', en: "Leave empty to use the shop's default limit" },
     'due.currentDue': { bn: 'বর্তমান বাকি', en: 'Current due' },

@@ -24,6 +24,7 @@ const page = usePage();
 const hasLoyaltyPoints = computed(() => (page.props.features || []).includes('loyalty_points'));
 const hasReferrals = computed(() => (page.props.features || []).includes('customer_referrals'));
 const hasCreditLimit = computed(() => (page.props.features || []).includes('credit_limit'));
+const hasWholesalePricing = computed(() => (page.props.features || []).includes('wholesale_pricing'));
 
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 
@@ -33,7 +34,7 @@ const totalDue = computed(() => props.customers.reduce((s, c) => s + Number(c.du
 
 // --- add customer sheet ---
 const addSheet = ref(false);
-const addForm = useForm({ name: '', phone: '', due: 0, referred_by_customer_id: null, credit_limit: '' });
+const addForm = useForm({ name: '', phone: '', due: 0, referred_by_customer_id: null, credit_limit: '', is_wholesale: false });
 
 // "referred by" name-search-as-you-type — same pattern as Pos/Index.vue's
 // customer-name search (see docs/FIX_PLAN.md's "রেফারেল" design note):
@@ -70,6 +71,11 @@ function resetAddSheet() {
 function saveCustomer() {
     addForm.transform((data) => ({ ...data, credit_limit: data.credit_limit === '' ? null : data.credit_limit }))
         .post(route('app.customers.store'), { onSuccess: resetAddSheet });
+}
+
+// --- wholesale toggle (see docs/FIX_PLAN.md's Phase 30 design note, Part B) ---
+function toggleWholesale(c) {
+    router.patch(route('app.customers.wholesale', c.id), { is_wholesale: !c.is_wholesale }, { preserveScroll: true });
 }
 
 // --- collect payment sheet ---
@@ -254,16 +260,22 @@ function closeQueue() {
                     <button class="btn sm" style="flex:1" @click="openCollect(c)">{{ t('due.collectMoney') }}</button>
                     <button class="btn wa sm" style="flex:1" @click="remindWA(c)">{{ t('due.waReminder') }}</button>
                     <button v-if="hasCreditLimit" class="btn ghost sm" @click="openCreditLimit(c)">💳</button>
+                    <button v-if="hasWholesalePricing" class="btn ghost sm" @click="toggleWholesale(c)">{{ c.is_wholesale ? '🏷️✅' : '🏷️' }}</button>
                 </div>
             </div>
         </template>
 
         <template v-if="cleared.length">
             <div class="sechead"><h2>{{ t('due.allCustomers') }}</h2></div>
-            <div v-for="c in cleared" :key="c.id" class="row" :style="selected[c.id] ? 'border-color:var(--gold);background:var(--goldSoft)' : ''" @click="selectMode ? toggleSelect(c.id) : (canDue && openHistory(c))">
-                <div class="ava" :style="selected[c.id] ? 'background:var(--gold);color:#fff;border-color:var(--gold)' : ''">{{ selectMode && selected[c.id] ? '✓' : c.name[0] }}</div>
-                <div class="mid"><b>{{ c.name }}</b><span>📞 {{ c.phone || t('due.noNumber') }} • {{ t('due.totalBought') }} {{ money(c.total_spent) }}<template v-if="hasLoyaltyPoints"> • ⭐ {{ c.loyalty_points }}</template></span></div>
-                <div class="end"><span class="pill mint">{{ t('due.paid') }}</span></div>
+            <div v-for="c in cleared" :key="c.id">
+                <div class="row" :style="selected[c.id] ? 'border-color:var(--gold);background:var(--goldSoft)' : ''" @click="selectMode ? toggleSelect(c.id) : (canDue && openHistory(c))">
+                    <div class="ava" :style="selected[c.id] ? 'background:var(--gold);color:#fff;border-color:var(--gold)' : ''">{{ selectMode && selected[c.id] ? '✓' : c.name[0] }}</div>
+                    <div class="mid"><b>{{ c.name }}</b><span>📞 {{ c.phone || t('due.noNumber') }} • {{ t('due.totalBought') }} {{ money(c.total_spent) }}<template v-if="hasLoyaltyPoints"> • ⭐ {{ c.loyalty_points }}</template></span></div>
+                    <div class="end"><span class="pill mint">{{ t('due.paid') }}</span></div>
+                </div>
+                <div v-if="!selectMode && hasWholesalePricing" class="btnrow" style="margin:-4px 0 12px 0;padding-left:54px">
+                    <button class="btn ghost sm" @click="toggleWholesale(c)">{{ c.is_wholesale ? '🏷️✅ ' + t('due.isWholesale') : '🏷️ ' + t('due.isWholesale') }}</button>
+                </div>
             </div>
         </template>
 
@@ -281,6 +293,12 @@ function closeQueue() {
                 <div v-if="addForm.errors.phone" style="color:var(--rose);font-size:12px;margin-top:6px">{{ addForm.errors.phone }}</div>
             </div>
             <div class="field"><label>{{ t('due.startingDue') }}</label><input v-model="addForm.due" type="number" placeholder="0"></div>
+            <div v-if="hasWholesalePricing" class="field">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                    <input v-model="addForm.is_wholesale" type="checkbox">
+                    {{ t('due.isWholesale') }}
+                </label>
+            </div>
             <div v-if="hasCreditLimit" class="field">
                 <label>{{ t('due.creditLimit') }} <span style="color:var(--dim);font-weight:400">({{ t('stock.optional') }})</span></label>
                 <input v-model="addForm.credit_limit" type="number" min="0" :placeholder="t('due.creditLimitPlaceholder')">

@@ -1222,8 +1222,29 @@ richest-tier selection, fallback below the lowest tier, no-tiers-defined
 parity with the flat price, feature-gating, MOQ hard-reject/allow/retail-
 exempt/unset-means-none, and tenant scoping.
 
-Parts B (wholesale customer groups) and C (separate wholesale invoice
-numbering) — not yet started.
+**Part B — shipped 2026-10-21.** `customers.is_wholesale` (boolean,
+default false) — a binary flag, not a multi-tier customer-group
+hierarchy (nothing in the ask specified rate schedules per group beyond
+the phrase itself, same scope-discipline reasoning as cross-branch
+promotion pooling scoped to coupon-type only). `CustomerController`:
+`store()` accepts it; new `updateWholesale()` (gated by `feature:
+wholesale_pricing`, same pattern as `updateCreditLimit`) is a quick
+toggle on the Due/Customers page; `lookup()`/`search()` both now return
+it so the POS checkout sheet's phone-lookup and name-search can read it.
+Frontend: Due/Customers/Index.vue gets a checkbox on the add-customer
+sheet and a toggle button per customer row; Pos/Index.vue's phone-lookup
+watcher and name-search picker both auto-set `saleType.value =
+'wholesale'` the moment a flagged customer is attached — a preset, not a
+lock, the cashier can still click back to retail for that one sale.
+Deliberately does NOT touch checkout pricing itself — `sale_type` was
+already the one thing that controls wholesale pricing (Parts A's tiers/
+MOQ and the base flat `wholesale_price` both already key off it), so a
+flagged customer only changes what the toggle defaults to, never the
+math. Tests: `tests/Feature/WholesaleCustomerGroupsTest.php`, 7 passing
+— create/toggle, feature-gating, tenant scoping, both lookup endpoints
+surfacing the flag.
+
+Part C (separate wholesale invoice numbering) — not yet started.
 
 - [x] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test --all`, Phase 0.6) — re-verified 2026-10-20, all 8 types OK
 - [x] `shops:repair-defaults --dry-run` run and reported — "সব শপের already কমপক্ষে একটা category এবং একটা unit আছে — ঠিক করার কিছু নেই।"
