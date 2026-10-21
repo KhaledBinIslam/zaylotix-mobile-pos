@@ -111,4 +111,35 @@ class SubscriptionExpiryTest extends TestCase
         $response->assertRedirect(route('login'));
         $this->assertGuest('web');
     }
+
+    /**
+     * Likely real cause of a live report (2026-10-21): an admin
+     * impersonating a demo/inactive shop for support or a sales demo was
+     * getting bounced to login by this exact check — correct for a real
+     * paying customer's own session, counterproductive for an admin who
+     * deliberately chose to look at this shop regardless of its billing
+     * status. An impersonated session must now bypass this check entirely.
+     */
+    public function test_an_impersonating_admins_session_bypasses_the_subscription_check(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['status' => 'inactive']);
+
+        $response = $this->actingAs($owner, 'web')
+            ->withSession(['impersonating_admin_id' => 1])
+            ->get('/app/home');
+
+        $response->assertOk();
+        $this->assertAuthenticated('web');
+    }
+
+    public function test_an_impersonating_admins_session_can_reach_pos_on_an_inactive_shop(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['status' => 'inactive']);
+
+        $response = $this->actingAs($owner, 'web')
+            ->withSession(['impersonating_admin_id' => 1])
+            ->get(route('app.pos'));
+
+        $response->assertOk();
+    }
 }

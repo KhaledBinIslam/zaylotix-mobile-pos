@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
 class EnsureShopUser
@@ -12,6 +13,20 @@ class EnsureShopUser
     public function handle(Request $request, Closure $next): Response
     {
         if (! Auth::guard('web')->check()) {
+            // Temporary diagnostic (2026-10-21) — Khaled reported POS
+            // repeatedly bouncing to the login form from an admin-
+            // impersonated session, with no way to reproduce it directly.
+            // A plain redirect() never appears in laravel.log on its own —
+            // this makes the next real occurrence visible instead of
+            // invisible. Remove once the real cause is confirmed.
+            Log::warning('EnsureShopUser: no web session, redirecting to login', [
+                'url' => $request->fullUrl(),
+                'expects_json' => $request->expectsJson(),
+                'is_poll' => $request->header('X-Inertia-Poll'),
+                'session_id' => $request->session()->getId(),
+                'impersonating_admin_id' => $request->session()->get('impersonating_admin_id'),
+                'has_session_cookie' => $request->hasCookie(config('session.cookie')),
+            ]);
             // Root-caused live, twice: first a raw-fetch screen (POS/
             // Restaurant checkout, addItem, etc.) sends Accept:
             // application/json and handles its own JSON error shape — a

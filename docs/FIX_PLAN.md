@@ -1099,6 +1099,59 @@ in one pass.
 
 ---
 
+## Incident — admin impersonation bounced to login on an inactive shop
+
+Khaled reported (2026-10-21): from Admin, entering a shop (via the
+"Impersonate" button) and clicking POS kept bouncing back to the login
+form. No live repro access and `storage/logs/laravel.log` couldn't
+help diagnose it directly — a plain `redirect()` is normal control
+flow, never an exception, so neither candidate middleware
+(`EnsureShopUser`, `CheckSubscriptionActive`) ever logged anything
+about it.
+
+**Most likely root cause, reasoned from the code rather than a
+confirmed live trace**: `CheckSubscriptionActive` runs on every
+`app.*` request (`Tenancy::shop()`'s `isActive()` — `status` +
+`subscription_expiry`) and, on a failing shop, destructively logs the
+session out and redirects to `/login` — correct for a real paying
+customer, but an admin impersonating a demo/inactive shop (for support
+or to show a prospect around) would trip this exact check every single
+time, since impersonation logs the admin in AS the shop's real owner
+with no special status. This fits the reported symptom closely:
+entering the shop (the one request right after `ImpersonationController
+::start()`'s redirect) can still land on Home before the next request
+re-evaluates the check, while a deliberate second navigation (POS)
+re-triggers it — and "repeatedly" is exactly what re-triggering on
+every subsequent request looks like.
+
+**Fix**: `CheckSubscriptionActive` now bypasses the active-shop check
+entirely whenever `session('impersonating_admin_id')` is set — an
+admin's impersonated session already bypasses every permission/role
+gate by virtue of being the shop's own owner (`EnsureUserPermission`'s
+"owner always passes"); this makes the subscription gate consistent
+with that. A real shop user's own session is completely unaffected —
+the bypass only ever applies to a session `ImpersonationController
+::start()` itself marked.
+
+**Also added, since this diagnosis isn't 100% confirmed from a live
+trace**: temporary `Log::warning()` calls in both `EnsureShopUser` and
+`CheckSubscriptionActive`, right before each one's own redirect/logout,
+capturing the URL, session state, and (for the subscription check) the
+shop's actual `status`/`subscription_expiry` at the moment it fires.
+If the bypass above doesn't fully resolve what Khaled's seeing, the
+next occurrence will log the real reason instead of vanishing silently
+— remove both once confirmed fixed.
+
+Tests: `tests/Feature/SubscriptionExpiryTest.php` gains 2 — an
+impersonating admin's session bypasses the subscription check on an
+inactive shop, and can reach POS specifically on one. Every pre-
+existing case in that file (expired-shop login rejection, session
+termination on next request, JSON 401 vs redirect, poll-vs-plain-
+navigation) re-runs unaffected — the bypass only activates when
+`impersonating_admin_id` is actually set, which none of those do.
+
+---
+
 ## Definition-of-done checklist (tracked across all phases, per master prompt)
 
 - [x] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test --all`, Phase 0.6) — re-verified 2026-10-20, all 8 types OK

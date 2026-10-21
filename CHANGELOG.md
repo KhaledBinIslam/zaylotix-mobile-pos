@@ -3,6 +3,14 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## Fix: admin impersonation bounced to login on an inactive shop
+- Likely cause of a live report: impersonating a demo/inactive shop
+  from Admin tripped the normal "shop subscription inactive" check on
+  every subsequent click, logging the admin's impersonated session out
+  and redirecting to login. An impersonated session now bypasses that
+  check entirely, same as it already bypasses every permission gate.
+  Added temporary diagnostic logging in case this isn't the full story.
+
 ## Fix: feature description column too short for MySQL
 - Real deploy-time failure: `features.description` was a `VARCHAR(255)`
   and three new Phase 4 feature descriptions ran past that, caught
