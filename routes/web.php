@@ -63,6 +63,7 @@ use App\Http\Controllers\App\ProductVariantController;
 use App\Http\Controllers\App\UnitController;
 use App\Http\Controllers\App\PromotionController;
 use App\Http\Controllers\App\PurchaseController;
+use App\Http\Controllers\App\PurchaseOrderController;
 use App\Http\Controllers\App\QuotationController;
 use App\Http\Controllers\App\SerialLookupController;
 use App\Http\Controllers\App\ReportController;
@@ -358,6 +359,15 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::get('purchases', [PurchaseController::class, 'index'])->name('purchases.index');
         Route::post('purchases', [PurchaseController::class, 'store'])->name('purchases.store');
         Route::post('purchases/{purchase}/receive', [PurchaseController::class, 'markReceived'])->name('purchases.receive');
+    });
+
+    // "real PO/GRN" — see docs/FIX_PLAN.md's design note
+    Route::middleware(['perm:purchases', 'feature:purchase_orders'])->group(function () {
+        Route::get('purchase-orders', [PurchaseOrderController::class, 'index'])->name('purchaseOrders.index');
+        Route::post('purchase-orders', [PurchaseOrderController::class, 'store'])->name('purchaseOrders.store');
+        Route::get('purchase-orders/{po}', [PurchaseOrderController::class, 'show'])->name('purchaseOrders.show');
+        Route::post('purchase-orders/{po}/receive', [PurchaseOrderController::class, 'receive'])->name('purchaseOrders.receive');
+        Route::post('purchase-orders/{po}/cancel', [PurchaseOrderController::class, 'cancel'])->name('purchaseOrders.cancel');
     });
 
     Route::middleware(['perm:expenses', 'feature:expenses'])->group(function () {

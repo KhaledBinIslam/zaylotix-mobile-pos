@@ -52,6 +52,10 @@ class FeatureSeeder extends Seeder
             // Phase 4 item #1, part B — "ব্রাঞ্চ ট্রান্সফার accept/reject" —
             // grant to a MAIN shop only, same convention as shared_catalog.
             ['key' => 'transfer_confirmation', 'label_bn' => 'ব্রাঞ্চ ট্রান্সফার কনফার্মেশন', 'label_en' => 'Branch transfer confirmation', 'category' => 'inventory', 'description' => "Makes a branch-to-branch stock transfer (plain or variant products) go into a pending, in-transit state instead of instant — the destination branch must explicitly accept before its stock increases, or reject to return the units to the source. Batch/serial-tracked transfers always stay instant regardless."],
+            // Phase 4 item #2 — "real PO/GRN" — a wholly new, parallel
+            // system alongside the existing single-line Purchase flow,
+            // which keeps working unchanged for a shop that doesn't need this.
+            ['key' => 'purchase_orders', 'label_bn' => 'পারচেজ অর্ডার (PO/GRN)', 'label_en' => 'Purchase orders (PO/GRN)', 'category' => 'inventory', 'description' => "Place a multi-line purchase order against a supplier and receive it partially over time — each line tracks how much has arrived so far versus how much was ordered, with proportional stock and supplier-payable updates on every receipt."],
             // Phase 3 feature 9 — "ধরন-ভিত্তিক সুবিধা" (business-type-specific
             // features): a small, genuinely new capability per vertical, not
             // a re-statement of config/business_types.php's existing

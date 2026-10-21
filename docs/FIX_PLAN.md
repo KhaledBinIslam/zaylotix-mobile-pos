@@ -912,6 +912,81 @@ even with the feature on, and a shop without the feature stays
 instant exactly as before. All 15 pre-existing `BranchStockTransferTest`
 cases re-run clean.
 
+---
+
+## Phase 28 — Phase 4 item #2: real PO/GRN
+
+**Research first**: `Purchase` (`app/Models/Purchase.php`,
+`PurchaseController.php`) is exactly as the gap report described — one
+row = one product/variant/ingredient + one qty + one amount, a binary
+`pending`/`received` status, no PO number, no multi-line, no partial
+receiving. It's also deeply woven into the rest of the app: `Supplier`
+payable increments, batch/serial receiving (`BatchStock`/
+`SerialStock`), `Reports`, `SupplierController`'s ledger, Admin
+exports. Retrofitting multi-line/partial-receiving into it directly
+would risk every one of those — so this ships as a **wholly new,
+parallel system** (`PurchaseOrder` + `PurchaseOrderItem`) that coexists
+with the existing `Purchase` flow untouched; a shop that never turns
+on `purchase_orders` sees zero change, and the simple single-line
+"record a purchase" flow (`Purchases/Index.vue`) keeps working exactly
+as it always has for shops that don't need a full PO workflow.
+
+**Design, modeled closely on the existing `Quotation`/`QuotationItem`
+pair** (same header + line-items shape, same shop-scoped sequential
+numbering pattern as `invoice_counter`/`quotation_counter`):
+
+- `shops.po_counter` (unsigned int, default 1000) — `po_number` is
+  `'PO-'.++$shop->po_counter`, generated under the same locked-shop-row
+  pattern `QuotationController::store()` already uses for `quote_no`.
+- `purchase_orders`: `supplier_id` (required — unlike a plain
+  `Purchase`, a PO is inherently tied to a specific supplier),
+  `po_number`, `date`, `expected_date`, `status` (`ordered` |
+  `partially_received` | `received` | `cancelled`), `subtotal`,
+  `notes`, `user_id`.
+- `purchase_order_items`: `product_id`/`product_variant_id` (nullable,
+  snapshot `product_name`/`variant_label` survive either being
+  renamed/deleted later, same reasoning `StockTransfer` already uses),
+  `qty_ordered`, `qty_received` (default 0 — the running total GRN
+  tracker), `cost` (the agreed unit cost at order time).
+- **Placing a PO moves no stock or money** — same "nothing happens
+  until received" principle the existing `Purchase` 'pending' status
+  already uses. `PurchaseOrderController::receive()` is the actual
+  GRN: given a subset of line items and how much of each arrived
+  *this time* (never more than what's still outstanding), it applies
+  `StockIn::apply()`/variant-stock increment per line at the PO's
+  original agreed cost, sums one lump cash/bank decrement or supplier
+  payable increment for the whole receipt event (not one per line —
+  matching how a real goods receipt against an invoice is one
+  transaction), bumps each line's `qty_received`, and recomputes the
+  PO's own status (`received` once every line is fully in,
+  `partially_received` if only some is). A PO can only be `cancel()`'d
+  while nothing has been received yet.
+- **Deliberately out of scope for v1**: receiving at a different cost
+  than ordered (price variance — none of this app's existing books
+  have a place to post the difference to), a separate GRN document/
+  log table (the running `qty_received` total plus `Activity::log()`
+  per receipt is enough to answer "how much is left" and "who
+  received what, when" without a new table), and batch/serial
+  receiving against a PO (a shop needing that level of detail per
+  receipt can still use the existing single-line `Purchase` flow for
+  those products).
+- New opt-in feature `purchase_orders` (never auto-granted), reusing
+  the existing `perm:purchases` permission.
+
+Tests: `tests/Feature/PurchaseOrderTest.php` (10 new) — placing a
+multi-line PO moves no stock/money, a partial receipt updates stock
+and supplier payable proportionally and leaves the PO
+`partially_received`, receiving the rest marks it `received`, cannot
+receive more than what remains on a line, a cash receipt decrements
+`cash_balance` instead of the supplier's payable, a variant line
+receives onto the correct variant, cancelling an untouched PO works,
+cannot cancel one that's already received something, tenant scoping,
+every route 403s without the feature granted.
+
+---
+
+## Definition-of-done checklist (tracked across all phases, per master prompt)
+
 - [x] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test --all`, Phase 0.6) — re-verified 2026-10-20, all 8 types OK
 - [x] `shops:repair-defaults --dry-run` run and reported — "সব শপের already কমপক্ষে একটা category এবং একটা unit আছে — ঠিক করার কিছু নেই।"
 - [x] No new N+1 queries introduced by any phase — checked per-phase during review (e.g. `Shop::featureKeys()` property-access caching from the scale audit already guards every new `hasFeature()` call this session added)
@@ -921,6 +996,6 @@ cases re-run clean.
 - [x] Final comprehensive Bengali report for Khaled covering what changed, deploy steps, remaining risks, open questions — sent after Phase 3 feature 10 shipped
 
 ### Genuinely still open
-- **Phase 4** (enterprise gap-filling, see `docs/ENTERPRISE_GAP_REPORT.md`) — approved and in progress. Done: item #1 part A (shared catalog sync). Still to come, in order: item #1 part B (branch transfer accept/reject), item #2 (PO/GRN), item #3 (branch price lists), the full Wholesale system (tiered pricing/MOQ/customer groups/invoices — approved, not yet started).
+- **Phase 4** (enterprise gap-filling, see `docs/ENTERPRISE_GAP_REPORT.md`) — approved and in progress. Done: item #1, both parts (shared catalog sync + branch transfer accept/reject). Still to come, in order: item #2 (PO/GRN), item #3 (branch price lists), the full Wholesale system (tiered pricing/MOQ/customer groups/invoices — approved, not yet started).
 - The Android APK rebuild reminder (new theme colors) — not a code task, tracked against the separate TWA plan below.
 - A separate TWA-replaces-Capacitor plan (Part 1 of 2, a different planning session) is sitting unstarted — not touched this session since Khaled's attention has been on Phase 3/4.

@@ -3,6 +3,16 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## Phase 4 item #2: real PO/GRN (পারচেজ অর্ডার)
+- New: an opt-in `purchase_orders` feature. A new "পারচেজ অর্ডার" screen
+  lets the owner place a multi-item order against a supplier (one PO,
+  many lines) and receive it in parts over time — each line tracks
+  how much has arrived so far versus how much was ordered, with
+  stock and supplier-payable (or cash/bank) updated proportionally on
+  every receipt. Coexists with the existing single-item Purchase flow,
+  which keeps working exactly as before for a shop that doesn't need
+  the full PO workflow.
+
 ## Phase 4 item #1, part B: ব্রাঞ্চ ট্রান্সফার accept/reject
 - New: an opt-in `transfer_confirmation` feature (grant to a main
   shop). A plain or variant stock transfer between branches now goes

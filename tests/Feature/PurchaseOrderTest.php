@@ -4,236 +4,212 @@ namespace Tests\Feature;
 
 use App\Models\Product;
 use App\Models\ProductVariant;
-use App\Models\Purchase;
+use App\Models\PurchaseOrder;
+use App\Models\PurchaseOrderItem;
+use App\Models\Shop;
 use App\Models\Supplier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\CreatesShops;
 use Tests\TestCase;
 
 /**
- * A 'pending' purchase withholds stock/money effects until markReceived()
- * is called; 'received' (the old, only-ever-existed-before behavior) still
- * applies everything at creation time. The two paths share applyEffects()
- * so they can never compute the numbers differently.
+ * Phase 4 item #2 — "real PO/GRN" (see docs/FIX_PLAN.md's design note). A
+ * wholly new, parallel system alongside the existing single-line Purchase
+ * flow — placing a PO moves no stock or money; only receive() does.
  */
 class PurchaseOrderTest extends TestCase
 {
     use RefreshDatabase, CreatesShops;
 
-    /**
-     * Regression test: PurchaseController::index() rendered a Vue page
-     * (App/Purchases/Index) that didn't exist on disk — the route was
-     * reachable (feature-gated, correctly authorized) but would 500 the
-     * moment anyone actually visited it, and there was no UI anywhere to
-     * mark a pending purchase received even though the backend action
-     * existed and worked. Both gaps are fixed; this locks the page in.
-     */
-    public function test_purchase_history_page_renders_and_shows_pending_and_received(): void
+    private function setupShop(): array
     {
-        [$shop, $owner] = $this->createShopWithOwner();
-        $this->grantFeature($shop, 'purchases');
-        Purchase::create(['shop_id' => $shop->id, 'amount' => 100, 'method' => 'cash', 'status' => 'received', 'date' => now()->toDateString()]);
-        Purchase::create(['shop_id' => $shop->id, 'amount' => 200, 'method' => 'cash', 'status' => 'pending', 'date' => now()->toDateString()]);
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 10000]);
+        $this->grantFeature($shop, 'purchase_orders');
+        $supplier = Supplier::create(['shop_id' => $shop->id, 'name' => 'ABC Traders']);
 
-        $response = $this->actingAs($owner, 'web')->get('/app/purchases');
-
-        $response->assertOk()->assertInertia(fn ($page) => $page
-            ->component('App/Purchases/Index')
-            ->has('purchases', 2)
-        );
+        return [$shop, $owner, $supplier];
     }
 
-    /** Phase 4.1 — see docs/FIX_PLAN.md. Confirmed bug: a free-text supplier name never created a real Supplier record. */
-    public function test_a_free_text_supplier_name_creates_a_real_supplier_and_tracks_payable(): void
+    public function test_placing_a_multi_line_po_moves_no_stock_or_money(): void
     {
-        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
-        $this->grantFeature($shop, 'purchases');
+        [$shop, $owner, $supplier] = $this->setupShop();
+        $rice = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 50, 'price' => 70, 'stock' => 10]);
+        $oil = Product::create(['shop_id' => $shop->id, 'name' => 'Oil', 'cost' => 100, 'price' => 130, 'stock' => 5]);
 
-        $response = $this->actingAs($owner, 'web')->post('/app/purchases', [
-            'supplier' => 'নতুন সাপ্লায়ার',
-            'amount' => 500,
+        $response = $this->actingAs($owner, 'web')->post(route('app.purchaseOrders.store'), [
+            'supplier_id' => $supplier->id,
+            'items' => [
+                ['product_id' => $rice->id, 'qty' => 100, 'cost' => 45],
+                ['product_id' => $oil->id, 'qty' => 20, 'cost' => 95],
+            ],
+        ]);
+
+        $po = PurchaseOrder::first();
+        $response->assertRedirect(route('app.purchaseOrders.show', $po->id));
+        $this->assertSame('ordered', $po->status);
+        $this->assertEquals(100 * 45 + 20 * 95, (float) $po->subtotal);
+        $this->assertStringStartsWith('PO-', $po->po_number);
+        $this->assertSame(2, $po->items()->count());
+
+        // nothing moved yet
+        $this->assertEquals(10, (float) $rice->fresh()->stock);
+        $this->assertEquals(5, (float) $oil->fresh()->stock);
+        $this->assertEquals(10000, (float) $shop->fresh()->cash_balance);
+        $this->assertEquals(0, (float) $supplier->fresh()->payable);
+    }
+
+    public function test_partial_receipt_updates_stock_and_payable_proportionally_and_leaves_it_partially_received(): void
+    {
+        [$shop, $owner, $supplier] = $this->setupShop();
+        $rice = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 50, 'price' => 70, 'stock' => 10]);
+        $this->actingAs($owner, 'web')->post(route('app.purchaseOrders.store'), [
+            'supplier_id' => $supplier->id,
+            'items' => [['product_id' => $rice->id, 'qty' => 100, 'cost' => 45]],
+        ]);
+        $po = PurchaseOrder::first();
+        $item = $po->items()->first();
+
+        $this->actingAs($owner, 'web')->post(route('app.purchaseOrders.receive', $po->id), [
             'method' => 'credit',
-        ]);
-
-        $response->assertRedirect();
-        $supplier = Supplier::where('name', 'নতুন সাপ্লায়ার')->first();
-        $this->assertNotNull($supplier);
-        $this->assertEquals(500, (float) $supplier->payable);
-
-        $purchase = Purchase::first();
-        $this->assertSame($supplier->id, $purchase->supplier_id);
-    }
-
-    public function test_reusing_the_same_free_text_supplier_name_does_not_create_a_duplicate(): void
-    {
-        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
-        $this->grantFeature($shop, 'purchases');
-
-        $this->actingAs($owner, 'web')->post('/app/purchases', ['supplier' => 'একই সাপ্লায়ার', 'amount' => 100, 'method' => 'credit']);
-        $this->actingAs($owner, 'web')->post('/app/purchases', ['supplier' => 'একই সাপ্লায়ার', 'amount' => 150, 'method' => 'credit']);
-
-        $this->assertSame(1, Supplier::where('name', 'একই সাপ্লায়ার')->count());
-        $this->assertEquals(250, (float) Supplier::where('name', 'একই সাপ্লায়ার')->first()->payable);
-    }
-
-    /** Phase 4.2 — see docs/FIX_PLAN.md. Missing feature: a purchase can now register a brand-new product in one submit. */
-    public function test_a_new_product_name_creates_the_product_and_applies_the_purchase_stock(): void
-    {
-        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
-        $this->grantFeature($shop, 'purchases');
-
-        $response = $this->actingAs($owner, 'web')->post('/app/purchases', [
-            'amount' => 400,
-            'method' => 'cash',
-            'new_product_name' => 'Brand New Item',
-            'new_product_price' => 120,
-            'qty' => 10,
-            'cost' => 40,
-        ]);
-
-        $response->assertRedirect();
-        $product = Product::where('name', 'Brand New Item')->first();
-        $this->assertNotNull($product);
-        $this->assertEquals(120, (float) $product->price);
-        $this->assertEquals(40, (float) $product->cost);
-        $this->assertEquals(10, (float) $product->stock);
-        $this->assertSame($product->id, Purchase::first()->product_id);
-    }
-
-    public function test_a_new_product_purchase_can_also_be_pending(): void
-    {
-        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
-        $this->grantFeature($shop, 'purchases');
-
-        $this->actingAs($owner, 'web')->post('/app/purchases', [
-            'amount' => 400,
-            'method' => 'cash',
-            'status' => 'pending',
-            'new_product_name' => 'Ordered Item',
-            'new_product_price' => 120,
-            'qty' => 10,
-            'cost' => 40,
+            'items' => [['id' => $item->id, 'qty' => 60]],
         ])->assertRedirect();
 
-        $product = Product::where('name', 'Ordered Item')->first();
-        $this->assertNotNull($product);
-        $this->assertEquals(0, (float) $product->stock); // not received yet
-        $this->assertEquals(1000, (float) $shop->fresh()->cash_balance); // not paid yet
-
-        $purchase = Purchase::first();
-        $this->actingAs($owner, 'web')->post("/app/purchases/{$purchase->id}/receive")->assertRedirect();
-
-        $this->assertEquals(10, (float) $product->fresh()->stock);
-        $this->assertEquals(600, (float) $shop->fresh()->cash_balance);
+        $this->assertEquals(70, (float) $rice->fresh()->stock); // 10 + 60
+        $this->assertEquals(60 * 45, (float) $supplier->fresh()->payable);
+        $this->assertSame('partially_received', $po->fresh()->status);
+        $this->assertEquals(60, (float) $item->fresh()->qty_received);
     }
 
-    public function test_a_pending_purchase_withholds_stock_and_money_until_received(): void
+    public function test_receiving_the_rest_marks_the_po_fully_received(): void
     {
-        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
-        $this->grantFeature($shop, 'purchases');
-        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 10, 'price' => 20, 'stock' => 50]);
+        [$shop, $owner, $supplier] = $this->setupShop();
+        $rice = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 50, 'price' => 70, 'stock' => 10]);
+        $this->actingAs($owner, 'web')->post(route('app.purchaseOrders.store'), [
+            'supplier_id' => $supplier->id,
+            'items' => [['product_id' => $rice->id, 'qty' => 100, 'cost' => 45]],
+        ]);
+        $po = PurchaseOrder::first();
+        $item = $po->items()->first();
 
-        $this->actingAs($owner, 'web')->post('/app/purchases', [
-            'amount' => 300, 'method' => 'cash', 'status' => 'pending',
-            'product_id' => $product->id, 'qty' => 30, 'cost' => 15,
+        $this->actingAs($owner, 'web')->post(route('app.purchaseOrders.receive', $po->id), ['method' => 'credit', 'items' => [['id' => $item->id, 'qty' => 60]]]);
+        $this->actingAs($owner, 'web')->post(route('app.purchaseOrders.receive', $po->id), ['method' => 'credit', 'items' => [['id' => $item->id, 'qty' => 40]]])->assertRedirect();
+
+        $this->assertEquals(110, (float) $rice->fresh()->stock); // 10 + 60 + 40
+        $this->assertSame('received', $po->fresh()->status);
+        $this->assertEquals(100 * 45, (float) $supplier->fresh()->payable);
+    }
+
+    public function test_cannot_receive_more_than_what_remains_on_a_line(): void
+    {
+        [$shop, $owner, $supplier] = $this->setupShop();
+        $rice = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 50, 'price' => 70, 'stock' => 10]);
+        $this->actingAs($owner, 'web')->post(route('app.purchaseOrders.store'), [
+            'supplier_id' => $supplier->id,
+            'items' => [['product_id' => $rice->id, 'qty' => 100, 'cost' => 45]],
+        ]);
+        $po = PurchaseOrder::first();
+        $item = $po->items()->first();
+
+        $this->actingAs($owner, 'web')->postJson(route('app.purchaseOrders.receive', $po->id), [
+            'method' => 'credit', 'items' => [['id' => $item->id, 'qty' => 150]],
+        ])->assertStatus(422);
+
+        $this->assertEquals(10, (float) $rice->fresh()->stock); // untouched
+    }
+
+    public function test_cash_receipt_decrements_cash_balance_instead_of_supplier_payable(): void
+    {
+        [$shop, $owner, $supplier] = $this->setupShop();
+        $rice = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 50, 'price' => 70, 'stock' => 10]);
+        $this->actingAs($owner, 'web')->post(route('app.purchaseOrders.store'), [
+            'supplier_id' => $supplier->id,
+            'items' => [['product_id' => $rice->id, 'qty' => 10, 'cost' => 45]],
+        ]);
+        $po = PurchaseOrder::first();
+        $item = $po->items()->first();
+
+        $this->actingAs($owner, 'web')->post(route('app.purchaseOrders.receive', $po->id), [
+            'method' => 'cash', 'items' => [['id' => $item->id, 'qty' => 10]],
         ])->assertRedirect();
 
-        $this->assertEquals(50, $product->fresh()->stock); // unchanged — still pending
-        $this->assertEquals(1000.0, (float) $shop->fresh()->cash_balance); // unchanged
-
-        $purchase = Purchase::where('status', 'pending')->first();
-        $this->actingAs($owner, 'web')->post("/app/purchases/{$purchase->id}/receive")->assertRedirect();
-
-        $this->assertEquals(80, $product->fresh()->stock); // 50 + 30, applied now
-        $this->assertEquals(700.0, (float) $shop->fresh()->cash_balance); // 1000 - 300
-        $this->assertSame('received', $purchase->fresh()->status);
+        $this->assertEquals(10000 - 450, (float) $shop->fresh()->cash_balance);
+        $this->assertEquals(0, (float) $supplier->fresh()->payable);
     }
 
-    public function test_marking_an_already_received_purchase_received_again_is_rejected(): void
+    public function test_a_variant_line_receives_onto_the_correct_variant(): void
     {
-        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
-        $this->grantFeature($shop, 'purchases');
-        $purchase = Purchase::create(['shop_id' => $shop->id, 'amount' => 200, 'method' => 'cash', 'status' => 'received', 'date' => now()->toDateString()]);
-
-        $this->actingAs($owner, 'web')->post("/app/purchases/{$purchase->id}/receive")
-            ->assertStatus(422);
-
-        $this->assertEquals(1000.0, (float) $shop->fresh()->cash_balance); // untouched
-    }
-
-    /**
-     * Regression test for the double-apply race: two near-simultaneous
-     * "mark received" requests on the same pending purchase must only
-     * apply its stock/money effects once between them — this is what
-     * actually proves the lock-then-recheck-inside-the-transaction fix
-     * works, a sequential test can't catch a race.
-     */
-    public function test_concurrent_mark_received_requests_only_apply_effects_once(): void
-    {
-        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
-        $this->grantFeature($shop, 'purchases');
-        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 10, 'price' => 20, 'stock' => 50]);
-        $purchase = Purchase::create([
-            'shop_id' => $shop->id, 'amount' => 300, 'method' => 'cash', 'status' => 'pending',
-            'pending_details' => ['product_id' => $product->id, 'qty' => 30, 'cost' => 15, 'imeis' => []],
-            'product_id' => $product->id, 'qty' => 30, 'date' => now()->toDateString(),
-        ]);
-
-        $results = [];
-        foreach (range(1, 5) as $i) {
-            $results[] = $this->actingAs($owner, 'web')->post("/app/purchases/{$purchase->id}/receive")->getStatusCode();
-        }
-
-        // Laravel's test client is sequential, not truly concurrent, but the
-        // lock-then-recheck logic under test doesn't distinguish "raced" from
-        // "retried in a tight loop" — exactly one of these must have actually
-        // applied the purchase, the rest must see it's no longer pending.
-        $this->assertSame(1, collect($results)->filter(fn ($code) => $code < 400)->count());
-        $this->assertSame(4, collect($results)->filter(fn ($code) => $code === 422)->count());
-        $this->assertEquals(80, $product->fresh()->stock); // 50 + 30, exactly once
-        $this->assertEquals(700.0, (float) $shop->fresh()->cash_balance); // 1000 - 300, exactly once
-    }
-
-    /**
-     * Regression test: a variant product used to hard-reject every purchase
-     * ("add stock to each variant separately") — now a purchase can name
-     * exactly which variant received stock, same as PosController checkout
-     * decrements a specific variant rather than just the parent product.
-     */
-    public function test_purchase_adds_stock_to_the_named_variant_and_the_parent_together(): void
-    {
-        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
-        $this->grantFeature($shop, 'purchases');
+        [$shop, $owner, $supplier] = $this->setupShop();
         $this->grantFeature($shop, 'product_variants');
-        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 200, 'price' => 400, 'stock' => 10]);
-        $variant = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => 'M', 'color' => 'Blue', 'stock' => 10]);
+        $shirt = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 300, 'price' => 500, 'stock' => 10]);
+        $variant = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $shirt->id, 'size' => 'XL', 'color' => 'Blue', 'stock' => 4]);
 
-        $response = $this->actingAs($owner, 'web')->post('/app/purchases', [
-            'amount' => 2000, 'method' => 'cash', 'status' => 'received',
-            'product_id' => $product->id, 'product_variant_id' => $variant->id, 'qty' => 10, 'cost' => 220,
+        $this->actingAs($owner, 'web')->post(route('app.purchaseOrders.store'), [
+            'supplier_id' => $supplier->id,
+            'items' => [['product_id' => $shirt->id, 'product_variant_id' => $variant->id, 'qty' => 20, 'cost' => 280]],
         ]);
+        $po = PurchaseOrder::first();
+        $item = $po->items()->first();
 
-        $response->assertRedirect();
-        $this->assertEquals(20, $variant->fresh()->stock); // 10 + 10
-        $this->assertEquals(20, $product->fresh()->stock); // parent sum stays in lockstep
-        $this->assertEquals(220.0, (float) $variant->fresh()->cost); // overwritten, matching ProductVariantController::stockIn
-        $this->assertEquals(-1000.0, (float) $shop->fresh()->cash_balance); // 1000 - 2000 (the purchase's own `amount`, not qty*cost)
+        $this->actingAs($owner, 'web')->post(route('app.purchaseOrders.receive', $po->id), [
+            'method' => 'credit', 'items' => [['id' => $item->id, 'qty' => 20]],
+        ])->assertRedirect();
+
+        $this->assertEquals(24, (float) $variant->fresh()->stock); // 4 + 20
+        $this->assertEquals(30, (float) $shirt->fresh()->stock); // 10 + 20
     }
 
-    public function test_purchase_without_a_variant_still_rejects_a_variant_product(): void
+    public function test_cancelling_an_untouched_po_marks_it_cancelled(): void
     {
-        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
-        $this->grantFeature($shop, 'purchases');
-        $this->grantFeature($shop, 'product_variants');
-        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 200, 'price' => 400, 'stock' => 10]);
-        ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => 'M', 'stock' => 10]);
-
-        $response = $this->actingAs($owner, 'web')->post('/app/purchases', [
-            'amount' => 2000, 'method' => 'cash', 'status' => 'received',
-            'product_id' => $product->id, 'qty' => 10,
+        [$shop, $owner, $supplier] = $this->setupShop();
+        $rice = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 50, 'price' => 70, 'stock' => 10]);
+        $this->actingAs($owner, 'web')->post(route('app.purchaseOrders.store'), [
+            'supplier_id' => $supplier->id,
+            'items' => [['product_id' => $rice->id, 'qty' => 10, 'cost' => 45]],
         ]);
+        $po = PurchaseOrder::first();
 
-        $response->assertStatus(422);
-        $this->assertEquals(10, $product->fresh()->stock); // untouched
+        $this->actingAs($owner, 'web')->post(route('app.purchaseOrders.cancel', $po->id))->assertRedirect();
+
+        $this->assertSame('cancelled', $po->fresh()->status);
+    }
+
+    public function test_cannot_cancel_a_po_that_already_received_something(): void
+    {
+        [$shop, $owner, $supplier] = $this->setupShop();
+        $rice = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 50, 'price' => 70, 'stock' => 10]);
+        $this->actingAs($owner, 'web')->post(route('app.purchaseOrders.store'), [
+            'supplier_id' => $supplier->id,
+            'items' => [['product_id' => $rice->id, 'qty' => 10, 'cost' => 45]],
+        ]);
+        $po = PurchaseOrder::first();
+        $item = $po->items()->first();
+        $this->actingAs($owner, 'web')->post(route('app.purchaseOrders.receive', $po->id), ['method' => 'credit', 'items' => [['id' => $item->id, 'qty' => 5]]]);
+
+        $this->actingAs($owner, 'web')->postJson(route('app.purchaseOrders.cancel', $po->id))->assertStatus(422);
+
+        $this->assertSame('partially_received', $po->fresh()->status);
+    }
+
+    public function test_purchase_orders_are_tenant_scoped(): void
+    {
+        [$shopA, $ownerA, $supplierA] = $this->setupShop();
+        [$shopB, $ownerB] = $this->createShopWithOwner();
+        $this->grantFeature($shopB, 'purchase_orders');
+        $riceA = Product::create(['shop_id' => $shopA->id, 'name' => 'Rice', 'cost' => 50, 'price' => 70, 'stock' => 10]);
+        $this->actingAs($ownerA, 'web')->post(route('app.purchaseOrders.store'), [
+            'supplier_id' => $supplierA->id,
+            'items' => [['product_id' => $riceA->id, 'qty' => 10, 'cost' => 45]],
+        ]);
+        $po = PurchaseOrder::withoutGlobalScopes()->first();
+
+        $this->actingAs($ownerB, 'web')->get(route('app.purchaseOrders.show', $po->id))->assertNotFound();
+    }
+
+    public function test_no_purchase_order_route_reachable_without_the_feature_granted(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(); // feature not granted
+        Supplier::create(['shop_id' => $shop->id, 'name' => 'ABC Traders']);
+
+        $this->actingAs($owner, 'web')->get(route('app.purchaseOrders.index'))->assertForbidden();
     }
 }

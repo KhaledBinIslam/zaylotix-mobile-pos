@@ -406,6 +406,7 @@ const sidebarGroups = computed(() => [
             { key: 'purchase', label: t('nav.purchase'), href: moreLink('purchase'), icon: 'truck', on: isMoreLinkActive('purchase'), show: hasPerm('purchases') && hasFeature('purchases') },
             { key: 'purchaseHistory', label: t('nav.purchaseHistory'), navLabel: t('nav.purchaseHistoryShort'), href: route('app.purchases.index'), icon: 'history', on: props.active === 'purchaseHistory', show: hasPerm('purchases') && hasFeature('purchases') },
             { key: 'suppliers', label: t('nav.suppliers'), href: route('app.suppliers'), icon: 'factory', on: props.active === 'suppliers', show: hasPerm('purchases') && hasFeature('suppliers') },
+            { key: 'purchaseOrders', label: t('purchaseOrder.title'), href: route('app.purchaseOrders.index'), icon: 'invoice', on: page.url.startsWith('/app/purchase-orders'), show: hasPerm('purchases') && hasFeature('purchase_orders') },
             { key: 'serials', label: t('nav.serials'), href: route('app.serials.index'), icon: 'phone', on: props.active === 'serials', show: hasPerm('stock') && hasFeature('serial_tracking') },
             { key: 'damage', label: t('nav.damage'), href: moreLink('damage'), icon: 'trash', on: isMoreLinkActive('damage'), show: hasPerm('damages') && hasFeature('damages') },
             { key: 'return', label: t('nav.return'), href: moreLink('return'), icon: 'undo', on: isMoreLinkActive('return'), show: hasPerm('returns') && hasFeature('returns') },
