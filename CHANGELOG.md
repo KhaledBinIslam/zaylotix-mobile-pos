@@ -3,6 +3,15 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## Phase 30 part C: পাইকারি ইনভয়েস নম্বরিং (separate invoice series) — Phase 30 complete
+- A wholesale sale now gets its own `WS-` invoice series under the
+  fuller wholesale-tiers feature, kept completely separate from the
+  normal `INV-` series (never collides with it). A retail sale, or a
+  wholesale sale on a shop with only the basic wholesale-pricing
+  feature, both keep the exact `INV-` numbering they always had. This
+  closes out the full Wholesale system (tiered pricing + MOQ, customer
+  groups, separate invoices) — the last item from the Phase 4 checklist.
+
 ## Phase 30 part B: পাইকারি কাস্টমার গ্রুপ (wholesale customer groups)
 - A customer can now be flagged "wholesale" (toggle on the Due/Customers
   page). Attaching a flagged customer at POS auto-defaults the sale to

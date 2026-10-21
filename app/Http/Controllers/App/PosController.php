@@ -784,9 +784,19 @@ class PosController extends Controller
                 };
             }
 
-            // invoice number — locked shop row above guarantees no collision
-            $shop->invoice_counter += 1;
-            $invoiceNo = 'INV-'.$shop->invoice_counter;
+            // invoice number — locked shop row above guarantees no collision.
+            // A wholesale sale gets its own 'WS-' series under wholesale_tiers
+            // specifically (see docs/FIX_PLAN.md's Phase 30 design note, Part
+            // C) — a wholesale sale on a shop that only has the base
+            // wholesale_pricing feature (not the fuller wholesale_tiers)
+            // keeps the exact INV- series unchanged, same as retail always has.
+            if ($isWholesale && $tiersOn) {
+                $shop->wholesale_invoice_counter += 1;
+                $invoiceNo = 'WS-'.$shop->wholesale_invoice_counter;
+            } else {
+                $shop->invoice_counter += 1;
+                $invoiceNo = 'INV-'.$shop->invoice_counter;
+            }
 
             $sale = Sale::create([
                 'shop_id' => $shopId,

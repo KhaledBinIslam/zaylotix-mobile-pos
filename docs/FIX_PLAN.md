@@ -1244,7 +1244,32 @@ math. Tests: `tests/Feature/WholesaleCustomerGroupsTest.php`, 7 passing
 — create/toggle, feature-gating, tenant scoping, both lookup endpoints
 surfacing the flag.
 
-Part C (separate wholesale invoice numbering) — not yet started.
+**Part C — shipped 2026-10-21.** `shops.wholesale_invoice_counter`
+(default 1000, same pattern as `invoice_counter`/`quotation_counter`/
+`po_counter`, same lock already taken at the top of
+`performCheckout()`). `PosController::performCheckout()`'s invoice-
+number step now branches: a wholesale sale under the fuller
+`wholesale_tiers` feature gets `'WS-'.++wholesale_invoice_counter`;
+everything else (a retail sale, or a wholesale sale on a shop with only
+the base `wholesale_pricing` feature) keeps the exact `'INV-'` series
+unchanged. Confirmed nothing else in the codebase parses an
+`invoice_no`'s prefix — every other reference (reports, exports,
+receipt print, the `ReceiptMemo` scan-barcode, search) treats it as an
+opaque display string, and the receipt's own scan-to-reopen barcode
+separately always encodes `'INV-'.sale.id` regardless of `sale_type`
+(a different, already-existing internal id scheme, untouched here).
+Tests: `tests/Feature/WholesaleInvoiceNumberingTest.php`, 4 passing —
+WS- series under the full feature, INV- series preserved both for a
+retail sale and for a wholesale sale under only the base feature, and
+the two counters proven independent/non-colliding across interleaved
+sales.
+
+**Phase 30 (the full Wholesale system) is now complete** — all three
+parts (A: tiered pricing + MOQ, B: wholesale customer groups, C:
+separate invoice numbering) shipped and deployed. This was the last
+Phase-4 item Khaled had approved; the next major initiative (the large
+"Online Business" module — see memory) is explicitly deferred until he
+says to start it.
 
 - [x] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test --all`, Phase 0.6) — re-verified 2026-10-20, all 8 types OK
 - [x] `shops:repair-defaults --dry-run` run and reported — "সব শপের already কমপক্ষে একটা category এবং একটা unit আছে — ঠিক করার কিছু নেই।"
