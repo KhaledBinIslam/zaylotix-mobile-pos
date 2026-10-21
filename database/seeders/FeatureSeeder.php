@@ -49,6 +49,9 @@ class FeatureSeeder extends Seeder
             // (parent_shop_id null); its branches don't need this flag
             // themselves, they just receive the sync CatalogSync already runs.
             ['key' => 'shared_catalog', 'label_bn' => 'শেয়ার্ড ক্যাটালগ (রিয়েল-টাইম)', 'label_en' => 'Shared catalog (real-time sync)', 'category' => 'inventory', 'description' => "A multi-branch business's product edits on the main shop sync to every branch automatically, the moment they're saved — instead of waiting for the owner to press the manual 'ক্যাটালগ সিঙ্ক করুন' button. Each branch still keeps its own independent stock count."],
+            // Phase 4 item #1, part B — "ব্রাঞ্চ ট্রান্সফার accept/reject" —
+            // grant to a MAIN shop only, same convention as shared_catalog.
+            ['key' => 'transfer_confirmation', 'label_bn' => 'ব্রাঞ্চ ট্রান্সফার কনফার্মেশন', 'label_en' => 'Branch transfer confirmation', 'category' => 'inventory', 'description' => "Makes a branch-to-branch stock transfer (plain or variant products) go into a pending, in-transit state instead of instant — the destination branch must explicitly accept before its stock increases, or reject to return the units to the source. Batch/serial-tracked transfers always stay instant regardless."],
             // Phase 3 feature 9 — "ধরন-ভিত্তিক সুবিধা" (business-type-specific
             // features): a small, genuinely new capability per vertical, not
             // a re-statement of config/business_types.php's existing

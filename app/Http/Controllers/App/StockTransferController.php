@@ -86,6 +86,7 @@ class StockTransferController extends Controller
         return Inertia::render('App/StockTransfers/Index', [
             'siblings' => $siblings,
             'products' => $products,
+            'currentShopId' => $shopId,
             'recentTransfers' => StockTransfer::withoutGlobalScopes()
                 ->where('from_shop_id', $shopId)->orWhere('to_shop_id', $shopId)
                 ->with(['fromShop:id,name', 'toShop:id,name', 'user:id,name'])
@@ -129,7 +130,14 @@ class StockTransferController extends Controller
         abort_unless($sourceRoot === $destRoot, 403, 'শুধু নিজের ব্যবসার শাখার মধ্যে স্টক পাঠানো যাবে।');
         abort_if($destShop->id === $sourceShop->id, 422, 'নিজের কাছেই স্টক পাঠানো যাবে না।');
 
-        DB::transaction(function () use ($data, $sourceShop, $destShop) {
+        // see docs/FIX_PLAN.md's "ব্রাঞ্চ ট্রান্সফার accept/reject" design
+        // note — opt-in per business (checked on the root shop, same
+        // convention as shared_catalog), off by default so every shop
+        // keeps today's exact instant behavior unless it turns this on.
+        $rootShop = $sourceShop->parent_shop_id ? Shop::withoutGlobalScopes()->find($sourceRoot) : $sourceShop;
+        $requiresConfirmation = (bool) $rootShop?->hasFeature('transfer_confirmation');
+
+        DB::transaction(function () use ($data, $sourceShop, $destShop, $requiresConfirmation) {
             $sourceProduct = Product::whereKey($data['product_id'])->lockForUpdate()->first();
             abort_if(! $sourceProduct, 404, 'পণ্যটি পাওয়া যায়নি।');
 
@@ -230,6 +238,12 @@ class StockTransferController extends Controller
 
             $totalQty = 0.0;
             $lineSummaries = [];
+            // batch-tracked always stays instant regardless of the feature
+            // (see docs/FIX_PLAN.md's design note) — BatchStock::
+            // transferBetweenShops() below already moves the actual batch
+            // rows at store() time, so deferring the destination's plain
+            // stock increment alone would desync it from its own batches
+            $deferDestination = $requiresConfirmation && ! $isBatchTracked;
 
             foreach ($lines as $line) {
                 $qty = (float) $line['qty'];
@@ -264,8 +278,10 @@ class StockTransferController extends Controller
                             'stock' => 0,
                         ]);
                     }
-                    $destVariant->increment('stock', $qty);
-                    $destProduct->increment('stock', $qty);
+                    if (! $deferDestination) {
+                        $destVariant->increment('stock', $qty);
+                        $destProduct->increment('stock', $qty);
+                    }
 
                     $lineSummaries[] = [
                         'from_product_variant_id' => $sourceVariant->id, 'to_product_variant_id' => $destVariant->id,
@@ -276,7 +292,9 @@ class StockTransferController extends Controller
                         throw ValidationException::withMessages(['lines' => "পর্যাপ্ত স্টক নেই: {$sourceProduct->name} (আছে {$sourceProduct->stock})।"]);
                     }
                     $sourceProduct->decrement('stock', $qty);
-                    $destProduct->increment('stock', $qty);
+                    if (! $deferDestination) {
+                        $destProduct->increment('stock', $qty);
+                    }
                     if ($isBatchTracked) {
                         BatchStock::transferBetweenShops($sourceProduct, $destProduct, $qty);
                     }
@@ -297,6 +315,7 @@ class StockTransferController extends Controller
                     'product_name' => $sourceProduct->name,
                     'variant_label' => $summary['variant_label'],
                     'qty' => $summary['qty'],
+                    'status' => $deferDestination ? 'pending' : 'completed',
                     'user_id' => Auth::guard('web')->id(),
                 ]);
             }
@@ -307,5 +326,77 @@ class StockTransferController extends Controller
         });
 
         return back()->with('success', 'স্টক পাঠানো হয়েছে।');
+    }
+
+    /**
+     * Only the DESTINATION branch's own owner can accept — the units were
+     * genuinely in transit (absent from both sides' counts) until now, so
+     * this is the actual "physically received" moment. See docs/FIX_PLAN.md's
+     * "ব্রাঞ্চ ট্রান্সফার accept/reject" design note.
+     *
+     * Deliberately takes a plain id, not an implicit-bound StockTransfer —
+     * this model's own BelongsToTenant scope filters by shop_id, which is
+     * always the SOURCE shop (see the migration's docblock); the
+     * destination branch's owner (the only one ever allowed to call this)
+     * would never match that scope, so implicit binding would 404 every
+     * legitimate call. withoutGlobalScopes() below is the real lookup.
+     */
+    public function accept(int $transfer)
+    {
+        $user = Auth::guard('web')->user();
+        abort_unless($user?->role === 'owner', 403);
+
+        DB::transaction(function () use ($transfer, $user) {
+            $locked = StockTransfer::withoutGlobalScopes()->whereKey($transfer)->lockForUpdate()->first();
+            abort_if(! $locked, 404);
+            abort_unless($locked->to_shop_id === $user->shop_id, 403, 'শুধু গ্রহণকারী শাখাই এটা গ্রহণ করতে পারবে।');
+            abort_unless($locked->status === 'pending', 422, 'এই ট্রান্সফারটি আর অপেক্ষমাণ নেই।');
+
+            // withoutGlobalScopes() throughout — the acting user's own
+            // tenancy is the DESTINATION shop, which happens to be where
+            // these particular rows live too, but being explicit (rather
+            // than relying on that coincidence) matches reject()'s own
+            // need for it just below (the SOURCE product, a different shop
+            // than whoever is acting here).
+            if ($locked->to_product_variant_id) {
+                $variant = ProductVariant::withoutGlobalScopes()->whereKey($locked->to_product_variant_id)->lockForUpdate()->first();
+                $variant?->increment('stock', $locked->qty);
+            }
+            $product = Product::withoutGlobalScopes()->whereKey($locked->to_product_id)->lockForUpdate()->first();
+            $product?->increment('stock', $locked->qty);
+
+            $locked->update(['status' => 'completed']);
+
+            Activity::log('stockTransfer.accept', "{$locked->product_name} — {$locked->qty} ইউনিট গ্রহণ করা হয়েছে।", $locked);
+        });
+
+        return back()->with('success', 'ট্রান্সফার গ্রহণ করা হয়েছে — স্টক যুক্ত হয়েছে।');
+    }
+
+    /** Returns the held units to the SOURCE — they were decremented at store() time and must land somewhere, never silently vanish. Plain id for the same reason as accept() above. */
+    public function reject(int $transfer)
+    {
+        $user = Auth::guard('web')->user();
+        abort_unless($user?->role === 'owner', 403);
+
+        DB::transaction(function () use ($transfer, $user) {
+            $locked = StockTransfer::withoutGlobalScopes()->whereKey($transfer)->lockForUpdate()->first();
+            abort_if(! $locked, 404);
+            abort_unless($locked->to_shop_id === $user->shop_id, 403, 'শুধু গ্রহণকারী শাখাই এটা প্রত্যাখ্যান করতে পারবে।');
+            abort_unless($locked->status === 'pending', 422, 'এই ট্রান্সফারটি আর অপেক্ষমাণ নেই।');
+
+            if ($locked->from_product_variant_id) {
+                $variant = ProductVariant::withoutGlobalScopes()->whereKey($locked->from_product_variant_id)->lockForUpdate()->first();
+                $variant?->increment('stock', $locked->qty);
+            }
+            $product = Product::withoutGlobalScopes()->whereKey($locked->from_product_id)->lockForUpdate()->first();
+            $product?->increment('stock', $locked->qty);
+
+            $locked->update(['status' => 'rejected']);
+
+            Activity::log('stockTransfer.reject', "{$locked->product_name} — {$locked->qty} ইউনিট প্রত্যাখ্যান করা হয়েছে, উৎস শাখায় স্টক ফেরত।", $locked);
+        });
+
+        return back()->with('success', 'ট্রান্সফার প্রত্যাখ্যান করা হয়েছে — স্টক উৎস শাখায় ফেরত গিয়েছে।');
     }
 }

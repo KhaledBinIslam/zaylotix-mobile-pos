@@ -1,10 +1,10 @@
 <script setup>
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, useForm, router } from '@inertiajs/vue3';
 import { ref, computed, watch } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useI18n } from '@/composables/useI18n';
 
-const props = defineProps({ siblings: Array, products: Array, recentTransfers: Array });
+const props = defineProps({ siblings: Array, products: Array, recentTransfers: Array, currentShopId: Number });
 const { t } = useI18n();
 
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
@@ -13,6 +13,26 @@ const qty = (n) => {
     const num = Number(n || 0);
     return Number.isInteger(num) ? String(num) : String(parseFloat(num.toFixed(3)));
 };
+
+// see docs/FIX_PLAN.md's "ব্রাঞ্চ ট্রান্সফার accept/reject" design note —
+// only ever non-empty for a shop with the opt-in transfer_confirmation
+// feature on; every other shop's transfers are always 'completed'
+// already, so this list is always empty for them.
+const pendingForMe = computed(() => props.recentTransfers.filter((tr) => tr.status === 'pending' && tr.to_shop_id === props.currentShopId));
+const respondingId = ref(null);
+function respond(tr, action) {
+    respondingId.value = tr.id;
+    router.post(route(`app.stockTransfers.${action}`, tr.id), {}, {
+        preserveScroll: true,
+        onFinish: () => (respondingId.value = null),
+    });
+}
+
+function statusLabel(tr) {
+    if (tr.status === 'pending') return t('stockTransfer.statusPending');
+    if (tr.status === 'rejected') return t('stockTransfer.statusRejected');
+    return null; // 'completed' is the normal/default case, no badge needed
+}
 
 const q = ref('');
 const filtered = computed(() => props.products.filter((p) =>
@@ -70,7 +90,19 @@ function send() {
 
         <div v-if="!siblings.length" class="empty"><div class="big">🏬</div>{{ t('stockTransfer.noSiblingsHint') }}</div>
 
-        <template v-else>
+        <template v-if="pendingForMe.length">
+            <div class="sechead"><h2>{{ t('stockTransfer.pendingTitle') }}</h2></div>
+            <div v-for="tr in pendingForMe" :key="tr.id" class="card" style="margin-bottom:10px;background:var(--goldSoft);border-color:var(--gold2)">
+                <b>{{ tr.product_name }}{{ tr.variant_label ? ' ('+tr.variant_label+')' : '' }} × {{ qty(tr.qty) }}</b>
+                <div style="font-size:12px;color:var(--mut);margin:4px 0 10px">{{ tr.from_shop?.name }} → {{ tr.to_shop?.name }} • {{ fmt(tr.created_at) }}</div>
+                <div class="btnrow">
+                    <button class="btn sm" style="flex:1" :disabled="respondingId === tr.id" @click="respond(tr, 'accept')">✅ {{ t('stockTransfer.accept') }}</button>
+                    <button class="btn ghost sm" style="flex:1" :disabled="respondingId === tr.id" @click="respond(tr, 'reject')">✕ {{ t('stockTransfer.reject') }}</button>
+                </div>
+            </div>
+        </template>
+
+        <template v-if="siblings.length">
             <div class="field">
                 <label>{{ t('stockTransfer.toBranchLabel') }}</label>
                 <select v-model.number="form.to_shop_id">
@@ -135,6 +167,7 @@ function send() {
                         <b>{{ tr.product_name }}{{ tr.variant_label ? ' ('+tr.variant_label+')' : '' }} × {{ qty(tr.qty) }}</b>
                         <span>{{ tr.from_shop?.name }} → {{ tr.to_shop?.name }} • {{ tr.user?.name }} • {{ fmt(tr.created_at) }}</span>
                     </div>
+                    <div v-if="statusLabel(tr)" class="end"><span class="pill" :class="tr.status === 'rejected' ? 'rose' : 'gold'">{{ statusLabel(tr) }}</span></div>
                 </div>
             </div>
         </template>

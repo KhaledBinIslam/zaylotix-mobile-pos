@@ -155,6 +155,8 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
     Route::post('branches/sync-catalog', [BranchController::class, 'syncCatalog'])->name('branches.syncCatalog');
     Route::get('stock-transfers', [StockTransferController::class, 'index'])->name('stockTransfers.index');
     Route::post('stock-transfers', [StockTransferController::class, 'store'])->name('stockTransfers.store');
+    Route::post('stock-transfers/{transfer}/accept', [StockTransferController::class, 'accept'])->name('stockTransfers.accept');
+    Route::post('stock-transfers/{transfer}/reject', [StockTransferController::class, 'reject'])->name('stockTransfers.reject');
     Route::post('client-error-log', [ClientErrorLogController::class, 'store'])->name('clientErrorLog.store')->middleware('throttle:30,1');
     // see docs/SESSION_FIX.md — lets fetchWithSessionRetry.js recover a
     // stale CSRF meta tag on a long-open tab instead of failing with 419

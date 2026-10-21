@@ -3,6 +3,16 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## Phase 4 item #1, part B: ব্রাঞ্চ ট্রান্সফার accept/reject
+- New: an opt-in `transfer_confirmation` feature (grant to a main
+  shop). A plain or variant stock transfer between branches now goes
+  into a pending "in transit" state — the source's stock leaves
+  immediately, but the destination's stock only increases once that
+  branch's owner explicitly accepts, or returns to the source if they
+  reject. Batch/serial-tracked transfers always stay instant. Every
+  shop without this feature keeps today's exact instant-transfer
+  behavior, unchanged.
+
 ## Phase 4 item #1, part A: শেয়ার্ড ক্যাটালগ (real-time catalog sync)
 - New: an opt-in `shared_catalog` feature (grant to a main shop). Once
   on, editing a product on the main shop pushes name/price/barcode/

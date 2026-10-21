@@ -845,6 +845,73 @@ business sees zero behavior change. All 37 pre-existing branch tests
 `BranchSwitchingTest`) re-run clean — the `CatalogSync` refactor is
 fully backward-compatible.
 
+---
+
+## Phase 27 — Phase 4 item #1, part B: branch transfer accept/reject
+
+**Important constraint**: `StockTransferController`'s own docblock
+records that Khaled explicitly asked for transfers to be instant, with
+no pending/confirmation step ("real time sync hoi moto instant"). The
+gap report's complaint (no accept/reject means no protection against a
+shortage/mis-posting dispute) is real for a bigger chain, but this must
+NEVER become the default for a shop that never asked for it. So this
+ships as a new opt-in feature, `transfer_confirmation`, granted to a
+business's root shop (same convention as `shared_catalog`) — every
+shop without it sees the exact same instant behavior as before, byte
+for byte.
+
+**Design**: when confirmation is required, a transfer becomes a true
+"in-transit" state rather than an instant move — the source's stock
+decrements immediately (the units have left that shelf), but the
+destination's stock does NOT increment until the destination branch's
+owner explicitly accepts. This models the physical reality a chain
+actually cares about (the units are genuinely absent from both counts
+while in transit) and is what gives the accept step its real value — a
+destination owner who finds a box short can reject rather than having
+already been credited stock they never received.
+
+- New `stock_transfers.status` enum (`completed` | `pending` |
+  `rejected`), defaulting to `completed` — every existing row, and
+  every new transfer for a shop without the feature, is `completed`
+  immediately exactly as before. Only a confirmation-required
+  transfer is ever created as `pending`.
+- Scoped to **plain and variant lines only** — a serial-tracked or
+  batch-tracked transfer always stays instant/`completed` regardless
+  of the feature, even for a shop that has it on. Deferring a specific
+  IMEI's ownership change, or a FEFO batch split, to an accept step
+  would need meaningfully more design than this phase's scope — a
+  deliberate v1 limitation, not an oversight.
+- `StockTransferController::accept($transfer)` / `::reject($transfer)`
+  — both owner-only, both reachable only by someone on the
+  **destination** shop, both only valid while `status === 'pending'`.
+  `accept` increments the destination product/variant now (the
+  "received" moment) and marks `completed`; `reject` returns the held
+  stock to the **source** product/variant and marks `rejected` — never
+  silently lost from either side.
+- `StockTransfers/Index.vue` gets an "অপেক্ষমাণ ট্রান্সফার" section
+  (visible only on the shop actually named as `to_shop_id`) listing
+  every pending transfer awaiting that branch's own accept/reject.
+
+**Real bug found and fixed while testing**: `accept()`/`reject()`'s
+Product/ProductVariant lookups didn't bypass `BelongsToTenant`'s
+global scope — harmless for `accept()` (the destination row happens
+to sit in the SAME shop as whoever's allowed to call it), but
+`reject()`'s target is the SOURCE product, a different shop than the
+acting (destination) user's own tenancy; the unscoped query silently
+matched nothing and the stock return no-op'd via the null-safe `?->`.
+Fixed by using `withoutGlobalScopes()` consistently in both methods,
+not relying on the coincidence.
+
+Tests: `tests/Feature/BranchTransferConfirmationTest.php` (8 new) —
+a plain transfer holds both sides' stock until accepted, accepting
+credits the destination, rejecting returns stock to the source, the
+source branch cannot accept its own outgoing transfer, an
+already-completed transfer cannot be accepted twice, a variant
+transfer holds the same way, a batch-tracked transfer stays instant
+even with the feature on, and a shop without the feature stays
+instant exactly as before. All 15 pre-existing `BranchStockTransferTest`
+cases re-run clean.
+
 - [x] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test --all`, Phase 0.6) — re-verified 2026-10-20, all 8 types OK
 - [x] `shops:repair-defaults --dry-run` run and reported — "সব শপের already কমপক্ষে একটা category এবং একটা unit আছে — ঠিক করার কিছু নেই।"
 - [x] No new N+1 queries introduced by any phase — checked per-phase during review (e.g. `Shop::featureKeys()` property-access caching from the scale audit already guards every new `hasFeature()` call this session added)
@@ -853,7 +920,7 @@ fully backward-compatible.
 - [x] `docs/ARCHITECTURE_NOTES.md`, `docs/FIX_PLAN.md`, `docs/OFFLINE_TEST_CHECKLIST.md`, CHANGELOG all present
 - [x] Final comprehensive Bengali report for Khaled covering what changed, deploy steps, remaining risks, open questions — sent after Phase 3 feature 10 shipped
 
-### Genuinely still open (not started, waiting on Khaled)
-- **Phase 4** (enterprise gap-filling — shared catalog, PO/GRN, etc., see `docs/ENTERPRISE_GAP_REPORT.md`) — explicitly gated on his approval.
-- The 4 standing decision questions in `docs/ENTERPRISE_GAP_REPORT.md`'s "আমার সিদ্ধান্ত বাকি" section: a separate Wholesale system (tiered pricing/MOQ/customer groups), letting a service ticket add a customer after creation (small, could be done anytime), what fields the Admin Ambassador Edit page should expose, and the Android APK rebuild reminder for the new theme colors.
-- A separate TWA-replaces-Capacitor plan (Part 1 of 2, a different planning session) is sitting unstarted — not touched this session since Khaled's attention has been on Phase 3.
+### Genuinely still open
+- **Phase 4** (enterprise gap-filling, see `docs/ENTERPRISE_GAP_REPORT.md`) — approved and in progress. Done: item #1 part A (shared catalog sync). Still to come, in order: item #1 part B (branch transfer accept/reject), item #2 (PO/GRN), item #3 (branch price lists), the full Wholesale system (tiered pricing/MOQ/customer groups/invoices — approved, not yet started).
+- The Android APK rebuild reminder (new theme colors) — not a code task, tracked against the separate TWA plan below.
+- A separate TWA-replaces-Capacitor plan (Part 1 of 2, a different planning session) is sitting unstarted — not touched this session since Khaled's attention has been on Phase 3/4.

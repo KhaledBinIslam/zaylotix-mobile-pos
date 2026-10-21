@@ -11,7 +11,7 @@ class StockTransfer extends Model
 
     protected $fillable = [
         'shop_id', 'from_shop_id', 'to_shop_id', 'from_product_id', 'to_product_id', 'product_name', 'qty', 'user_id',
-        'from_product_variant_id', 'to_product_variant_id', 'variant_label',
+        'from_product_variant_id', 'to_product_variant_id', 'variant_label', 'status',
     ];
 
     protected function casts(): array
