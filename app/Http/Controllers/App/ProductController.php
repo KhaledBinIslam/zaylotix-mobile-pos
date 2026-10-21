@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\ProductBatch;
 use App\Models\ProductCategory;
 use App\Models\Unit;
+use App\Support\CatalogSync;
 use App\Support\Tenancy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -171,6 +172,8 @@ class ProductController extends Controller
             ...$this->resolveStock($data),
         ]);
 
+        $this->syncToBranchesIfSharedCatalog($product);
+
         return back()->with('success', "{$product->name} added.");
     }
 
@@ -254,9 +257,31 @@ class ProductController extends Controller
             $fields['photo_path'] = $request->hasFile('photo') ? $request->file('photo')->store('product-photos', 'public') : null;
         }
 
+        // see docs/FIX_PLAN.md's "শেয়ার্ড ক্যাটালগ" design note — a branch's
+        // own linked copy of a main-shop product has its shared fields
+        // (name/price/category/etc.) owned by the main shop from now on;
+        // only what always stays branch-local can actually change here.
+        // Silent, not an error — the edit sheet already disables these
+        // inputs, so a normal save only ever sends back their own
+        // unchanged values anyway; this is just defense in depth.
+        if ($product->master_product_id) {
+            $fields = array_intersect_key($fields, array_flip(['stock', 'reorder_point', 'discount_price']));
+        }
+
         $product->update($fields);
 
+        $this->syncToBranchesIfSharedCatalog($product);
+
         return back()->with('success', "{$product->name} updated.");
+    }
+
+    /** See docs/FIX_PLAN.md's "শেয়ার্ড ক্যাটালগ" design note — only a main shop (no parent_shop_id) with the opt-in shared_catalog feature and at least one branch ever propagates; a no-op for every other shop. */
+    private function syncToBranchesIfSharedCatalog(Product $product): void
+    {
+        $shop = Tenancy::shop();
+        if (! $shop->parent_shop_id && $shop->hasFeature('shared_catalog')) {
+            CatalogSync::syncProductToBranches($shop, $product);
+        }
     }
 
     public function destroy(Product $product)

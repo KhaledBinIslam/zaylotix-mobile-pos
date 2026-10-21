@@ -13,7 +13,7 @@ class Product extends Model
     use BelongsToTenant, SoftDeletes;
 
     protected $fillable = [
-        'shop_id', 'category_id', 'unit_id', 'name', 'name_en', 'generic_name', 'company', 'shelf_location', 'requires_prescription', 'emoji', 'photo_path', 'barcode',
+        'shop_id', 'master_product_id', 'category_id', 'unit_id', 'name', 'name_en', 'generic_name', 'company', 'shelf_location', 'requires_prescription', 'emoji', 'photo_path', 'barcode',
         'sold_by_weight', 'weight_unit', 'track_serial',
         'cost', 'price', 'wholesale_price', 'discount_price', 'stock', 'stock_mode', 'expiry_date', 'batch_no', 'size', 'color', 'imei',
         'reorder_point', 'show_in_catalog',
@@ -70,6 +70,18 @@ class Product extends Model
     public function shop()
     {
         return $this->belongsTo(Shop::class);
+    }
+
+    /** The main shop's own row this branch product is linked to — see docs/FIX_PLAN.md's "শেয়ার্ড ক্যাটালগ" design note (CatalogSync). Null for a main shop's own products and for any shop not using shared_catalog. */
+    public function masterProduct()
+    {
+        return $this->belongsTo(Product::class, 'master_product_id');
+    }
+
+    /** Every branch row currently linked to this one (only ever non-empty on a main shop's own product). */
+    public function branchCopies()
+    {
+        return $this->hasMany(Product::class, 'master_product_id');
     }
 
     public function category()

@@ -740,7 +740,110 @@ attaching is blocked on an already-delivered ticket.
 
 ---
 
-## Definition-of-done checklist (tracked across all phases, per master prompt)
+## Phase 4 begins — Khaled's decisions
+
+Khaled approved starting Phase 4 and gave two specific calls:
+1. **Start with item #1** (shared catalog + branch transfer accept/
+   reject) — `docs/ENTERPRISE_GAP_REPORT.md`'s own recommended first
+   item, since #2 (PO/GRN) and #3 (branch price lists) both depend on
+   it.
+2. **Build the full Wholesale system** (tiered pricing, MOQ, wholesale
+   customer groups, separate invoices) — not the lighter "just tiered
+   pricing" option.
+
+Per the master prompt's own "stop after each phase" rule, and because
+item #1 genuinely touches the core Product data model (unlike every
+Phase 3 feature, which was additive and narrowly scoped), this is being
+built as its own run of sub-phases — same test/build/commit/push/
+deploy discipline as Phase 3, one deployable piece at a time, not one
+giant commit.
+
+---
+
+## Phase 26 — Phase 4 item #1, part A: real-time shared catalog sync
+
+**Important finding before building anything**: a "shared catalog"
+mechanism already exists — `App\Support\CatalogSync` (used by
+`Admin\ShopController::createBranch()` at branch creation, and by
+`BranchController::syncCatalog()` as an owner-triggered manual
+re-sync button) already copies a main shop's products/categories/
+units into every branch, matched by barcode-then-name, explicitly
+never touching a branch's own `stock`. This already satisfies most of
+what `docs/ENTERPRISE_GAP_REPORT.md`'s #1 finding describes — the
+report rated it insufficient for exactly two reasons: (a) it's
+**manual** (the owner has to remember to press a button — a price
+change doesn't reach branches until they do), and (b) matching is
+**purely by barcode/name**, which silently breaks (creates a duplicate
+row instead of updating the existing one) if either side is ever
+renamed without a barcode set. Both are fixable by extending
+`CatalogSync`, not by replacing the per-branch-Product-row model the
+rest of the app (POS, sales, reports, stock, promotions — everything)
+already depends on — a from-scratch "shared SKU master" table would
+have meant touching dozens of files for a worse-understood payoff.
+
+**Design**:
+- New column `products.master_product_id` (nullable, self-referential
+  FK, `nullOnDelete()`) — sets an explicit, durable link the first
+  time a branch row is ever matched to a main-shop row (by the
+  existing barcode/name fallback), so every sync after that finds it
+  by id instead of re-matching by name — survives a rename on either
+  side from then on. Nullable and unused by every single-shop business
+  and every multi-branch business not using this feature — zero
+  behavior change on its own.
+- New opt-in feature flag `shared_catalog`, granted to a **main shop
+  only** (`parent_shop_id` null) — its branches don't need the flag
+  themselves, they just receive what the main shop pushes.
+- `CatalogSync::syncProductToBranches($mainShop, $product)` — a new,
+  product-scoped counterpart to the existing full `syncToBranch()`,
+  reusing its exact matching/update logic (refactored into shared
+  `upsertBranchProduct()`/`findExistingBranchProduct()` methods so
+  there's only one place that decides what propagates). Deliberately
+  product-only, no variant sync — keeps a single product save cheap;
+  variant changes still go out on the next manual "ক্যাটালগ সিঙ্ক করুন"
+  press, unchanged from before.
+- `ProductController::store()`/`update()` call this automatically,
+  right after saving, when the acting shop is a main shop with
+  `shared_catalog` on — this is the actual "real-time" part the manual
+  button never was.
+- A branch's own linked copy (`master_product_id` set) has its shared
+  fields (name/price/category/barcode/etc.) effectively owned by the
+  main shop from then on: `ProductController::update()` silently drops
+  any of those fields from a branch-side edit of a linked product,
+  keeping only what's always supposed to stay local (`stock`,
+  `reorder_point`, `discount_price`) — `Stock/Index.vue`'s edit sheet
+  shows a banner explaining this, so it's not a silent surprise.
+- Deliberately NOT built in this part: per-product opt-out ("share
+  everything except this one"), a visible "🔗 shared, N branches" badge
+  on the main shop's own product list, and the branch-transfer
+  accept/reject half of item #1 — that's a separate, unrelated change
+  (doesn't touch Product at all) and lands as its own part B.
+
+**Real bug found and fixed while testing**: `CatalogSync::upsertBranchProduct()`
+reads `emoji`/`requires_prescription`/`sold_by_weight` straight off the
+source `Product` instance — fine for a real product (always created via
+`ProductController::store()`, which explicitly sets all three), but a
+`Product` instance built any other way (tests, future console
+tooling) never reflects a NOT-NULL column's DB-level default (a
+migration `->default(...)` only applies when the column is omitted
+from the INSERT entirely, not when the in-memory attribute is read back
+as null) — propagating that null to the branch insert violated the
+same NOT NULL constraint. Fixed with an explicit fallback for each of
+the three (`?: '📦'` / `?? false` / `?? false`) rather than trusting
+every future caller to always go through the controller.
+
+Tests: `tests/Feature/SharedCatalogTest.php` (7 new) — saving a
+product on the main shop propagates to every branch in real time
+(each branch copy starting at stock 0), editing the main shop's
+product updates every linked copy, a branch cannot change a linked
+product's shared fields locally (only stock/reorder_point/discount_price
+survive), matching survives a rename once linked (no duplicate
+created), no propagation without the feature granted, a branch's own
+locally-created product never propagates anywhere, a single-shop
+business sees zero behavior change. All 37 pre-existing branch tests
+(`BranchStockTransferTest`, `BranchFeatureInheritanceTest`,
+`BranchCustomerSharingTest`, `BranchCrossReturnTest`,
+`BranchSwitchingTest`) re-run clean — the `CatalogSync` refactor is
+fully backward-compatible.
 
 - [x] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test --all`, Phase 0.6) — re-verified 2026-10-20, all 8 types OK
 - [x] `shops:repair-defaults --dry-run` run and reported — "সব শপের already কমপক্ষে একটা category এবং একটা unit আছে — ঠিক করার কিছু নেই।"

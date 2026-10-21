@@ -3,6 +3,21 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## Phase 4 item #1, part A: শেয়ার্ড ক্যাটালগ (real-time catalog sync)
+- New: an opt-in `shared_catalog` feature (grant to a main shop). Once
+  on, editing a product on the main shop pushes name/price/barcode/
+  category/etc. to every branch instantly — no more needing to
+  remember to press "ক্যাটালগ সিঙ্ক করুন". Each branch's own stock count
+  is never touched. A branch's linked copy shows a note that shared
+  fields are now edited from the main shop; stock/reorder
+  point/discount price stay editable locally as before.
+
+## Small fix: service ticket customer attach
+- New: a walk-in service ticket with no phone given at intake can now
+  have a customer attached (or corrected) any time before it's
+  delivered — previously the only way to let it carry a due was to
+  have captured a phone number at the very start.
+
 ## Phase 3, feature 10: অ্যাম্বাসেডর টুলস (ambassador tools)
 - New: every ambassador now has an auto-generated referral code and a
   shareable signup link (visible on Admin/Ambassadors, with a one-tap

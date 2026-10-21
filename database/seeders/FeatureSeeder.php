@@ -45,6 +45,10 @@ class FeatureSeeder extends Seeder
             ['key' => 'customer_referrals', 'label_bn' => 'কাস্টমার রেফারেল', 'label_en' => 'Customer referrals', 'category' => 'billing', 'description' => "Record which existing customer referred a new one, and automatically reward the referrer with loyalty points once the new customer's first purchase completes."],
             ['key' => 'digital_catalog', 'label_bn' => 'ডিজিটাল ক্যাটালগ লিঙ্ক', 'label_en' => 'Digital catalog link', 'category' => 'billing', 'description' => 'A public, no-login web page listing whichever products the owner chooses, with prices/stock and a one-tap "WhatsApp-এ অর্ডার" button — shareable on Facebook/WhatsApp status.'],
             ['key' => 'credit_limit', 'label_bn' => 'ক্রেডিট লিমিট', 'label_en' => 'Credit limit', 'category' => 'billing', 'description' => "Set a shop-wide default (and optional per-customer override) ceiling on how much due a customer can carry — checkout is blocked once a new credit sale would push them past it."],
+            // Phase 4 item #1 — "শেয়ার্ড ক্যাটালগ" — grant to a MAIN shop only
+            // (parent_shop_id null); its branches don't need this flag
+            // themselves, they just receive the sync CatalogSync already runs.
+            ['key' => 'shared_catalog', 'label_bn' => 'শেয়ার্ড ক্যাটালগ (রিয়েল-টাইম)', 'label_en' => 'Shared catalog (real-time sync)', 'category' => 'inventory', 'description' => "A multi-branch business's product edits on the main shop sync to every branch automatically, the moment they're saved — instead of waiting for the owner to press the manual 'ক্যাটালগ সিঙ্ক করুন' button. Each branch still keeps its own independent stock count."],
             // Phase 3 feature 9 — "ধরন-ভিত্তিক সুবিধা" (business-type-specific
             // features): a small, genuinely new capability per vertical, not
             // a re-statement of config/business_types.php's existing

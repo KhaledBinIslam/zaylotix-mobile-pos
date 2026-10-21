@@ -595,6 +595,16 @@ useKeyboardShortcuts({
                  checkbox below already correctly uses it). shelf_location
                  stays on hasBatchTracking below — genuinely useful for any
                  shop with a physical rack/shelf system, not pharmacy-only. -->
+            <!-- see docs/FIX_PLAN.md's "শেয়ার্ড ক্যাটালগ" design note — a
+                 linked branch copy's shared fields (name/price/category/
+                 etc.) are owned by the main shop's own product now; the
+                 backend already silently ignores any change to them sent
+                 from here (defense in depth), this banner just makes that
+                 honest instead of surprising -->
+            <div v-if="editing?.master_product_id" class="card" style="margin-bottom:14px;background:var(--goldSoft);font-size:12.5px">
+                🔗 {{ t('stock.sharedCatalogNote') }}
+            </div>
+
             <button v-if="!editing" type="button" class="btn ghost sm" style="width:100%;margin-bottom:14px" @click="smartScanOpen = true">
                 📷 {{ t('smartScan.buttonLabel') }}
             </button>

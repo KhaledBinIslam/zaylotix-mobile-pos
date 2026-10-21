@@ -1249,6 +1249,7 @@ export const translations = {
     'stock.stockIn': { bn: 'স্টক +', en: 'Stock +' },
     'stock.noProducts': { bn: 'কোনো পণ্য নেই', en: 'No products' },
     'stock.editTitle': { bn: '✏️ পণ্য এডিট', en: '✏️ Edit Product' },
+    'stock.sharedCatalogNote': { bn: 'এই পণ্যটি মূল দোকানের শেয়ার্ড ক্যাটালগ থেকে এসেছে — নাম/দাম/বারকোড ইত্যাদি বদলাতে চাইলে মূল দোকান থেকে বদলান। এখানে শুধু স্টক, রিঅর্ডার পয়েন্ট ও ছাড়ের দাম বদলানো যাবে।', en: "This product came from the main shop's shared catalog — change name/price/barcode etc. from the main shop. Only stock, reorder point, and discount price can be changed here." },
     'stock.newTitle': { bn: '📦 নতুন পণ্য', en: '📦 New Product' },
     'stock.productName': { bn: 'পণ্যের নাম', en: 'Product name' },
     'stock.photo': { bn: 'পণ্যের ছবি', en: 'Product photo' },

@@ -11,13 +11,18 @@ use App\Models\Unit;
 /**
  * Copies a main shop's Product/ProductCategory/Unit/ProductVariant rows into
  * a branch's own independent rows — used both at branch creation (branch
- * starts empty) and by the owner-triggered re-sync action later (branch
- * already has rows). Matches existing branch rows by name (products and
- * variants additionally by barcode, when set, since that's a more reliable
- * identifier) — never touches a branch's own `stock`, that stays
- * independently counted per branch always, a new variant always arrives at
- * stock 0. Deliberately best-effort: no batches/serials, no deletion of a
- * branch row that no longer exists on the main shop.
+ * starts empty), by the owner-triggered re-sync action later (branch
+ * already has rows), and — see docs/FIX_PLAN.md's "শেয়ার্ড ক্যাটালগ" design
+ * note — automatically, in real time, from ProductController::store()/
+ * update() for a shop with the opt-in `shared_catalog` feature. Matches
+ * existing branch rows by `master_product_id` first (an explicit, durable
+ * link set the first time a product is ever synced — survives a later
+ * rename on either side), falling back to barcode/name for a row that's
+ * never been synced before (first-ever sync, or a legacy branch product
+ * created before this link existed) — never touches a branch's own `stock`,
+ * that stays independently counted per branch always, a new variant always
+ * arrives at stock 0. Deliberately best-effort: no batches/serials, no
+ * deletion of a branch row that no longer exists on the main shop.
  */
 class CatalogSync
 {
@@ -27,6 +32,26 @@ class CatalogSync
         $unitMap = static::syncUnits($mainShop, $branch);
         $productMap = static::syncProducts($mainShop, $branch, $categoryMap, $unitMap);
         static::syncVariants($mainShop, $branch, $productMap);
+    }
+
+    /**
+     * Real-time counterpart to syncToBranch() — propagates ONE just-saved
+     * main-shop product to every sibling branch immediately, instead of
+     * waiting for the owner to remember to press "ক্যাটালগ সিঙ্ক করুন".
+     * Deliberately product-only (no variant sync here) to keep a single
+     * product save cheap — variant changes still go out on the next full
+     * manual sync, same as before this existed.
+     */
+    public static function syncProductToBranches(Shop $mainShop, Product $product): void
+    {
+        $branches = Shop::withoutGlobalScopes()->where('parent_shop_id', $mainShop->id)->get();
+
+        foreach ($branches as $branch) {
+            $categoryMap = static::syncCategories($mainShop, $branch);
+            $unitMap = static::syncUnits($mainShop, $branch);
+            $existing = static::findExistingBranchProduct($branch, $product);
+            static::upsertBranchProduct($branch, $product, $existing, $categoryMap, $unitMap);
+        }
     }
 
     /** @return array<int,int> old category_id => branch's own category_id */
@@ -69,40 +94,90 @@ class CatalogSync
         return $map;
     }
 
-    /** @return array<int,int> main shop's product_id => branch's own product_id, for syncVariants() */
+    /**
+     * @return array<int,int> main shop's product_id => branch's own product_id, for syncVariants()
+     *
+     * Prefetches the branch's whole catalog once (not once per main-shop
+     * product — this loop can run over thousands of rows) and matches
+     * in-memory, same three-tier precedence as findExistingBranchProduct()
+     * uses for the single-product real-time path.
+     */
     private static function syncProducts(Shop $mainShop, Shop $branch, array $categoryMap, array $unitMap): array
     {
         $branchProducts = Product::withoutGlobalScopes()->where('shop_id', $branch->id)->get();
+        $byMasterId = $branchProducts->whereNotNull('master_product_id')->keyBy('master_product_id');
         $byBarcode = $branchProducts->filter(fn (Product $p) => filled($p->barcode))->keyBy('barcode');
         $byName = $branchProducts->keyBy('name');
+
         $map = [];
-
         foreach (Product::withoutGlobalScopes()->where('shop_id', $mainShop->id)->get() as $p) {
-            $existing = (filled($p->barcode) ? $byBarcode->get($p->barcode) : null) ?? $byName->get($p->name);
+            $existing = $byMasterId->get($p->id)
+                ?? (filled($p->barcode) ? $byBarcode->get($p->barcode) : null)
+                ?? $byName->get($p->name);
 
-            $attrs = [
-                'category_id' => $p->category_id ? ($categoryMap[$p->category_id] ?? null) : null,
-                'unit_id' => $p->unit_id ? ($unitMap[$p->unit_id] ?? null) : null,
-                'name' => $p->name, 'name_en' => $p->name_en, 'generic_name' => $p->generic_name,
-                'company' => $p->company, 'shelf_location' => $p->shelf_location,
-                'requires_prescription' => $p->requires_prescription, 'emoji' => $p->emoji,
-                'photo_path' => $p->photo_path, 'barcode' => $p->barcode,
-                'sold_by_weight' => $p->sold_by_weight, 'weight_unit' => $p->weight_unit,
-                'cost' => $p->cost, 'price' => $p->price, 'wholesale_price' => $p->wholesale_price,
-                'discount_price' => $p->discount_price, 'reorder_point' => $p->reorder_point,
-            ];
-
-            if ($existing) {
-                // stock deliberately excluded -- a branch's own count is never overwritten by a sync
-                $existing->update($attrs);
-                $map[$p->id] = $existing->id;
-            } else {
-                $new = Product::create(['shop_id' => $branch->id, 'stock' => 0, ...$attrs]);
-                $map[$p->id] = $new->id;
-            }
+            $map[$p->id] = static::upsertBranchProduct($branch, $p, $existing, $categoryMap, $unitMap)->id;
         }
 
         return $map;
+    }
+
+    /**
+     * Single-row equivalent of syncProducts()' in-memory matching, for the
+     * real-time syncProductToBranches() path — one product, so a plain
+     * query (rather than prefetching the whole branch catalog) is the
+     * cheaper option here.
+     */
+    private static function findExistingBranchProduct(Shop $branch, Product $p): ?Product
+    {
+        return Product::withoutGlobalScopes()->where('shop_id', $branch->id)->where('master_product_id', $p->id)->first()
+            ?? Product::withoutGlobalScopes()->where('shop_id', $branch->id)
+                ->where(fn ($q) => filled($p->barcode)
+                    ? $q->where('barcode', $p->barcode)->orWhere('name', $p->name)
+                    : $q->where('name', $p->name))
+                ->first();
+    }
+
+    /**
+     * The actual create-or-update, shared by both the bulk syncProducts()
+     * loop and the real-time syncProductToBranches() path — `$existing` is
+     * found differently by each caller (in-memory map vs. a direct query)
+     * but applied identically here. `master_product_id` is always stamped
+     * going forward (set by a previous sync, from either path, or freshly
+     * here on a first-ever match) — durable across a later rename on
+     * either side, unlike barcode/name alone.
+     */
+    private static function upsertBranchProduct(Shop $branch, Product $p, ?Product $existing, array $categoryMap, array $unitMap): Product
+    {
+        // emoji/requires_prescription/sold_by_weight fall back here because
+        // a Product instance fresh off Product::create() never reflects a
+        // column's DB-level default (migration defaults only apply when the
+        // INSERT omits the column entirely — $p's own in-memory attribute
+        // stays null unless it was explicitly passed in). Every real product
+        // created through ProductController::store() always sets these
+        // explicitly, so this only ever matters for a product built
+        // directly (tests, console seeders) — never silently insert a NULL
+        // into a NOT NULL column on the branch side.
+        $attrs = [
+            'category_id' => $p->category_id ? ($categoryMap[$p->category_id] ?? null) : null,
+            'unit_id' => $p->unit_id ? ($unitMap[$p->unit_id] ?? null) : null,
+            'name' => $p->name, 'name_en' => $p->name_en, 'generic_name' => $p->generic_name,
+            'company' => $p->company, 'shelf_location' => $p->shelf_location,
+            'requires_prescription' => $p->requires_prescription ?? false, 'emoji' => $p->emoji ?: '📦',
+            'photo_path' => $p->photo_path, 'barcode' => $p->barcode,
+            'sold_by_weight' => $p->sold_by_weight ?? false, 'weight_unit' => $p->weight_unit,
+            'cost' => $p->cost, 'price' => $p->price, 'wholesale_price' => $p->wholesale_price,
+            'discount_price' => $p->discount_price, 'reorder_point' => $p->reorder_point,
+            'master_product_id' => $p->id,
+        ];
+
+        if ($existing) {
+            // stock deliberately excluded -- a branch's own count is never overwritten by a sync
+            $existing->update($attrs);
+
+            return $existing;
+        }
+
+        return Product::create(['shop_id' => $branch->id, 'stock' => 0, ...$attrs]);
     }
 
     /**
