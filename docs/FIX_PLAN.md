@@ -1099,7 +1099,7 @@ in one pass.
 
 ---
 
-## Incident — admin impersonation bounced to login on an inactive shop
+## Incident — admin impersonation bounced to login on an inactive shop (confirmed fixed by Khaled, 2026-10-21)
 
 Khaled reported (2026-10-21): from Admin, entering a shop (via the
 "Impersonate" button) and clicking POS kept bouncing back to the login
@@ -1133,14 +1133,11 @@ with that. A real shop user's own session is completely unaffected —
 the bypass only ever applies to a session `ImpersonationController
 ::start()` itself marked.
 
-**Also added, since this diagnosis isn't 100% confirmed from a live
-trace**: temporary `Log::warning()` calls in both `EnsureShopUser` and
-`CheckSubscriptionActive`, right before each one's own redirect/logout,
-capturing the URL, session state, and (for the subscription check) the
-shop's actual `status`/`subscription_expiry` at the moment it fires.
-If the bypass above doesn't fully resolve what Khaled's seeing, the
-next occurrence will log the real reason instead of vanishing silently
-— remove both once confirmed fixed.
+Also added temporarily, since the diagnosis wasn't 100% confirmed from
+a live trace at the time: `Log::warning()` calls in both
+`EnsureShopUser` and `CheckSubscriptionActive`. Khaled deployed,
+retested the exact same steps (admin → impersonate → POS), and
+confirmed it fixed — both temporary logs have been removed again.
 
 Tests: `tests/Feature/SubscriptionExpiryTest.php` gains 2 — an
 impersonating admin's session bypasses the subscription check on an

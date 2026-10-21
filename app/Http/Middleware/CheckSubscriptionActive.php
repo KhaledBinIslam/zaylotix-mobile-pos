@@ -6,21 +6,19 @@ use App\Support\Tenancy;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
 class CheckSubscriptionActive
 {
     public function handle(Request $request, Closure $next): Response
     {
-        // Likely real cause of Khaled's "admin -> impersonate a shop ->
-        // POS bounces to login" report (2026-10-21): an admin impersonating
-        // a demo/inactive/expired shop for support or a sales demo hit this
-        // exact check and got logged out — correct for a real paying
-        // customer's own session, but counterproductive for an admin who
-        // deliberately chose to look at this shop regardless of its
-        // billing status (often the whole reason they're impersonating in
-        // the first place — e.g. to help a shop whose subscription just
+        // Confirmed live fix (2026-10-21): an admin impersonating a demo/
+        // inactive/expired shop for support or a sales demo was hitting
+        // this exact check and getting logged out — correct for a real
+        // paying customer's own session, but counterproductive for an
+        // admin who deliberately chose to look at this shop regardless of
+        // its billing status (often the whole reason they're impersonating
+        // in the first place — e.g. to help a shop whose subscription just
         // lapsed). An admin's impersonated session now always passes this
         // check, same as it already bypasses every other permission/role
         // gate by virtue of being the shop's own owner.
@@ -59,16 +57,6 @@ class CheckSubscriptionActive
             if ($request->header('X-Inertia-Poll') === 'true') {
                 abort(401, 'আপনার সাবস্ক্রিপশনের মেয়াদ শেষ হয়ে গেছে বা shop নিষ্ক্রিয়।');
             }
-
-            // Temporary diagnostic (2026-10-21) — see EnsureShopUser's
-            // matching log. Remove once the real cause is confirmed.
-            Log::warning('CheckSubscriptionActive: logging out and redirecting to login', [
-                'url' => $request->fullUrl(),
-                'shop_id' => $shop?->id,
-                'shop_status' => $shop?->status,
-                'subscription_expiry' => $shop?->subscription_expiry?->toDateString(),
-                'user_id' => $user?->id,
-            ]);
 
             Auth::guard('web')->logout();
             $request->session()->invalidate();
