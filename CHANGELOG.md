@@ -3,6 +3,13 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## Fix: feature description column too short for MySQL
+- Real deploy-time failure: `features.description` was a `VARCHAR(255)`
+  and three new Phase 4 feature descriptions ran past that, caught
+  only on the real production deploy (sqlite, what tests run on,
+  never enforces this). Widened to `TEXT` so no future description can
+  ever hit this limit again.
+
 ## Phase 4 item #3: ব্রাঞ্চ-জুড়ে প্রোমোশন পুলিং (cross-branch promotions)
 - New: an opt-in `shared_promotions` feature (grant to a main shop).
   A coupon-code promotion created on the main shop now syncs to every

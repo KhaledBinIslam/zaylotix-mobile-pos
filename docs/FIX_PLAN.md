@@ -1067,6 +1067,38 @@ flow, nothing new for the owner to operate.
 
 ---
 
+## Incident — live deploy failure: `features.description` too long
+
+Real production incident (2026-10-21), caught the moment Khaled ran
+the deploy: `php artisan db:seed --class=FeatureSeeder --force` threw
+`SQLSTATE[22001]: String data, right truncated` on the `shared_catalog`
+row. Root cause: `features.description` is a plain `string`
+(`VARCHAR(255)`), and three of this session's own newer descriptions
+(`shared_catalog` 259 chars, `transfer_confirmation` 306,
+`shared_promotions` 256) ran past that limit — never caught locally
+because the entire test suite runs on sqlite, which never enforces a
+`VARCHAR` length at all, so 900+ passing tests gave no signal; it only
+surfaced against the real MySQL column on deploy.
+
+**Root-cause fix, not a one-off trim of those three strings**:
+widened `features.description` to `TEXT` (no practical length cap), so
+no future description — however long — can ever hit this again. A
+raw `ALTER TABLE ... MODIFY description TEXT NULL`, not
+`Schema::table()->change()` — this codebase has never used `->change()`
+anywhere and that needs `doctrine/dbal`, which isn't a declared
+dependency here; a plain statement needs nothing new installed. The
+migration explicitly no-ops on a non-MySQL connection (sqlite has no
+`MODIFY COLUMN` syntax at all, and nothing to widen there anyway),
+so the test suite's own migrations stay unaffected.
+
+Nothing else from this deploy was lost — all 4 pending migrations had
+already applied successfully before the seeder step failed; only the
+`FeatureSeeder` run needs re-running after this fix lands, which
+re-upserts every feature (including the 3 that never got inserted)
+in one pass.
+
+---
+
 ## Definition-of-done checklist (tracked across all phases, per master prompt)
 
 - [x] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test --all`, Phase 0.6) — re-verified 2026-10-20, all 8 types OK
