@@ -3,6 +3,11 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## Fix: Online Business nav missing from mobile "More" page
+- Reported live right after deploy: the new nav links worked on the
+  desktop sidebar but never showed up on the mobile bottom-tab "More"
+  page, which keeps its own separate menu list. Added there too.
+
 ## "Online Business" module, part 2: অনলাইন অর্ডার
 - Place an online order (manual form or CSV import from a channel's
   export file) — stock reduces immediately, exactly like a POS sale,

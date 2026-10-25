@@ -1486,6 +1486,19 @@ gating; the `salesByType` breakdown gaining an 'online' bucket with
 zero changes to `Reports.php`; the risk indicator; CSV preview
 (matching, error-flagging, duplicate detection) and import.
 
+## Fix — Online Business nav missing from the mobile "More" page
+
+Reported live by Khaled right after deploying Part 1+2 and granting
+the feature to a demo shop: "Online orders"/"Online channels" showed
+up correctly in the desktop sidebar (`AppLayout.vue`'s nav array) but
+were completely absent from the mobile bottom-tab "More" page.
+Root cause: `More.vue` is a separate page with its **own** hardcoded
+card list per section — it does not read `AppLayout.vue`'s `sections`
+array at all, so adding a nav entry there was never enough on its own.
+Fixed by adding the same two links (gated the same way,
+`hasPerm('online_business') && features.includes('online_business')`)
+to `More.vue`'s "Sales" section, right after Quotations.
+
 Parts 3-8 — not yet started.
 
 ## Definition-of-done checklist (updated after every phase)
