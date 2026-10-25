@@ -66,6 +66,7 @@ use App\Http\Controllers\App\UnitController;
 use App\Http\Controllers\App\PromotionController;
 use App\Http\Controllers\App\PurchaseController;
 use App\Http\Controllers\App\OnlineOrderController;
+use App\Http\Controllers\App\OnlineProfitController;
 use App\Http\Controllers\App\PurchaseOrderController;
 use App\Http\Controllers\App\SalesChannelController;
 use App\Http\Controllers\App\QuotationController;
@@ -410,6 +411,9 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::get('ads', [AdSpendController::class, 'index'])->name('ads.index');
         Route::post('ads', [AdSpendController::class, 'store'])->name('ads.store');
         Route::put('ads/overhead-rule', [AdSpendController::class, 'updateOverheadRule'])->name('ads.overheadRule');
+
+        // profit engine and reports — see docs/FIX_PLAN.md's Phase 36 design note
+        Route::get('online-profit', [OnlineProfitController::class, 'index'])->name('onlineProfit.index');
     });
 
     Route::middleware(['perm:expenses', 'feature:expenses'])->group(function () {

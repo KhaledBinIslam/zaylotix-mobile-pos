@@ -398,6 +398,7 @@ const sidebarGroups = computed(() => [
             { key: 'channels', label: t('nav.channels'), href: route('app.channels.index'), icon: 'globe', on: props.active === 'channels', show: hasPerm('online_business') && hasFeature('online_business') },
             { key: 'couriers', label: t('nav.couriers'), href: route('app.couriers.index'), icon: 'truck', on: props.active === 'couriers', show: hasPerm('online_business') && hasFeature('online_business') },
             { key: 'ads', label: t('nav.ads'), href: route('app.ads.index'), icon: 'trending', on: props.active === 'ads', show: hasPerm('online_business') && hasFeature('online_business') },
+            { key: 'onlineProfit', label: t('nav.onlineProfit'), href: route('app.onlineProfit.index'), icon: 'barChart', on: props.active === 'onlineProfit', show: hasPerm('online_business') && hasFeature('online_business') },
         ],
     },
     {

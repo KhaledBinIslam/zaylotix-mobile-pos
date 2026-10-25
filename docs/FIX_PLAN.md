@@ -1688,8 +1688,6 @@ test caught it returning `delivered` instead of `returned`. Fixed with
 an explicit `['returned', 'cancelled']` check instead of reusing a
 constant whose documented meaning didn't actually match this use.
 
-Parts 6-8 — not yet started.
-
 ## Phase 35 — "Online Business" module, part 5: ads and expense allocation
 
 **Reuse discovery.** The existing `Expense`/`ExpenseCategory` module
@@ -1778,7 +1776,119 @@ feeds `total_overhead` with no new data entry; a shop without
 `online_business` gets a 403 on every new route. Full suite: 1054
 passed (1043 prior baseline + these 11), zero regressions.
 
-Parts 6-8 — not yet started.
+## Phase 36 — "Online Business" module, part 6: the profit engine and reports
+
+**A real gap found before writing any new code**: `Reports::
+rangeStats()` (the existing P&L, already feeding Accounts/Partner
+profit-share) already includes a delivered online order's revenue and
+product-margin profit automatically, with zero online-specific code —
+that's exactly what Part 2's `counted_in_reports` design bought. But
+tracing the arithmetic through, `rangeStats()`'s `cogs` is *derived*
+as `grossSales − profit` (a residual, not an independent figure), so
+`grossSales − cogs` always collapses back to exactly `sum(Sale.profit)`
+— meaning `delivery_charge` (included in `grossSales`/revenue) and
+`courier_charge` (never recorded as an `Expense` anywhere) both
+cancel out of the *existing* net-profit figure entirely, even though
+real money moves both ways. Platform/gateway fee percentages
+(`sales_channels.platform_fee_percent`/`gateway_fee_percent`, captured
+since Part 1) have never been applied anywhere either. This is this
+part's actual job — not building a UI on top of numbers that already
+exist, but computing the numbers that don't exist yet.
+
+**Deliberately reporting-only, not a money-movement change**: this
+part computes and *displays* the corrected profit (courier cost,
+fees, delivery-charge revenue, all netted in), but does NOT change
+how `cash_balance` itself gets mutated in Parts 2/3's already-shipped,
+already-confirmed-live delivery/settlement code — retrofitting that
+is a real bookkeeping question (does a courier remit COD net of their
+own fee already, or does Khaled pay it separately?) that shouldn't be
+guessed at and silently bundled into a reporting part. Flagged to
+Khaled directly: if a courier's `received_amount` at settlement is
+already net of their fee, cash is already correct; if not, he should
+log the courier's actual fee as its own Expense to keep `cash_balance`
+accurate — this part's numbers don't change that either way.
+
+**New `App\Support\OnlineProfitReport`** (not folded into `Reports.php`
+— this is exclusively about the online module, `Reports.php` serves
+every business type): `consolidated()` (View A) and `byChannel()`
+(View B), both built from ONE shared per-channel calculation
+(`channelRows()`) so View A's own "online" total is never a
+separately-written formula that could silently drift from View B's
+sum — it's *literally* `sum of the same rows B returns*. The spec's
+own "sum of channels == consolidated" integrity check is therefore
+true by construction for revenue/COGS/courier/ads/fees/damage; the one
+place it isn't automatic is overhead under `manual` allocation, where
+percentages aren't required to total 100% (Part 5's own design,
+unchanged) — so "allocated overhead" (what channels actually carry)
+and "unallocated overhead" (the leftover, if any) are both reported
+separately rather than one being silently absorbed into the other.
+Tested explicitly: allocated + unallocated always equals the total
+overhead pool, for every rule including `manual` with mismatched
+percentages.
+
+**Two deliberately separate cohorts, clearly labeled, not blended
+into one misleading number**:
+- **Financial figures** (revenue, COGS, courier cost, ad spend,
+  platform/gateway fees, damage/loss, profit) use the `delivered_at`
+  date range — same revenue-recognition rule as everywhere else in
+  this module (an order only counts once delivered). Returns are
+  handled exactly like `Reports::rangeStats()` already does: `Sale.
+  total`/`profit` stay as originally recorded, and a return's
+  `refund`/`cost` are subtracted as a separate adjustment layer (never
+  mutating the Sale itself) — same pattern, not a second one.
+- **Operational figures** (orders placed, status breakdown, delivery
+  success %, return %) use the `created_at` date range, evaluated by
+  each order's CURRENT status — "of what was placed in this period,
+  how much is now delivered/returned/cancelled." Mixing the two axes
+  into one set of percentages would silently misrepresent orders
+  placed in one period but resolved in another; keeping them as two
+  clearly-labeled sections avoids that without pretending a single
+  number can honestly answer both questions.
+
+**Gross profit formula** (per channel, financial cohort):
+`Sale.profit − return-cost-recovered` (product margin, same identity
+`rangeStats()` already relies on) `+ delivery_charge collected
+− courier_charge paid − platform/gateway fees − damage/loss write-off
+− ad spend`, then `− its overhead share` for net profit. Damage/loss
+is read from `SalesReturn.cost` where `condition` is `damaged`/`lost`
+(the exact figure Part 4's return hook already writes, also mirrored
+onto the `Damage` row it creates) rather than touching `Damage`
+directly, since `Damage` carries no `sale_id`/channel linkage of its
+own — `SalesReturn` does.
+
+**Reused, not rebuilt**: `stock_value` and `cod_pending` in View A are
+the exact same one-line queries `AccountsController` already runs
+(Part 3's "COD receivable" line, and the stock-valuation query
+`PartnerController` also already duplicates) — shown here for context
+on the same page, not a third copy of report logic to keep in sync.
+
+**New `OnlineProfitController`** (`app.onlineProfit.index`, same
+`online_business` gate), date-preset filters (today/week/month/year/
+custom, same pattern as the Ads page) and an optional channel filter
+for drilling into one row. **Scope cut, documented**: the spec also
+asks for a product filter/matrix, courier/status/district/staff
+filters, sorting, pagination, previous-period comparison, and Excel/
+CSV/PDF export. Not built here — the correctness of the underlying
+profit calculation (the part Khaled explicitly asked about twice:
+*"calculation thik vabe hocche kina?"*) is what this phase is for;
+the filter/export surface around it is Part 7-adjacent polish that can
+be added later without touching the calculation itself. Deferring it
+is a scope decision, not an oversight — flagged to Khaled directly
+rather than silently dropped.
+
+Tests: `tests/Feature/OnlineProfitReportTest.php` — the integrity
+check (sum of channel rows' revenue/cogs/courier/ads/fees/damage/net
+profit each equal View A's consolidated "online" totals, across
+equal/revenue_share/manual-with-mismatched-percentages/no-rule-set);
+delivery_charge and courier_charge actually move net profit (the gap
+found above) where they previously canceled out entirely; platform/
+gateway fees reduce profit by the configured percent; a return's
+refund/cost is subtracted without mutating the underlying Sale;
+damage/loss from a 'lost'/'damaged' return reduces profit by exactly
+`SalesReturn.cost`; the operational cohort (orders placed/status
+counts) and financial cohort (delivered-in-period revenue) are shown
+to legitimately diverge when an order is placed in one period and
+delivered in the next; a shop without `online_business` gets 403.
 
 ## Definition-of-done checklist (updated after every phase)
 
