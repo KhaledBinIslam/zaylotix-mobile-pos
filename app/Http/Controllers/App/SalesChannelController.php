@@ -5,6 +5,7 @@ namespace App\Http\Controllers\App;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\App\StoreSalesChannelRequest;
 use App\Models\ChannelProductPrice;
+use App\Models\Courier;
 use App\Models\Product;
 use App\Models\SalesChannel;
 use App\Support\Tenancy;
@@ -19,6 +20,7 @@ class SalesChannelController extends Controller
     {
         return Inertia::render('App/OnlineBusiness/Channels/Index', [
             'channels' => SalesChannel::orderBy('name')->get(),
+            'couriers' => Courier::where('active', true)->orderBy('name')->get(['id', 'name']),
         ]);
     }
 
@@ -34,6 +36,7 @@ class SalesChannelController extends Controller
             'order_prefix' => $data['order_prefix'],
             'platform_fee_percent' => $data['platform_fee_percent'] ?? null,
             'gateway_fee_percent' => $data['gateway_fee_percent'] ?? null,
+            'default_courier_id' => $data['default_courier_id'] ?? null,
         ]);
 
         return back()->with('success', "{$data['name']} চ্যানেল যোগ করা হয়েছে।");
@@ -52,6 +55,7 @@ class SalesChannelController extends Controller
             'order_prefix' => $data['order_prefix'],
             'platform_fee_percent' => $data['platform_fee_percent'] ?? null,
             'gateway_fee_percent' => $data['gateway_fee_percent'] ?? null,
+            'default_courier_id' => $data['default_courier_id'] ?? null,
         ];
 
         if ($request->hasFile('logo') || ! empty($data['remove_logo'])) {

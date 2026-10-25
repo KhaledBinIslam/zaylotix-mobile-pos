@@ -6,6 +6,7 @@ use App\Http\Controllers\App\AccountsController;
 use App\Http\Controllers\App\ActivityLogController;
 use App\Http\Controllers\App\BarcodeLabelController;
 use App\Http\Controllers\App\BranchController;
+use App\Http\Controllers\App\CourierController;
 use App\Http\Controllers\App\CsrfTokenController;
 use App\Http\Controllers\App\CustomerController;
 use App\Http\Controllers\App\CustomerListController;
@@ -397,6 +398,14 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::post('online-orders/{onlineOrder}/deliver', [OnlineOrderController::class, 'deliver'])->name('onlineOrders.deliver');
         Route::post('online-orders/{onlineOrder}/cancel', [OnlineOrderController::class, 'cancel'])->name('onlineOrders.cancel');
         Route::post('online-orders/{onlineOrder}/return', [OnlineOrderController::class, 'returnOrder'])->name('onlineOrders.return');
+
+        // couriers — see docs/FIX_PLAN.md's Phase 33 design note
+        Route::get('couriers', [CourierController::class, 'index'])->name('couriers.index');
+        Route::post('couriers', [CourierController::class, 'store'])->name('couriers.store');
+        Route::put('couriers/{courier}', [CourierController::class, 'update'])->name('couriers.update');
+        Route::delete('couriers/{courier}', [CourierController::class, 'destroy'])->name('couriers.destroy');
+        Route::get('couriers/{courier}', [CourierController::class, 'show'])->name('couriers.show');
+        Route::post('couriers/{courier}/settle', [CourierController::class, 'settle'])->name('couriers.settle');
     });
 
     Route::middleware(['perm:expenses', 'feature:expenses'])->group(function () {

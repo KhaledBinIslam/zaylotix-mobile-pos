@@ -4,7 +4,7 @@ import { computed, ref, watch } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useI18n } from '@/composables/useI18n';
 
-const props = defineProps({ channels: Array, products: Array });
+const props = defineProps({ channels: Array, products: Array, couriers: { type: Array, default: () => [] } });
 const { t } = useI18n();
 
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
@@ -15,7 +15,10 @@ const form = useForm({
     items: [{ product_id: '', product_variant_id: '', qty: 1, imei: '' }],
     delivery_charge: '', cod_amount: '', paid_amount: '', paid_method: 'cash',
     campaign_tag: '', external_reference: '',
+    courier_id: '', parcel_weight: '', is_outside_dhaka: false,
 });
+
+const selectedCourier = computed(() => props.couriers.find((c) => c.id === form.courier_id));
 
 function productOf(line) {
     return props.products.find((p) => p.id === line.product_id);
@@ -138,6 +141,24 @@ function save() {
                 <label>{{ t('onlineOrder.codAmount') }} <span style="color:var(--dim);font-weight:400">{{ t('onlineOrder.codHint') }}</span></label>
                 <input v-model.number="form.cod_amount" type="number" min="0" placeholder="0">
             </div>
+        </div>
+
+        <div v-if="couriers.length" class="field">
+            <label>{{ t('courier.pickCourier') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
+            <select v-model="form.courier_id">
+                <option value="">{{ t('damage.selectPlaceholder') }}</option>
+                <option v-for="c in couriers" :key="c.id" :value="c.id">{{ c.name }}</option>
+            </select>
+        </div>
+        <div v-if="selectedCourier?.charge_type === 'weight'" class="field">
+            <label>{{ t('courier.parcelWeight') }}</label>
+            <input v-model.number="form.parcel_weight" type="number" min="0" step="0.01" placeholder="0.5">
+        </div>
+        <div v-if="selectedCourier?.charge_type === 'zone'" class="field">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                <input v-model="form.is_outside_dhaka" type="checkbox">
+                {{ t('courier.outsideDhaka') }}
+            </label>
         </div>
 
         <div class="f2">

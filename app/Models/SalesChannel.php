@@ -45,6 +45,11 @@ class SalesChannel extends Model
         return $this->hasMany(ChannelProductPrice::class, 'channel_id');
     }
 
+    public function defaultCourier()
+    {
+        return $this->belongsTo(Courier::class, 'default_courier_id');
+    }
+
     /**
      * The price this channel sells a product at — its own override if one
      * exists, otherwise the exact same fallback POS checkout already uses

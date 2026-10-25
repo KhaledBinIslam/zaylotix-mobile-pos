@@ -14,6 +14,7 @@ class OnlineOrder extends Model
         'shop_id', 'channel_id', 'sale_id', 'order_number', 'external_reference', 'status',
         'courier_id', 'tracking_id', 'delivery_charge', 'cod_amount', 'campaign_tag',
         'delivered_at', 'cancelled_at',
+        'courier_charge', 'parcel_weight', 'is_outside_dhaka', 'cod_settled_at', 'courier_settlement_id',
     ];
 
     /** Every status an order can be in — see docs/FIX_PLAN.md's Phase 32 design note for what each one does and doesn't move. */
@@ -46,6 +47,10 @@ class OnlineOrder extends Model
             'cod_amount' => 'decimal:2',
             'delivered_at' => 'datetime',
             'cancelled_at' => 'datetime',
+            'courier_charge' => 'decimal:2',
+            'parcel_weight' => 'decimal:3',
+            'is_outside_dhaka' => 'boolean',
+            'cod_settled_at' => 'datetime',
         ];
     }
 
@@ -57,6 +62,16 @@ class OnlineOrder extends Model
     public function channel()
     {
         return $this->belongsTo(SalesChannel::class, 'channel_id');
+    }
+
+    public function courier()
+    {
+        return $this->belongsTo(Courier::class);
+    }
+
+    public function settlement()
+    {
+        return $this->belongsTo(CourierSettlement::class, 'courier_settlement_id');
     }
 
     /**

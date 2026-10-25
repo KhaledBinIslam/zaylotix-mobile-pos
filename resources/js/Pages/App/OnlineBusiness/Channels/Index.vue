@@ -5,7 +5,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import { useI18n } from '@/composables/useI18n';
 
-defineProps({ channels: Array });
+const props = defineProps({ channels: Array, couriers: { type: Array, default: () => [] } });
 const { t } = useI18n();
 
 const PLATFORM_TYPES = ['facebook', 'website', 'daraz', 'whatsapp', 'catalog', 'other'];
@@ -17,7 +17,7 @@ const editing = ref(null);
 const logoPreview = ref(null);
 const form = useForm({
     name: '', platform_type: 'facebook', logo: null, remove_logo: false, active: true,
-    order_prefix: '', platform_fee_percent: '', gateway_fee_percent: '',
+    order_prefix: '', platform_fee_percent: '', gateway_fee_percent: '', default_courier_id: '',
 });
 
 function openNew() {
@@ -36,6 +36,7 @@ function openEdit(c) {
     form.order_prefix = c.order_prefix;
     form.platform_fee_percent = c.platform_fee_percent;
     form.gateway_fee_percent = c.gateway_fee_percent;
+    form.default_courier_id = c.default_courier_id || '';
     logoPreview.value = null;
     sheet.value = true;
 }
@@ -141,6 +142,14 @@ function destroy(c) {
                     <input v-model="form.gateway_fee_percent" type="number" step="0.01" min="0" max="100" placeholder="0">
                     <div v-if="form.errors.gateway_fee_percent" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.gateway_fee_percent }}</div>
                 </div>
+            </div>
+
+            <div v-if="couriers.length" class="field">
+                <label>{{ t('courier.defaultCourier') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
+                <select v-model="form.default_courier_id">
+                    <option value="">{{ t('damage.selectPlaceholder') }}</option>
+                    <option v-for="c in couriers" :key="c.id" :value="c.id">{{ c.name }}</option>
+                </select>
             </div>
 
             <button class="btn" :disabled="form.processing" @click="save">{{ form.processing ? '...' : t('stock.save') }}</button>

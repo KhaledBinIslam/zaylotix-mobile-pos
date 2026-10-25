@@ -3,6 +3,15 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## "Online Business" module, part 3: কুরিয়ার ও COD সেটেলমেন্ট
+- Add your own couriers (flat / by-weight / Dhaka-vs-outside pricing),
+  pick one per order (or set a channel's default), and see the
+  estimated delivery cost against each order. A COD settlement screen
+  lets you select delivered orders, enter what the courier actually
+  paid, and see the difference if it's short. Pending COD now shows as
+  a receivable on the Accounts page until it's settled — that's also
+  the moment it finally becomes real cash on hand.
+
 ## Fix: online order rejection (e.g. stock shortage) crashed instead of showing why
 - Reported live: placing an order that failed a business rule (not
   enough stock, etc.) crashed with a generic "Oops! An error occurred"

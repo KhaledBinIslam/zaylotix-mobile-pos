@@ -5,6 +5,7 @@ namespace App\Http\Controllers\App;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\App\StoreOnlineOrderRequest;
 use App\Models\ActivityLog;
+use App\Models\Courier;
 use App\Models\Customer;
 use App\Models\OnlineOrder;
 use App\Models\Product;
@@ -16,6 +17,7 @@ use App\Models\SalesChannel;
 use App\Models\Shop;
 use App\Support\Activity;
 use App\Support\BatchStock;
+use App\Support\CourierCharge;
 use App\Support\IngredientConsumption;
 use App\Support\SaleReversal;
 use App\Support\SerialStock;
@@ -61,6 +63,7 @@ class OnlineOrderController extends Controller
         return Inertia::render('App/OnlineBusiness/Orders/Create', [
             'channels' => SalesChannel::where('active', true)->orderBy('name')->get(),
             'products' => Product::with('variants')->orderBy('name')->get(['id', 'name', 'emoji', 'price', 'discount_price', 'sold_by_weight']),
+            'couriers' => Courier::where('active', true)->orderBy('name')->get(['id', 'name', 'charge_type']),
         ]);
     }
 
@@ -214,7 +217,8 @@ class OnlineOrderController extends Controller
         $this->authorize('view', $onlineOrder);
 
         return Inertia::render('App/OnlineBusiness/Orders/Show', [
-            'order' => $onlineOrder->load(['channel', 'sale' => fn ($q) => $q->withVoided()->with(['items', 'payments', 'customer'])]),
+            'order' => $onlineOrder->load(['channel', 'courier', 'sale' => fn ($q) => $q->withVoided()->with(['items', 'payments', 'customer'])]),
+            'couriers' => Courier::where('active', true)->orderBy('name')->get(['id', 'name', 'charge_type']),
             'history' => ActivityLog::where('subject_type', OnlineOrder::class)
                 ->where('subject_id', $onlineOrder->id)
                 ->with('user:id,name')
@@ -433,6 +437,15 @@ class OnlineOrderController extends Controller
             $orderNumber = $channel->order_prefix.$channel->order_counter;
             $channel->save();
 
+            // courier is optional here — explicit pick, else the channel's
+            // own default (Part 1), else none yet (can still be set at the
+            // "handed to courier" step) — see docs/FIX_PLAN.md's Phase 33
+            // design note
+            $courierId = $data['courier_id'] ?? $channel->default_courier_id;
+            $courier = $courierId ? Courier::find($courierId) : null;
+            $parcelWeight = isset($data['parcel_weight']) ? (float) $data['parcel_weight'] : null;
+            $isOutsideDhaka = array_key_exists('is_outside_dhaka', $data) ? (bool) $data['is_outside_dhaka'] : null;
+
             $onlineOrder = OnlineOrder::create([
                 'shop_id' => $shopId,
                 'channel_id' => $channel->id,
@@ -443,6 +456,10 @@ class OnlineOrderController extends Controller
                 'delivery_charge' => $deliveryCharge,
                 'cod_amount' => $codAmount,
                 'campaign_tag' => $data['campaign_tag'] ?? null,
+                'courier_id' => $courier?->id,
+                'courier_charge' => $courier ? CourierCharge::estimate($courier, $parcelWeight, $isOutsideDhaka) : null,
+                'parcel_weight' => $parcelWeight,
+                'is_outside_dhaka' => $isOutsideDhaka,
             ]);
 
             Activity::log('online_order.created', "অনলাইন অর্ডার '{$orderNumber}' তৈরি করা হয়েছে ({$channel->name})।", $onlineOrder, ['total' => $total]);
@@ -459,6 +476,13 @@ class OnlineOrderController extends Controller
         $data = $request->validate([
             'status' => ['required', Rule::in(['confirmed', 'packed', 'handed_to_courier', 'in_transit', 'failed', 'returning'])],
             'tracking_id' => ['nullable', 'string', 'max:100'],
+            // only ever meaningful if a courier wasn't already picked at
+            // order creation — "handed to courier" is the latest natural
+            // point to still name one (see docs/FIX_PLAN.md's Phase 33
+            // design note)
+            'courier_id' => ['nullable', Rule::exists('couriers', 'id')->where('shop_id', Tenancy::id())],
+            'parcel_weight' => ['nullable', 'numeric', 'min:0'],
+            'is_outside_dhaka' => ['nullable', 'boolean'],
         ]);
 
         if (! $onlineOrder->canTransitionTo($data['status'])) {
@@ -466,10 +490,23 @@ class OnlineOrderController extends Controller
         }
 
         $from = $onlineOrder->status;
-        $onlineOrder->update([
+        $fields = [
             'status' => $data['status'],
             'tracking_id' => $data['tracking_id'] ?? $onlineOrder->tracking_id,
-        ]);
+        ];
+
+        if (! $onlineOrder->courier_id && ! empty($data['courier_id'])) {
+            $courier = Courier::find($data['courier_id']);
+            $parcelWeight = isset($data['parcel_weight']) ? (float) $data['parcel_weight'] : null;
+            $isOutsideDhaka = array_key_exists('is_outside_dhaka', $data) ? (bool) $data['is_outside_dhaka'] : null;
+
+            $fields['courier_id'] = $courier->id;
+            $fields['courier_charge'] = CourierCharge::estimate($courier, $parcelWeight, $isOutsideDhaka);
+            $fields['parcel_weight'] = $parcelWeight;
+            $fields['is_outside_dhaka'] = $isOutsideDhaka;
+        }
+
+        $onlineOrder->update($fields);
 
         Activity::log('online_order.status', "অর্ডার '{$onlineOrder->order_number}' স্ট্যাটাস: {$from} → {$data['status']}", $onlineOrder, ['from' => $from, 'to' => $data['status']]);
 

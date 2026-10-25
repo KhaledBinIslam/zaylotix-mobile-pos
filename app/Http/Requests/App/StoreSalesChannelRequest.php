@@ -30,6 +30,8 @@ class StoreSalesChannelRequest extends FormRequest
             ],
             'platform_fee_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'gateway_fee_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            // Part 3 — see docs/FIX_PLAN.md's Phase 33 design note
+            'default_courier_id' => ['nullable', Rule::exists('couriers', 'id')->where('shop_id', Tenancy::id())],
         ];
     }
 }

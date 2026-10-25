@@ -396,6 +396,7 @@ const sidebarGroups = computed(() => [
             { key: 'quotations', label: t('nav.quotations'), href: route('app.quotations.index'), icon: 'clipboard', on: props.active === 'quotations', show: hasPerm('pos') && hasFeature('quotations') },
             { key: 'onlineOrders', label: t('nav.onlineOrders'), href: route('app.onlineOrders.index'), icon: 'globe', on: props.active === 'onlineOrders', show: hasPerm('online_business') && hasFeature('online_business') },
             { key: 'channels', label: t('nav.channels'), href: route('app.channels.index'), icon: 'globe', on: props.active === 'channels', show: hasPerm('online_business') && hasFeature('online_business') },
+            { key: 'couriers', label: t('nav.couriers'), href: route('app.couriers.index'), icon: 'truck', on: props.active === 'couriers', show: hasPerm('online_business') && hasFeature('online_business') },
         ],
     },
     {

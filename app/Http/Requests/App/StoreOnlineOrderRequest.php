@@ -29,6 +29,13 @@ class StoreOnlineOrderRequest extends FormRequest
             'paid_amount' => ['nullable', 'numeric', 'min:0'],
             'paid_method' => [Rule::requiredIf(fn () => (float) $this->input('paid_amount', 0) > 0), 'nullable', Rule::in(['cash', 'bkash', 'nagad'])],
             'campaign_tag' => ['nullable', 'string', 'max:100'],
+            // courier assignment is optional at creation — defaults to the
+            // channel's own default_courier_id if left blank, and can still
+            // be set/changed later at the "handed to courier" step (see
+            // docs/FIX_PLAN.md's Phase 33 design note)
+            'courier_id' => ['nullable', Rule::exists('couriers', 'id')->where('shop_id', Tenancy::id())],
+            'parcel_weight' => ['nullable', 'numeric', 'min:0'],
+            'is_outside_dhaka' => ['nullable', 'boolean'],
             'external_reference' => [
                 'nullable', 'string', 'max:100',
                 Rule::unique('online_orders', 'external_reference')->where('channel_id', $this->input('channel_id')),

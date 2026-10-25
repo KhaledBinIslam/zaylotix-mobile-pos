@@ -1527,7 +1527,81 @@ already uses. `csvImport()`'s per-row catch block now extracts the
 validator's own message instead of `ValidationException`'s generic
 `getMessage()`.
 
-Parts 3-8 — not yet started.
+## Phase 33 — "Online Business" module, part 3: couriers, shipments, COD settlement
+
+Khaled's own next concern, asked directly after Part 2 started working
+live: *"online sales e order gula te koto taka costing jacche, eta
+kothay add korbe?"* — this part is exactly that answer: the actual cost
+the SHOP pays a courier per parcel (`courier_charge`), distinct from
+`delivery_charge` (what's charged TO the customer, already tracked
+since Part 2) and distinct from `cod_amount` (what the courier
+collects FROM the customer, also already tracked).
+
+**Scope cut, documented not silent**: the spec lists charge-rule types
+as "flat/weight/zone/district". Collapsed zone+district into one
+simplified **zone** type — inside-Dhaka / outside-Dhaka, a flat
+two-tier split — rather than a full 64-district rate table. This
+matches how almost every real Bangladeshi courier (Pathao, Steadfast,
+RedX) actually prices on their own rate card, and avoids a 64-row rate
+UI nothing asked for beyond the word "district" itself — same
+scope-discipline precedent as wholesale customer groups (Phase 30)
+being a binary flag, not a multi-tier hierarchy.
+
+**New `couriers` table** (owner-defined, no hardcoded list): `name`,
+`charge_type` (`flat`/`weight`/`zone`), `charge_config` (JSON — shape
+depends on type: `{amount}` / `{base, per_kg}` /
+`{inside_dhaka, outside_dhaka}`), `cod_fee_percent`, `return_charge`,
+`active`. A tiny `CourierCharge::estimate()` support class turns a
+courier + an order's own weight/zone into a `courier_charge` estimate
+— computed once at the point a courier is actually assigned (order
+creation, defaulting to the channel's own `default_courier_id` from
+Part 1 — its FK constraint, reserved back then, is added for real now
+— or at the "Handed to courier" transition if not set earlier),
+editable afterward since an estimate is exactly that.
+
+**Shipment tracking reuses what Part 2 already built** — `online_orders.
+tracking_id` plus the existing `ActivityLog` entry on every status
+transition already IS "shipments with tracking id and status log,"
+no new table needed for it.
+
+**Generic adapter interface**: a tiny `CourierAdapterInterface`
+(`createShipment()`/`trackShipment()`) with a `ManualCourierAdapter`
+(no-op) implementation satisfies "future Pathao/Steadfast/RedX,
+manual now" without building against an API that doesn't exist yet.
+
+**COD settlement, batch not per-order**: "select delivered orders,
+enter received amount, show difference" — a `courier_settlements` row
+per settlement event (one courier, N delivered-and-unsettled orders,
+one entered `received_amount` against their summed `expected_amount`,
+the difference shown, never hidden). Settling is the ONE place COD
+money actually becomes real shop cash — bumps `cash_balance` by
+exactly `received_amount` (not the expected total, since a shortfall/
+overage is real and must show, never be silently absorbed), and stamps
+each settled order's `cod_settled_at`.
+
+**Pending COD as a balance-sheet receivable**: `AccountsController`
+gains one new line, `codReceivable` = `SUM(cod_amount)` across
+delivered-but-not-yet-`cod_settled_at` online orders, folded into
+`assets` — the exact additive, one-line-per-report-method pattern
+Part 2's design note already established works without touching
+report internals.
+
+**Courier analytics**: parcels handled, delivered/returned/failed %,
+avg delivery time (`delivered_at - created_at` across delivered
+orders), COD collected (settled) vs. pending, `courier_charge` accrued,
+net settlement due — one method on `CourierController`, read-only,
+no new table.
+
+Tests: `tests/Feature/CourierTest.php`, 13 passing — the three charge-
+type estimates, courier assignment at creation (channel default vs.
+explicit pick) and at "handed to courier" when not set earlier, COD
+settlement bumping `cash_balance` by the actually-received amount (not
+expected, with the shortfall staying visible on the settlement record),
+rejecting a double-settle attempt, the accounts receivable line (zero
+before delivery, correct after), courier analytics percentages, tenant
+scoping, feature gating.
+
+Parts 4-8 — not yet started.
 
 ## Definition-of-done checklist (updated after every phase)
 

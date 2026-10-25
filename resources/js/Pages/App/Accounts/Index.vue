@@ -5,7 +5,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import { useI18n } from '@/composables/useI18n';
 
 const props = defineProps({
-    shop: Object, cash: Number, bank: Number, stockValue: Number, receivable: Number,
+    shop: Object, cash: Number, bank: Number, stockValue: Number, receivable: Number, codReceivable: { type: Number, default: 0 },
     payable: Number, assets: Number, liabilities: Number, netWorth: Number,
     capital: Number, retained: Number, totalExpenses: Number, totalDamage: Number, totalReturns: Number,
 });
@@ -66,6 +66,7 @@ function saveCreditLimit() {
         <div class="row"><div class="ava">🏦</div><div class="mid"><b>{{ t('acc.bankMfs') }}</b></div><div class="end"><b style="color:var(--green)">{{ money(bank) }}</b></div></div>
         <div class="row"><div class="ava">📦</div><div class="mid"><b>{{ t('acc.stockValue') }}</b></div><div class="end"><b style="color:var(--green)">{{ money(stockValue) }}</b></div></div>
         <div class="row"><div class="ava">🧾</div><div class="mid"><b>{{ t('acc.receivable') }}</b></div><div class="end"><b style="color:var(--green)">{{ money(receivable) }}</b></div></div>
+        <div v-if="codReceivable > 0" class="row"><div class="ava">🛵</div><div class="mid"><b>{{ t('acc.codReceivable') }}</b><span>{{ t('acc.codReceivableSub') }}</span></div><div class="end"><b style="color:var(--green)">{{ money(codReceivable) }}</b></div></div>
 
         <div class="sechead"><h2>{{ t('acc.liabilities') }}</h2><span class="link" style="color:var(--rose)">{{ money(liabilities) }}</span></div>
         <div class="row"><div class="ava">📋</div><div class="mid"><b>{{ t('acc.payable') }}</b></div><div class="end"><b style="color:var(--rose)">{{ money(payable) }}</b></div></div>
