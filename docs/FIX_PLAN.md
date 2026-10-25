@@ -1267,9 +1267,80 @@ sales.
 **Phase 30 (the full Wholesale system) is now complete** — all three
 parts (A: tiered pricing + MOQ, B: wholesale customer groups, C:
 separate invoice numbering) shipped and deployed. This was the last
-Phase-4 item Khaled had approved; the next major initiative (the large
-"Online Business" module — see memory) is explicitly deferred until he
-says to start it.
+Phase-4 item Khaled had approved.
+
+## Phase 31 — "Online Business" module, part 1: sales channels + channel pricing
+
+Khaled gave explicit go-ahead (2026-10-25) to start the "Online
+Business" module — a large, separate initiative (multi-channel online
+orders, couriers/COD, ad-spend allocation, a two-view profit engine).
+Full spec re-read verbatim from the original paste (its own §0 ground
+rules, §1 reuse map, §4's 8 parts). Built serially, one part per commit/
+deploy, same discipline as every Phase 3/4 feature.
+
+**Reuse-vs-build check (per §0's own instruction, before coding):**
+reusing the exact `BelongsToTenant`/tenant-scoping pattern, the
+`Feature`/`FeatureSeeder` opt-in mechanism, `config/staff_permissions.php`'s
+existing staff-grant checklist (adding one new `online_business` entry —
+*not* a new per-channel staff-assignment feature; "staff assignment via
+existing permissions" in the spec means gating the whole module behind
+the existing owner-grants-to-cashier checklist, same as `purchases`/
+`promotions`/etc. already do), and the existing `Storage::disk('public')`
+upload pattern products already use for photos (reused for a channel's
+logo). Genuinely new this part: a `sales_channels` table (channel CRUD)
+and an optional `channel_product_prices` override table — nothing else
+in the codebase has either concept yet.
+
+**Channels are shop-scoped** (plain `BelongsToTenant`, exactly like
+every other catalog entity), not shared across a business's branches.
+The spec's §1 reuse-map row flags this as a decision to "document": a
+branch wanting its own channel list defines it independently, same as
+every other feature-gated entity in this app without an explicit
+cross-branch sync (e.g. `wholesale_pricing`, `promotions` before
+`shared_promotions` existed). If Khaled later wants one shared channel
+list across branches, that is an explicit, separate follow-up — not
+assumed here, and not needed for Part 1's own test list.
+
+**`sales_channels` fields** (per spec's exact Part 1 list): `name`,
+`platform_type` (a short validated string — `facebook`/`website`/
+`daraz`/`whatsapp`/`catalog`/`other` — drives the list's icon, not a
+hardcoded business rule, easy to extend with one more validation value
+later), `logo_path` (nullable), `active` (default true), `order_prefix`
+(e.g. `FB1-`, unique per shop — this is what Part 2's online-order
+numbering will prefix its own per-channel counter with, so reserving
+both `order_prefix` and `order_counter` here even though nothing
+consumes them until Part 2, since they're properties of the channel
+entity being created right now), `platform_fee_percent`/
+`gateway_fee_percent` (nullable decimals), and `default_courier_id`
+(nullable, **no FK constraint yet** — Part 3 creates `couriers` and adds
+the constraint then; exposed in the UI starting Part 3 too, since an
+empty courier dropdown today would be confusing, not useful).
+
+**`channel_product_prices`** (the spec's "optional per-channel price
+override table"): `shop_id`, `channel_id`, `product_id`, `price` — one
+row per product a channel's owner has explicitly overridden; a product
+with no row for a channel falls straight through to that product's
+normal price (`discount_price ?? price`, the same fallback checkout
+already uses) — `SalesChannel::priceForProduct()` encapsulates this so
+Part 2's online-order pricing (which must run through the *exact* same
+price path POS checkout uses, per the spec's own ground rule) calls one
+method rather than re-deriving the fallback logic.
+
+**New opt-in feature**: `online_business` (never auto-granted). **New
+staff permission**: `online_business` in `config/staff_permissions.php`
+(category "বিক্রি", alongside `promotions`). Route group middleware:
+`['perm:online_business', 'feature:online_business']`, mirroring the
+exact `purchase_orders` pattern.
+
+Tests: `tests/Feature/SalesChannelTest.php`, 12 passing — CRUD, feature
+gating, staff-permission gating, `order_prefix` uniqueness per shop (and
+proven NOT unique across shops), tenant scoping, `priceForProduct()`
+fallback vs. override, set/clear via the controller endpoint, and the
+prices listing page's shape.
+
+Parts 2-8 — not yet started.
+
+## Definition-of-done checklist (updated after every phase)
 
 - [x] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test --all`, Phase 0.6) — re-verified 2026-10-20, all 8 types OK
 - [x] `shops:repair-defaults --dry-run` run and reported — "সব শপের already কমপক্ষে একটা category এবং একটা unit আছে — ঠিক করার কিছু নেই।"

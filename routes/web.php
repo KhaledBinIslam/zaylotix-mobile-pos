@@ -64,6 +64,7 @@ use App\Http\Controllers\App\UnitController;
 use App\Http\Controllers\App\PromotionController;
 use App\Http\Controllers\App\PurchaseController;
 use App\Http\Controllers\App\PurchaseOrderController;
+use App\Http\Controllers\App\SalesChannelController;
 use App\Http\Controllers\App\QuotationController;
 use App\Http\Controllers\App\SerialLookupController;
 use App\Http\Controllers\App\ReportController;
@@ -372,6 +373,16 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::get('purchase-orders/{po}', [PurchaseOrderController::class, 'show'])->name('purchaseOrders.show');
         Route::post('purchase-orders/{po}/receive', [PurchaseOrderController::class, 'receive'])->name('purchaseOrders.receive');
         Route::post('purchase-orders/{po}/cancel', [PurchaseOrderController::class, 'cancel'])->name('purchaseOrders.cancel');
+    });
+
+    // "Online Business" module, part 1 — see docs/FIX_PLAN.md's design note
+    Route::middleware(['perm:online_business', 'feature:online_business'])->group(function () {
+        Route::get('channels', [SalesChannelController::class, 'index'])->name('channels.index');
+        Route::post('channels', [SalesChannelController::class, 'store'])->name('channels.store');
+        Route::put('channels/{channel}', [SalesChannelController::class, 'update'])->name('channels.update');
+        Route::delete('channels/{channel}', [SalesChannelController::class, 'destroy'])->name('channels.destroy');
+        Route::get('channels/{channel}/prices', [SalesChannelController::class, 'prices'])->name('channels.prices');
+        Route::patch('channels/{channel}/prices/{product}', [SalesChannelController::class, 'setPrice'])->name('channels.setPrice');
     });
 
     Route::middleware(['perm:expenses', 'feature:expenses'])->group(function () {

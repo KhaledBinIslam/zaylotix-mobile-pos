@@ -105,6 +105,9 @@ class FeatureSeeder extends Seeder
             // staff — who else can use the shop's account
             ['key' => 'cashier_management', 'label_bn' => 'ক্যাশিয়ার যোগ করার সুবিধা', 'label_en' => 'Add staff accounts', 'category' => 'staff', 'description' => 'Let the shop owner add staff accounts (up to the shop\'s staff_limit — see Shop edit), each with its own owner-chosen access checklist.'],
             ['key' => 'activity_log', 'label_bn' => 'অ্যাক্টিভিটি লগ', 'label_en' => 'Staff activity log', 'category' => 'staff', 'description' => 'An audit trail of who did what — void sales, stock-ins, purchases, payments, staff changes.'],
+
+            // online — selling the same stock through several online shops/pages
+            ['key' => 'online_business', 'label_bn' => 'অনলাইন বিজনেস (চ্যানেল, কুরিয়ার, মুনাফা)', 'label_en' => 'Online business (channels, couriers, profit)', 'category' => 'online', 'description' => 'Sell the same stock through several online channels (Facebook, website, Daraz, WhatsApp, catalog), track courier/COD, and see a channel-wise profit breakdown.'],
         ];
 
         foreach ($features as $f) {

@@ -318,6 +318,7 @@ const ICONS = {
     ruler: '<path d="M3 17l14-14 4 4-14 14z"/><path d="M14 6l2 2M11 9l2 2M8 12l2 2"/>',
     tag: '<path d="M20.5 12.5L12 21l-9-9L11.5 3.5H20a1 1 0 0 1 1 1v8z"/><circle cx="16" cy="8" r="1.3" fill="currentColor" stroke="none"/>',
     truck: '<rect x="1" y="6" width="14" height="11" rx="1"/><path d="M15 10h4l3 3v4h-7z"/><circle cx="6" cy="19" r="1.6"/><circle cx="17.5" cy="19" r="1.6"/>',
+    globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.5 2.5 2.5 15.5 0 18M12 3c-2.5 2.5-2.5 15.5 0 18"/>',
     history: '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 8v4l3 2"/>',
     factory: '<path d="M3 21V10l6 4v-4l6 4V6l6 4v11z"/><path d="M3 21h18"/>',
     phone: '<rect x="7" y="2.5" width="10" height="19" rx="2"/><line x1="10.5" y1="18" x2="13.5" y2="18"/>',
@@ -393,6 +394,7 @@ const sidebarGroups = computed(() => [
             { key: 'promotions', label: t('nav.promotions'), navLabel: t('nav.promotionsShort'), href: route('app.promotions.index'), icon: 'gift', on: props.active === 'promotions', show: hasPerm('promotions') && hasFeature('promotions') },
             { key: 'campaigns', label: t('nav.campaigns'), navLabel: t('nav.campaignsShort'), href: route('app.campaigns.index'), icon: 'gift', on: props.active === 'campaigns', show: hasPerm('promotions') && hasFeature('season_campaigns') },
             { key: 'quotations', label: t('nav.quotations'), href: route('app.quotations.index'), icon: 'clipboard', on: props.active === 'quotations', show: hasPerm('pos') && hasFeature('quotations') },
+            { key: 'channels', label: t('nav.channels'), href: route('app.channels.index'), icon: 'globe', on: props.active === 'channels', show: hasPerm('online_business') && hasFeature('online_business') },
         ],
     },
     {

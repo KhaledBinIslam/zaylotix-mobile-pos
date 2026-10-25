@@ -3,6 +3,14 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## "Online Business" module, part 1: অনলাইন চ্যানেল ও চ্যানেল-ভিত্তিক দাম
+- New opt-in `online_business` feature (plus a matching staff permission)
+  — add Facebook/website/Daraz/WhatsApp/catalog channels the same stock
+  sells through, each with its own order-number prefix and platform/
+  gateway fee %. Optionally override a product's price per channel —
+  leave it blank to keep using the normal price. First part of a large
+  new module (couriers/COD, returns, ads, channel-wise profit come next).
+
 ## Phase 30 part C: পাইকারি ইনভয়েস নম্বরিং (separate invoice series) — Phase 30 complete
 - A wholesale sale now gets its own `WS-` invoice series under the
   fuller wholesale-tiers feature, kept completely separate from the

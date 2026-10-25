@@ -12,6 +12,7 @@ return [
     'pos' => ['label_bn' => 'বিক্রি (POS)', 'label_en' => 'Sell (POS)', 'category' => 'বিক্রি'],
     'sales_history' => ['label_bn' => 'বিক্রির ইতিহাস', 'label_en' => 'Sales history', 'category' => 'বিক্রি'],
     'promotions' => ['label_bn' => 'অফার/কুপন ব্যবস্থাপনা', 'label_en' => 'Promotions/coupons management', 'category' => 'বিক্রি'],
+    'online_business' => ['label_bn' => 'অনলাইন বিজনেস (চ্যানেল/অর্ডার)', 'label_en' => 'Online business (channels/orders)', 'category' => 'বিক্রি'],
 
     'stock' => ['label_bn' => 'স্টক দেখা ও পণ্য যোগ', 'label_en' => 'View stock & add products', 'category' => 'স্টক'],
     'purchases' => ['label_bn' => 'ক্রয়/স্টক কেনা', 'label_en' => 'Purchases', 'category' => 'স্টক'],
