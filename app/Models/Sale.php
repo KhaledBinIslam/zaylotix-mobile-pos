@@ -14,7 +14,7 @@ class Sale extends Model
 
     protected $fillable = [
         'shop_id', 'customer_id', 'table_order_id', 'user_id', 'invoice_no', 'date', 'time',
-        'subtotal', 'discount', 'is_complimentary', 'service_charge', 'vat', 'total', 'profit', 'payment_mode', 'sale_type', 'prescription_note', 'coupon_code',
+        'subtotal', 'discount', 'is_complimentary', 'service_charge', 'vat', 'total', 'profit', 'payment_mode', 'sale_type', 'counted_in_reports', 'prescription_note', 'coupon_code',
         'points_earned', 'points_redeemed',
         'voided_at', 'voided_reason', 'voided_by',
         'client_uuid',
@@ -27,6 +27,7 @@ class Sale extends Model
             'subtotal' => 'decimal:2',
             'discount' => 'decimal:2',
             'is_complimentary' => 'boolean',
+            'counted_in_reports' => 'boolean',
             'vat' => 'decimal:2',
             'total' => 'decimal:2',
             'profit' => 'decimal:2',
@@ -41,10 +42,21 @@ class Sale extends Model
      * never see one unless it explicitly asks via withVoided(). Only the
      * Sales history list/show page needs that, since an owner still needs
      * to look up what got voided and why.
+     *
+     * The same scope also hides a not-yet-delivered online order's Sale
+     * (counted_in_reports = false — see docs/FIX_PLAN.md's Phase 32 design
+     * note): its stock/payments are real from the moment it's placed, but
+     * it must not count as revenue anywhere until Delivered. Folding this
+     * into the EXISTING 'active' scope (rather than a second one) means
+     * every one of Reports.php's 20+ methods, Home, P&L, balance sheet and
+     * partner profit-share already exclude it with zero changes to any of
+     * them, and withVoided() (already used by SalesController::show() for
+     * a direct deep-link) doubles as the bypass the new Online Orders pages
+     * need to see their own sales regardless of status.
      */
     protected static function booted(): void
     {
-        static::addGlobalScope('active', fn ($query) => $query->whereNull('voided_at'));
+        static::addGlobalScope('active', fn ($query) => $query->whereNull('voided_at')->where('counted_in_reports', true));
     }
 
     public function scopeWithVoided($query)
@@ -107,6 +119,12 @@ class Sale extends Model
     public function payments()
     {
         return $this->hasMany(SalePayment::class);
+    }
+
+    /** Present only for sale_type='online' — see docs/FIX_PLAN.md's Phase 32 design note. */
+    public function onlineOrder()
+    {
+        return $this->hasOne(OnlineOrder::class);
     }
 
     /** At most one — InstallmentController::store() blocks creating a second plan for the same sale. */

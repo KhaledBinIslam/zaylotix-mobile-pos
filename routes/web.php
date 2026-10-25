@@ -63,6 +63,7 @@ use App\Http\Controllers\App\ProductVariantController;
 use App\Http\Controllers\App\UnitController;
 use App\Http\Controllers\App\PromotionController;
 use App\Http\Controllers\App\PurchaseController;
+use App\Http\Controllers\App\OnlineOrderController;
 use App\Http\Controllers\App\PurchaseOrderController;
 use App\Http\Controllers\App\SalesChannelController;
 use App\Http\Controllers\App\QuotationController;
@@ -383,6 +384,19 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::delete('channels/{channel}', [SalesChannelController::class, 'destroy'])->name('channels.destroy');
         Route::get('channels/{channel}/prices', [SalesChannelController::class, 'prices'])->name('channels.prices');
         Route::patch('channels/{channel}/prices/{product}', [SalesChannelController::class, 'setPrice'])->name('channels.setPrice');
+
+        // online orders — see docs/FIX_PLAN.md's Phase 32 design note
+        Route::get('online-orders', [OnlineOrderController::class, 'index'])->name('onlineOrders.index');
+        Route::get('online-orders/create', [OnlineOrderController::class, 'create'])->name('onlineOrders.create');
+        Route::get('online-orders/customer-risk', [OnlineOrderController::class, 'customerRisk'])->name('onlineOrders.customerRisk');
+        Route::post('online-orders/csv-preview', [OnlineOrderController::class, 'csvPreview'])->name('onlineOrders.csvPreview');
+        Route::post('online-orders/csv-import', [OnlineOrderController::class, 'csvImport'])->name('onlineOrders.csvImport');
+        Route::post('online-orders', [OnlineOrderController::class, 'store'])->name('onlineOrders.store');
+        Route::get('online-orders/{onlineOrder}', [OnlineOrderController::class, 'show'])->name('onlineOrders.show');
+        Route::patch('online-orders/{onlineOrder}/transition', [OnlineOrderController::class, 'transition'])->name('onlineOrders.transition');
+        Route::post('online-orders/{onlineOrder}/deliver', [OnlineOrderController::class, 'deliver'])->name('onlineOrders.deliver');
+        Route::post('online-orders/{onlineOrder}/cancel', [OnlineOrderController::class, 'cancel'])->name('onlineOrders.cancel');
+        Route::post('online-orders/{onlineOrder}/return', [OnlineOrderController::class, 'returnOrder'])->name('onlineOrders.return');
     });
 
     Route::middleware(['perm:expenses', 'feature:expenses'])->group(function () {

@@ -3,6 +3,18 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## "Online Business" module, part 2: অনলাইন অর্ডার
+- Place an online order (manual form or CSV import from a channel's
+  export file) — stock reduces immediately, exactly like a POS sale,
+  but the order only counts in reports/profit once it's actually
+  Delivered. Full lifecycle (Confirmed → Packed → Handed to courier →
+  In transit → Delivered/Failed/Returning → Returned/Cancelled), every
+  step logged. Cancelling or returning restores stock and balances
+  automatically. A repeat-customer warning shows if that phone number
+  has prior cancelled/returned orders. COD collection is tracked
+  separately and never inflates cash on hand until it's actually
+  settled (coming in Part 3).
+
 ## "Online Business" module, part 1: অনলাইন চ্যানেল ও চ্যানেল-ভিত্তিক দাম
 - New opt-in `online_business` feature (plus a matching staff permission)
   — add Facebook/website/Daraz/WhatsApp/catalog channels the same stock

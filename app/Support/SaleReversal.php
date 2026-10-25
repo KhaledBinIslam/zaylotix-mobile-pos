@@ -58,6 +58,11 @@ class SaleReversal
             foreach ($sale->payments as $payment) {
                 if ($payment->method === 'cash') {
                     $lockedShop->cash_balance = max(0, $lockedShop->cash_balance - $payment->amount);
+                } elseif ($payment->method === 'cod') {
+                    // never bumped cash/bank_balance when recorded (see
+                    // docs/FIX_PLAN.md's Phase 32 design note — that money
+                    // is with the courier, not the shop, until Part 3's COD
+                    // settlement) — nothing to reverse here either
                 } else {
                     $lockedShop->bank_balance = max(0, $lockedShop->bank_balance - $payment->amount);
                 }

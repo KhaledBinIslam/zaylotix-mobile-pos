@@ -1338,7 +1338,155 @@ proven NOT unique across shops), tenant scoping, `priceForProduct()`
 fallback vs. override, set/clear via the controller endpoint, and the
 prices listing page's shape.
 
-Parts 2-8 — not yet started.
+## Phase 32 — "Online Business" module, part 2: online orders on shared stock
+
+**The central decision this part had to make and justify** (per the
+spec's own §3): *"reserve or decrement"* at order creation, and how to
+keep every existing report number unchanged for a non-delivered online
+order. Decided: **decrement immediately, exactly like a POS sale** —
+not a soft reservation. An online order creates its `Sale`/`SaleItem`/
+`SalePayment` rows and moves real stock the moment it's placed (status
+`pending`), reusing `BatchStock`/`SerialStock`/variant-decrement
+directly (the same primitives `PosController::performCheckout()` uses,
+called the same way, under the same per-product `lockForUpdate()` —
+concurrency safety is therefore inherited for free, not reinvented).
+Rejected the alternative (a parallel "reserved but not yet decremented"
+ledger) because it would have needed its own stock-availability
+subtraction logic layered on top of every existing stock check
+(POS included) *and* its own FEFO/serial allocation preview — a second,
+parallel stock-accounting path the module's own ground rules explicitly
+warn against. Decrementing immediately needs none of that: by the time
+a report or POS checkout reads `products.stock`, it's already correct,
+the same way it always has been.
+
+**Keeping "existing report numbers unchanged" cheap, not a 20-method
+retrofit.** `Reports.php` has 20+ independent static methods, each
+running its own `Sale::` query — there is no shared base query to patch
+once. Rather than touch every one of them (real regression risk, and
+arguably Part 6's job, which builds the dedicated profit engine), this
+part adds a single boolean column, `sales.counted_in_reports` (default
+`true`), and folds one extra condition into `Sale`'s own existing
+`'active'` global scope (the same scope that already hides a voided
+sale from every normal query, bypassed today via `Sale::withVoided()`).
+An online order's `Sale` is created with `counted_in_reports = false`
+and flips to `true` only once the order reaches `Delivered`. Every one
+of the 20+ `Reports::` methods, `Home`'s dashboard tiles, P&L, balance
+sheet and partner profit-share — all of which just query `Sale::` —
+therefore exclude a non-delivered online order automatically, with
+**zero changes to any of them**. `Sale::withVoided()` (already used by
+`SalesController::show()` for direct deep-links) is reused as-is to
+let the new Online Orders pages see their own sales regardless of
+status — no new scope-bypass method needed either.
+
+**What's deferred to `Delivered` vs. recorded immediately**, decided by
+what each effect actually represents:
+- Recorded immediately (at `pending`): the `Sale`/`SaleItem` rows, real
+  stock decrement (incl. FEFO batch pick, variant stock, a chosen
+  serial), `SalePayment` rows, `cash_balance`/`bank_balance` for any
+  genuinely-prepaid portion (that money really is already in the
+  shop's account), and the customer's `due` for any shortfall (a real
+  credit obligation from the moment it's extended) — all via the exact
+  same accounting PosController's checkout already does.
+- Deferred to `Delivered`: `counted_in_reports` flip, `delivered_at`,
+  customer `total_spent`/`visits` (lifetime purchase stats — a
+  cancelled pending order should never have nudged these even
+  temporarily), loyalty points earned, and the first-sale referral
+  reward (see docs/FIX_PLAN.md's referral design note) — all represent
+  a *completed* purchase, not merely a placed one.
+- COD specifically: `cod_amount` is recorded as its own new
+  `sale_payments.method = 'cod'` tender line at creation — explicitly
+  **not** bumping `cash_balance`/`bank_balance` (the money is with the
+  courier, not the shop, until Part 3's COD settlement screen actually
+  reconciles it — that's where it becomes real cash). `SaleReversal`
+  (shared by the owner-void route and the admin hard-delete tool) gets
+  one new branch so voiding a `cod` tender never wrongly debits
+  `bank_balance` for money the shop never actually received.
+
+**Cancel/return reuse an existing, already-tested mechanism, not a new
+one.** Cancelling a not-yet-delivered order calls the exact same
+`SaleReversal::reverse()` used by `SalesController::destroy()` (owner
+void) and the admin's hard-delete tool — restores stock (batch/serial/
+variant), reverses any genuinely-received payment, reverses customer
+due — then marks the `Sale` `voided_at` (excluded from reports via the
+*existing* mechanism, no new flag needed for the cancelled case) and
+the order `cancelled`. A full return after `Delivered` reuses the same
+reversal for now; **partial** return with per-line Good/Damaged/Lost
+condition is explicitly Part 4's job (its own design note) — this part
+only wires `Returned`/`Failed`/`Returning` as valid lifecycle statuses
+with audit logging, not yet their own compensating-entry nuance beyond
+a full reversal.
+
+**No separate audit-log table.** "Every transition logged (who, when,
+old/new)" reuses the *existing* polymorphic `ActivityLog`/`Activity::log()`
+helper (already shown on the Activity page) instead of a bespoke
+`online_order_status_logs` table — one more table this part doesn't
+need to invent.
+
+**Pricing stays a historical snapshot, never re-derived.** Per the
+spec's own test list ("later price/cost changes never alter past
+profit"), `SaleItem.price`/`.cost` are fixed at order-creation time via
+`SalesChannel::priceForProduct()` (Part 1) — there is no re-pricing
+step at any later lifecycle stage.
+
+**Numbering**: a new `shops.online_invoice_counter` (default 1000, same
+pattern as `invoice_counter`/`wholesale_invoice_counter`/`po_counter`)
+gives every online sale its own `'OL-'` invoice series, never touching
+the retail `INV-`/wholesale `WS-` series. Separately, `online_orders.
+order_number` (the channel's own `order_prefix` + its own
+`order_counter`, from Part 1) is the customer/channel-facing order
+reference — intentionally a different number from the accounting
+invoice, matching how a real online shop already has both.
+
+**New `sale_type` value**: `'online'` (enum extended, same migration
+pattern as `wholesale`/`exchange`/`service` before it) — so the
+existing `Reports::salesByType()` breakdown gains an "online" bucket
+for free, once an order is delivered/visible, with zero code change
+there either.
+
+**Scope deliberately left out of this part** (each has its own later
+home): CSV import's *multi-item-per-order* rows (a CSV row here is
+exactly one product/qty — a multi-item order still goes through the
+manual form; most Facebook/Daraz order exports are single-SKU per row
+anyway); partial returns with Good/Damaged/Lost condition (Part 4);
+courier/COD settlement UI (Part 3, `courier_id`/`tracking_id` are
+reserved nullable columns here, same as Part 1's `default_courier_id`);
+the channel-wise profit engine's own dedicated reports (Part 6). The
+"one-click from a digital-catalog order" sub-bullet needs no new code
+— no stored "catalog order" record exists today (the catalog is a
+public page linking out to WhatsApp), so converting one is already
+just: create a normal online order under the Catalog channel.
+
+**Also built this part** (beyond the core lifecycle): a repeat-customer/
+fake-order risk indicator (`OnlineOrderController::customerRisk()`, its
+own small endpoint rather than extending the shared `customers.lookup`
+POS already polls on every keystroke — a warning only, never a hard
+block, shown on the Create page as the phone is typed); CSV import as a
+genuine two-step preview-then-commit flow (one product/qty per row,
+matches by exact barcode-then-name, flags a duplicate
+`external_reference` per channel, the commit step calls the exact same
+`createOrder()` the manual form uses — extracted once `store()` and the
+CSV importer both needed it, so the two can't drift apart); and the
+"invoice via existing print styling" requirement turned out to need no
+new template at all — the online order's own `Sale` already has a
+perfectly good print/WhatsApp view at the existing `/app/sales/{id}`
+page (reachable even pre-delivery via the same `Sale::withVoided()`
+SalesController::show() already uses for a direct deep-link), so Order/
+Show.vue just links to it. A dedicated compact packing-slip/courier-
+sticker format is deferred to Part 3, since its layout likely needs
+courier-specific fields (tracking barcode) that don't exist yet.
+
+Tests: `tests/Feature/OnlineOrderTest.php`, 18 passing — stock
+decrements immediately and restores exactly on cancel/return; a pending
+order is invisible to every report while COD never touches cash/bank
+balance; delivering flips visibility and credits loyalty/lifetime
+stats exactly once; prepaid payments bump balance immediately; the
+full lifecycle walk and its guard against skipping a stage; variant
+stock; insufficient-stock rejection leaves nothing created; feature
+gating; the `salesByType` breakdown gaining an 'online' bucket with
+zero changes to `Reports.php`; the risk indicator; CSV preview
+(matching, error-flagging, duplicate detection) and import.
+
+Parts 3-8 — not yet started.
 
 ## Definition-of-done checklist (updated after every phase)
 

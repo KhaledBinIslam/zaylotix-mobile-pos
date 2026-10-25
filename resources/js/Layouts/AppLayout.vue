@@ -394,6 +394,7 @@ const sidebarGroups = computed(() => [
             { key: 'promotions', label: t('nav.promotions'), navLabel: t('nav.promotionsShort'), href: route('app.promotions.index'), icon: 'gift', on: props.active === 'promotions', show: hasPerm('promotions') && hasFeature('promotions') },
             { key: 'campaigns', label: t('nav.campaigns'), navLabel: t('nav.campaignsShort'), href: route('app.campaigns.index'), icon: 'gift', on: props.active === 'campaigns', show: hasPerm('promotions') && hasFeature('season_campaigns') },
             { key: 'quotations', label: t('nav.quotations'), href: route('app.quotations.index'), icon: 'clipboard', on: props.active === 'quotations', show: hasPerm('pos') && hasFeature('quotations') },
+            { key: 'onlineOrders', label: t('nav.onlineOrders'), href: route('app.onlineOrders.index'), icon: 'globe', on: props.active === 'onlineOrders', show: hasPerm('online_business') && hasFeature('online_business') },
             { key: 'channels', label: t('nav.channels'), href: route('app.channels.index'), icon: 'globe', on: props.active === 'channels', show: hasPerm('online_business') && hasFeature('online_business') },
         ],
     },
