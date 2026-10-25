@@ -1953,6 +1953,91 @@ variant product now appears; generate/idempotent-regenerate/cross-
 tenant-rejected for the product side, mirroring the variant tests
 already there) — all 10 in that file passing.
 
+## Phase 37 — "Online Business" module, part 7: safety nets and polish
+
+Five pieces, each additive, each reusing an existing mechanism rather
+than building a parallel one:
+
+**1. "Online" block in the home screen and the daily owner summary** —
+Khaled's own earlier, separate ask: *"home page e online sells related
+kichu dekhay na"* (the home page shows nothing about online sales).
+Deliberately as light as the rest of both screens — counts, never a
+profit figure (`HomeController`'s existing comment already explains
+why profit stays off Home; the daily summary has always been one-line
+figures too). Home gains a tappable card (orders still in progress,
+today's delivered count + revenue, linking to Online Orders) shown
+only when `online_business` is on; the nightly summary gains one line
+("🌐 অনলাইন: Xটা অর্ডার এসেছে, Yটা ডেলিভারড") only when there was
+actual activity that day. The full financial breakdown stays on Part
+6's dedicated Online Profit Report page — this is a pointer toward it,
+not a second copy of it.
+
+**2. `online:reconcile` — the daily scheduled reconciliation.** Read-
+only, same discipline as `due:reconcile`/`variants:stock-mismatch`:
+only flags what's actually independently verifiable, never tries to
+reconstruct an "expected" stock/money figure from scratch. Two real
+invariants checked: (a) an online order's own `Sale.counted_in_reports`
+must be `true` if and only if the order has ever been delivered —
+Part 2's entire revenue-recognition contract, and the exact thing that
+would go silently wrong if a future change ever touched that logic
+without this guard; (b) a `CourierSettlement`'s `expected_amount` must
+equal the sum of `cod_amount` across the orders actually linked to it,
+and `cod_settled_at`/`courier_settlement_id` must always be both-set
+or both-null together. Scheduled nightly (`routes/console.php`,
+`Schedule::call` + `Artisan::call`, same proc_open-disabled-host
+pattern every other scheduled job here already uses) with `--notify`,
+which sends each affected shop's owner one new `OnlineReconcileMismatch`
+database notification, at most once per day — same dedup pattern as
+`LowStockAlert`/`DailyOwnerSummary`. Run manually (no `--notify`) any
+time for a plain console report.
+
+**3. Backup/export coverage — a real, confirmed gap, not just a
+checklist formality.** `ShopSqlDump::TABLES` and `ShopDataExport`'s
+sheets/models are both hand-maintained lists (their own docblocks
+already warn: "NOT auto-discovered... a forgotten entry silently drops
+that table with no error anywhere") — and sure enough, every one of
+the Online Business module's 6 new tables (`couriers`, `sales_channels`,
+`channel_product_prices`, `online_orders`, `courier_settlements`,
+`expense_channel_splits`) was missing from both, silently, since
+whichever part first created it. Every shop's self-service backup and
+every admin-pulled export has been quietly dropping this entire module's
+data since Part 1. Added to both lists now, in FK-dependency order for
+the SQL dump. New tests in `ShopDataExportTest` follow this file's own
+established regression-guard pattern exactly (one row per table,
+assert it survives into the dump/export) — this exact class of bug
+(a new table silently missing from these two lists) has now been
+caught and fixed twice in this codebase's history; a third occurrence
+for some future module is the risk this pattern exists to catch.
+
+**4. Owner-facing "how online profit is calculated" — reused the
+existing admin-managed FAQ system** (`Faq` model, `FaqSeeder`,
+`Help/Index.vue`'s accordion) rather than building a new static help
+page nobody asked to maintain separately. One new FAQ entry, plain
+owner language (not the engineering formula), pointing at the
+Online Profit Report page for the full breakdown. Needs
+`php artisan db:seed --class=FaqSeeder --force` on deploy (idempotent —
+keyed on `question_en` via `updateOrCreate`, safe to rerun; the other
+6 FAQ entries are untouched).
+
+**5. Stock-mismatch extension for "online reservations"** — explicitly
+NOT built as its own thing: Part 2's design decision was that an online
+order's stock is a REAL decrement at order time, never a soft
+reservation (see Phase 32's own design note), so there is no separate
+reservation ledger for `variants:stock-mismatch` or any other command
+to extend. The stock-side safety net this module actually needs is
+item 2 above (did the order's own Sale/settlement data stay internally
+consistent) — already built. Noted here so this isn't mistaken for an
+oversight later.
+
+Tests: `tests/Feature/HomeOnlineBlockTest.php` (2), `DailyOwnerSummaryTest`
+(+2 new), `tests/Feature/OnlineOrderReconcileTest.php` (7),
+`ShopDataExportTest` (+2 new) — all passing, full suite re-run green.
+
+Parts 1-7 of 8 shipped. Part 8 (optional, separate `shared_stock_pool`
+feature flag — one stock shared across several branches) remains
+explicitly optional per the spec and has not been started; the 7 parts
+above are the complete "Online Business" module as scoped.
+
 ## Definition-of-done checklist (updated after every phase)
 
 - [x] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test --all`, Phase 0.6) — re-verified 2026-10-20, all 8 types OK

@@ -20,6 +20,7 @@ const props = defineProps({
     recentSales: Array,
     topDue: Array,
     bestSellers: Array,
+    onlineStats: Object,
 });
 
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
@@ -91,6 +92,23 @@ const payModeClass = { cash: 'mint', bkash: 'gold', nagad: 'gold', credit: 'rose
                 </div>
             </div>
         </div>
+
+        <Link v-if="onlineStats" :href="route('app.onlineOrders.index')" class="card" style="margin-top:16px;display:block;text-decoration:none;color:inherit">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                <b style="font-size:14px">🌐 {{ t('home.onlineOrders') }}</b>
+                <span style="font-size:11px;color:var(--mut)">{{ t('home.viewAll') }} ›</span>
+            </div>
+            <div style="display:flex;gap:10px">
+                <div style="flex:1;text-align:center;padding:8px 4px;border-radius:12px;background:var(--panel2,rgba(0,0,0,.02))">
+                    <div style="font-size:10.5px;color:var(--mut)">{{ t('home.onlinePending') }}</div>
+                    <div style="font-size:15px;font-weight:800;margin-top:2px" :style="onlineStats.pendingCount > 0 ? 'color:var(--gold)' : ''">{{ onlineStats.pendingCount }}</div>
+                </div>
+                <div style="flex:1;text-align:center;padding:8px 4px;border-radius:12px;background:var(--panel2,rgba(0,0,0,.02))">
+                    <div style="font-size:10.5px;color:var(--mut)">{{ t('home.onlineDeliveredToday') }}</div>
+                    <div style="font-size:15px;font-weight:800;margin-top:2px">{{ onlineStats.deliveredTodayCount }} ({{ money(onlineStats.deliveredTodayRevenue) }})</div>
+                </div>
+            </div>
+        </Link>
 
         <div class="card" style="margin-top:16px;background:var(--greenSoft);border-color:var(--line2)">
             <div style="display:flex;align-items:center;gap:12px">

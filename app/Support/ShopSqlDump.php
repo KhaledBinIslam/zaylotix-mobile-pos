@@ -46,6 +46,17 @@ class ShopSqlDump
         'purchases',          // -> suppliers, products
         'expense_categories',
         'expenses',
+        // "Online Business" module (Parts 1-5) — see docs/FIX_PLAN.md's
+        // Phase 37 design note. This whole block was missing from this
+        // list until that audit — every shop's backup/export silently
+        // dropped it with no error, exactly the trap this list's own
+        // comment warns about.
+        'couriers',
+        'sales_channels',          // -> couriers (default_courier_id)
+        'channel_product_prices',  // -> sales_channels, products
+        'online_orders',           // -> sales_channels, couriers, sales (already dumped above)
+        'courier_settlements',     // -> couriers, users (settled_by, already dumped above)
+        'expense_channel_splits',  // -> expenses, sales_channels
         'damages',
         'returns',
         'supplier_returns',   // -> suppliers, products

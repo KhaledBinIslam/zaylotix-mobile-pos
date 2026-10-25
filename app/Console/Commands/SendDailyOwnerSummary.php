@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Customer;
+use App\Models\OnlineOrder;
 use App\Models\Product;
 use App\Models\Shop;
 use App\Notifications\DailyOwnerSummary;
@@ -94,6 +95,18 @@ class SendDailyOwnerSummary extends Command
             $lines[] = "⚠️ কম স্টকে {$lowStockCount}টা পণ্য — রিঅর্ডার করুন";
         }
         $lines[] = 'মোট বাকি: ৳'.number_format($totalDue);
+
+        // "Online" block — see docs/FIX_PLAN.md's Phase 37 design note,
+        // Khaled's own earlier ask that the owner summary/home screen show
+        // something about online sales. Same light touch as every other
+        // line here — counts, not a profit figure.
+        if ($shop->hasFeature('online_business')) {
+            $placedToday = OnlineOrder::whereDate('created_at', $today)->count();
+            $deliveredToday = OnlineOrder::whereDate('delivered_at', $today)->count();
+            if ($placedToday > 0 || $deliveredToday > 0) {
+                $lines[] = "🌐 অনলাইন: {$placedToday}টা অর্ডার এসেছে, {$deliveredToday}টা ডেলিভারড";
+            }
+        }
 
         $text = implode("\n", $lines);
 

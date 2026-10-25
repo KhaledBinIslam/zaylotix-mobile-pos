@@ -77,6 +77,16 @@ class ShopDataExport implements WithMultipleSheets
             // PaymentGatewayCredentials/WhatsappCredentials deliberately
             // excluded — encrypted:array blobs tied to this install's own
             // APP_KEY, not meaningful (or safe) to hand to the shop owner
+
+            // "Online Business" module (Parts 1-5) — see docs/FIX_PLAN.md's
+            // Phase 37 design note. Missing from this list until that audit,
+            // same gap as ShopSqlDump::TABLES.
+            'Couriers' => ['name', 'charge_type', 'charge_config', 'cod_fee_percent', 'return_charge', 'active'],
+            'SalesChannels' => ['name', 'platform_type', 'active', 'default_courier_id', 'order_prefix', 'platform_fee_percent', 'gateway_fee_percent', 'overhead_allocation_percent'],
+            'ChannelProductPrices' => ['channel_id', 'product_id', 'price'],
+            'OnlineOrders' => ['channel_id', 'sale_id', 'order_number', 'external_reference', 'status', 'courier_id', 'tracking_id', 'delivery_charge', 'cod_amount', 'campaign_tag', 'delivered_at', 'cancelled_at', 'courier_charge', 'parcel_weight', 'is_outside_dhaka', 'cod_settled_at', 'courier_settlement_id'],
+            'CourierSettlements' => ['courier_id', 'expected_amount', 'received_amount', 'difference', 'note', 'settled_by', 'settled_at'],
+            'ExpenseChannelSplits' => ['expense_id', 'channel_id', 'amount'],
         ];
 
         $models = [
@@ -128,6 +138,12 @@ class ShopDataExport implements WithMultipleSheets
             'GatewayPayments' => \App\Models\GatewayPayment::class,
             'WhatsappBulkLogs' => \App\Models\WhatsappBulkLog::class,
             'WhatsappMessageTemplates' => \App\Models\WhatsappMessageTemplate::class,
+            'Couriers' => \App\Models\Courier::class,
+            'SalesChannels' => \App\Models\SalesChannel::class,
+            'ChannelProductPrices' => \App\Models\ChannelProductPrice::class,
+            'OnlineOrders' => \App\Models\OnlineOrder::class,
+            'CourierSettlements' => \App\Models\CourierSettlement::class,
+            'ExpenseChannelSplits' => \App\Models\ExpenseChannelSplit::class,
         ];
 
         $result = [];

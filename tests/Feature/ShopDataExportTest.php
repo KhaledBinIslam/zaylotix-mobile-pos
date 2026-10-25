@@ -132,6 +132,49 @@ class ShopDataExportTest extends TestCase
         }
     }
 
+    /**
+     * Same hand-maintained-list drift as the test above, caught again: the
+     * whole "Online Business" module (Parts 1-5 — couriers, sales_channels,
+     * channel_product_prices, online_orders, courier_settlements,
+     * expense_channel_splits) was missing from ShopSqlDump::TABLES and
+     * ShopDataExport's sheets/models until the Phase 37 audit — see
+     * docs/FIX_PLAN.md.
+     */
+    public function test_sql_dump_includes_the_online_business_tables(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $product = \App\Models\Product::create(['shop_id' => $shop->id, 'name' => 'P', 'cost' => 1, 'price' => 2, 'stock' => 5]);
+        $courier = \App\Models\Courier::create(['shop_id' => $shop->id, 'name' => 'DumpedCourierName', 'charge_type' => 'flat', 'charge_config' => ['amount' => 60]]);
+        $channel = \App\Models\SalesChannel::create(['shop_id' => $shop->id, 'name' => 'DumpedChannelName', 'platform_type' => 'facebook', 'order_prefix' => 'DC-']);
+        \App\Models\ChannelProductPrice::create(['shop_id' => $shop->id, 'channel_id' => $channel->id, 'product_id' => $product->id, 'price' => 99]);
+        $sale = \App\Models\Sale::create(['shop_id' => $shop->id, 'invoice_no' => 'OL-DUMPED-1', 'date' => now()->toDateString(), 'time' => '10:00:00', 'subtotal' => 100, 'total' => 100, 'profit' => 10, 'payment_mode' => 'cash']);
+        \App\Models\OnlineOrder::create(['shop_id' => $shop->id, 'channel_id' => $channel->id, 'sale_id' => $sale->id, 'order_number' => 'DumpedOnlineOrderNumber', 'status' => 'pending']);
+        \App\Models\CourierSettlement::create(['shop_id' => $shop->id, 'courier_id' => $courier->id, 'expected_amount' => 100, 'received_amount' => 100, 'difference' => 0, 'note' => 'DumpedSettlementNote', 'settled_by' => $owner->id, 'settled_at' => now()]);
+        $expense = \App\Models\Expense::create(['shop_id' => $shop->id, 'amount' => 50, 'method' => 'cash', 'date' => now()->toDateString()]);
+        \App\Models\ExpenseChannelSplit::create(['shop_id' => $shop->id, 'expense_id' => $expense->id, 'channel_id' => $channel->id, 'amount' => 50]);
+
+        $dump = \App\Support\ShopSqlDump::generate($shop->fresh());
+
+        foreach (['DumpedCourierName', 'DumpedChannelName', 'DumpedOnlineOrderNumber', 'DumpedSettlementNote'] as $needle) {
+            $this->assertStringContainsString($needle, $dump, "SQL dump is missing data from: {$needle}");
+        }
+        foreach (['couriers', 'sales_channels', 'channel_product_prices', 'online_orders', 'courier_settlements', 'expense_channel_splits'] as $table) {
+            $this->assertStringContainsString("INSERT INTO `{$table}`", $dump, "SQL dump is missing the {$table} table entirely");
+        }
+    }
+
+    public function test_excel_export_includes_a_sheet_for_each_online_business_table(): void
+    {
+        [$shop] = $this->createShopWithOwner();
+
+        $sheets = (new \App\Exports\ShopDataExport($shop))->sheets();
+        $titles = array_map(fn ($s) => $s->title(), $sheets);
+
+        foreach (['Couriers', 'SalesChannels', 'ChannelProductPrices', 'OnlineOrders', 'CourierSettlements', 'ExpenseChannelSplits'] as $expected) {
+            $this->assertContains($expected, $titles, "Excel export is missing a sheet for: {$expected}");
+        }
+    }
+
     public function test_excel_export_includes_a_sheet_for_every_table_added_this_session(): void
     {
         [$shop] = $this->createShopWithOwner();

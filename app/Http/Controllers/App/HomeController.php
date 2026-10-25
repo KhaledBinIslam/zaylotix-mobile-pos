@@ -4,6 +4,7 @@ namespace App\Http\Controllers\App;
 
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
+use App\Models\OnlineOrder;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SaleItem;
@@ -54,6 +55,23 @@ class HomeController extends Controller
         $recentSales = Sale::with('customer')->latest('id')->limit(4)->get();
         $topDue = Customer::where('due', '>', 0)->orderByDesc('due')->limit(3)->get();
 
+        // "Online" block — see docs/FIX_PLAN.md's Phase 37 design note.
+        // Deliberately as light as the rest of this screen (counts, not a
+        // profit figure — see the comment above about profit belonging in
+        // Reports, not Home) — "what needs attention right now" (orders
+        // still in flight) plus a same-day delivered snapshot.
+        $onlineStats = null;
+        if ($shop?->hasFeature('online_business')) {
+            $pendingCount = OnlineOrder::whereNotIn('status', ['delivered', 'returned', 'cancelled'])->count();
+            $deliveredToday = OnlineOrder::whereDate('delivered_at', $today)->with('sale')->get()->filter(fn (OnlineOrder $o) => $o->sale);
+
+            $onlineStats = [
+                'pendingCount' => $pendingCount,
+                'deliveredTodayCount' => $deliveredToday->count(),
+                'deliveredTodayRevenue' => round((float) $deliveredToday->sum(fn (OnlineOrder $o) => (float) $o->sale->total), 2),
+            ];
+        }
+
         // best-sellers over the last 30 days, falling back to all-time if the
         // shop is too new to have a month of history yet
         $bestSellers = SaleItem::whereHas('sale', fn ($q) => $q->whereDate('date', '>=', $monthAgo))
@@ -102,6 +120,7 @@ class HomeController extends Controller
             'recentSales' => $recentSales,
             'topDue' => $topDue,
             'bestSellers' => $bestSellers,
+            'onlineStats' => $onlineStats,
         ]);
     }
 }

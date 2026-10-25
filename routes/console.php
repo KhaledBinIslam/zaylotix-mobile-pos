@@ -35,6 +35,8 @@ Schedule::call(fn () => Artisan::call('zaylotix:installment-late-fees'))->dailyA
 Schedule::call(fn () => Artisan::call('zaylotix:backup'))->dailyAt('02:00');
 Schedule::call(fn () => Artisan::call('zaylotix:daily-owner-summary'))->dailyAt('23:30');
 Schedule::call(fn () => Artisan::call('zaylotix:warranty-expiry-alerts'))->dailyAt('09:00');
+// "Online Business" module, part 7 — see docs/FIX_PLAN.md's Phase 37 design note
+Schedule::call(fn () => Artisan::call('online:reconcile', ['--notify' => true]))->dailyAt('03:00');
 
 // Production-readiness audit: this app's QUEUE_CONNECTION=database has
 // been configured since early on but nothing was ever actually dispatched

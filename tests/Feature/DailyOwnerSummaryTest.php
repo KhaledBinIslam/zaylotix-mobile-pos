@@ -88,6 +88,51 @@ class DailyOwnerSummaryTest extends TestCase
         });
     }
 
+    /**
+     * "Online" block — see docs/FIX_PLAN.md's Phase 37 design note,
+     * Khaled's own earlier ask that the owner summary say something
+     * about online sales.
+     */
+    public function test_includes_an_online_block_when_todays_online_activity_exists(): void
+    {
+        Notification::fake();
+        [$shop, $owner] = $this->createShopWithOwner(['status' => 'active']);
+        $this->grantFeature($shop, 'daily_owner_summary');
+        $this->grantFeature($shop, 'online_business');
+        $channel = \App\Models\SalesChannel::create(['shop_id' => $shop->id, 'name' => 'Page A', 'platform_type' => 'facebook', 'order_prefix' => 'FB-']);
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 50, 'price' => 100, 'stock' => 10]);
+
+        $this->actingAs($owner, 'web')->post(route('app.onlineOrders.store'), [
+            'channel_id' => $channel->id, 'customer_phone' => '01811111111',
+            'items' => [['product_id' => $product->id, 'qty' => 1]], 'cod_amount' => 100,
+        ])->assertRedirect();
+        $order = \App\Models\OnlineOrder::first();
+        foreach (['confirmed', 'packed', 'handed_to_courier', 'in_transit'] as $status) {
+            $this->actingAs($owner, 'web')->patch(route('app.onlineOrders.transition', $order->id), ['status' => $status])->assertRedirect();
+        }
+        $this->actingAs($owner, 'web')->post(route('app.onlineOrders.deliver', $order->id))->assertRedirect();
+
+        $this->artisan(SendDailyOwnerSummary::class)->assertSuccessful();
+
+        Notification::assertSentTo($owner, DailyOwnerSummary::class, function ($n) use ($owner) {
+            $message = $n->toDatabase($owner)['message'];
+
+            return str_contains($message, 'অনলাইন') && str_contains($message, '1টা অর্ডার এসেছে') && str_contains($message, '1টা ডেলিভারড');
+        });
+    }
+
+    public function test_online_block_is_absent_without_the_feature(): void
+    {
+        Notification::fake();
+        [$shop, $owner] = $this->createShopWithOwner(['status' => 'active']);
+        $this->grantFeature($shop, 'daily_owner_summary');
+        // online_business feature deliberately not granted
+
+        $this->artisan(SendDailyOwnerSummary::class)->assertSuccessful();
+
+        Notification::assertSentTo($owner, DailyOwnerSummary::class, fn ($n) => ! str_contains($n->toDatabase($owner)['message'], 'অনলাইন'));
+    }
+
     public function test_no_whatsapp_url_when_owner_has_no_phone_on_file(): void
     {
         Notification::fake();
