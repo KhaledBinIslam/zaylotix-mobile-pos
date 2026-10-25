@@ -166,7 +166,12 @@ class OnlineOrderTest extends TestCase
         ])->assertRedirect();
         $order = OnlineOrder::first();
 
-        $this->actingAs($owner, 'web')->post(route('app.onlineOrders.deliver', $order->id))->assertStatus(422);
+        // a plain back()->with('error', ...) — not a raw abort(422) — so
+        // the message actually renders via the existing flash.error toast
+        // instead of crashing Inertia's client (see docs/FIX_PLAN.md's
+        // live-bug note)
+        $this->actingAs($owner, 'web')->post(route('app.onlineOrders.deliver', $order->id))->assertRedirect();
+        $this->assertSame('pending', $order->fresh()->status);
     }
 
     public function test_full_lifecycle_through_to_delivered(): void
@@ -200,7 +205,8 @@ class OnlineOrderTest extends TestCase
         ])->assertRedirect();
         $order = OnlineOrder::first();
 
-        $this->actingAs($owner, 'web')->patch(route('app.onlineOrders.transition', $order->id), ['status' => 'in_transit'])->assertStatus(422);
+        $this->actingAs($owner, 'web')->patch(route('app.onlineOrders.transition', $order->id), ['status' => 'in_transit'])->assertRedirect();
+        $this->assertSame('pending', $order->fresh()->status);
     }
 
     public function test_full_return_after_delivery_restores_stock(): void
@@ -252,10 +258,14 @@ class OnlineOrderTest extends TestCase
         [$shop, $owner, $channel] = $this->setupShop();
         $product = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 50, 'price' => 100, 'stock' => 2]);
 
+        // a real ValidationException now, not a raw abort(422) — see
+        // docs/FIX_PLAN.md's live-bug note — so a plain (non-JSON) post
+        // gets the normal redirect-back-with-errors every other form in
+        // this app already relies on, not a crash
         $this->actingAs($owner, 'web')->post(route('app.onlineOrders.store'), [
             'channel_id' => $channel->id, 'customer_phone' => '01811111111',
             'items' => [['product_id' => $product->id, 'qty' => 5]], 'cod_amount' => 500,
-        ])->assertStatus(422);
+        ])->assertSessionHasErrors('items');
 
         $this->assertEquals(2, (float) $product->fresh()->stock);
         $this->assertSame(0, OnlineOrder::count());

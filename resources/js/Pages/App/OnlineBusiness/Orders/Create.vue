@@ -171,6 +171,8 @@ function save() {
             </div>
         </div>
 
+        <div v-if="form.errors.items" class="card" style="margin-bottom:14px;background:var(--roseSoft);color:var(--rose)">{{ form.errors.items }}</div>
+
         <button class="btn" :disabled="form.processing" @click="save">{{ form.processing ? '...' : t('onlineOrder.createSubmit') }}</button>
     </AppLayout>
 </template>

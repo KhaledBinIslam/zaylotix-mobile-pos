@@ -24,6 +24,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 /**
@@ -193,6 +194,8 @@ class OnlineOrderController extends Controller
                     'external_reference' => $row['external_reference'] ?: null,
                 ], $shopId);
                 $created++;
+            } catch (ValidationException $e) {
+                $failed[] = "সারি (ফোন {$row['phone']}): ".($e->validator->errors()->first() ?: $e->getMessage());
             } catch (\Throwable $e) {
                 $failed[] = "সারি (ফোন {$row['phone']}): ".$e->getMessage();
             }
@@ -249,6 +252,22 @@ class OnlineOrderController extends Controller
     }
 
     /**
+     * A business-rule rejection (stock, variant, etc.) during order
+     * creation — thrown as a real ValidationException, never a plain
+     * abort(422, ...). Laravel/Inertia only know how to render a proper
+     * inline form error for a ValidationException; a bare abort() response
+     * isn't shaped like an Inertia page response at all, so the client
+     * falls back to its generic "Oops! An error occurred" crash screen
+     * instead of showing the actual Bangla message — confirmed live
+     * (2026-10-25) when a stock-shortage rejection crashed Khaled's
+     * Create-order form instead of showing why.
+     */
+    private function fail(string $message): never
+    {
+        throw ValidationException::withMessages(['items' => [$message]]);
+    }
+
+    /**
      * The actual creation — shared by store() (one order from the manual
      * form) and the CSV import commit step (many orders, one per valid
      * row), so the two can never drift apart. $data is the exact shape
@@ -276,34 +295,34 @@ class OnlineOrderController extends Controller
             foreach ($data['items'] as $item) {
                 $product = $products->get($item['product_id']);
                 if (! $product) {
-                    abort(422, 'পণ্যটি খুঁজে পাওয়া যায়নি।');
+                    $this->fail('পণ্যটি খুঁজে পাওয়া যায়নি।');
                 }
 
                 $variant = ! empty($item['product_variant_id']) ? $variants->get($item['product_variant_id']) : null;
                 if ($product->variants_count > 0 && ! $variant) {
-                    abort(422, "{$product->name}-এর জন্য একটা সাইজ/রং বাছাই করুন।");
+                    $this->fail("{$product->name}-এর জন্য একটা সাইজ/রং বাছাই করুন।");
                 }
                 if ($variant && $variant->product_id !== $product->id) {
-                    abort(422, "এই ভ্যারিয়েন্টটি {$product->name}-এর জন্য সঠিক নয়।");
+                    $this->fail("এই ভ্যারিয়েন্টটি {$product->name}-এর জন্য সঠিক নয়।");
                 }
 
                 $qty = (float) $item['qty'];
                 if (! $product->sold_by_weight && floor($qty) != $qty) {
-                    abort(422, "{$product->name}-এর পরিমাণ পূর্ণ সংখ্যা হতে হবে।");
+                    $this->fail("{$product->name}-এর পরিমাণ পূর্ণ সংখ্যা হতে হবে।");
                 }
 
                 if ($variant) {
                     if ((float) $variant->stock < $qty) {
-                        abort(422, "পর্যাপ্ত স্টক নেই: {$product->name} (আছে {$variant->stock}, লাগবে {$qty})।");
+                        $this->fail("পর্যাপ্ত স্টক নেই: {$product->name} (আছে {$variant->stock}, লাগবে {$qty})।");
                     }
                     $unitPrice = $variant->effectivePrice();
                     $unitCost = $variant->effectiveCost();
                 } else {
                     if ((float) $product->stock < $qty) {
-                        abort(422, "পর্যাপ্ত স্টক নেই: {$product->name} (আছে {$product->stock}, লাগবে {$qty})।");
+                        $this->fail("পর্যাপ্ত স্টক নেই: {$product->name} (আছে {$product->stock}, লাগবে {$qty})।");
                     }
                     if ($batchTrackingOn && BatchStock::sellableQty($product) < $qty) {
-                        abort(422, "{$product->name}-এর পর্যাপ্ত অ-মেয়াদোত্তীর্ণ স্টক নেই।");
+                        $this->fail("{$product->name}-এর পর্যাপ্ত অ-মেয়াদোত্তীর্ণ স্টক নেই।");
                     }
                     $unitPrice = $channel->priceForProduct($product);
                     $unitCost = (float) $product->cost;
@@ -443,7 +462,7 @@ class OnlineOrderController extends Controller
         ]);
 
         if (! $onlineOrder->canTransitionTo($data['status'])) {
-            abort(422, "'{$onlineOrder->status}' থেকে '{$data['status']}'-এ যাওয়া সম্ভব নয়।");
+            return back()->with('error', "'{$onlineOrder->status}' থেকে '{$data['status']}'-এ যাওয়া সম্ভব নয়।");
         }
 
         $from = $onlineOrder->status;
@@ -469,7 +488,7 @@ class OnlineOrderController extends Controller
         $this->authorize('update', $onlineOrder);
 
         if (! $onlineOrder->canTransitionTo('delivered')) {
-            abort(422, "'{$onlineOrder->status}' থেকে ডেলিভারি সম্পন্ন করা সম্ভব নয়।");
+            return back()->with('error', "'{$onlineOrder->status}' থেকে ডেলিভারি সম্পন্ন করা সম্ভব নয়।");
         }
 
         DB::transaction(function () use ($onlineOrder) {
@@ -525,7 +544,7 @@ class OnlineOrderController extends Controller
         $data = $request->validate(['reason' => ['required', 'string', 'min:3', 'max:255']]);
 
         if (! $onlineOrder->canTransitionTo('cancelled')) {
-            abort(422, "'{$onlineOrder->status}' অবস্থায় থাকা অর্ডার বাতিল করা সম্ভব নয়।");
+            return back()->with('error', "'{$onlineOrder->status}' অবস্থায় থাকা অর্ডার বাতিল করা সম্ভব নয়।");
         }
 
         DB::transaction(function () use ($onlineOrder, $data) {
@@ -554,7 +573,7 @@ class OnlineOrderController extends Controller
         $data = $request->validate(['reason' => ['required', 'string', 'min:3', 'max:255']]);
 
         if (! $onlineOrder->canTransitionTo('returned')) {
-            abort(422, "'{$onlineOrder->status}' অবস্থা থেকে রিটার্ন সম্পন্ন করা সম্ভব নয় — আগে 'ফেরত আসছে' তে নিন।");
+            return back()->with('error', "'{$onlineOrder->status}' অবস্থা থেকে রিটার্ন সম্পন্ন করা সম্ভব নয় — আগে 'ফেরত আসছে' তে নিন।");
         }
 
         DB::transaction(function () use ($onlineOrder, $data) {

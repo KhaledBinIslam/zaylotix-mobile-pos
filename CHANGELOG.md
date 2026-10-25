@@ -3,6 +3,12 @@
 Entries below cover the 2026-10 comprehensive audit-and-fix effort
 (Phases 0-12, per `docs/FIX_PLAN.md`). Earlier history is in `git log`.
 
+## Fix: online order rejection (e.g. stock shortage) crashed instead of showing why
+- Reported live: placing an order that failed a business rule (not
+  enough stock, etc.) crashed with a generic "Oops! An error occurred"
+  screen instead of a clear Bangla message. Now shows the actual reason
+  inline on the form (or as a toast for a status-change action).
+
 ## Fix: Online Business nav missing from mobile "More" page
 - Reported live right after deploy: the new nav links worked on the
   desktop sidebar but never showed up on the mobile bottom-tab "More"

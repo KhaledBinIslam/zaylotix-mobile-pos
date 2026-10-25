@@ -1499,6 +1499,34 @@ Fixed by adding the same two links (gated the same way,
 `hasPerm('online_business') && features.includes('online_business')`)
 to `More.vue`'s "Sales" section, right after Quotations.
 
+## Fix — business-rule rejection during order creation crashed instead of showing the reason
+
+Reported live by Khaled (2026-10-25): submitting the online order
+Create form (a real stock-shortage case) produced Inertia's generic
+"Oops! An Error Occurred / 422 Unprocessable Content" crash screen
+instead of a Bangla error message. Root cause: `OnlineOrderController`'s
+business-rule checks (stock shortage, variant required, etc.) used a
+bare `abort(422, 'message')`, the same style `PosController::
+performCheckout()` uses — but that controller is only ever called via a
+raw `fetch()`/`postJson()` from the POS page, which handles a plain-text
+422 itself. The online order Create form is a genuine Inertia
+`form.post()`, and Inertia's client only knows how to render a proper
+inline field error from a real `ValidationException` (the same
+mechanism every other `$request->validate()` failure in this app
+already relies on) — a bare `abort()` response isn't shaped like an
+Inertia page response at all, so the client falls back to its crash
+screen. Fixed by routing every business-rule rejection during
+`createOrder()` through one `fail()` helper that throws
+`ValidationException::withMessages(['items' => [...]])`, and converting
+the status-transition guard clauses (`transition()`/`deliver()`/
+`cancel()`/`returnOrder()`, reached via a plain `router.post()`/
+`patch()` from Order/Show.vue, no `useForm` to populate field errors
+for) to `return back()->with('error', ...)` instead, surfacing through
+the existing `flash.error` toast watcher every other action in the app
+already uses. `csvImport()`'s per-row catch block now extracts the
+validator's own message instead of `ValidationException`'s generic
+`getMessage()`.
+
 Parts 3-8 — not yet started.
 
 ## Definition-of-done checklist (updated after every phase)
