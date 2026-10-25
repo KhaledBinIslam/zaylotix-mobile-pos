@@ -176,6 +176,11 @@ const MOBILE_NAV_OPTIONS = [
     { key: 'promotions', label: () => t('nav.promotions') },
     { key: 'accounts', label: () => t('nav.accounts') },
     { key: 'expenses', label: () => t('nav.expenses') },
+    { key: 'onlineOrders', label: () => t('nav.onlineOrders') },
+    { key: 'channels', label: () => t('nav.channels') },
+    { key: 'couriers', label: () => t('nav.couriers') },
+    { key: 'ads', label: () => t('nav.ads') },
+    { key: 'onlineProfit', label: () => t('nav.onlineProfit') },
 ];
 const mobileNavSheet = ref(false);
 const mobileNavForm = useForm({ items: ['stock', 'due'] });

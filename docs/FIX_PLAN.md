@@ -1890,6 +1890,45 @@ counts) and financial cohort (delivered-in-period revenue) are shown
 to legitimately diverge when an order is placed in one period and
 delivered in the next; a shop without `online_business` gets 403.
 
+**Live feedback fix, same day**: Khaled's own words — *"delivery
+charge dibe customer, amr keno cod eshob calculate korte hocche"*
+("the customer's the one paying the delivery charge — why am I the
+one who has to calculate all this COD stuff"). Tracing it to
+`Orders/Create.vue`: `cod_amount` was a blank manual number field,
+forcing him to add up subtotal + delivery charge − any advance payment
+in his head for the overwhelming common case (full COD, nothing paid
+in advance). Fixed with a smart default, not a validation/backend
+change (`cod_amount` was already `nullable` server-side) — it now
+auto-fills as `total − paid_amount` reactively while items/delivery
+charge/advance payment change, and simply stops auto-filling the
+moment he types into the field himself, so a deliberate override
+(say, the courier will only collect part of it) always sticks. Zero
+backend changes, zero risk to `OnlineOrderTest`/`ReturnOnlineOrderTest`
+(both create orders via the API directly, bypassing this form
+entirely) — confirmed via re-run, all 24 still passing.
+
+**Live feedback fix, same day**: Khaled's own words — *"customize
+bottom nav e new feature asle egula ase na kn? jemon online order ta
+ekhane ene dite cacchi, partechina, option e show korche na"* ("why
+don't new features show up in the customizable bottom nav — I want to
+bring Online Order here but can't, it's not showing as an option").
+Root cause: the mobile bottom nav's two customizable slots (Phase 8)
+are gated by a whitelist of valid keys — deliberately duplicated
+THREE times by design (`AppLayout.vue`'s `MOBILE_NAV_CANDIDATE_KEYS`,
+`SettingController::updateMobileNav()`'s validation rule, `More.vue`'s
+`MOBILE_NAV_OPTIONS`, each commented as "kept in sync" with the
+others) — and every one of the Online Business module's five new nav
+keys (`onlineOrders`/`channels`/`couriers`/`ads`/`onlineProfit`,
+added across Parts 1-6) was simply never added to any of the three.
+Added to all three now. Caught this exact "two lists must stay in
+sync" trap already once before, in Part 2's live-bug note about
+`More.vue`'s separate hardcoded nav list — this is the same class of
+mistake recurring in a THIRD duplicated list, worth remembering for
+every future new top-level page. New test
+(`MobileNavSettingTest::test_an_online_business_key_can_be_picked_as_a_slot`)
+locks this in so a sixth Online Business page (or any future module)
+doesn't silently repeat it unnoticed.
+
 ## Definition-of-done checklist (updated after every phase)
 
 - [x] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test --all`, Phase 0.6) — re-verified 2026-10-20, all 8 types OK

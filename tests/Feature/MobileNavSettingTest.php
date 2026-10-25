@@ -35,6 +35,24 @@ class MobileNavSettingTest extends TestCase
         $this->assertSame(['reports', 'suppliers'], $shop->fresh()->mobile_nav_items);
     }
 
+    /**
+     * Live feedback fix — see docs/FIX_PLAN.md: the "Online Business"
+     * module's own nav keys (onlineOrders/channels/couriers/ads/
+     * onlineProfit) were missing from this whitelist for every part
+     * that shipped them, so none could ever be picked as a bottom-nav
+     * slot despite being real, reachable pages.
+     */
+    public function test_an_online_business_key_can_be_picked_as_a_slot(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+
+        $this->actingAs($owner, 'web')->patch('/app/settings/mobile-nav', [
+            'items' => ['onlineOrders', 'onlineProfit'],
+        ])->assertRedirect();
+
+        $this->assertSame(['onlineOrders', 'onlineProfit'], $shop->fresh()->mobile_nav_items);
+    }
+
     public function test_an_empty_slot_is_dropped_not_saved_as_an_empty_string(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();

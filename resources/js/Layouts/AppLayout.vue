@@ -456,7 +456,7 @@ const sidebarGroups = computed(() => [
 // when unset, and silently skips a saved key that no longer resolves to
 // anything visible (e.g. a feature since turned off) rather than rendering
 // a dead tab.
-const MOBILE_NAV_CANDIDATE_KEYS = ['stock', 'due', 'sales', 'customerList', 'reports', 'quotations', 'purchaseHistory', 'suppliers', 'promotions', 'accounts', 'expenses'];
+const MOBILE_NAV_CANDIDATE_KEYS = ['stock', 'due', 'sales', 'customerList', 'reports', 'quotations', 'purchaseHistory', 'suppliers', 'promotions', 'accounts', 'expenses', 'onlineOrders', 'channels', 'couriers', 'ads', 'onlineProfit'];
 const mobileNavCandidates = computed(() => sidebarGroups.value.flatMap((g) => g.items).filter((i) => MOBILE_NAV_CANDIDATE_KEYS.includes(i.key)));
 const mobileNavSlots = computed(() => {
     const picked = shop.value?.mobile_nav_items || ['stock', 'due'];

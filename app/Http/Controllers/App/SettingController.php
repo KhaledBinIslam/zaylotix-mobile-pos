@@ -235,7 +235,7 @@ class SettingController extends Controller
     {
         $data = $request->validate([
             'items' => ['required', 'array', 'max:2'],
-            'items.*' => ['nullable', 'in:stock,due,sales,customerList,reports,quotations,purchaseHistory,suppliers,promotions,accounts,expenses'],
+            'items.*' => ['nullable', 'in:stock,due,sales,customerList,reports,quotations,purchaseHistory,suppliers,promotions,accounts,expenses,onlineOrders,channels,couriers,ads,onlineProfit'],
         ]);
 
         Tenancy::shop()->update(['mobile_nav_items' => array_values(array_filter($data['items']))]);

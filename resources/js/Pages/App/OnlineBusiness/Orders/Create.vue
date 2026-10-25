@@ -69,6 +69,16 @@ const subtotal = computed(() => form.items.reduce((s, l) => s + unitPrice(l) * (
 const total = computed(() => subtotal.value + (Number(form.delivery_charge) || 0));
 const dueRemainder = computed(() => Math.max(0, total.value - (Number(form.cod_amount) || 0) - (Number(form.paid_amount) || 0)));
 
+// cod_amount defaults to "whatever's left after any advance payment" so
+// Khaled never has to add up subtotal+delivery_charge himself for the
+// overwhelming common case (full COD, nothing paid in advance) — stops
+// auto-filling the moment he types into the field himself, so a deliberate
+// override (e.g. the courier will only collect part of it) always sticks.
+const codTouched = ref(false);
+watch([total, () => form.paid_amount], () => {
+    if (!codTouched.value) form.cod_amount = Math.max(0, total.value - (Number(form.paid_amount) || 0));
+});
+
 function save() {
     form.transform((data) => ({
         ...data,
@@ -139,7 +149,7 @@ function save() {
             </div>
             <div class="field">
                 <label>{{ t('onlineOrder.codAmount') }} <span style="color:var(--dim);font-weight:400">{{ t('onlineOrder.codHint') }}</span></label>
-                <input v-model.number="form.cod_amount" type="number" min="0" placeholder="0">
+                <input v-model.number="form.cod_amount" type="number" min="0" placeholder="0" @input="codTouched = true">
             </div>
         </div>
 

@@ -220,7 +220,7 @@ export const translations = {
     'onlineOrder.noOrders': { bn: 'এখনো কোনো অনলাইন অর্ডার নেই।', en: 'No online orders yet.' },
     'onlineOrder.deliveryCharge': { bn: 'ডেলিভারি চার্জ', en: 'Delivery charge' },
     'onlineOrder.codAmount': { bn: 'COD পরিমাণ', en: 'COD amount' },
-    'onlineOrder.codHint': { bn: '(কুরিয়ার কালেক্ট করবে)', en: '(courier will collect)' },
+    'onlineOrder.codHint': { bn: '(স্বয়ংক্রিয়ভাবে হিসাব হয় — প্রয়োজনে বদলে দিন)', en: '(auto-calculated — change it if needed)' },
     'onlineOrder.paidAmount': { bn: 'অগ্রিম পরিশোধিত', en: 'Paid in advance' },
     'onlineOrder.paidMethod': { bn: 'পরিশোধের মাধ্যম', en: 'Paid via' },
     'onlineOrder.campaignTag': { bn: 'ক্যাম্পেইন ট্যাগ', en: 'Campaign tag' },
