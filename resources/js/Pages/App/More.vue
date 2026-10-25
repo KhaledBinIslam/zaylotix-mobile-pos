@@ -473,6 +473,9 @@ onMounted(() => {
             <Link v-if="hasPerm('online_business') && features.includes('online_business')" :href="route('app.couriers.index')" class="row">
                 <div class="ava">🛵</div><div class="mid"><b>{{ t('nav.couriers') }}</b><span>{{ t('courier.subtitle') }}</span></div><div class="end">›</div>
             </Link>
+            <Link v-if="hasPerm('online_business') && features.includes('online_business')" :href="route('app.ads.index')" class="row">
+                <div class="ava">📢</div><div class="mid"><b>{{ t('nav.ads') }}</b><span>{{ t('ads.subtitle') }}</span></div><div class="end">›</div>
+            </Link>
         </template>
 
         <template v-if="hasPerm('customers')">

@@ -15,6 +15,7 @@ class SalesChannel extends Model
     protected $fillable = [
         'shop_id', 'name', 'platform_type', 'logo_path', 'active',
         'default_courier_id', 'order_prefix', 'platform_fee_percent', 'gateway_fee_percent',
+        'overhead_allocation_percent',
     ];
 
     public const PLATFORM_TYPES = ['facebook', 'website', 'daraz', 'whatsapp', 'catalog', 'other'];
@@ -25,6 +26,7 @@ class SalesChannel extends Model
             'active' => 'boolean',
             'platform_fee_percent' => 'decimal:2',
             'gateway_fee_percent' => 'decimal:2',
+            'overhead_allocation_percent' => 'decimal:2',
         ];
     }
 

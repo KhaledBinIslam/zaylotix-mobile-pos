@@ -4,6 +4,7 @@ use App\Http\Controllers\App\Auth\LoginController;
 use App\Http\Controllers\App\Auth\SignupController;
 use App\Http\Controllers\App\AccountsController;
 use App\Http\Controllers\App\ActivityLogController;
+use App\Http\Controllers\App\AdSpendController;
 use App\Http\Controllers\App\BarcodeLabelController;
 use App\Http\Controllers\App\BranchController;
 use App\Http\Controllers\App\CourierController;
@@ -404,6 +405,11 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::delete('couriers/{courier}', [CourierController::class, 'destroy'])->name('couriers.destroy');
         Route::get('couriers/{courier}', [CourierController::class, 'show'])->name('couriers.show');
         Route::post('couriers/{courier}/settle', [CourierController::class, 'settle'])->name('couriers.settle');
+
+        // ad spend + overhead allocation — see docs/FIX_PLAN.md's Phase 35 design note
+        Route::get('ads', [AdSpendController::class, 'index'])->name('ads.index');
+        Route::post('ads', [AdSpendController::class, 'store'])->name('ads.store');
+        Route::put('ads/overhead-rule', [AdSpendController::class, 'updateOverheadRule'])->name('ads.overheadRule');
     });
 
     Route::middleware(['perm:expenses', 'feature:expenses'])->group(function () {

@@ -1688,7 +1688,97 @@ test caught it returning `delivered` instead of `returned`. Fixed with
 an explicit `['returned', 'cancelled']` check instead of reusing a
 constant whose documented meaning didn't actually match this use.
 
-Parts 5-8 — not yet started.
+Parts 6-8 — not yet started.
+
+## Phase 35 — "Online Business" module, part 5: ads and expense allocation
+
+**Reuse discovery.** The existing `Expense`/`ExpenseCategory` module
+already does everything a plain expense needs (category, memo, amount,
+cash/bank decrement). Nothing here duplicates it — this part only adds
+what ad spend specifically needs on top: (1) which campaign it belongs
+to, (2) an optional USD amount + exchange rate (ads are frequently
+billed in USD by Meta), and (3) how one ad cost splits across several
+channels. `SalaryPayment` (existing payroll) and plain `Expense` rows
+are reused as-is for the "shared overhead" side — no new overhead
+table, no re-entering numbers that already exist in Payroll/Expenses.
+
+**What's genuinely new**:
+- Three additive nullable columns on `expenses`: `campaign_tag`,
+  `amount_usd`, `exchange_rate`. Every existing expense row keeps
+  working exactly as before — these are simply unused for it.
+- A new join table `expense_channel_splits` (`expense_id`,
+  `channel_id`, `amount`) — one row per channel an ad expense is
+  allocated to. An expense with zero split rows is just a normal
+  expense (the overwhelming majority, unaffected); one WITH split rows
+  is what this part treats as "ad spend" everywhere (`Expense::
+  has('channelSplits')` is the signal, not a new boolean flag — avoids
+  a column that could drift out of sync with the splits themselves).
+- `overhead_allocation_rule` on `shops` (nullable: `equal` /
+  `revenue_share` / `manual`, null = not configured) and
+  `overhead_allocation_percent` on `sales_channels` (used only when
+  the rule is `manual`). Null rule means zero overhead is allocated
+  anywhere and `profit_after_overhead` == `profit_before_overhead` —
+  existing shops see no change until the owner opts in.
+- New `AdSpendController` (`app.ads.*` routes, same
+  `perm:online_business`+`feature:online_business` gate as the rest of
+  the module): an ad-spend form (campaign tag, BDT or USD+rate,
+  cash/bank, split by percent or exact amount across channels),
+  a per-campaign performance table (spend, orders, delivered orders,
+  revenue, ROAS, cost/order, cost/delivered-order), and a channel
+  economics table (revenue, gross profit, courier charge, ad spend,
+  profit before/after overhead) plus the overhead-rule setting.
+
+**Split math**: percent-mode computes each row as
+`round(total * percent / 100, 2)` except the LAST row, which takes
+whatever remainder makes the split sum to the total exactly (spec's
+own "remainder on the last row" rule) — never relies on percentages
+summing to exactly 100 after rounding. Amount-mode (the owner types
+exact BDT per channel) is validated to sum to the total within a cent;
+mismatches are rejected with the exact difference shown, rather than
+silently rescaled — the owner's numbers are the source of truth there,
+not something to "fix" for them.
+
+**Campaign ROAS** matches ad spend by `campaign_tag` against
+`online_orders.campaign_tag` (already a Part 2 column, unused by any
+report until now). Revenue only counts **delivered** orders — same
+revenue-recognition rule as everywhere else in this module — via each
+matched order's own `Sale` (`sale.total`, already excluded from every
+report until delivered by `Sale`'s own `active` scope, so a plain read
+needs no extra filtering).
+
+**Channel economics, deliberately scoped lighter than Part 6**: gross
+profit reuses `Sale.profit` (already revenue-minus-COGS at checkout
+time) rather than re-deriving cost here, so "profit before overhead" =
+gross profit − courier charge − ad spend. "Total overhead" for the
+period = `SalaryPayment.net_paid` sum + every `Expense` WITHOUT a
+channel split (i.e., not ad spend) in range — the plain reading of
+"rent, payroll from existing modules, never re-entered." This is
+explicitly a provisional figure for the ads/overhead picture Part 5
+owns; Part 6 ("the profit engine and reports") is where the full,
+formal, two-view (consolidated vs. channel-wise, sum-matched) profit
+calculation gets built and tested as its own deliverable — this part's
+numbers are not meant to replace that.
+
+**Scope cut, documented**: the daily owner summary's "Online" block
+and the home-page online-sales summary Khaled separately asked about
+are explicitly Part 7's "safety nets and polish" item in the spec, not
+Part 5 — not built here to avoid scope creep into a part that isn't
+up yet.
+
+Tests: `tests/Feature/AdSpendTest.php`, 11 passing — percent split sums
+exactly to the total with the remainder landing on the last channel;
+amount-mode split mismatch is rejected; USD amount converts via the
+given rate; cash/bank balance decrements by the BDT total exactly
+once; an ad expense with no splits never appears in the
+campaign/channel tables it shouldn't; campaign ROAS only counts
+delivered orders' revenue; overhead rule `equal` splits the same total
+across every channel, `manual` respects each channel's own percent,
+and a shop with no rule set allocates zero overhead; `SalaryPayment`
+feeds `total_overhead` with no new data entry; a shop without
+`online_business` gets a 403 on every new route. Full suite: 1054
+passed (1043 prior baseline + these 11), zero regressions.
+
+Parts 6-8 — not yet started.
 
 ## Definition-of-done checklist (updated after every phase)
 
