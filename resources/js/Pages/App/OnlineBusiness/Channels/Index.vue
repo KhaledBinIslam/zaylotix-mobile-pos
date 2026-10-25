@@ -80,7 +80,10 @@ function destroy(c) {
                 </div>
                 <div style="flex:1">
                     <b>{{ c.name }}</b>
-                    <div style="font-size:12px;color:var(--mut)">{{ platformLabel(c.platform_type) }} • {{ c.order_prefix }}</div>
+                    <div style="font-size:12px;color:var(--mut)">
+                        {{ platformLabel(c.platform_type) }} • {{ c.order_prefix }}
+                        <template v-if="c.return_rate !== null"> • {{ t('channel.returnRate') }}: {{ c.return_rate }}%</template>
+                    </div>
                 </div>
                 <span class="pill" :class="c.active ? 'mint' : 'rose'">{{ c.active ? t('channel.active') : t('channel.inactive') }}</span>
             </div>

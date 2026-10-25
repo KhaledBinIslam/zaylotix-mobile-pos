@@ -598,32 +598,4 @@ class OnlineOrderController extends Controller
         return back()->with('success', 'অর্ডার বাতিল করা হয়েছে — স্টক ও ব্যালেন্স ফিরিয়ে দেওয়া হয়েছে।');
     }
 
-    /**
-     * Full return after Delivered — reuses the same reversal as Cancel for
-     * now. Partial return with per-line Good/Damaged/Lost condition is
-     * Part 4's own job (see docs/FIX_PLAN.md's Phase 32 design note).
-     */
-    public function returnOrder(Request $request, OnlineOrder $onlineOrder)
-    {
-        $this->authorize('update', $onlineOrder);
-
-        $data = $request->validate(['reason' => ['required', 'string', 'min:3', 'max:255']]);
-
-        if (! $onlineOrder->canTransitionTo('returned')) {
-            return back()->with('error', "'{$onlineOrder->status}' অবস্থা থেকে রিটার্ন সম্পন্ন করা সম্ভব নয় — আগে 'ফেরত আসছে' তে নিন।");
-        }
-
-        DB::transaction(function () use ($onlineOrder, $data) {
-            $shop = Shop::whereKey($onlineOrder->shop_id)->lockForUpdate()->first();
-            $sale = Sale::withVoided()->with(['items', 'payments'])->findOrFail($onlineOrder->sale_id);
-
-            SaleReversal::reverse($sale, $shop);
-            $sale->update(['voided_at' => now(), 'voided_reason' => 'অনলাইন অর্ডার রিটার্ন: '.$data['reason'], 'voided_by' => Auth::guard('web')->id()]);
-            $onlineOrder->update(['status' => 'returned']);
-
-            Activity::log('online_order.returned', "অর্ডার '{$onlineOrder->order_number}' রিটার্ন সম্পন্ন হয়েছে — কারণ: {$data['reason']}", $onlineOrder, ['reason' => $data['reason']]);
-        });
-
-        return back()->with('success', 'রিটার্ন সম্পন্ন — স্টক ও ব্যালেন্স ফিরিয়ে দেওয়া হয়েছে।');
-    }
 }

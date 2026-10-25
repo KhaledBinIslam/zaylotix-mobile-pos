@@ -14,7 +14,7 @@ class SalesReturn extends Model
     protected $fillable = [
         'shop_id', 'product_id', 'product_batch_id', 'user_id', 'qty', 'refund', 'phone', 'date',
         'sale_id', 'sale_item_id', 'product_variant_id', 'customer_id', 'exchange_sale_id',
-        'type', 'condition', 'cost', 'applied_to_due', 'loyalty_points_deducted',
+        'type', 'condition', 'reason', 'cost', 'applied_to_due', 'loyalty_points_deducted',
     ];
 
     protected function casts(): array

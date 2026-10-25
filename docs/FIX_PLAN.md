@@ -1601,7 +1601,94 @@ rejecting a double-settle attempt, the accounts receivable line (zero
 before delivery, correct after), courier analytics percentages, tenant
 scoping, feature gating.
 
-Parts 4-8 — not yet started.
+## Phase 34 — "Online Business" module, part 4: returns, damage and loss for online orders
+
+**Reuse discovery, before writing any code (per §0's own instruction)**:
+`ReturnController::process()` already exists and is a FULLY-BUILT,
+heavily-tested, invoice-linked, per-line, condition-aware return/
+exchange engine — proportional refund math, due-vs-cash split, loyalty
+points deduction, cross-branch resolution, exchange-to-a-different-
+product with `trade_credit` settlement, all of it. Its own
+`SalesReturn` model already has `sale_item_id` (per-line), `condition`
+(`resalable`/`damaged`), `exchange_sale_id`. This is *exactly* the
+"existing refund flow" and "exchange link" the spec's own Part 4 bullet
+names — this part is overwhelmingly about **wiring online orders into
+this existing engine**, not building a parallel one. My own Part 2
+placeholder (`OnlineOrderController::returnOrder()`, a blind full-sale
+reversal) is removed — superseded by the real thing.
+
+**What's genuinely new**:
+- `condition` gains a third value, **`lost`** (`returns.condition` is a
+  plain `string(20)`, not a DB enum — no migration needed for this).
+  Handled identically to `damaged` (writes off via the existing
+  `Damage` model, no restock) with its own distinguishing reason text
+  — a lost parcel and a damaged one are the same accounting event
+  (full cost write-off), differing only in *why*.
+- `returns.reason` (new nullable column, free-text) — satisfies
+  "editable return reasons" as a plain field the owner types per
+  return event, not a managed reasons-list CRUD nothing asked for
+  beyond the phrase itself (same scope-discipline precedent as
+  wholesale customer groups' binary flag). Benefits every return
+  through this page, not just online ones.
+- **The online-order hook**: after `process()` finishes, if the sale
+  has an `onlineOrder` (Part 2's `Sale::onlineOrder()` relation) and
+  every one of its `SaleItem`s is now fully returned, the order flips
+  to `returned` — regardless of which status it was in before
+  (`delivered`, `returning`, or `failed`), as long as it isn't already
+  terminal. A **partial** return deliberately does NOT change the
+  order's own status at all — it's an accounting event against the
+  underlying `Sale`, visible via the `SalesReturn` rows and the
+  activity log, not a new "partially returned" lifecycle state nothing
+  asked for.
+- **UI**: Order/Show.vue's old "রিটার্ন সম্পন্ন করুন" button (which drove
+  the now-removed full-reversal endpoint) is replaced with a plain
+  link to the *existing* Returns page, `/app/returns?sale_id={id}` —
+  already supports jumping straight to a sale (built for Sales/Show.vue's
+  own return button), so this needed zero new frontend return-processing
+  code at all, just a link.
+
+**Scope cut, documented**: "record lost forward+return courier
+charges" — `courier_charge` (forward) is already recorded per order
+(Part 3); a courier's own `return_charge` is already a configured
+field (Part 3). Deliberately **not** auto-creating an Expense row for
+it here — when that return charge actually becomes a real cash
+outflow (netted at COD settlement vs. a separate line item) is a
+financial-semantics decision that belongs together with Part 3's
+settlement reconciliation, not guessed at here risking a double-count
+against `cash_balance`. The courier's configured `return_charge` is
+shown informationally on a returned/lost order instead.
+
+**Scope cut, documented**: "Reports: return rate by product/channel/
+courier/reason/area" — courier-wise is already live (Part 3's
+`CourierController::show()` already computes `returned_pct`). This
+part adds the same simple percentage for **channel**, computed inline
+in `SalesChannelController::index()` (no new page). Product/reason/
+area cross-tabs are explicitly deferred to Part 6, the dedicated
+profit-engine/reports part — building one-off report fragments here
+would be inconsistent with what Part 6 is for.
+
+Tests: `tests/Feature/ReturnOnlineOrderTest.php`, 6 passing — 'lost'
+writes off via `Damage` with no restock, a partial return leaves the
+order's status untouched, a full return flips it even starting
+straight from `delivered` (no `returning` detour required), the reason
+field is stored, a cancelled order is never reopened by the hook, and
+channel return-rate math. Also re-ran all 44 existing return/exchange
+tests (`ReturnExchangeTest`, `BranchCrossReturnTest`, `ReturnTest`) to
+confirm zero regression to the reused engine, plus
+`OnlineOrderTest::test_full_return_after_delivery_restores_stock`
+updated to exercise the real flow instead of the removed placeholder.
+
+One real bug caught by its own test during development: the hook's
+first draft guarded on `OnlineOrder::TERMINAL_STATUSES`, which
+(correctly, for its original Part 2 purpose) includes `delivered` —
+but `delivered` is exactly the normal starting point a return gets
+processed from, so that guard silently skipped the hook on every
+"return from Delivered, no 'Returning' detour" case until a dedicated
+test caught it returning `delivered` instead of `returned`. Fixed with
+an explicit `['returned', 'cancelled']` check instead of reusing a
+constant whose documented meaning didn't actually match this use.
+
+Parts 5-8 — not yet started.
 
 ## Definition-of-done checklist (updated after every phase)
 

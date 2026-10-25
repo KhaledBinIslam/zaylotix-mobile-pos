@@ -61,11 +61,13 @@ const selectedSale = ref(null);
 const lineState = ref({}); // sale_item_id -> { qty, condition, checked }
 const action = ref('refund'); // 'refund' | 'exchange'
 const overrideWindow = ref(false);
+const returnReason = ref(''); // free-text, one per return event — see docs/FIX_PLAN.md's Phase 34 design note
 
 function selectSale(sale) {
     selectedSale.value = sale;
     action.value = 'refund';
     overrideWindow.value = false;
+    returnReason.value = '';
     newItems.value = [];
     payments.value = [];
     resultSummary.value = null;
@@ -272,6 +274,7 @@ async function submit() {
         action: action.value,
         lines: selectedLines.value.map((l) => ({ sale_item_id: l.sale_item_id, qty: l.qty, condition: l.condition })),
         override_window: overrideWindow.value,
+        reason: returnReason.value.trim() || null,
     };
     if (action.value === 'exchange') {
         payload.new_items = newItems.value
@@ -306,6 +309,8 @@ function printMemo() {
     window.print();
 }
 
+const conditionEmoji = (condition) => ({ resalable: '✅', damaged: '🗑️', lost: '📭' })[condition] || '🗑️';
+
 function sendMemoWA() {
     const r = resultSummary.value;
     if (!r) return;
@@ -314,7 +319,7 @@ function sendMemoWA() {
     const shopName = shop.value?.name || 'Zaylotix POS';
 
     let lines = `*${shopName}*\n${'─'.repeat(16)}\nআসল ইনভয়েস: ${r.sale.invoice_no}\n${'─'.repeat(16)}\nযা ফেরত নেওয়া হলো:\n`;
-    lines += r.returns.map((ret) => `${ret.condition === 'resalable' ? '✅' : '🗑️'} ${qty(ret.qty)} ইউনিট — ${money(ret.refund)}`).join('\n');
+    lines += r.returns.map((ret) => `${conditionEmoji(ret.condition)} ${qty(ret.qty)} ইউনিট — ${money(ret.refund)}`).join('\n');
     lines += `\nমোট ফেরত: ${money(r.total_refund)}`;
 
     if (r.exchange_sale) {
@@ -390,6 +395,7 @@ function sendMemoWA() {
                             <select v-model="lineState[item.id].condition" style="width:150px" :disabled="!lineState[item.id].checked">
                                 <option value="resalable">{{ t('returns.conditionGood') }}</option>
                                 <option value="damaged">{{ t('returns.conditionDamaged') }}</option>
+                                <option value="lost">{{ t('returns.conditionLost') }}</option>
                             </select>
                         </div>
                     </template>
@@ -450,6 +456,11 @@ function sendMemoWA() {
                     <div style="font-weight:700">{{ t('returns.totalRefund') }}: {{ money(estimatedRefund) }}</div>
                 </div>
 
+                <div class="field" style="margin-top:14px">
+                    <label>{{ t('returns.reasonLabel') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
+                    <input v-model="returnReason" :placeholder="t('returns.reasonPlaceholder')">
+                </div>
+
                 <div v-if="errorMsg" style="color:var(--rose);margin-top:10px">{{ errorMsg }}</div>
 
                 <button class="btn" style="margin-top:16px" :disabled="submitting || !selectedLines.length" @click="submit">
@@ -463,7 +474,7 @@ function sendMemoWA() {
             <div style="margin-top:10px">আসল ইনভয়েস: <b>{{ resultSummary.sale.invoice_no }}</b></div>
             <div style="margin-top:6px;font-weight:700">যা ফেরত নেওয়া হলো:</div>
             <div v-for="r in resultSummary.returns" :key="r.id">
-                {{ r.condition === 'resalable' ? '✅' : '🗑️' }} {{ qty(r.qty) }} ইউনিট — {{ money(r.refund) }}
+                {{ conditionEmoji(r.condition) }} {{ qty(r.qty) }} ইউনিট — {{ money(r.refund) }}
             </div>
             <div style="margin-top:8px;font-weight:700">{{ t('returns.totalRefund') }}: {{ money(resultSummary.total_refund) }}
                 <span v-if="resultSummary.refund_due_portion > 0" style="color:var(--mut);font-size:12px">{{ t('returns.appliedToDue') }}</span>

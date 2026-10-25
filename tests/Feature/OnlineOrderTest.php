@@ -212,6 +212,7 @@ class OnlineOrderTest extends TestCase
     public function test_full_return_after_delivery_restores_stock(): void
     {
         [$shop, $owner, $channel] = $this->setupShop();
+        $this->grantFeature($shop, 'returns');
         $product = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 50, 'price' => 100, 'stock' => 10]);
 
         $this->actingAs($owner, 'web')->post(route('app.onlineOrders.store'), [
@@ -225,13 +226,17 @@ class OnlineOrderTest extends TestCase
         $this->actingAs($owner, 'web')->post(route('app.onlineOrders.deliver', $order->id))->assertRedirect();
         $this->assertEquals(8, (float) $product->fresh()->stock);
 
-        $this->actingAs($owner, 'web')->patch(route('app.onlineOrders.transition', $order->id), ['status' => 'returning'])->assertRedirect();
-        $this->actingAs($owner, 'web')->post(route('app.onlineOrders.return', $order->id), ['reason' => 'size issue'])->assertRedirect();
+        // the actual per-line return/exchange engine — see
+        // docs/FIX_PLAN.md's Phase 34 design note; Order/Show.vue just
+        // links to this existing page, no bespoke return code of its own
+        $saleItem = $order->sale->items->first();
+        $this->actingAs($owner, 'web')->postJson(route('app.returns.process'), [
+            'sale_id' => $order->sale->id, 'action' => 'refund',
+            'lines' => [['sale_item_id' => $saleItem->id, 'qty' => 2, 'condition' => 'resalable']],
+        ])->assertOk();
 
         $this->assertEquals(10, (float) $product->fresh()->stock);
-        $order->refresh();
-        $this->assertSame('returned', $order->status);
-        $this->assertTrue($order->sale->isVoided());
+        $this->assertSame('returned', $order->fresh()->status);
     }
 
     public function test_variant_stock_decrements_and_restores_correctly(): void

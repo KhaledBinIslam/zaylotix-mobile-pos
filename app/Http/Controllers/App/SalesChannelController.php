@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\App\StoreSalesChannelRequest;
 use App\Models\ChannelProductPrice;
 use App\Models\Courier;
+use App\Models\OnlineOrder;
 use App\Models\Product;
 use App\Models\SalesChannel;
 use App\Support\Tenancy;
@@ -18,8 +19,20 @@ class SalesChannelController extends Controller
 {
     public function index()
     {
+        // channel-wise return rate — courier-wise already exists on
+        // CourierController::show() (Part 3); product/reason/area cross-tabs
+        // are deliberately deferred to Part 6's dedicated reports (see
+        // docs/FIX_PLAN.md's Phase 34 design note)
+        $orderCounts = OnlineOrder::selectRaw("channel_id, count(*) as total, sum(case when status = 'returned' then 1 else 0 end) as returned")
+            ->groupBy('channel_id')->get()->keyBy('channel_id');
+
+        $channels = SalesChannel::orderBy('name')->get()->each(function (SalesChannel $c) use ($orderCounts) {
+            $counts = $orderCounts->get($c->id);
+            $c->return_rate = $counts && $counts->total > 0 ? round($counts->returned / $counts->total * 100, 1) : null;
+        });
+
         return Inertia::render('App/OnlineBusiness/Channels/Index', [
-            'channels' => SalesChannel::orderBy('name')->get(),
+            'channels' => $channels,
             'couriers' => Courier::where('active', true)->orderBy('name')->get(['id', 'name']),
         ]);
     }

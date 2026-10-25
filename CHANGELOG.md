@@ -12,6 +12,14 @@ Entries below cover the 2026-10 comprehensive audit-and-fix effort
   a receivable on the Accounts page until it's settled — that's also
   the moment it finally becomes real cash on hand.
 
+## "Online Business" module, part 4: রিটার্ন, ক্ষতি ও হারানো পার্সেল
+- Online order returns now go through the same per-line return/exchange
+  screen every other sale already uses — pick Good (restocked) /
+  Damaged / Lost (write-off) per item, with your own typed reason. An
+  order flips to "returned" automatically once every line is actually
+  back — a partial return just logs normally without closing the
+  order. Channel list now shows each channel's return rate.
+
 ## Fix: online order rejection (e.g. stock shortage) crashed instead of showing why
 - Reported live: placing an order that failed a business rule (not
   enough stock, etc.) crashed with a generic "Oops! An error occurred"

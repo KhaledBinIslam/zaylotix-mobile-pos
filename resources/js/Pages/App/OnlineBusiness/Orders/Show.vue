@@ -59,11 +59,6 @@ function cancelOrder() {
     if (!reason) return;
     router.post(route('app.onlineOrders.cancel', props.order.id), { reason });
 }
-function returnOrder() {
-    const reason = prompt(t('onlineOrder.returnReasonPrompt'));
-    if (!reason) return;
-    router.post(route('app.onlineOrders.return', props.order.id), { reason });
-}
 
 function waUpdate() {
     const phone = props.order.sale?.customer?.phone;
@@ -89,6 +84,9 @@ function waUpdate() {
             </div>
             <div style="color:var(--mut);font-size:13px">{{ order.sale?.customer?.name }} • 📞 {{ order.sale?.customer?.phone }}</div>
             <div v-if="order.courier" style="color:var(--mut);font-size:13px;margin-top:4px">🛵 {{ order.courier.name }}<template v-if="order.courier_charge"> • {{ money(order.courier_charge) }}</template></div>
+            <div v-if="['returning', 'returned'].includes(order.status) && Number(order.courier?.return_charge) > 0" style="color:var(--mut);font-size:13px;margin-top:4px">
+                {{ t('courier.returnCharge') }}: {{ money(order.courier.return_charge) }}
+            </div>
             <div v-if="order.tracking_id" style="color:var(--mut);font-size:13px;margin-top:4px">{{ t('onlineOrder.trackingId') }}: {{ order.tracking_id }}</div>
             <div v-if="Number(order.cod_amount) > 0" style="color:var(--mut);font-size:13px;margin-top:4px">{{ t('onlineOrder.codAmount') }}: {{ money(order.cod_amount) }}<template v-if="order.cod_settled_at"> ✅ {{ t('courier.settleSelected') }}</template></div>
         </div>
@@ -106,7 +104,7 @@ function waUpdate() {
             <button v-if="order.status === 'in_transit'" class="btn sm" style="flex:1" @click="deliver">{{ t('onlineOrder.markDelivered') }}</button>
             <button v-if="order.status === 'in_transit'" class="btn sm ghost" style="flex:1" @click="markFailed">{{ t('onlineOrder.markFailed') }}</button>
             <button v-if="order.status === 'delivered' || order.status === 'failed'" class="btn sm ghost" style="flex:1" @click="startReturning">{{ t('onlineOrder.startReturning') }}</button>
-            <button v-if="order.status === 'returning'" class="btn sm rose" style="flex:1" @click="returnOrder">{{ t('onlineOrder.confirmReturn') }}</button>
+            <Link v-if="['delivered', 'returning', 'failed'].includes(order.status) && order.sale" :href="route('app.returns.index') + '?sale_id=' + order.sale.id" class="btn sm rose" style="flex:1;text-align:center;text-decoration:none">{{ t('onlineOrder.processReturn') }}</Link>
             <button v-if="canCancel" class="btn sm rose" style="flex:1" @click="cancelOrder">{{ t('onlineOrder.cancelOrder') }}</button>
         </div>
 

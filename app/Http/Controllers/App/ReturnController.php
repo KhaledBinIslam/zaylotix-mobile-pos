@@ -5,6 +5,7 @@ namespace App\Http\Controllers\App;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\Damage;
+use App\Models\OnlineOrder;
 use App\Models\Product;
 use App\Models\ProductBatch;
 use App\Models\ProductVariant;
@@ -298,7 +299,12 @@ class ReturnController extends Controller
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.sale_item_id' => ['required', 'integer'],
             'lines.*.qty' => ['required', 'numeric', 'min:0.001'],
-            'lines.*.condition' => ['required', Rule::in(['resalable', 'damaged'])],
+            // 'lost' — see docs/FIX_PLAN.md's Phase 34 design note. Same
+            // accounting treatment as 'damaged' (full write-off via the
+            // existing Damage model), differing only in why.
+            'lines.*.condition' => ['required', Rule::in(['resalable', 'damaged', 'lost'])],
+            // free-text, one per return event — "editable return reasons"
+            'reason' => ['nullable', 'string', 'max:255'],
             'override_window' => ['nullable', 'boolean'],
             'new_items' => ['nullable', 'array'],
             'new_items.*.product_id' => ['required_with:new_items', 'integer'],
@@ -428,11 +434,16 @@ class ReturnController extends Controller
                         }
                     }
                 } else {
+                    // 'lost' and 'damaged' are the same write-off, differing
+                    // only in why — see docs/FIX_PLAN.md's Phase 34 design note
+                    $damageReason = $condition === 'lost'
+                        ? 'কাস্টমার ফেরত — পার্সেল হারিয়ে গেছে'
+                        : 'কাস্টমার ফেরত — বিক্রিযোগ্য না';
                     Damage::create([
                         'product_id' => $targetProduct->id,
                         'product_variant_id' => $targetVariant?->id,
                         'qty' => $returnQty,
-                        'reason' => 'কাস্টমার ফেরত — বিক্রিযোগ্য না'.($isCrossBranch ? ' (অন্য শাখার বিক্রি)' : ''),
+                        'reason' => $damageReason.($isCrossBranch ? ' (অন্য শাখার বিক্রি)' : ''),
                         'loss' => $cost,
                         'date' => now()->toDateString(),
                     ]);
@@ -528,6 +539,7 @@ class ReturnController extends Controller
                     'refund' => $row['refund'],
                     'cost' => $row['cost'],
                     'condition' => $row['condition'],
+                    'reason' => $data['reason'] ?? null,
                     'type' => $isExchange ? 'exchange' : 'return',
                     'applied_to_due' => $dueApplied > 0,
                     'loyalty_points_deducted' => $pointsDeducted,
@@ -542,6 +554,31 @@ class ReturnController extends Controller
                 $sale,
                 ['refund' => round($totalRefund, 2), 'cost' => round($totalCost, 2)]
             );
+
+            // Online order hook — see docs/FIX_PLAN.md's Phase 34 design
+            // note. A FULL return (every sale item now fully returned)
+            // flips the order to 'returned', regardless of which status it
+            // was in before, as long as it isn't already terminal. A
+            // partial return deliberately leaves the order's own status
+            // untouched — it's an accounting event against the Sale, not a
+            // new lifecycle state.
+            // NOT OnlineOrder::TERMINAL_STATUSES — that list includes
+            // 'delivered', which is exactly the normal starting point a
+            // return is processed from, not a state this hook should skip
+            $onlineOrder = OnlineOrder::withoutGlobalScopes()->where('sale_id', $sale->id)->first();
+            if ($onlineOrder && ! in_array($onlineOrder->status, ['returned', 'cancelled'], true)) {
+                $allItems = SaleItem::withoutGlobalScopes()->where('sale_id', $sale->id)->get();
+                $fullyReturned = $allItems->every(function (SaleItem $item) {
+                    $returnedQty = (float) SalesReturn::withoutGlobalScopes()->where('sale_item_id', $item->id)->sum('qty');
+
+                    return $returnedQty >= (float) $item->qty - 0.0001;
+                });
+
+                if ($fullyReturned) {
+                    $onlineOrder->update(['status' => 'returned']);
+                    Activity::log('online_order.returned', "অর্ডার '{$onlineOrder->order_number}' সম্পূর্ণ রিটার্ন হয়েছে।", $onlineOrder, ['reason' => $data['reason'] ?? null]);
+                }
+            }
 
             $sale->setRelation('customer', $customer); // avoids a second query — already locked/fetched above; the memo/WhatsApp button needs the phone number
 

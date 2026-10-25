@@ -397,8 +397,6 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::patch('online-orders/{onlineOrder}/transition', [OnlineOrderController::class, 'transition'])->name('onlineOrders.transition');
         Route::post('online-orders/{onlineOrder}/deliver', [OnlineOrderController::class, 'deliver'])->name('onlineOrders.deliver');
         Route::post('online-orders/{onlineOrder}/cancel', [OnlineOrderController::class, 'cancel'])->name('onlineOrders.cancel');
-        Route::post('online-orders/{onlineOrder}/return', [OnlineOrderController::class, 'returnOrder'])->name('onlineOrders.return');
-
         // couriers — see docs/FIX_PLAN.md's Phase 33 design note
         Route::get('couriers', [CourierController::class, 'index'])->name('couriers.index');
         Route::post('couriers', [CourierController::class, 'store'])->name('couriers.store');
