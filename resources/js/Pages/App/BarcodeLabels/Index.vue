@@ -21,6 +21,7 @@ function variantLabel(v) {
 }
 
 function toggleProduct(p) {
+    if (!p.barcode) return;
     const key = 'p:' + p.id;
     if (selected.value[key]) delete selected.value[key];
     else selected.value[key] = 1;
@@ -43,6 +44,9 @@ function selectAllVariants(p) {
 
 function generateBarcode(v) {
     router.patch(route('app.productVariants.generateBarcode', v.id), {}, { preserveScroll: true, preserveState: true });
+}
+function generateProductBarcode(p) {
+    router.patch(route('app.products.generateBarcode', p.id), {}, { preserveScroll: true, preserveState: true });
 }
 
 const filtered = computed(() => props.products.filter((p) =>
@@ -116,10 +120,12 @@ const printCss = computed(() => `
                 <div class="ava">{{ p.emoji }}</div>
                 <div class="mid">
                     <b>{{ p.name }}</b>
-                    <span>{{ p.barcode || t('bc.noBarcode') }} • {{ money(p.price) }}<span v-if="p.discount_price"> → {{ money(p.discount_price) }}</span></span>
+                    <span v-if="p.barcode">{{ p.barcode }} • {{ money(p.price) }}<span v-if="p.discount_price"> → {{ money(p.discount_price) }}</span></span>
+                    <span v-else style="color:var(--rose)">{{ t('bc.noBarcode') }}</span>
                 </div>
                 <div class="end" @click.stop>
-                    <input v-if="selected['p:' + p.id]" v-model.number="selected['p:' + p.id]" type="number" min="1" style="width:60px;padding:6px;text-align:center">
+                    <button v-if="!p.barcode" class="btn sm ghost" style="width:auto;padding:6px 10px" @click="generateProductBarcode(p)">{{ t('bc.generateBarcode') }}</button>
+                    <input v-else-if="selected['p:' + p.id]" v-model.number="selected['p:' + p.id]" type="number" min="1" style="width:60px;padding:6px;text-align:center">
                 </div>
             </div>
 

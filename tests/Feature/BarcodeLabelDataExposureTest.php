@@ -53,6 +53,63 @@ class BarcodeLabelDataExposureTest extends TestCase
         );
     }
 
+    /**
+     * Live bug fix — see docs/FIX_PLAN.md: a plain product with neither a
+     * barcode nor variants used to be excluded from this page entirely,
+     * so a shop whose products never had a barcode assigned (the normal
+     * case before ever printing one) saw "No products" here with no way
+     * to generate a first barcode at all.
+     */
+    public function test_a_barcode_less_product_with_no_variants_now_appears(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'barcode_printing');
+        Product::create(['shop_id' => $shop->id, 'name' => 'Loose Rice', 'price' => 90, 'stock' => 10]); // no barcode
+
+        $response = $this->actingAs($owner, 'web')->get('/app/barcode-labels');
+
+        $response->assertOk()->assertInertia(fn ($page) => $page
+            ->has('products', 1)
+            ->where('products.0.barcode', null)
+        );
+    }
+
+    public function test_owner_can_generate_a_barcode_for_a_plain_product_that_has_none(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'barcode_printing');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Loose Rice', 'price' => 90, 'stock' => 10]);
+
+        $response = $this->actingAs($owner, 'web')->patch("/app/products/{$product->id}/barcode/generate");
+
+        $response->assertRedirect();
+        $this->assertSame('ZP'.$product->id, $product->refresh()->barcode);
+    }
+
+    public function test_generating_a_product_barcode_twice_keeps_the_first_one(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'barcode_printing');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Soap', 'price' => 90, 'stock' => 10, 'barcode' => 'MANUALLY-SET']);
+
+        $this->actingAs($owner, 'web')->patch("/app/products/{$product->id}/barcode/generate");
+
+        $this->assertSame('MANUALLY-SET', $product->refresh()->barcode);
+    }
+
+    public function test_cannot_generate_a_barcode_for_another_shops_product(): void
+    {
+        [$shopA] = $this->createShopWithOwner();
+        [$shopB, $ownerB] = $this->createShopWithOwner();
+        $this->grantFeature($shopB, 'barcode_printing');
+        $product = Product::create(['shop_id' => $shopA->id, 'name' => 'Soap', 'price' => 90, 'stock' => 10]);
+
+        $response = $this->actingAs($ownerB, 'web')->patch("/app/products/{$product->id}/barcode/generate");
+
+        $response->assertNotFound();
+        $this->assertNull($product->refresh()->barcode);
+    }
+
     public function test_owner_can_generate_a_barcode_for_a_variant_that_has_none(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();

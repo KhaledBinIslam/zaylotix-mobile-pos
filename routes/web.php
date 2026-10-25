@@ -309,6 +309,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         // this page already does, not a stock-editing action
         Route::patch('product-variants/{productVariant}/barcode/generate', [BarcodeLabelController::class, 'generateVariantBarcode'])
             ->middleware('feature:product_variants')->name('productVariants.generateBarcode');
+        Route::patch('products/{product}/barcode/generate', [BarcodeLabelController::class, 'generateProductBarcode'])->name('products.generateBarcode');
     });
 
     Route::middleware('perm:customers')->group(function () {

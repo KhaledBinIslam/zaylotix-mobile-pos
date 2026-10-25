@@ -1929,6 +1929,30 @@ every future new top-level page. New test
 locks this in so a sixth Online Business page (or any future module)
 doesn't silently repeat it unnoticed.
 
+**Live feedback fix, same day, unrelated to Online Business**:
+Khaled's own words with a screenshot — *"barcode level j print dibo
+ekhane product e toh show hocchena"* ("I'm trying to print a barcode
+label and no products show up here"). Root cause in
+`BarcodeLabelController::index()`: the product list only ever
+included a product that ALREADY had a barcode, or had variants (each
+carrying its own). A plain product that had never been assigned a
+barcode — the normal state for any shop that didn't import
+pre-barcoded stock — was invisible, even though generating a FIRST
+barcode and printing it is the entire point of this page. The variant
+side already had exactly this covered
+(`generateVariantBarcode()`/`'ZV'.$variant->id`, "+ বারকোড বানান" next
+to a barcode-less variant) — a plain product just never got the same
+treatment. Fixed symmetrically: every product is now listed, and a new
+`generateProductBarcode()` (`'ZP'.$product->id`, same uniqueness
+reasoning as the variant side) with its own "+ বারকোড বানান" button
+appears next to a plain product with none, wired through
+`BarcodeLabels/Index.vue`'s existing selection flow (a product/variant
+with no barcode still can't be selected for printing — only generate).
+4 new tests in `BarcodeLabelDataExposureTest` (a barcode-less, no-
+variant product now appears; generate/idempotent-regenerate/cross-
+tenant-rejected for the product side, mirroring the variant tests
+already there) — all 10 in that file passing.
+
 ## Definition-of-done checklist (updated after every phase)
 
 - [x] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test --all`, Phase 0.6) — re-verified 2026-10-20, all 8 types OK

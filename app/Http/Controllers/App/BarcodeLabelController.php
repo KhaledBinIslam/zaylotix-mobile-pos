@@ -23,17 +23,16 @@ class BarcodeLabelController extends Controller
             // ship every column (including cost/margin) to that client
             // regardless of what the template chooses to render.
             //
-            // A variant product normally carries NO barcode of its own on
-            // this row (see DemoShopSeeder's clothingDemo()) — each of its
-            // variants has its own instead — so it must be included here
-            // whenever it HAS variants, not just when its own `barcode`
-            // column happens to be set, or every clothing/shoe shop's whole
-            // variant catalog was simply invisible on this page.
-            'products' => Product::where(function ($q) {
-                $q->whereNotNull('barcode')->where('barcode', '!=', '')
-                    ->orWhereHas('variants');
-            })
-                ->orderBy('name')
+            // Live bug fix: this used to only list a product that ALREADY
+            // had a barcode (or variants, each carrying its own). But the
+            // whole point of this page for a shop that never imported
+            // pre-barcoded stock is to GENERATE a first barcode and print
+            // it — excluding exactly the products that need one meant the
+            // page showed "No products" for any such shop. Every product
+            // is listed now; generateProductBarcode()/generateVariantBarcode()
+            // below handle assigning one on demand, same as the variant side
+            // already did.
+            'products' => Product::orderBy('name')
                 ->with(['variants' => fn ($q) => $q->orderBy('size')->orderBy('color')])
                 ->get(['id', 'name', 'name_en', 'emoji', 'barcode', 'price', 'discount_price'])
                 ->map(fn ($p) => [
@@ -45,6 +44,21 @@ class BarcodeLabelController extends Controller
                     ]),
                 ]),
         ]);
+    }
+
+    /**
+     * Same job as generateVariantBarcode() below, for a plain product with
+     * no variants of its own. 'ZP' . $product->id is unique the same way
+     * 'ZV' . $variant->id already is — a single global auto-increment
+     * column, never reused across shops or after a delete.
+     */
+    public function generateProductBarcode(Product $product)
+    {
+        if (! $product->barcode) {
+            $product->update(['barcode' => 'ZP'.$product->id]);
+        }
+
+        return back();
     }
 
     /**
