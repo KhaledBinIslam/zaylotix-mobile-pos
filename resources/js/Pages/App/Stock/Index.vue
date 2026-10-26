@@ -118,8 +118,18 @@ function setCategory(id) {
 
 // a weighed product's own "low" threshold is 1 kg/litre, not 6 pieces —
 // 6 loose grams left on the shelf would be meaningless as a low-stock signal
+// Real bug Khaled hit: this ignored a product's own reorder_point entirely
+// (always 6/1), and only ever looked at the product's own TOTAL stock, so
+// an article with one size/color down to its own threshold (but a healthy
+// combined total) never showed as low here — mirrors the same fix in
+// Product::scopeLowStock() server-side, so the badge and the "Low Stock"
+// count/filter never disagree.
 function lowThreshold(p) {
-    return p.sold_by_weight ? 1 : 6;
+    const generic = p.sold_by_weight ? 1 : 6;
+    return Number(p.reorder_point) > 0 ? Number(p.reorder_point) : generic;
+}
+function hasALowVariant(p) {
+    return (p.variants || []).some((v) => Number(v.reorder_point) > 0 && Number(v.stock) > 0 && Number(v.stock) <= Number(v.reorder_point));
 }
 // computed server-side against the WHOLE catalog (see ProductController) —
 // these are dashboard totals, not a summary of whichever page is showing
@@ -166,7 +176,7 @@ function badge(p) {
     }
     const stock = Number(p.stock);
     if (stock <= 0) return { cls: 'rose', text: t('stock.outOfStock') };
-    if (stock <= lowThreshold(p)) return { cls: 'gold', text: `${t('stock.lowStock')} ${formatQty(p, stock)} ${unitLabel(p)}` };
+    if (stock <= lowThreshold(p) || hasALowVariant(p)) return { cls: 'gold', text: `${t('stock.lowStock')} ${formatQty(p, stock)} ${unitLabel(p)}` };
     return { cls: 'mut', text: `${formatQty(p, stock)} ${unitLabel(p)}` };
 }
 
@@ -910,7 +920,13 @@ useKeyboardShortcuts({
                     <div v-for="v in g.variants" :key="v.id" class="cart-line" style="align-items:flex-start">
                         <div class="nm">
                             <b>{{ variantLabel(v) }}</b>
-                            <span>{{ v.stock }} {{ t('stock.pieces') }}<template v-if="v.price"> • {{ money(v.price) }}</template><template v-if="v.barcode"> • 🏷️ {{ v.barcode }}</template><template v-if="v.reorder_point"> • ⚠ {{ v.reorder_point }}</template></span>
+                            <!-- exactly which size/color needs restocking — Khaled: "low stock e click korle jeno deka jai konta konta low" -->
+                            <span :style="Number(v.stock) <= 0 ? 'color:var(--rose);font-weight:700' : (Number(v.reorder_point) > 0 && Number(v.stock) <= Number(v.reorder_point) ? 'color:var(--gold2);font-weight:700' : '')">
+                                {{ v.stock }} {{ t('stock.pieces') }}
+                                <template v-if="Number(v.stock) <= 0"> — {{ t('stock.outOfStock') }}</template>
+                                <template v-else-if="Number(v.reorder_point) > 0 && Number(v.stock) <= Number(v.reorder_point) "> ⚠ {{ t('stock.lowStock') }}</template>
+                            </span>
+                            <span><template v-if="v.price"> • {{ money(v.price) }}</template><template v-if="v.barcode"> • 🏷️ {{ v.barcode }}</template><template v-if="v.reorder_point"> • reorder: {{ v.reorder_point }}</template></span>
                             <div style="display:flex;gap:6px;margin-top:6px">
                                 <input v-model="variantStockInQty[v.id]" type="number" :placeholder="t('stock.stockIn')" style="width:90px">
                                 <button class="btn sm ghost" @click="stockInVariant(v)">+</button>

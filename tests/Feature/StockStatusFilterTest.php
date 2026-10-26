@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Product;
+use App\Models\ProductVariant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\CreatesShops;
 use Tests\TestCase;
@@ -60,6 +61,58 @@ class StockStatusFilterTest extends TestCase
             ->has('products.data', 1)
             ->where('products.data.0.name', 'Weighed Low')
         );
+    }
+
+    public function test_a_products_own_reorder_point_overrides_the_generic_default(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        // stock 4 is well above the generic default (6 would still catch it)
+        // but above its OWN reorder_point of 3 -- must NOT count as low
+        Product::create(['shop_id' => $shop->id, 'name' => 'Custom Threshold High', 'cost' => 1, 'price' => 2, 'stock' => 4, 'reorder_point' => 3]);
+        // stock 5 is above the generic default's "low" range too, but at/under its OWN reorder_point of 5
+        Product::create(['shop_id' => $shop->id, 'name' => 'Custom Threshold Low', 'cost' => 1, 'price' => 2, 'stock' => 5, 'reorder_point' => 5]);
+
+        $response = $this->actingAs($owner, 'web')->get('/app/stock?stock_status=low');
+
+        $response->assertOk()->assertInertia(fn ($page) => $page
+            ->has('products.data', 1)
+            ->where('products.data.0.name', 'Custom Threshold Low')
+        );
+    }
+
+    /**
+     * Real bug Khaled hit live: an article's total stock (summed across every
+     * size/color) can look perfectly fine while one specific variant is down
+     * to its own reorder_point — e.g. 11 pairs total but only 1 left in a
+     * popular size. The whole article must still surface as "low", not wait
+     * for the combined total to drop.
+     */
+    public function test_a_single_low_variant_flags_the_whole_article_even_with_plenty_of_total_stock(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'product_variants');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'L-10001', 'cost' => 1300, 'price' => 1990, 'stock' => 11, 'reorder_point' => 3]);
+        ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => '36', 'color' => 'SILVER', 'stock' => 1, 'reorder_point' => 3]);
+        ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => '37', 'color' => 'SILVER', 'stock' => 10, 'reorder_point' => 3]);
+
+        $response = $this->actingAs($owner, 'web')->get('/app/stock?stock_status=low');
+
+        $response->assertOk()->assertInertia(fn ($page) => $page
+            ->has('products.data', 1)
+            ->where('products.data.0.name', 'L-10001')
+        );
+    }
+
+    public function test_a_variant_without_its_own_reorder_point_never_flags_the_article_by_itself(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'product_variants');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'L-10002', 'cost' => 1300, 'price' => 1990, 'stock' => 11, 'reorder_point' => 3]);
+        ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => '36', 'color' => 'SILVER', 'stock' => 1]); // no reorder_point set
+
+        $response = $this->actingAs($owner, 'web')->get('/app/stock?stock_status=low');
+
+        $response->assertOk()->assertInertia(fn ($page) => $page->has('products.data', 0));
     }
 
     public function test_untracked_stock_mode_products_are_excluded_from_either_filter(): void

@@ -309,11 +309,31 @@ class Product extends Model
      *  piece-counted one's, and a negative-stock product from an
      *  over-return wasn't consistently caught as "out"). 'untracked'/
      *  'toggle' restaurant items are excluded — see STOCK_MODE_* docblock. */
+    /**
+     * Real bug Khaled hit live: a variant product with one size/color down
+     * to its own reorder_point (e.g. 1 pair left, threshold 3) never showed
+     * up here, because this scope only ever compared the product's own
+     * TOTAL stock against a hardcoded 6 — it ignored reorder_point
+     * entirely (despite SendLowStockAlerts already doing this correctly,
+     * per-product AND per-variant) and had no concept of "one specific
+     * size/color is low even though the combined total looks fine".
+     *
+     * Now: a product counts as low when EITHER its own total is at/under
+     * its own reorder_point (falling back to the generic default — 6
+     * pieces, or 1 for a weighed product's much tighter line — only when
+     * reorder_point isn't set, same convention Pos/Index.vue's JS already
+     * uses), OR any one of its variants is at/under THAT variant's own
+     * reorder_point. Still excludes 0 (that's "out of stock", a separate tile).
+     */
     public function scopeLowStock($query)
     {
-        return $query->where('stock_mode', self::STOCK_MODE_TRACKED)->where(fn ($w) => $w
-            ->where(fn ($ww) => $ww->where('sold_by_weight', false)->whereBetween('stock', [0.01, 6]))
-            ->orWhere(fn ($ww) => $ww->where('sold_by_weight', true)->whereBetween('stock', [0.01, 1])));
+        return $query->where('stock_mode', self::STOCK_MODE_TRACKED)->where(function ($w) {
+            $w->where(function ($own) {
+                $own->where('stock', '>', 0)->where(fn ($t) => $t
+                    ->where(fn ($q) => $q->where('sold_by_weight', false)->whereRaw('stock <= COALESCE(reorder_point, 6)'))
+                    ->orWhere(fn ($q) => $q->where('sold_by_weight', true)->whereRaw('stock <= COALESCE(reorder_point, 1)')));
+            })->orWhereHas('variants', fn ($v) => $v->whereNotNull('reorder_point')->where('stock', '>', 0)->whereColumn('stock', '<=', 'reorder_point'));
+        });
     }
 
     public function scopeOutOfStock($query)
