@@ -246,6 +246,27 @@ in `config/business_types.php` (ছেলেদের জুতা/মেয়�
 mapping the Excel's English `LADIES` to the existing `মেয়েদের জুতা`
 ("Women's Shoes") category, not creating a duplicate.
 
+## §7 one-screen article entry — built
+
+Confirmed by Khaled ("এখনই বানাও"): `App\Http\Controllers\App\ArticleController`
+(gated by the new `article_series` feature flag) + `App/Articles/Create.vue`
++ `App/Articles/SizeGroupSettings.vue`. Reuses `ArticleSerial`/`ArticleBarcode`/
+`SizeGroupPricing` exactly as the import command does, but reserves a REAL
+serial (`ArticleSerial::next()`, not `bumpFloor()`) since a manually-entered
+article has no pre-existing barcode to read a serial back out of. Manufacturer
+and category both reuse-or-create (mirrors `ProductController::store()`'s own
+pattern). Idempotent resubmit via a client-generated UUID, cached 24h (no
+schema change — `Cache::put`, same spirit as the plan's original
+"client_uuid" idea, simpler than a dedicated column). Draft autosave to
+`localStorage`; "once entry, everywhere" — a successful submit keeps
+manufacturer/category/colors/sizes in the form and only clears
+cost/price/stock, ready for the next article in the same run. Entry point:
+a feature-gated link on Stock/Index.vue, visible only once `article_series`
+is granted.
+
+Not yet built (would need a real kids'-shoe row in an Excel file to design
+against): wiring `SizeGroupPricing` into `products:import-articles` itself.
+
 ## Build order for this pass (not everything in the ticket at once)
 
 Given the size of this ticket, building it in one uninterrupted pass risks

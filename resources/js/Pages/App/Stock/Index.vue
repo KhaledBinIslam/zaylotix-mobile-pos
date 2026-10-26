@@ -552,6 +552,12 @@ useKeyboardShortcuts({
             <button class="btn ghost" style="flex:1" @click="importSheet = true">{{ t('stock.importCsv') }}</button>
         </div>
 
+        <!-- docs/ARTICLE_SERIES_PLAN.md §7 — Baby Park/Liberty's shoe-article
+             entry form; opt-in, only shown once article_series is granted -->
+        <Link v-if="features.includes('article_series')" :href="route('app.articles.create')" class="row" style="margin-bottom:12px">
+            <div class="ava">👟</div><div class="mid"><b>নতুন আর্টিকেল</b><span>ম্যানুফ্যাকচার + কস্ট + রং×সাইজ গ্রিড — এক স্ক্রিনে</span></div><div class="end">›</div>
+        </Link>
+
         <!-- was previously only reachable as a side-effect of editing a
              specific product's unit dropdown ("or type a new unit") — a
              direct, standalone link here too, right where a shop owner is

@@ -114,6 +114,11 @@ class FeatureSeeder extends Seeder
             // keeps its own fully independent stock unless its main shop
             // turns this on; see docs/FIX_PLAN.md's Phase 38 design note.
             ['key' => 'shared_stock_pool', 'label_bn' => 'শেয়ার্ড স্টক পুল (ব্রাঞ্চ)', 'label_en' => 'Shared stock pool (branches)', 'category' => 'inventory', 'description' => "একটা প্রোডাক্টের স্টক সব ব্রাঞ্চ মিলিয়ে একটাই সংখ্যা হিসেবে থাকবে — এক ব্রাঞ্চে বিক্রি/স্টক-ইন হলে সাথে সাথে সব ব্রাঞ্চে আপডেট হয়ে যাবে। প্রতিটা ব্রাঞ্চের আলাদা স্টক রাখতে চাইলে এই ফিচার বন্ধ রাখুন (ডিফল্ট)।"],
+            // docs/ARTICLE_SERIES_PLAN.md — Baby Park/Liberty's shoe-shop
+            // article workflow: manufacturer/category reuse, a shared
+            // cross-branch serial counter, barcode cost-code encoding, and
+            // the one-screen article entry form.
+            ['key' => 'article_series', 'label_bn' => 'আর্টিকেল সিরিজ (জুতার দোকান)', 'label_en' => 'Article series (shoe shop)', 'category' => 'inventory', 'description' => 'এক-স্ক্রিন থেকে নতুন আর্টিকেল (ম্যানুফ্যাকচার + ক্যাটাগরি + কস্ট-বারকোড + রং/সাইজ গ্রিড) যোগ করার সুবিধা, শাখাগুলোর মধ্যে শেয়ার করা সিরিয়াল নম্বর সহ।'],
         ];
 
         foreach ($features as $f) {

@@ -5,6 +5,7 @@ use App\Http\Controllers\App\Auth\SignupController;
 use App\Http\Controllers\App\AccountsController;
 use App\Http\Controllers\App\ActivityLogController;
 use App\Http\Controllers\App\AdSpendController;
+use App\Http\Controllers\App\ArticleController;
 use App\Http\Controllers\App\BarcodeLabelController;
 use App\Http\Controllers\App\BranchController;
 use App\Http\Controllers\App\CourierController;
@@ -292,6 +293,15 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
 
         Route::middleware('feature:serial_tracking')->group(function () {
             Route::get('serials', [SerialLookupController::class, 'index'])->name('serials.index');
+        });
+
+        // docs/ARTICLE_SERIES_PLAN.md §7 — one-screen new article entry
+        Route::middleware('feature:article_series')->group(function () {
+            Route::get('articles/create', [ArticleController::class, 'create'])->name('articles.create');
+            Route::post('articles', [ArticleController::class, 'store'])->name('articles.store');
+            Route::get('articles/peek-serial', [ArticleController::class, 'peekSerial'])->name('articles.peekSerial');
+            Route::get('articles/size-group-settings', [ArticleController::class, 'sizeGroupSettingsEdit'])->name('articles.sizeGroupSettings.edit');
+            Route::patch('articles/size-group-settings', [ArticleController::class, 'sizeGroupSettingsUpdate'])->name('articles.sizeGroupSettings.update');
         });
     });
 

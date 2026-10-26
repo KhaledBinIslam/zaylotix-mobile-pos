@@ -80,6 +80,12 @@ class HandleInertiaRequests extends Middleware
                 // contacts that import just touched, without needing its own
                 // dedicated Inertia response shape
                 'importedCustomerIds' => fn () => $request->session()->get('importedCustomerIds'),
+                // ArticleController::store()'s one-shot result, read by
+                // App/Articles/Create.vue's post-submit success banner —
+                // same "flash a value the generic success/error pair can't
+                // carry" pattern as importedCustomerIds above
+                'productId' => fn () => $request->session()->get('productId'),
+                'productBarcode' => fn () => $request->session()->get('productBarcode'),
             ],
         ];
     }
