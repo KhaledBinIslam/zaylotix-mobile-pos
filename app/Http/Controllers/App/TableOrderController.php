@@ -60,7 +60,14 @@ class TableOrderController extends Controller
             // (Order.vue) — addItem() below already rejects a variant
             // product outright, this just lets a scan say so immediately
             // instead of posting and waiting on that same server rejection
-            'products' => Product::with('category')->withCount('variants')->orderByDesc('id')->get(),
+            // cost is explicitly stripped — see docs/FIX_PLAN.md's
+            // "price/stock missing during order/sale" fix note: a bare
+            // ->get() here serialized every column, cost included, and
+            // Order.vue only ever stores it on a local cart-line object
+            // that's never displayed or sent to the server, so hiding it
+            // is a pure visibility fix with nothing downstream to break
+            'products' => Product::with('category')->withCount('variants')->orderByDesc('id')->get()
+                ->each(fn ($p) => $p->makeHidden('cost')),
             'categories' => ProductCategory::orderBy('name')->get(),
             // for the "merge" picker — another occupied table whose order
             // can be folded into this one

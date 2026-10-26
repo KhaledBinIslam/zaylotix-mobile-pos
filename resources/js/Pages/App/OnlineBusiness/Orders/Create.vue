@@ -125,7 +125,7 @@ function save() {
         <div v-for="(line, i) in form.items" :key="i" class="card" style="margin-bottom:10px">
             <select v-model="line.product_id" @change="onProductChange(line)" style="margin-bottom:8px">
                 <option value="">{{ t('damage.selectPlaceholder') }}</option>
-                <option v-for="p in products" :key="p.id" :value="p.id">{{ p.emoji }} {{ p.name }} — {{ money(p.discount_price ?? p.price) }}</option>
+                <option v-for="p in products" :key="p.id" :value="p.id">{{ p.emoji }} {{ p.name }} — {{ money(p.discount_price ?? p.price) }}<template v-if="!p.variants?.length"> ({{ p.stock }})</template></option>
             </select>
             <select v-if="variantsOf(line).length" v-model="line.product_variant_id" style="margin-bottom:8px">
                 <option value="">{{ t('stock.selectVariant') }}</option>

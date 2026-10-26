@@ -48,6 +48,28 @@ class RestaurantTableTest extends TestCase
         $this->assertSame(1, TableOrderItem::where('table_order_id', $order->id)->count());
     }
 
+    public function test_order_screen_shows_price_and_stock_but_never_cost(): void
+    {
+        // confirmed, pre-existing leak found while fixing docs/FIX_PLAN.md's
+        // "price/stock missing during order/sale" ticket — TableOrderController::show()'s
+        // products prop was a bare ->get() with no column select, so cost
+        // rode along into the JSON despite Order.vue never displaying it.
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'restaurant_tables');
+        $table = RestaurantTable::create(['shop_id' => $shop->id, 'name' => 'T1', 'status' => 'occupied']);
+        $order = TableOrder::create(['shop_id' => $shop->id, 'restaurant_table_id' => $table->id, 'status' => 'open', 'opened_at' => now()]);
+        Product::create(['shop_id' => $shop->id, 'name' => 'Biryani', 'cost' => 100, 'price' => 200, 'stock' => 10]);
+
+        $this->actingAs($owner, 'web')->get("/app/restaurant/orders/{$order->id}")
+            ->assertOk()
+            ->assertInertia(function ($page) {
+                $products = $page->toArray()['props']['products'];
+                $this->assertEquals(200, (float) $products[0]['price']);
+                $this->assertEquals(10, (float) $products[0]['stock']);
+                $this->assertArrayNotHasKey('cost', $products[0]);
+            });
+    }
+
     public function test_adding_the_same_product_twice_merges_into_one_unprinted_line(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();

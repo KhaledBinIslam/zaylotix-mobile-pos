@@ -16,6 +16,7 @@ import { fetchWithSessionRetry } from '@/support/fetchWithSessionRetry';
 import { isStaleAutoFill } from '@/support/customerAutoFill';
 import { buildOfflineSaleSnapshot } from '@/support/offlineSaleSnapshot';
 import { buildReceiptWhatsAppText, whatsAppUrlFor } from '@/support/receiptMessage';
+import { variantPriceBounds, variantStockTotal } from '@/support/productDisplay';
 
 const props = defineProps({
     products: Array,
@@ -388,6 +389,17 @@ function variantStockLevel(v) {
     if (stock <= 0) return 'out';
     const threshold = Number(v.reorder_point) > 0 ? Number(v.reorder_point) : 6;
     return stock <= threshold ? 'low' : 'ok';
+}
+
+// A variant product's card only ever showed its own base `price` — never a
+// range, even when sizes/colors actually cost different amounts (see
+// docs/FIX_PLAN.md's "price/stock missing during order/sale" fix, and
+// support/productDisplay.js for the shared, unit-tested numeric logic).
+// Mirrors the existing "only show a variant's own price when it differs"
+// rule already used one level down, at the pill itself.
+function variantPriceRange(p) {
+    const { min, max } = variantPriceBounds(p);
+    return min === max ? money(min) : `${money(min)}–${money(max)}`;
 }
 
 const weightSheet = ref(false);
@@ -1395,8 +1407,12 @@ useKeyboardShortcuts({
                             <img v-if="p.photo_url" :src="p.photo_url" class="pimg" :alt="p.name">
                             <div v-else class="em">{{ p.emoji }}</div>
                             <div class="pn">{{ p.name }}</div>
-                            <div class="pp">{{ money(p.price) }}</div>
-                            <div class="ps">{{ t('pos.pickVariant') }}</div>
+                            <div class="pp">{{ variantPriceRange(p) }}</div>
+                            <div class="ps">
+                                <span v-if="variantStockTotal(p) <= 0" style="color:var(--rose)">{{ t('pos.outOfStock') }}</span>
+                                <span v-else-if="hasLowStockAlerts && variantStockTotal(p) <= (Number(p.reorder_point) > 0 ? Number(p.reorder_point) : 6)" style="color:var(--gold2);font-weight:700">⚠ {{ t('pos.inStock', { n: Math.round(variantStockTotal(p)), u: p.unit?.name || t('pos.unit') }) }} {{ t('pos.lowStock') }}</span>
+                                <span v-else>{{ t('pos.pickVariant') }}</span>
+                            </div>
                         </div>
                         <!-- pack-size options (box/strip/...) shown directly here — tap to add that exact unit, no extra popup step -->
                         <div v-if="hasUnitConversion && p.product_units?.length" class="punits">

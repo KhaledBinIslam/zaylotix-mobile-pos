@@ -13,6 +13,7 @@ import { useOfflineCatalog } from '@/composables/useOfflineCatalog';
 import { fetchWithSessionRetry } from '@/support/fetchWithSessionRetry';
 import { buildOfflineSaleSnapshot } from '@/support/offlineSaleSnapshot';
 import { buildReceiptWhatsAppText, whatsAppUrlFor } from '@/support/receiptMessage';
+import { variantPriceBounds, variantStockTotal } from '@/support/productDisplay';
 
 /**
  * A dedicated, clothing-specific POS — category tabs -> product grid ->
@@ -107,6 +108,18 @@ function stockLevel(stock, reorderPoint) {
     if (s <= 0) return 'out';
     const threshold = Number(reorderPoint) > 0 ? Number(reorderPoint) : 6;
     return s <= threshold ? 'low' : 'ok';
+}
+
+// A variant product's card only ever showed its base `price` — never a
+// range, even when sizes/colors actually cost different amounts (see
+// docs/FIX_PLAN.md's "price/stock missing during order/sale" fix, and
+// support/productDisplay.js for the shared, unit-tested numeric logic).
+// Mirrors the existing "only show a variant's own price when it differs"
+// rule one level up (the variant picker below) — same instinct, applied
+// to the card's own header number.
+function variantPriceRange(p) {
+    const { min, max } = variantPriceBounds(p);
+    return min === max ? money(min) : `${money(min)}–${money(max)}`;
 }
 
 /* ---------------- variant picker sheet ---------------- */
@@ -674,10 +687,16 @@ function sendMemoWA() {
                             <img v-if="p.photo_url" :src="p.photo_url" class="pimg" :alt="p.name">
                             <div v-else class="em">{{ p.emoji || '👕' }}</div>
                             <div class="pn">{{ p.name }}</div>
-                            <div class="pp"><s v-if="p.discount_price != null" style="color:var(--dim);font-weight:500;margin-right:4px">{{ money(p.price) }}</s>{{ money(p.discount_price ?? p.price) }}</div>
-                            <div v-if="hasProductVariants && p.variants?.length" class="ps">{{ t('pos.pickVariant') }} ({{ p.variants.length }})</div>
+                            <div v-if="hasProductVariants && p.variants?.length" class="pp">{{ variantPriceRange(p) }}</div>
+                            <div v-else class="pp"><s v-if="p.discount_price != null" style="color:var(--dim);font-weight:500;margin-right:4px">{{ money(p.price) }}</s>{{ money(p.discount_price ?? p.price) }}</div>
+                            <div v-if="hasProductVariants && p.variants?.length" class="ps">
+                                <span v-if="variantStockTotal(p) <= 0" style="color:var(--rose)">{{ t('pos.outOfStock') }}</span>
+                                <span v-else-if="hasLowStockAlerts && stockLevel(variantStockTotal(p), p.reorder_point) === 'low'" style="color:var(--gold2);font-weight:700">⚠ {{ t('pos.inStock', { n: Math.round(variantStockTotal(p)), u: t('pos.unit') }) }} {{ t('pos.lowStock') }}</span>
+                                <span v-else>{{ t('pos.pickVariant') }} ({{ p.variants.length }})</span>
+                            </div>
                             <div v-else-if="p.stock <= 0" class="ps" style="color:var(--rose)">{{ t('pos.outOfStock') }}</div>
                             <div v-else-if="hasLowStockAlerts && stockLevel(p.stock, p.reorder_point) === 'low'" class="ps" style="color:var(--gold2);font-weight:700">⚠ {{ t('pos.inStock', { n: Math.round(Number(p.stock)), u: t('pos.unit') }) }} {{ t('pos.lowStock') }}</div>
+                            <div v-else class="ps">{{ t('pos.inStock', { n: Math.round(Number(p.stock)), u: t('pos.unit') }) }}</div>
                         </div>
                     </button>
                 </div>

@@ -2446,6 +2446,157 @@ same `client_uuid` resubmitted twice (edit-and-resync after an earlier
 rejection, which never created a `Sale` row, then a duplicate manual
 retry) still creates exactly one `Sale`.
 
+## Fix — "অনলাইনে অর্ডার/বিক্রির সময় পণ্যের দাম ও স্টক দেখা যাচ্ছে না" (price/stock missing during order/sale)
+
+**Report**: while online (internet connected, not the offline-queue path),
+price and/or stock weren't showing during product selection on some
+order/sale screen(s). The ticket asked for every product-selection screen
+to be audited before any fix, since the report didn't name which screen.
+
+**Screens audited, with verdict**:
+- `Pos/Index.vue` (grid/search, mobile+desktop) — clean. Price always
+  rendered (`:1358`, `:1378`, `:1398`), stock has a three-way branch
+  (out / low / normal count, `:1361-1363`, `:1381-1383`).
+- `Restaurant/Order.vue` (table order product grid) — clean, same
+  three/four-way branch at `:864-868`.
+- `Restaurant/Tables.vue` — not a product-selection screen (table picker
+  only); no price/stock rendering to check.
+- `Stock/Index.vue` — clean (`:587` price, `:596` stock badge).
+- Public digital catalog (`CatalogController.php` → `Public/Catalog.vue`)
+  — clean; price always shown, "স্টক শেষ" shown only when out (in-stock
+  count is intentionally never shown to a window-shopper — not a bug).
+- Quotation (`Quotations/Index.vue`) — price shown and editable per
+  line; stock intentionally never shown (a quote doesn't move stock) —
+  not flagged as a bug, no change made.
+
+**Three confirmed, concrete bugs found** (each is a genuine gap, not a
+theory — verified by reading the exact template/controller code):
+
+1. **`Clothing/Pos.vue:678-680`** (Baby Park's own business type) — the
+   product card's stock line is an `if / else-if / else-if` chain with
+   **no final `else` branch**: out-of-stock and low-stock both render a
+   line, but a product with perfectly healthy stock renders *nothing at
+   all* — no number, no "in stock" text, just a blank space where
+   `Pos/Index.vue`'s equivalent block (`:1381-1383`, which has the same
+   three cases PLUS a genuine `else` showing the count) always shows
+   something. This is the single most likely cause of this exact report,
+   given Baby Park is a clothing/shoe shop using this exact screen.
+
+2. **`resources/js/Pages/App/More.vue:832-834`** (Purchase form's own
+   product `<select>`) — shows neither price nor stock, while every
+   other product `<select>` on the SAME page (Damage `:878`, Return
+   `:918`, Supplier Return `:972`) shows `— স্টক: {{ p.stock }}`. The
+   `products` prop already carries `price`/`cost`/`stock`
+   (`MoreController.php:46`) — this is a pure template omission, not a
+   missing-data problem.
+
+3. **`OnlineOrderController.php:65`** (Online Order creation, "online
+   order/sale" in the literal sense of the module's name) — the explicit
+   column list `get(['id', 'name', 'emoji', 'price', 'discount_price',
+   'sold_by_weight'])` never asks for `stock` at all, so a non-variant
+   product in `OnlineBusiness/Orders/Create.vue`'s product `<select>`
+   (`:128`) can never show stock even if the template tried to (a
+   variant DOES show its own stock today, `:132`, since that comes from
+   the separate `variants` relation, untouched by this column list).
+
+**One enhancement explicitly requested by the ticket's own step 2.2**,
+not a "missing" bug but a real gap: a product with variants shows only
+its own base `price` at the top of its card
+(`Pos/Index.vue:1398`/`Clothing/Pos.vue:677`), never a min–max range
+across variants that actually differ in price, and never a summed total
+stock across variants. Added per the ticket's explicit ask.
+
+**Hypotheses checked and ruled out** (docs/FIX_PLAN.md step 2's own
+list):
+- Server omitting `price`/`stock` from the main POS/Restaurant/Stock
+  payloads — no; `Product` has no `$hidden` on either field, and
+  `PosController::catalogRelations()` doesn't select specific columns at
+  all for its three callers (`index()`/`search()`/`catalogSyncChunk()`).
+- The large-catalog `catalogMode === 'search'` + offline-cache path
+  (`useOfflineCatalog.js`, shipped this same week) silently serving a
+  stale/incomplete cache even while online — ruled out: it only
+  activates when `Product::count() > config('pos.full_catalog_limit')`
+  (default 1500); no real shop including Baby Park is anywhere near
+  that, and the code path itself (`search()`/`resolveBarcode()`) only
+  ever falls back to the local cache when online fetch genuinely fails,
+  never pre-emptively.
+- Dark-mode/design-token CSS hiding the text (`--dim`/`--green` on
+  `.pp`/`.ps`) — ruled out; both tokens have solid, distinct, good-
+  contrast values in both light (`app.css:19,22`) and dark
+  (`app.css:137,139`) mode, no `overflow:hidden`/`display:none`/zero-
+  height involved.
+- A permission/setting hiding price from a cashier role — ruled out, no
+  such flag/check exists anywhere in `Pos/Index.vue`, `Clothing/Pos.vue`,
+  or their controllers.
+- Variant product's own base `price`/`stock` being null/0 making the
+  card look blank — ruled out for the normal "Add Product" flow (price
+  is a required form field) and for the new CSV bulk importer
+  (`ProductImportController.php:191`, sets the base product's `price`
+  from the group's first row) — base `stock` IS deliberately 0 for a
+  variant product, but neither screen ever tries to render that number
+  for a variant product (`Pos/Index.vue:1399` shows a static "pick a
+  variant" hint instead), so this never actually renders as blank.
+
+**Fix**:
+- `Clothing/Pos.vue:680` — add the missing `v-else` branch, same wording
+  `Pos/Index.vue:1383` already uses (`pos.inStock` with the rounded
+  count).
+- `More.vue`'s purchase `<select>` — append `— {{ t('damage.stockLabel')
+  }}: {{ p.stock }}` the same way its sibling selects on the same page
+  already do, plus the price (`— {{ money(p.price) }}৳`), since a
+  purchase decision benefits from seeing both the current stock being
+  topped up AND the current selling price, same reasoning as every
+  other select on this page.
+- `OnlineOrderController::create()` — add `stock` to the explicit column
+  list. `Orders/Create.vue`'s base-product `<option>` text gets `—
+  {{ t('damage.stockLabel') }}: {{ p.stock }}` appended, mirroring the
+  variant option's own `({{ v.stock }})` one line below it.
+- `Pos/Index.vue` / `Clothing/Pos.vue` — new shared-pattern helper
+  `variantPriceRange(product)` (min/max across `variants`, returns a
+  single number when they're all equal, matching the existing "only show
+  a variant's price when it differs" convention one level up) and
+  `variantStockTotal(product)` (sum of `variants[].stock`). Rendered at
+  the variant-product card's top in place of the current bare
+  `money(p.price)`/no-stock-line, e.g. "১২০০–১৮০০ টাকা" / "৳১৫০০" and a
+  stock count using the same `stockLevel`-style out/low/normal coloring
+  already used everywhere else on these screens — not a new visual
+  language, just applied to the one spot that was missing it.
+
+**Why this is safe**: every change is either (a) rendering a field the
+server was already sending (Clothing/Pos.vue, variant range/total — pure
+template addition, zero prop/controller change) or (b) adding one column
+to an existing `get([...])` list plus the matching template text
+(Purchase select, Online Order create) — never changing what any
+existing screen's SELL/CHECKOUT logic does with price or stock, so
+checkout correctness is untouched; this is strictly a visibility fix.
+
+**Tests**:
+- `tests/Feature/PosIndexPropsTest.php` (new) — asserts `index()`'s
+  Inertia props carry `price`+`stock` for a plain product, a variant
+  product (own `price`/`stock` on the base row, plus each variant's own),
+  a weight-based product, and an `untracked`/`toggle` stock-mode product.
+- `tests/Feature/MoreControllerTest.php` extended (or new, if it doesn't
+  exist) — `products` prop for `More::index()` carries `price`+`stock`.
+- `tests/Feature/OnlineOrderControllerTest.php` extended — `create()`'s
+  `products` prop now carries `stock`.
+- Tenant test (existing pattern, `withoutGlobalScopes()` cross-shop
+  assertion) — confirms another shop's products never leak into any of
+  the above, and that `cost` specifically never reaches a cashier-role
+  response for the POS/Restaurant/Online-Order product lists (only
+  `MoreController`/`ServiceTicketController`, both owner/staff-with-
+  permission screens doing a stock movement rather than a sale, were
+  ever sending `cost` — confirmed, not changed).
+- `resources/js/support/__tests__/*` (new, colocated with the existing
+  `offlineQueue.test.js` convention) — `variantPriceRange()`/
+  `variantStockTotal()` pure-function tests: all-same-price returns one
+  number, differing prices returns a "min–max" string, stock sums
+  correctly including a zero-stock variant.
+- Manual checklist addition in `docs/OFFLINE_TEST_CHECKLIST.md` (online,
+  not offline, but kept in the same file per existing convention of
+  colocating all POS-screen manual checks) — a variant product's card
+  shows a price range when its variants' prices actually differ, and the
+  Purchase/Online-Order forms show stock in their product pickers.
+
 ## Definition-of-done checklist (updated after every phase)
 
 - [x] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test --all`, Phase 0.6) — re-verified 2026-10-20, all 8 types OK

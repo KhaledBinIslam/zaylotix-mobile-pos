@@ -831,7 +831,7 @@ onMounted(() => {
                     <label>{{ t('purchase.product') }}</label>
                     <select v-model="purchaseForm.product_id">
                         <option value="">{{ t('purchase.productFreeText') }}</option>
-                        <option v-for="p in products" :key="p.id" :value="p.id">{{ p.emoji }} {{ p.name }}</option>
+                        <option v-for="p in products" :key="p.id" :value="p.id">{{ p.emoji }} {{ p.name }} — {{ p.price }}৳ • {{ t('damage.stockLabel') }}: {{ p.stock }}</option>
                     </select>
                 </div>
                 <template v-if="!purchaseForm.product_id">

@@ -93,7 +93,7 @@ class PosController extends Controller
         $catalogMode = $productCount > self::fullCatalogLimit() ? 'search' : 'full';
 
         $products = $catalogMode === 'full'
-            ? Product::with($relations)->orderByDesc('id')->get()
+            ? self::hideCost(Product::with($relations)->orderByDesc('id')->get())
             : [];
 
         $categories = ProductCategory::orderBy('name')->get();
@@ -168,6 +168,29 @@ class PosController extends Controller
     }
 
     /**
+     * Real, confirmed leak found while fixing docs/FIX_PLAN.md's
+     * "price/stock missing during order/sale" ticket (its own rule #2:
+     * cost price must never reach a cashier) — `Product::with(...)->get()`
+     * with no column select sends every column, `cost` included, and
+     * Product has no `$hidden` for it (Stock/Reports/ServiceTicket/More
+     * legitimately need it elsewhere, so it can't be hidden on the model
+     * itself). Grep-confirmed neither Pos/Index.vue, Clothing/Pos.vue, nor
+     * Restaurant/Order.vue ever reads `.cost` for display — Order.vue
+     * stores it on a local cart-line object but never shows or sends it
+     * (TableOrderController::addItem() only takes product_id/qty) — so
+     * this is strictly a visibility fix, nothing downstream breaks.
+     * `makeHidden` only affects array/JSON serialization, never PHP-side
+     * access, so every other use of `$product->cost` elsewhere is untouched.
+     */
+    private static function hideCost($products)
+    {
+        return $products->each(function ($p) {
+            $p->makeHidden('cost');
+            $p->variants?->each(fn ($v) => $v->makeHidden('cost'));
+        });
+    }
+
+    /**
      * Live typed-ahead search for a shop over the configured catalog limit — the
      * cashier's replacement for filtering an in-memory list that no
      * longer exists client-side once index() stops sending it. Same
@@ -194,7 +217,7 @@ class PosController extends Controller
             ->limit(50)
             ->get();
 
-        return response()->json(['products' => $products]);
+        return response()->json(['products' => self::hideCost($products)]);
     }
 
     /**
@@ -214,11 +237,11 @@ class PosController extends Controller
         $afterId = $request->get('after_id');
         $chunkSize = (int) config('pos.catalog_sync_chunk_size');
 
-        $products = Product::with(self::catalogRelations($shop))
+        $products = self::hideCost(Product::with(self::catalogRelations($shop))
             ->when($afterId, fn ($query) => $query->where('id', '<', $afterId))
             ->orderByDesc('id')
             ->limit($chunkSize)
-            ->get();
+            ->get());
 
         return response()->json([
             'products' => $products,

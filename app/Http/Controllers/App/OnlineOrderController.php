@@ -62,7 +62,7 @@ class OnlineOrderController extends Controller
     {
         return Inertia::render('App/OnlineBusiness/Orders/Create', [
             'channels' => SalesChannel::where('active', true)->orderBy('name')->get(),
-            'products' => Product::with('variants')->orderBy('name')->get(['id', 'name', 'emoji', 'price', 'discount_price', 'sold_by_weight']),
+            'products' => Product::with('variants')->orderBy('name')->get(['id', 'name', 'emoji', 'price', 'discount_price', 'stock', 'sold_by_weight']),
             'couriers' => Courier::where('active', true)->orderBy('name')->get(['id', 'name', 'charge_type']),
         ]);
     }
