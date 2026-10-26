@@ -305,6 +305,10 @@ onBeforeUnmount(() => loadMoreObserver?.disconnect());
 function qtyInCart(productId) {
     return cart.value.filter((l) => l.product_id === productId).reduce((s, l) => s + l.qty, 0);
 }
+/** Real issue Khaled found: highlighting the WHOLE card gold when any one size/color is in cart made it look like every row was "marked" — a variant product needs to show which specific row, not the whole card. */
+function variantQtyInCart(variantId) {
+    return cart.value.filter((l) => l.product_variant_id === variantId).reduce((s, l) => s + l.qty, 0);
+}
 
 // Real bug found while building dead-stock clearance (docs/FIX_PLAN.md):
 // discount_price was settable on a product (Stock/Index.vue, barcode
@@ -1446,7 +1450,7 @@ useKeyboardShortcuts({
                 </div>
 
                 <div v-if="filtered.length" class="pgrid rest-grid">
-                    <div v-for="p in visibleProducts" :key="p.id" class="pcard" :class="{ incart: qtyInCart(p.id) }">
+                    <div v-for="p in visibleProducts" :key="p.id" class="pcard" :class="{ incart: qtyInCart(p.id) && !(hasProductVariants && p.variants?.length) }">
                         <span v-if="p.sold_by_weight && qtyInCart(p.id)" class="qbadge">{{ formatWeightQty(p, qtyInCart(p.id)) }}</span>
                         <span v-else-if="qtyInCart(p.id)" class="qbadge">{{ qtyInCart(p.id) }}</span>
                         <!-- a weighed product always opens the weight-entry sheet — a plain tap-to-add-1 makes no sense for a loose kg/litre item -->
@@ -1524,8 +1528,17 @@ useKeyboardShortcuts({
                             </div>
                             <table v-if="activeColorGroup(p)" style="width:100%;border-collapse:collapse;font-size:13px">
                                 <tbody>
-                                    <tr v-for="v in activeColorGroup(p).variants" :key="v.id" style="border-top:1px solid var(--line)">
-                                        <td style="padding:6px 4px">{{ v.size }}</td>
+                                    <tr
+                                        v-for="v in activeColorGroup(p).variants" :key="v.id"
+                                        style="border-top:1px solid var(--line)"
+                                        :style="variantQtyInCart(v.id) ? 'background:var(--goldSoft)' : ''"
+                                    >
+                                        <td style="padding:6px 4px">
+                                            {{ v.size }}
+                                            <!-- exactly which row is "marked" and by how much — the whole-card gold
+                                                 highlight used to make this ambiguous across many size/color rows -->
+                                            <div v-if="variantQtyInCart(v.id)" style="font-size:10.5px;color:var(--gold2);font-weight:700">✓ {{ variantQtyInCart(v.id) }} {{ t('pos.added') }}</div>
+                                        </td>
                                         <td style="padding:6px 4px" :style="hasLowStockAlerts && variantStockLevel(v) === 'low' ? 'color:var(--gold2);font-weight:700' : ''">
                                             {{ v.price != null && Number(v.price) !== Number(p.price) ? money(v.price) : money(p.price) }}
                                         </td>
