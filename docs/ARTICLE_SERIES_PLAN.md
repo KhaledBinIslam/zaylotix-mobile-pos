@@ -92,15 +92,35 @@ that there's a concrete "yes" case for it.
 
 ## 4. Baby-shoe size-group pricing
 
-New `product_category_settings` row (or a column directly on
-`ProductCategory` — leaning toward a column, `size_group_pricing_enabled`
-boolean, default off, since this is a single per-category toggle, not a
-growing settings bag) + a new small table `product_size_group_prices`
-(`product_id`, `label`, `min_size`, `max_size`, `price`, `cost` nullable).
-Resolution order at checkout/display time: variant's own `price` override
-(existing column, unchanged) → matching size-group price (new) → article's
-base `price` (existing, unchanged). Zero behavior change for Ladies/Gents
-or any shop with the category setting off.
+**Resolved by Khaled**: (1) the Small/Medium/Large size boundaries must be
+owner-configurable per shop ("owner tar shop theke customised kore set
+korte pare"), not fixed; (2) this applies **only** to বাচ্চাদের জুতা
+(Kids' Shoes) — confirmed as its own category in `config/business_types.php`
+line 143, already seeded for Baby Park; (3) the entry screen shows **3
+price boxes** (Small/Medium/Large), one per size-group, instead of one.
+
+**Built this pass (foundation only, matching last pass's §1/§2 approach)**:
+`shops.kids_shoe_size_groups` (nullable JSON, `Shop::kidsShoeSizeGroups()`
+merges onto `KIDS_SHOE_SIZE_GROUPS_DEFAULT` — same null-means-default
+convention as `costCodeDigitMap()`) plus a new pure-logic
+`App\Support\SizeGroupPricing` (`groupForSize()`, `priceForSize()`) —
+unit-tested the same way as `ArticleBarcode`.
+
+**No new table or column needed for the price itself** — confirmed by
+reading `ProductVariant::effectivePrice()`
+(`app/Models/ProductVariant.php:29-32`): it already resolves
+`$this->price ?? $this->product->price`, i.e. a variant's own `price`
+column already overrides the article's base price today, for every shop.
+So resolving a kids'-shoe variant's price is just: look up its size's
+group via `SizeGroupPricing::groupForSize()`, take that group's entered
+price, and set it as the variant's own `price` at creation time —
+`effectivePrice()` needs no change at all.
+
+**Not built yet (needs §7's entry screen to actually enter the 3 prices,
+and/or an import-sheet format once a kids' shoe row exists in a real
+file — the current bundled file has none)**: the 3-price-box UI itself,
+and wiring `SizeGroupPricing` into the import command. Deferred to the
+same follow-up pass as §7, flagged here so it isn't forgotten.
 
 ## 5. UI — article page / POS color-then-size picker
 

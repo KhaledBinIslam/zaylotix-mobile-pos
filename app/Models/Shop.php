@@ -20,7 +20,7 @@ class Shop extends Model
         'vat_mode', 'vat_rate', 'turnover_rate', 'invoice_counter', 'service_charge_rate',
         'loyalty_earn_rate', 'loyalty_point_value', 'referral_bonus_points', 'return_window_days', 'overhead_allocation_rule', 'dead_stock_days', 'catalog_slug', 'default_credit_limit', 'onboarded_at',
         'default_variant_sizes', 'default_variant_colors',
-        'article_barcode_template', 'cost_code_digit_map', 'color_code_map',
+        'article_barcode_template', 'cost_code_digit_map', 'color_code_map', 'kids_shoe_size_groups',
     ];
 
     protected $appends = ['logo_url', 'business_type_slug'];
@@ -118,6 +118,24 @@ class Shop extends Model
         return $this->color_code_map ?? [];
     }
 
+    /**
+     * docs/ARTICLE_SERIES_PLAN.md §4 — default size-group boundaries for
+     * "বাচ্চাদের জুতা" (Kids' Shoes) pricing, used until the owner sets
+     * their own via settings (Khaled: "owner tar shop theke customised
+     * kore set korte pare"). Ranges are inclusive and must not overlap;
+     * App\Support\SizeGroupPricing is the only place that reads this.
+     */
+    public const KIDS_SHOE_SIZE_GROUPS_DEFAULT = [
+        ['label' => 'Small', 'min_size' => 21, 'max_size' => 28],
+        ['label' => 'Medium', 'min_size' => 29, 'max_size' => 32],
+        ['label' => 'Large', 'min_size' => 33, 'max_size' => 37],
+    ];
+
+    public function kidsShoeSizeGroups(): array
+    {
+        return $this->kids_shoe_size_groups ?? self::KIDS_SHOE_SIZE_GROUPS_DEFAULT;
+    }
+
     protected function casts(): array
     {
         return [
@@ -128,6 +146,7 @@ class Shop extends Model
             'mobile_nav_items' => 'array',
             'cost_code_digit_map' => 'array',
             'color_code_map' => 'array',
+            'kids_shoe_size_groups' => 'array',
             'subscription_start' => 'date:Y-m-d',
             'subscription_expiry' => 'date:Y-m-d',
             'cash_balance' => 'decimal:2',
