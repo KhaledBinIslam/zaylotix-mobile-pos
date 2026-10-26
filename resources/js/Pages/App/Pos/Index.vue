@@ -3,6 +3,7 @@ import { Head, router, usePage } from '@inertiajs/vue3';
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
+import ColorSizePicker from '@/Components/ColorSizePicker.vue';
 import HowToHint from '@/Components/HowToHint.vue';
 import ReceiptMemo from '@/Components/ReceiptMemo.vue';
 import { useToast } from '@/composables/useToast';
@@ -368,6 +369,18 @@ function stepQty(v, delta) {
 function addVariantWithQty(p, v) {
     addToCart(p.id, null, { productVariantId: v.id, qty: qtyFor(v) });
     qtyByVariant[v.id] = 1;
+}
+
+/** Scanning an ARTICLE-level barcode (ambiguous size/color) opens this instead of a dead-end "pick a variant" error. */
+const scanVariantSheetOpen = ref(false);
+const scanVariantProduct = ref(null);
+function openScanVariantPicker(product) {
+    scanVariantProduct.value = product;
+    scanVariantSheetOpen.value = true;
+}
+function onScanVariantPick(variantId, qty) {
+    addToCart(scanVariantProduct.value.id, null, { productVariantId: variantId, qty });
+    scanVariantSheetOpen.value = false;
 }
 
 /** A cart line is either a base sale, a pack-unit line, or a variant line — never a mix, mirrors PosController::checkout. */
@@ -1284,12 +1297,13 @@ async function handleBarcode(decodedText, onFeedback) {
         // a weighed product's barcode can't carry a fixed qty — always
         // route it through the weight-entry sheet instead of assuming 1 unit
         if (product.sold_by_weight) { closeScanner(); openWeightEntry(product); return; }
-        // a variant product can't be sold "in general" — its own barcode
-        // field shouldn't normally be set once it has variants, but if it
-        // is, ask for the specific variant's own barcode instead of adding
-        // an invalid line that would only fail later at checkout
+        // a variant product can't be sold "in general" — this is the
+        // ARTICLE's own barcode (e.g. the shorter one printed on a shelf
+        // tag), not one specific size/color's. Khaled: scanning it should
+        // open the picker, not dead-end on an error — same as a tap would.
         if (hasProductVariants.value && product.variants?.length) {
-            onFeedback('❌ ' + product.name + ' — ' + t('pos.pickVariant'));
+            closeScanner();
+            openScanVariantPicker(product);
             return;
         }
         addToCart(product.id);
@@ -1312,7 +1326,8 @@ async function handleBarcode(decodedText, onFeedback) {
                     addToCart(data.product.id, null, { productVariantId: data.variant_id });
                     onFeedback('✅ ' + data.product.name + (v ? ' (' + variantLabel(v) + ')' : ''));
                 } else if (hasProductVariants.value && data.product.variants?.length) {
-                    onFeedback('❌ ' + data.product.name + ' — ' + t('pos.pickVariant'));
+                    closeScanner();
+                    openScanVariantPicker(data.product);
                 } else {
                     addToCart(data.product.id);
                     onFeedback('✅ ' + data.product.name);
@@ -1893,6 +1908,11 @@ useKeyboardShortcuts({
                 <button class="btn sm ghost" style="width:auto" @click.stop="deleteHeldCart(h.id)">{{ t('common.delete') }}</button>
             </div>
             <div v-if="!heldCarts.length" class="empty"><div class="big">📋</div>{{ t('pos.noHeldCarts') }}</div>
+        </Sheet>
+
+        <!-- scanning an article-level barcode (ambiguous size/color) opens this instead of a dead-end error -->
+        <Sheet v-model="scanVariantSheetOpen" :title="scanVariantProduct?.name" :subtitle="t('pos.pickVariantHint')">
+            <ColorSizePicker v-if="scanVariantProduct" :product="scanVariantProduct" @pick="onScanVariantPick" />
         </Sheet>
 
         <!-- weight/volume quick-entry — the only way a loose kg/litre product gets added to (or edited in) the cart -->

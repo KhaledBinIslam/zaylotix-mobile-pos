@@ -2,6 +2,8 @@
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import Sheet from '@/Components/Sheet.vue';
+import ColorSizePicker from '@/Components/ColorSizePicker.vue';
 import { useI18n } from '@/composables/useI18n';
 import { useHardwareScanner } from '@/composables/useHardwareScanner';
 import { useToast } from '@/composables/useToast';
@@ -91,24 +93,38 @@ function handleBarcode(code) {
 
     const product = props.products.find((p) => p.barcode === trimmed);
     if (product) {
+        // the ARTICLE's own barcode (e.g. a shelf tag) is ambiguous — which
+        // size/color? Open the picker instead of leaving a half-filled line.
+        if (product.variants?.length) {
+            scanVariantProduct.value = product;
+            scanVariantSheetOpen.value = true;
+            return;
+        }
         addScannedLine(product.id, '', product.name);
         return;
     }
 
     toast('❌ ' + t('pos.notFound'));
 }
-function addScannedLine(productId, variantId, label) {
+const scanVariantSheetOpen = ref(false);
+const scanVariantProduct = ref(null);
+function onScanVariantPick(variantId, qty) {
+    const v = scanVariantProduct.value.variants.find((x) => x.id === variantId);
+    addScannedLine(scanVariantProduct.value.id, variantId, `${scanVariantProduct.value.name} (${[v.size, v.color].filter(Boolean).join(', ')})`, qty);
+    scanVariantSheetOpen.value = false;
+}
+function addScannedLine(productId, variantId, label, qty = 1) {
     const existing = form.items.find((l) => l.product_id === productId && (l.product_variant_id || '') === variantId);
     if (existing) {
-        existing.qty = (Number(existing.qty) || 0) + 1;
+        existing.qty = (Number(existing.qty) || 0) + qty;
     } else {
         const emptyLine = form.items.find((l) => !l.product_id);
         if (emptyLine) {
             emptyLine.product_id = productId;
             emptyLine.product_variant_id = variantId;
-            emptyLine.qty = 1;
+            emptyLine.qty = qty;
         } else {
-            form.items.push({ product_id: productId, product_variant_id: variantId, qty: 1, imei: '' });
+            form.items.push({ product_id: productId, product_variant_id: variantId, qty, imei: '' });
         }
     }
     toast('✅ ' + label);
@@ -184,6 +200,10 @@ function save() {
                 @keyup.enter="onScanInputEnter"
             >
         </div>
+
+        <Sheet v-model="scanVariantSheetOpen" :title="scanVariantProduct?.name" :subtitle="t('pos.pickVariantHint')">
+            <ColorSizePicker v-if="scanVariantProduct" :product="scanVariantProduct" @pick="onScanVariantPick" />
+        </Sheet>
 
         <div class="field"><label>{{ t('quotation.items') }}</label></div>
         <div v-for="(line, i) in form.items" :key="i" class="card" style="margin-bottom:10px">
