@@ -2145,6 +2145,51 @@ feature, confirmed by a new query-count regression test (same pattern
 as `TenancyScaleCacheTest`) — `tests/Feature/SharedStockPoolTest.php`
 now 8 tests, full suite re-run green (1088 passing).
 
+## Scale follow-up — `docs/SCALING_GUIDE.md` item #6: Reports.php SQL aggregation
+
+Converted `Reports::rangeStats()` and `Reports::combinedRangeStats()` —
+the two functions the audit flagged as the highest-traffic PHP-side
+aggregators (Home calls `rangeStats()` 3×/visit, the Reports page calls
+it directly plus `combinedRangeStats()` for a multi-branch main shop) —
+from `->get()`-then-`Collection::sum()` to plain SQL `SUM()`/`COUNT()`/
+`GROUP BY`. Every one of those `->get()` calls existed only to feed a
+`sum()`/`count()` right after — nothing ever needed the actual hydrated
+rows, so this is a behavior-preserving change, not a redesign: the same
+arithmetic, computed by MySQL's `SUM()` instead of PHP, which is if
+anything more exact (`SUM()` on a DECIMAL column stays fixed-point;
+PHP's own float accumulation can drift by fractions of a cent over many
+rows). Two things checked carefully before trusting this as a safe
+drop-in, both confirmed fine: (1) MySQL's `SUM()` already skips a NULL
+row the exact same way the old `$r->cost === null ? 0.0 : $r->cost`
+PHP guard did by hand; (2) `sales.sale_type` is a NOT NULL enum column
+with a DB default, so there's no row a `WHERE sale_type != 'exchange'`
+could ever treat differently than the old collection filter did.
+`combinedRangeStats()`'s `byBranch` breakdown, previously a
+`groupBy('shop_id')` over every fetched row, is now one `GROUP BY
+shop_id` query with aggregate `SELECT`s.
+
+**Deliberately NOT done**: a `daily_sales_summary`-style pre-aggregated
+table (nightly-updated, queried instead of live `sales`/`sale_items`) —
+that remains its own, bigger, separately-planned task per the audit's
+own note, not something to fold in quietly here. Also not touched: the
+other ~12 report functions in this file (`categoryReport`,
+`salespersonProfitReport`, `cashierCashBreakdown`, `restaurantBreakdown`,
+etc.) — several already use SQL-level `selectRaw()`/`groupBy()` for
+their main sums (`productStats()`, `branchProductProfitReport()`,
+`variantProfitReport()`), and the rest are each called once per Reports
+page visit on a narrower dataset, not repeatedly like `rangeStats()` —
+materially lower priority, left as a future pass if ever needed.
+
+Tests: `tests/Feature/CombinedRangeStatsTest.php` (new, 2 tests) — no
+prior coverage existed for `combinedRangeStats()` at all, so this adds
+a real safety net rather than relying only on it staying green by
+accident. Every existing Reports-adjacent test (`ReportsVatTest`,
+`ReturnExchangeTest`'s exact hand-verified exchange/return/null-cost
+scenarios, `ProductProfitReportTest`, etc.) re-run and still pass
+unchanged — the strongest proof available that this refactor changed
+nothing about what these numbers actually are. Full suite green at
+1090.
+
 ## Definition-of-done checklist (updated after every phase)
 
 - [x] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test --all`, Phase 0.6) — re-verified 2026-10-20, all 8 types OK

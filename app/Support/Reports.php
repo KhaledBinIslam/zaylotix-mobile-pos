@@ -22,17 +22,26 @@ class Reports
     {
         $inRange = fn ($query) => $query->whereDate('date', '>=', $from)->whereDate('date', '<=', $to);
 
+        // SQL-aggregated (see docs/SCALING_GUIDE.md item #6) — every figure
+        // below was already a plain SUM()/COUNT() over the range, just
+        // computed in PHP after fetching every row; MySQL's SUM() already
+        // skips NULL (e.g. an old return row with no `cost` recorded) the
+        // exact same way the old `$r->cost === null ? 0.0 : ...` guard did,
+        // and `sale_type` is a NOT NULL column with a DB default, so there
+        // is no row this could ever treat differently than before. Nothing
+        // here reads an actual Sale/SalesReturn row anymore, only sums.
+        $saleQuery = $inRange(Sale::query());
+
         // Gross sales includes an exchange's own replacement-item Sale
         // (sale_type='exchange') — it's a real sale of real goods, it's only
         // excluded from the *bill count*/visits/loyalty below ($countedSales),
         // never from revenue or profit.
-        $allSales = $inRange(Sale::query())->get();
-        $countedSales = $allSales->where('sale_type', '!=', 'exchange');
+        $grossSales = (float) (clone $saleQuery)->sum('total');
+        $totalCostIssued = $grossSales - (float) (clone $saleQuery)->sum('profit');
 
-        $grossSales = (float) $allSales->sum('total');
-        $totalCostIssued = $grossSales - (float) $allSales->sum('profit');
+        $countedSalesQuery = (clone $saleQuery)->where('sale_type', '!=', 'exchange');
 
-        [$returnsTotal, $costRecovered] = self::returnTotals($inRange(SalesReturn::query())->get());
+        [$returnsTotal, $costRecovered] = self::returnTotals($inRange(SalesReturn::query()));
 
         // Net sales = gross sales minus whatever was actually handed back
         // (a plain refund or the "give back" half of an exchange) — a
@@ -64,20 +73,28 @@ class Reports
         // switches vat_mode or turnover_rate would otherwise see every past
         // report/export silently recalculate under the new rule and stop
         // matching what was actually charged on those invoices.
-        $vat = (float) $countedSales->sum('vat');
+        $vat = (float) (clone $countedSalesQuery)->sum('vat');
 
         $net = $grossProfit - $exp - $dmg;
 
         return compact('grossSales', 'returnsTotal', 'salesAmt', 'cogs', 'grossProfit', 'exp', 'dmg', 'vat', 'net') + [
-            'count' => $countedSales->count(),
+            'count' => (clone $countedSalesQuery)->count(),
         ];
     }
 
-    /** [total refund given, total cost recovered (known-cost rows only)] over a set of SalesReturn rows — the two building blocks rangeStats()/combinedRangeStats() need to show returns as their own line without double-counting a damaged return's cost against its own Damage entry. */
-    private static function returnTotals($returns): array
+    /**
+     * [total refund given, total cost recovered (known-cost rows only)] for
+     * a SalesReturn query in range — the two building blocks rangeStats()/
+     * combinedRangeStats() need to show returns as their own line without
+     * double-counting a damaged return's cost against its own Damage entry.
+     * Takes the query itself (not `->get()`'d rows) so both sums run as
+     * plain SQL SUM() — MySQL already skips a NULL `cost` row exactly like
+     * the old `$r->cost === null ? 0.0 : $r->cost` guard did by hand.
+     */
+    private static function returnTotals($returnsQuery): array
     {
-        $returnsTotal = (float) $returns->sum('refund');
-        $costRecovered = (float) $returns->sum(fn (SalesReturn $r) => $r->cost === null ? 0.0 : (float) $r->cost);
+        $returnsTotal = (float) (clone $returnsQuery)->sum('refund');
+        $costRecovered = (float) (clone $returnsQuery)->sum('cost');
 
         return [$returnsTotal, $costRecovered];
     }
@@ -94,13 +111,17 @@ class Reports
         $inRange = fn ($query) => $query->withoutGlobalScopes()->whereIn('shop_id', $shopIds)
             ->whereDate('date', '>=', $from)->whereDate('date', '<=', $to);
 
-        $allSales = $inRange(Sale::query())->get();
-        $countedSales = $allSales->where('sale_type', '!=', 'exchange');
+        // SQL-aggregated — same reasoning as rangeStats() above, including
+        // $byBranch below, which is now one GROUP BY shop_id query instead
+        // of fetching every sale row just to re-group it in PHP.
+        $saleQuery = $inRange(Sale::query());
 
-        $grossSales = (float) $allSales->sum('total');
-        $totalCostIssued = $grossSales - (float) $allSales->sum('profit');
+        $grossSales = (float) (clone $saleQuery)->sum('total');
+        $totalCostIssued = $grossSales - (float) (clone $saleQuery)->sum('profit');
 
-        [$returnsTotal, $costRecovered] = self::returnTotals($inRange(SalesReturn::query())->get());
+        $countedSalesQuery = (clone $saleQuery)->where('sale_type', '!=', 'exchange');
+
+        [$returnsTotal, $costRecovered] = self::returnTotals($inRange(SalesReturn::query()));
 
         $salesAmt = $grossSales - $returnsTotal;
         $cogs = $totalCostIssued - $costRecovered;
@@ -108,19 +129,23 @@ class Reports
 
         $exp = (float) $inRange(Expense::query())->sum('amount');
         $dmg = (float) $inRange(Damage::query())->sum('loss');
-        $vat = (float) $countedSales->sum('vat');
+        $vat = (float) (clone $countedSalesQuery)->sum('vat');
         $net = $grossProfit - $exp - $dmg;
 
         $shopNames = Shop::withoutGlobalScopes()->whereIn('id', $shopIds)->pluck('name', 'id');
-        $byBranch = $allSales->groupBy('shop_id')->map(fn ($group, $shopId) => [
-            'shop_name' => $shopNames->get($shopId, '—'),
-            'count' => $group->count(),
-            'total' => round((float) $group->sum('total'), 2),
-            'profit' => round((float) $group->sum('profit'), 2),
+        $byBranchRows = (clone $saleQuery)
+            ->selectRaw('shop_id, COUNT(*) as cnt, SUM(total) as total_sum, SUM(profit) as profit_sum')
+            ->groupBy('shop_id')
+            ->get();
+        $byBranch = $byBranchRows->map(fn ($r) => [
+            'shop_name' => $shopNames->get($r->shop_id, '—'),
+            'count' => (int) $r->cnt,
+            'total' => round((float) $r->total_sum, 2),
+            'profit' => round((float) $r->profit_sum, 2),
         ])->sortByDesc('total')->values()->all();
 
         return compact('grossSales', 'returnsTotal', 'salesAmt', 'cogs', 'grossProfit', 'exp', 'dmg', 'vat', 'net', 'byBranch') + [
-            'count' => $countedSales->count(),
+            'count' => (clone $countedSalesQuery)->count(),
         ];
     }
 
