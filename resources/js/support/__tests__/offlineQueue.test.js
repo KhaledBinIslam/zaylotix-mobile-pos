@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { enqueueSale, removeFromQueue, markFailed, markShopMismatch, retryEntry, remapQueuedItem, dropQueuedItem, pendingCount, failedCount, canDiscardEntry, offlineSyncFailureKind } from '../offlineQueue.js';
+import { enqueueSale, removeFromQueue, markFailed, markShopMismatch, retryEntry, remapQueuedItem, dropQueuedItem, pendingCount, failedCount, canDiscardEntry, offlineSyncFailureKind, classifyOfflineFailure, editQueuedEntry } from '../offlineQueue.js';
 
 describe('offlineQueue', () => {
     it('enqueues a sale as pending', () => {
@@ -177,6 +177,92 @@ describe('offlineQueue', () => {
             expect(offlineSyncFailureKind(400)).toBe('permanent');
             expect(offlineSyncFailureKind(404)).toBe('permanent');
             expect(offlineSyncFailureKind(422)).toBe('permanent');
+        });
+    });
+
+    // docs/FIX_PLAN.md — pending-sales sheet stuck-bill fix. Real reported
+    // bug: a due-only bill with no customer phone had NO resolution UI at
+    // all (only problemItems-based failures did) — these two functions
+    // are the generic fallback for every failure that isn't a named
+    // missing product.
+    describe('classifyOfflineFailure', () => {
+        it('classifies the due-needs-customer message', () => {
+            expect(classifyOfflineFailure('বাকি রাখতে হলে কাস্টমারের ফোন নম্বর দিন।')).toBe('needs_customer');
+        });
+
+        it('classifies an insufficient-stock message', () => {
+            expect(classifyOfflineFailure('পর্যাপ্ত স্টক নেই: জুতা (আছে ২, লাগবে ৫)।')).toBe('insufficient_stock');
+        });
+
+        it('classifies an invalid-coupon message', () => {
+            expect(classifyOfflineFailure('কুপন কোডটি সঠিক নয় বা চালু নেই।')).toBe('invalid_discount');
+        });
+
+        it('falls back to generic for an unrecognized message', () => {
+            expect(classifyOfflineFailure('কিছু একটা ভুল হয়েছে')).toBe('generic');
+        });
+
+        it('falls back to generic when there is no message at all', () => {
+            expect(classifyOfflineFailure(null)).toBe('generic');
+        });
+    });
+
+    describe('editQueuedEntry', () => {
+        it('merges the patch into the payload and re-queues as pending', () => {
+            let queue = enqueueSale([], { items: [{ product_id: 1, qty: 1 }], customer_phone: '' });
+            const id = queue[0].id;
+            queue = markFailed(queue, id, 'বাকি রাখতে হলে কাস্টমারের ফোন নম্বর দিন।', 'permanent', []);
+
+            queue = editQueuedEntry(queue, id, { customer_phone: '01700000000', customer_name: 'করিম' });
+
+            expect(queue[0].status).toBe('pending');
+            expect(queue[0].error).toBeNull();
+            expect(queue[0].payload.customer_phone).toBe('01700000000');
+            expect(queue[0].payload.customer_name).toBe('করিম');
+            expect(queue[0].payload.items).toEqual([{ product_id: 1, qty: 1 }]); // untouched fields survive the merge
+        });
+
+        it('can replace the payments array (e.g. "fully paid in cash")', () => {
+            let queue = enqueueSale([], { items: [], payments: [] });
+            const id = queue[0].id;
+            queue = markFailed(queue, id, 'বাকি রাখতে হলে কাস্টমারের ফোন নম্বর দিন।');
+
+            queue = editQueuedEntry(queue, id, { payments: [{ method: 'cash', amount: 50 }] });
+
+            expect(queue[0].payload.payments).toEqual([{ method: 'cash', amount: 50 }]);
+            expect(queue[0].status).toBe('pending');
+        });
+
+        it('can replace the items array (e.g. dropping/reducing a line for insufficient stock)', () => {
+            let queue = enqueueSale([], { items: [{ product_id: 1, qty: 5 }] });
+            const id = queue[0].id;
+            queue = markFailed(queue, id, 'পর্যাপ্ত স্টক নেই');
+
+            queue = editQueuedEntry(queue, id, { items: [{ product_id: 1, qty: 2 }] });
+
+            expect(queue[0].payload.items).toEqual([{ product_id: 1, qty: 2 }]);
+        });
+
+        it('clears any stale failureKind/problemItems on edit, same as remapQueuedItem', () => {
+            let queue = enqueueSale([], { items: [{ product_id: 5 }] });
+            const id = queue[0].id;
+            queue = markFailed(queue, id, 'পণ্য পাওয়া যায়নি', 'permanent', [{ product_id: 5, product_name: 'x' }]);
+
+            queue = editQueuedEntry(queue, id, { coupon_code: '' });
+
+            expect(queue[0].failureKind).toBeNull();
+            expect(queue[0].problemItems).toEqual([]);
+        });
+
+        it('never touches a different entry in the same queue', () => {
+            let queue = enqueueSale([], { items: [], customer_phone: 'A' });
+            queue = enqueueSale(queue, { items: [], customer_phone: 'B' });
+            const otherId = queue[1].id;
+
+            queue = editQueuedEntry(queue, queue[0].id, { customer_phone: 'edited' });
+
+            expect(queue[1].id).toBe(otherId);
+            expect(queue[1].payload.customer_phone).toBe('B');
         });
     });
 });

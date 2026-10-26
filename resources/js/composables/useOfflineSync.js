@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue';
 import { usePage } from '@inertiajs/vue3';
-import { enqueueSale, removeFromQueue, markFailed, markShopMismatch, retryEntry, remapQueuedItem, dropQueuedItem, pendingCount, failedCount, offlineSyncFailureKind } from '@/support/offlineQueue';
+import { enqueueSale, removeFromQueue, markFailed, markShopMismatch, retryEntry, remapQueuedItem, dropQueuedItem, editQueuedEntry, pendingCount, failedCount, offlineSyncFailureKind } from '@/support/offlineQueue';
 import { kvGet, kvSet, KEYS } from '@/support/offlineDb';
 import { shouldAutoSync } from '@/support/syncModeDecision';
 import { fetchWithSessionRetry } from '@/support/fetchWithSessionRetry';
@@ -287,6 +287,35 @@ export function useOfflineSync() {
         trySync();
     }
 
+    // Generic stuck-bill fix path (see docs/FIX_PLAN.md) — for a
+    // 'permanent' failure that ISN'T a named missing product (due needs a
+    // customer, an invalid coupon, insufficient stock with no specific
+    // problemItems), the per-item remap UI above has nothing to show;
+    // this is the fallback that lets the cashier correct the bill itself
+    // (customer phone, payments, items, discount) and immediately
+    // resubmit it under the same client_uuid.
+    async function editEntry(id, patch) {
+        queue.value = editQueuedEntry(queue.value, id, patch);
+        await persist();
+        trySync();
+    }
+
+    // The sheet's "সব সিঙ্ক করুন" button — flips every still-stuck entry
+    // (failed or shop_mismatch, not just plain pending) back to pending
+    // and syncs once. A 'permanent' failure that genuinely needs an edit
+    // (see editEntry above) will just fail again identically — expected,
+    // not a regression; this is a bulk convenience for the common case
+    // (several entries that only needed the network back), not a
+    // replacement for the per-entry fix panel.
+    async function syncAll() {
+        await ensureLoaded();
+        for (const entry of queue.value) {
+            if (entry.status !== 'pending') queue.value = retryEntry(queue.value, entry.id);
+        }
+        await persist();
+        trySync();
+    }
+
     // The queued sale never reached the server (that's the whole point of
     // the offline queue), so there's no Sale row to void/reverse — this is
     // purely a local removal. Logging the reason server-side (best-effort;
@@ -331,6 +360,8 @@ export function useOfflineSync() {
         discard,
         resolveItem,
         dropItem,
+        editEntry,
+        syncAll,
         cancelWithReason,
         cancelAutoSync: stopAutoSyncCountdown,
         getSyncedMap,

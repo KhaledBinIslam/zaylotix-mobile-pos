@@ -116,6 +116,38 @@ export function canDiscardEntry(entry, hasReturnsPermission, currentUserId) {
     return !!currentUserId && entry.queuedByUserId === currentUserId;
 }
 
+/**
+ * Which hint to show for a 'permanent' failure that has no problemItems
+ * (see docs/FIX_PLAN.md's pending-sales-sheet fix) — a plain Bengali-
+ * substring match against the known server messages
+ * (PosController::performCheckout(), PromotionEngine), since the server
+ * only sends a free-text message for these, no structured code. Only
+ * used to pick a hint line; the fix panel itself shows regardless of
+ * which (or no) classification matched.
+ */
+export function classifyOfflineFailure(message) {
+    if (!message) return 'generic';
+    if (message.includes('কাস্টমারের ফোন নম্বর দিন')) return 'needs_customer';
+    if (message.includes('পর্যাপ্ত স্টক নেই') || message.includes('পর্যাপ্ত অ-মেয়াদোত্তীর্ণ স্টক নেই')) return 'insufficient_stock';
+    if (message.includes('কুপন') || message.includes('পয়েন্ট') || message.includes('ক্রেডিট লিমিট')) return 'invalid_discount';
+    return 'generic';
+}
+
+/**
+ * The generic stuck-bill fix path (see docs/FIX_PLAN.md) — shallow-merges
+ * `patch` into the entry's stored payload (customer phone/name, payments,
+ * discount, coupon_code, redeem_points, a replacement items array, ...)
+ * and resets it to 'pending' exactly like remapQueuedItem/dropQueuedItem
+ * already do for the one product-remap case, generalized to any field.
+ * The entry's own id (== payload.client_uuid) never changes, so replay
+ * idempotency is untouched — this resubmits the SAME bill, corrected.
+ */
+export function editQueuedEntry(queue, id, patch) {
+    return queue.map((s) => (s.id === id
+        ? { ...s, payload: { ...s.payload, ...patch }, status: 'pending', error: null, failureKind: null, problemItems: [] }
+        : s));
+}
+
 export function pendingCount(queue) {
     return queue.filter((s) => s.status === 'pending').length;
 }

@@ -405,6 +405,13 @@ function resetCartAfterCheckout() {
 
 async function submitCheckout() {
     if (!cart.value.length || submitting.value) return;
+    // Same "বাকি রাখতে হলে কাস্টমারের ফোন নম্বর দিন" rule PosController::
+    // performCheckout() enforces server-side — see docs/FIX_PLAN.md's
+    // pending-sales-sheet fix and Pos/Index.vue's identical guard.
+    if (dueNeedsCustomerPhone()) {
+        errorMsg.value = t('pos.splitNeedsPhone');
+        return;
+    }
     submitting.value = true;
     errorMsg.value = '';
 

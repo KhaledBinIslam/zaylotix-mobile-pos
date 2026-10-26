@@ -2298,6 +2298,154 @@ then toggle DevTools offline after background sync completes and confirm
 the same; confirm a normal shop's POS page fires no new requests at all
 (`catalogMode: 'full'` path never calls the new endpoints).
 
+## Pending-sales sheet: stuck-bill resolution + shift-duration format fix
+
+Real reported bug, with a screenshot from Khaled: an offline bill (2
+items, ৳50, no payment, no customer phone) failed to sync with
+"বাকি রাখতে হলে কাস্টমারের ফোন নম্বর দিন।" and the sheet offered only
+Print/WhatsApp/Cancel — no way to fix and resync it, so it sat stuck for
+weeks.
+
+### Root cause (confirmed by reading the actual code, not guessed)
+
+- **`PosController.php:866`** — `abort(422, 'বাকি রাখতে হলে কাস্টমারের
+  ফোন নম্বর দিন।')` whenever `$dueRemainder > 0 && ! $customer`. This is
+  the exact message from the screenshot.
+- **`resources/js/Layouts/AppLayout.vue:723`** — the sheet's ONLY
+  resolution UI is gated `v-if="entry.failureKind === 'permanent' &&
+  entry.problemItems?.length"` — built for the "product not found" bug
+  (Phase 11), which always has named `problemItems`. A bill-level
+  rejection (due-needs-customer, invalid coupon, insufficient stock with
+  no specific missing product) has `problemItems: []`, so this block
+  never renders — nothing to fix.
+- **`AppLayout.vue:758-759`** — the retry button only shows for
+  `status === 'pending'` (plain re-sync) or `shop_mismatch ||
+  failureKind !== 'permanent'`. A `'permanent'` failure with empty
+  `problemItems` matches NEITHER condition — genuinely zero buttons
+  besides Cancel, confirmed, not a misreading of the screenshot.
+- **No client-side pre-check exists at all** — `Pos/Index.vue:1705`'s
+  checkout-button `:disabled` only covers the split-mode due case
+  (`splitMode && splitRemainder > 0 && !customerPhone`); `buildPayments()`
+  (`Pos/Index.vue:631-646`, identically duplicated in `Clothing/Pos.vue`)
+  returns `[]` for `payMode === 'credit'` with no equivalent phone guard,
+  so a "fully on credit" bill queues straight into the offline queue
+  (`submitCheckout()`'s catch branch, `Pos/Index.vue:811-823`) with no
+  validation at all — it can only ever fail at actual sync time.
+- **`useOfflineSync.js`'s `trySync()`** already classifies this
+  correctly as `failureKind: 'permanent'` (the generic `else` branch,
+  since `offlineSyncFailureKind(422)` → `'permanent'` and there's no
+  `problem_items` array to take the other branch) — the classification
+  isn't the bug, the missing UI for that classification is.
+- **Shift-duration format** — `AppLayout.vue:228-234`'s
+  `workPeriodElapsed` only computes hours/minutes, never days:
+  `Math.floor(mins / 60)` on a 38-day-old shift produces literally
+  "920h 44m", exactly matching Khaled's report. Cosmetic (no data is
+  wrong), but it hides just how stuck the shift really is.
+
+### Fix
+
+**`resources/js/support/offlineQueue.js`** (pure, unit-tested) — two
+additions:
+- `classifyOfflineFailure(message)`: Bengali-substring match against the
+  known server messages (due-needs-customer, insufficient stock, invalid/
+  expired/exhausted/below-minimum coupon, invalid loyalty redemption) →
+  one of `'needs_customer' | 'insufficient_stock' | 'invalid_discount' |
+  'generic'`, used only to pick which hint text to show — never to decide
+  whether to show the fix panel at all (that's just `status === 'failed'`
+  now, see below).
+- `editQueuedEntry(queue, id, patch)`: shallow-merges `patch` into the
+  entry's stored `payload` (customer phone/name, payments, discount,
+  coupon_code, redeem_points, or a replacement `items` array), then
+  resets `status: 'pending', error: null, failureKind: null,
+  problemItems: []` — the exact same reset shape `remapQueuedItem`/
+  `dropQueuedItem` already use, generalized to arbitrary fields instead
+  of only the one product-remap case. The entry's `id` (== the payload's
+  own `client_uuid`) never changes, so idempotency is untouched — this is
+  still "the same bill, corrected," not a new one.
+
+**`useOfflineSync.js`** — two additions:
+- `editEntry(id, patch)`: calls `editQueuedEntry`, persists, calls
+  `trySync()` immediately — the edit-and-resync action.
+- `syncAll()`: flips every non-pending entry back to `pending`
+  (`retryEntry` per entry) then calls `trySync()` once — the sheet's new
+  bulk button. A `'permanent'` entry that still needs an edit will just
+  fail again identically (expected, not a regression — the per-entry fix
+  panel is the real fix path for those).
+
+**`AppLayout.vue`** — the pending-sales sheet:
+- New **"সব সিঙ্ক করুন"** button at the top of the sheet, disabled while
+  `offlineSync.syncing.value`.
+- The existing problem-items remap block is untouched. Added, available
+  whenever `entry.status === 'failed'` (regardless of whether
+  `problemItems` is also present, so a bill with both a bad product AND
+  e.g. a due/customer issue can fix both): a generic **"ঠিক করুন"**
+  toggle opening an inline panel with — a hint line from
+  `classifyOfflineFailure()`; customer phone/name fields with the
+  existing `app.customers.search`-by-name and `app.customers.lookup`-by-
+  phone endpoints (same ones Pos/Index.vue's own customer field already
+  calls, not new); a one-tap "✅ সম্পূর্ণ নগদে নেওয়া হয়েছে" button that
+  sets `payments` to one cash line covering the bill's own approx total;
+  a per-item qty input + remove button (reusing `billSummary()`'s
+  existing item rows); and a "কুপন/ছাড় বাদ দিন" button shown only when
+  the payload actually has a `coupon_code`/`redeem_points` set. Saving
+  calls `offlineSync.editEntry()`.
+- Retry button logic gains one more branch: a `'permanent'` failure with
+  no `problemItems` now shows the new "ঠিক করুন" toggle instead of no
+  button at all; every other case (`pending`, `shop_mismatch`, a
+  `problemItems` failure, a legacy entry with no `failureKind`) is
+  unchanged.
+- Icon fixes: `t('pos.print')` already bakes in `🖨️` (`i18n.js:1388`) —
+  the template was ALSO prepending a literal `🖨️`, doubling it; removed
+  the literal prefix. The WhatsApp buttons (pending-sheet bill actions
+  AND the print-preview sheet) used `📤`, inconsistent with the rest of
+  the app's `💬` convention (notification bell, etc.) — both switched to
+  `💬`.
+- Failure-reason banner: the top banner (`AppLayout.vue:613-616`) now
+  shows the single most recent failed entry's own error text (truncated)
+  instead of just a bare count, and gets the same `urgent` (red) styling
+  the offline/expiry banners already use once any failed entry has been
+  stuck 7+ days — reusing the existing `.expiry-banner.urgent` CSS class,
+  no new styling.
+- `workPeriodElapsed` now renders days once `mins >= 1440`
+  ("৩৮ দিন ৮ ঘণ্টা" instead of "920h 44m") and the shift banner gets the
+  same `urgent` class once a shift has run 24+ hours — a pure display/
+  attention change. Deliberately NOT auto-closing a long-running shift
+  (cash reconciliation is too risky to do without the owner physically
+  counting the drawer) — matches the ticket's own explicit instruction.
+  No new shop setting/migration for a configurable threshold — kept to
+  the ticket's "existing code, small change" instruction; a
+  shop-configurable hour threshold is a natural follow-up if Khaled wants
+  it later, flagged here rather than built speculatively.
+
+**`Pos/Index.vue` and `Clothing/Pos.vue`** — one new guard,
+`dueNeedsCustomerPhone()`, computed from the exact same tender sum
+`buildPayments()` already produces (never duplicated/re-derived
+differently), called at the very top of `submitCheckout()` (before the
+network attempt, online or offline) and reusing the existing
+`pos.splitNeedsPhone` i18n string (never a new, slightly-different
+message for the same rule) — a credit/complimentary-mode sale with real
+due and no phone is now rejected locally, identically to the server, for
+BOTH the online and offline-queue paths. `payMode === 'complimentary'`
+is exempted exactly like `buildPayments()` already exempts it.
+
+**Old stuck entries**: no queue-shape migration needed — the fix is
+purely additive fields/functions; an old entry from before this fix just
+has `problemItems: []` and now correctly gets the generic "ঠিক করুন"
+panel instead of nothing. Khaled's own 2026-10-19 stuck bill is fixable
+with this same deployed code, no manual server intervention required.
+
+Tests: `resources/js/support/__tests__/offlineQueue.test.js` (extended —
+`classifyOfflineFailure`, `editQueuedEntry`); new
+`tests/Feature/OfflineSyncEditRetryTest.php` (PHP, since no backend code
+changed — proves the edit-then-resubmit flow actually works against the
+real checkout endpoint): adding a phone to a due-only bill and
+resubmitting succeeds and creates the customer's due correctly; marking
+it fully paid in cash succeeds with zero due; removing an invalid coupon
+succeeds; reducing qty below an insufficient-stock line succeeds; the
+same `client_uuid` resubmitted twice (edit-and-resync after an earlier
+rejection, which never created a `Sale` row, then a duplicate manual
+retry) still creates exactly one `Sale`.
+
 ## Definition-of-done checklist (updated after every phase)
 
 - [x] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test --all`, Phase 0.6) — re-verified 2026-10-20, all 8 types OK

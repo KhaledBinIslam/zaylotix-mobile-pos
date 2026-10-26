@@ -645,6 +645,21 @@ function buildPayments() {
     return [{ method: payMode.value, amount: total.value }];
 }
 
+// See docs/FIX_PLAN.md's pending-sales-sheet fix — the exact rule
+// PosController::performCheckout() enforces (dueRemainder > 0 needs a
+// customer), computed from the same buildPayments() tender sum rather
+// than re-derived separately, so it can never drift from what the
+// server will actually check. complimentary bypasses it exactly like
+// buildPayments() already does (nothing is ever tendered OR owed on a
+// free sale).
+function dueNeedsCustomerPhone() {
+    if (payMode.value === 'complimentary') return false;
+    const tendered = buildPayments().reduce((sum, p) => sum + p.amount, 0);
+    const due = Math.max(0, Math.round((total.value - tendered) * 100) / 100);
+
+    return due > 0 && !customerPhone.value.trim();
+}
+
 function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]')?.content || '';
 }
@@ -732,6 +747,15 @@ async function submitCheckout() {
     // other way submitCheckout() could fire (e.g. a keyboard Enter).
     if (cartNeedsPrescription.value && !prescriptionConfirmed.value) {
         errorMsg.value = t('pos.prescriptionConfirmRequired');
+        return;
+    }
+    // Same "বাকি রাখতে হলে কাস্টমারের ফোন নম্বর দিন" rule PosController::
+    // performCheckout() enforces server-side — checked here too so a
+    // credit sale with real due and no phone never even reaches the
+    // offline queue (see docs/FIX_PLAN.md's pending-sales-sheet fix): it
+    // used to only fail at sync time, with no way to fix it from there.
+    if (dueNeedsCustomerPhone()) {
+        errorMsg.value = t('pos.splitNeedsPhone');
         return;
     }
     submitting.value = true;

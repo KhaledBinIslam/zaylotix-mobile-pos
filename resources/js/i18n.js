@@ -1448,6 +1448,18 @@ export const translations = {
     'offline.complimentarySale': { bn: 'ফ্রি/কমপ্লিমেন্টারি বিল', en: 'Complimentary (free) sale' },
     'offline.fullyDue': { bn: 'সম্পূর্ণ বাকিতে (কোনো পেমেন্ট ছিল না)', en: 'Fully on credit (no payment given)' },
     'offline.approxDue': { bn: 'আনুমানিক বাকি', en: 'Approx. due' },
+    'offline.queuedBy': { bn: ' — {name} বানিয়েছেন', en: ' — by {name}' },
+    'offline.syncAll': { bn: '🔄 সব সিঙ্ক করুন', en: '🔄 Sync all' },
+    'offline.fixBill': { bn: '🛠️ ঠিক করুন', en: '🛠️ Fix' },
+    'offline.fixHintNeedsCustomer': { bn: 'বাকি রাখতে নিচে কাস্টমারের ফোন নম্বর দিন, অথবা পুরোটা নগদে নেওয়া হয়েছে বললে সেটা বাছুন।', en: "To leave this on due, enter the customer's phone below — or tell it the full amount was paid in cash." },
+    'offline.fixHintInsufficientStock': { bn: 'স্টক কম পড়ে গেছে — নিচে পরিমাণ কমান বা আইটেমটা বাদ দিন।', en: "Stock ran short — reduce the quantity below or drop that item." },
+    'offline.fixHintInvalidDiscount': { bn: 'কুপন/ছাড়/পয়েন্টে সমস্যা — নিচে থেকে বাদ দিয়ে আবার চেষ্টা করুন।', en: "Problem with the coupon/discount/points — remove it below and retry." },
+    'offline.fixHintGeneric': { bn: 'নিচের তথ্য ঠিক করে আবার সিঙ্ক করুন।', en: "Correct the details below and sync again." },
+    'offline.markFullCash': { bn: '✅ সম্পূর্ণ নগদে নেওয়া হয়েছে', en: '✅ Fully paid in cash' },
+    'offline.removeDiscount': { bn: 'কুপন/ছাড় বাদ দিন', en: 'Remove coupon/discount' },
+    'offline.searchCustomerByName': { bn: 'নাম দিয়ে খুঁজুন...', en: 'Search by name...' },
+    'offline.saveAndRetry': { bn: 'সংরক্ষণ করে আবার সিঙ্ক করুন', en: 'Save and sync again' },
+    'offline.stuckLong': { bn: '⚠️ {n} দিনের বেশি আটকে আছে', en: '⚠️ Stuck for over {n} days' },
 
     // ---- admin impersonation banner (shop side) ----
     'impersonate.banner': { bn: '{admin} এডমিন হিসেবে আপনি এই দোকানটি দেখছেন — বের হতে চাপুন', en: "You're viewing this shop as admin {admin} — tap to exit" },

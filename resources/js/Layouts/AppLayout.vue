@@ -11,7 +11,7 @@ import { useOfflineSync } from '@/composables/useOfflineSync';
 import { usePermissions } from '@/composables/usePermissions';
 import { buildOfflineSaleSnapshot } from '@/support/offlineSaleSnapshot';
 import { buildReceiptWhatsAppText, whatsAppUrlFor } from '@/support/receiptMessage';
-import { canDiscardEntry as canDiscardQueuedEntry } from '@/support/offlineQueue';
+import { canDiscardEntry as canDiscardQueuedEntry, classifyOfflineFailure } from '@/support/offlineQueue';
 
 const props = defineProps({ active: { type: String, default: 'home' } });
 
@@ -103,6 +103,78 @@ function billSummary(entry) {
         customerPhone: entry.payload.customer_phone || null,
         complimentary: !!entry.payload.complimentary,
     };
+}
+
+// Generic stuck-bill fix panel (see docs/FIX_PLAN.md's pending-sales-sheet
+// fix) — for a 'permanent' failure that ISN'T a named missing product (the
+// problemItems remap above handles that one), the cashier needs a way to
+// correct the customer/items/discount themselves and immediately resubmit
+// under the same client_uuid. Only one entry's panel open at a time, same
+// convention as activeRemap/cancelingEntryId above.
+const editingEntryId = ref(null);
+const editForm = ref({ customerPhone: '', customerName: '', items: [] });
+const editCustomerResults = ref([]);
+let editCustomerSearchTimer = null;
+
+function fixHintKey(entry) {
+    return {
+        needs_customer: 'offline.fixHintNeedsCustomer',
+        insufficient_stock: 'offline.fixHintInsufficientStock',
+        invalid_discount: 'offline.fixHintInvalidDiscount',
+        generic: 'offline.fixHintGeneric',
+    }[classifyOfflineFailure(entry.error)];
+}
+
+function startEdit(entry) {
+    editingEntryId.value = entry.id;
+    editForm.value = {
+        customerPhone: entry.payload.customer_phone || '',
+        customerName: entry.payload.customer_name || '',
+        items: (entry.payload.items || []).map((i) => ({ ...i })),
+    };
+    editCustomerResults.value = [];
+}
+function closeEdit() {
+    editingEntryId.value = null;
+    editCustomerResults.value = [];
+}
+watch(() => editForm.value.customerName, (q) => {
+    clearTimeout(editCustomerSearchTimer);
+    if (!q || q.trim().length < 2 || editForm.value.customerPhone.trim()) {
+        editCustomerResults.value = [];
+        return;
+    }
+    editCustomerSearchTimer = setTimeout(async () => {
+        try {
+            const res = await fetch(route('app.customers.search') + '?q=' + encodeURIComponent(q.trim()));
+            const data = await res.json();
+            editCustomerResults.value = data.results || [];
+        } catch {
+            editCustomerResults.value = [];
+        }
+    }, 300);
+});
+function pickEditCustomer(c) {
+    editForm.value.customerPhone = c.phone;
+    editForm.value.customerName = c.name;
+    editCustomerResults.value = [];
+}
+function removeEditItem(productId) {
+    editForm.value.items = editForm.value.items.filter((i) => i.product_id !== productId);
+}
+function saveEdit(entry) {
+    offlineSync.editEntry(entry.id, {
+        customer_phone: editForm.value.customerPhone.trim(),
+        customer_name: editForm.value.customerName.trim(),
+        items: editForm.value.items,
+    });
+    closeEdit();
+}
+function markFullCashAndRetry(entry) {
+    offlineSync.editEntry(entry.id, { payments: [{ method: 'cash', amount: billSummary(entry).approxTotal }] });
+}
+function removeDiscountAndRetry(entry) {
+    offlineSync.editEntry(entry.id, { coupon_code: '', redeem_points: 0 });
 }
 
 const cancelingEntryId = ref(null);
@@ -228,10 +300,44 @@ onBeforeUnmount(() => clearInterval(clockTimer));
 const workPeriodElapsed = computed(() => {
     if (!activeWorkPeriod.value) return '';
     const mins = Math.max(0, Math.floor((now.value - new Date(activeWorkPeriod.value.opened_at).getTime()) / 60000));
-    const h = Math.floor(mins / 60);
+    // Reported bug: a 38-day-old shift showed as "920h 44m" — hours never
+    // rolled into days (see docs/FIX_PLAN.md). Days are the normal unit
+    // once a shift has run this long; hours/minutes still cover the
+    // common same-day case exactly as before.
+    const days = Math.floor(mins / 1440);
+    const h = Math.floor((mins % 1440) / 60);
     const m = mins % 60;
+    if (days > 0) return `${days}d ${h}h`;
     return h > 0 ? `${h}h ${m}m` : `${m}m`;
 });
+// 24+ hours open is almost certainly forgotten, not a genuinely long shift
+// — same visual urgency the offline/expiry banners already use, never
+// auto-closes it (cash reconciliation needs the owner to physically count
+// the drawer, not something this app should ever guess at).
+const workPeriodUrgent = computed(() => {
+    if (!activeWorkPeriod.value) return false;
+    const mins = (now.value - new Date(activeWorkPeriod.value.opened_at).getTime()) / 60000;
+    return mins >= 1440;
+});
+
+// Failed-sync banner: shows the most recent failure's own reason (instead
+// of just a bare count) so it's obvious at a glance whether this is a
+// stale-session blip or something that genuinely needs fixing, and gets
+// the same urgent (red) styling the offline/expiry banners already use
+// once ANY failed entry has sat unresolved for a week — see
+// docs/FIX_PLAN.md. Pure display; never auto-discards anything.
+const latestFailedReason = computed(() => {
+    const failed = offlineSync.queue.value.filter((s) => s.status === 'failed' || s.status === 'shop_mismatch');
+    if (!failed.length) return null;
+    return failed[failed.length - 1].error;
+});
+const oldestFailedDays = computed(() => {
+    const failed = offlineSync.queue.value.filter((s) => s.status === 'failed' || s.status === 'shop_mismatch');
+    if (!failed.length) return 0;
+    const oldestQueuedAt = Math.min(...failed.map((s) => s.queuedAt));
+    return Math.floor((now.value - oldestQueuedAt) / 86400000);
+});
+const failedBannerUrgent = computed(() => oldestFailedDays.value >= 7);
 
 const closeShiftSheet = ref(false);
 const closeShiftForm = useForm({ closing_cash: '' });
@@ -610,14 +716,17 @@ const mobileNavSlots = computed(() => {
                         <span>⏳ {{ t('offline.autoSyncCountdown', { n: offlineSync.pendingCount.value, s: offlineSync.autoSyncCountdown.value }) }}</span>
                         <button type="button" class="btn sm ghost" style="width:auto;padding:4px 12px" @click="offlineSync.cancelAutoSync">{{ t('offline.stopSync') }}</button>
                     </div>
-                    <button v-if="offlineSync.pendingCount.value || offlineSync.failedCount.value" class="expiry-banner" style="width:100%;text-align:left;cursor:pointer" @click="offlineSync.pendingSheetOpen.value = true">
-                        <template v-if="offlineSync.failedCount.value">⚠️ {{ t('offline.failedCount', { n: offlineSync.failedCount.value }) }}</template>
+                    <button v-if="offlineSync.pendingCount.value || offlineSync.failedCount.value" class="expiry-banner" :class="{ urgent: failedBannerUrgent }" style="width:100%;text-align:left;cursor:pointer" @click="offlineSync.pendingSheetOpen.value = true">
+                        <template v-if="offlineSync.failedCount.value">
+                            ⚠️ {{ t('offline.failedCount', { n: offlineSync.failedCount.value }) }}<span v-if="latestFailedReason" style="display:block;font-size:11.5px;font-weight:400;opacity:.85">{{ latestFailedReason }}</span>
+                            <span v-if="failedBannerUrgent" style="display:block;font-size:11.5px;font-weight:700">{{ t('offline.stuckLong', { n: oldestFailedDays }) }}</span>
+                        </template>
                         <template v-else>🔄 {{ t('offline.pendingCount', { n: offlineSync.pendingCount.value }) }}</template>
                     </button>
                     <div v-if="showExpiryBanner" class="expiry-banner" :class="{ urgent: daysLeft <= 1 }">
                         ⏰ {{ expiryBannerText }} <a href="tel:01979894356">01979894356</a>
                     </div>
-                    <button v-if="activeWorkPeriod" class="expiry-banner" style="width:100%;text-align:left;cursor:pointer" @click="closeShiftSheet = true">
+                    <button v-if="activeWorkPeriod" class="expiry-banner" :class="{ urgent: workPeriodUrgent }" style="width:100%;text-align:left;cursor:pointer" @click="closeShiftSheet = true">
                         🕒 {{ t('workPeriod.running', { time: workPeriodElapsed }) }}
                     </button>
                     <button v-if="active !== 'home'" class="backbtn" @click="goBack">
@@ -681,11 +790,14 @@ const mobileNavSlots = computed(() => {
     <Sheet v-model="offlineSync.pendingSheetOpen.value" :title="t('offline.pendingSalesTitle')">
         <div v-if="shop?.offline_sync_mode === 'review'" style="font-size:12.5px;color:var(--mut);margin-bottom:10px">ℹ️ {{ t('offline.reviewModeHint') }}</div>
         <div v-if="!offlineSync.queue.value.length" class="empty"><div class="big">✅</div>{{ t('offline.nothingPending') }}</div>
+        <button v-if="offlineSync.queue.value.length" class="btn sm" style="width:100%;margin-bottom:10px" :disabled="offlineSync.syncing.value" @click="offlineSync.syncAll()">
+            {{ offlineSync.syncing.value ? '...' : t('offline.syncAll') }}
+        </button>
         <div v-for="entry in offlineSync.queue.value" :key="entry.id" class="card" style="margin-bottom:10px">
             <div class="row" style="cursor:default;padding:0 0 8px">
                 <div class="ava pill" :class="entry.status === 'pending' ? 'sky' : 'rose'" style="border-radius:12px;padding:0;width:42px;height:42px;font-size:18px">{{ entry.status === 'pending' ? '🔄' : '⚠️' }}</div>
                 <div class="mid">
-                    <b>{{ t('offline.saleQueuedAt', { time: new Date(entry.queuedAt).toLocaleString() }) }}</b>
+                    <b>{{ t('offline.saleQueuedAt', { time: new Date(entry.queuedAt).toLocaleString() }) }}{{ entry.queuedByUserName ? t('offline.queuedBy', { name: entry.queuedByUserName }) : '' }}</b>
                     <span v-if="entry.error">{{ entry.error }}</span>
                     <span v-else>{{ t('offline.waitingToSync') }}</span>
                 </div>
@@ -737,6 +849,51 @@ const mobileNavSlots = computed(() => {
                 </div>
             </template>
 
+            <!-- Generic stuck-bill fix (see docs/FIX_PLAN.md) — for a
+                 failure that ISN'T a named missing product (due needs a
+                 customer, bad coupon, insufficient stock with no specific
+                 problemItems — the block above handles that one case).
+                 Available for any failed entry, even one that ALSO has
+                 problemItems, since a bill can have more than one issue. -->
+            <template v-if="entry.status === 'failed' && entry.failureKind === 'permanent' && editingEntryId !== entry.id">
+                <div class="btnrow" style="margin-top:8px">
+                    <button class="btn sm ghost" style="flex:1" @click="startEdit(entry)">{{ t('offline.fixBill') }}</button>
+                </div>
+            </template>
+            <template v-else-if="editingEntryId === entry.id">
+                <div style="padding-top:8px;border-top:1px solid var(--line)">
+                    <div style="font-size:12.5px;color:var(--mut);margin-bottom:8px">{{ t(fixHintKey(entry)) }}</div>
+
+                    <div class="btnrow" style="margin-bottom:8px">
+                        <button class="btn sm ghost" style="flex:1" @click="markFullCashAndRetry(entry)">{{ t('offline.markFullCash') }}</button>
+                        <button v-if="entry.payload.coupon_code || entry.payload.redeem_points" class="btn sm ghost" style="flex:1" @click="removeDiscountAndRetry(entry)">{{ t('offline.removeDiscount') }}</button>
+                    </div>
+
+                    <div class="field">
+                        <label>{{ t('pos.mobileLabel') }}</label>
+                        <input v-model="editForm.customerPhone" inputmode="tel" placeholder="01XXXXXXXXX">
+                    </div>
+                    <div class="field">
+                        <label>{{ t('pos.customerName') }}</label>
+                        <input v-model="editForm.customerName" :placeholder="t('offline.searchCustomerByName')">
+                        <div v-for="c in editCustomerResults" :key="c.id" class="row" style="cursor:pointer;padding:6px 0" @click="pickEditCustomer(c)">
+                            <div class="mid"><b>{{ c.name }}</b><span>{{ c.phone }}</span></div>
+                        </div>
+                    </div>
+
+                    <div v-for="item in editForm.items" :key="item.product_id" class="row" style="cursor:default;padding:4px 0">
+                        <div class="mid"><b>{{ item.product_name || t('offline.unknownProduct') }}</b></div>
+                        <input v-model.number="item.qty" type="number" min="0.001" step="0.001" style="width:64px;margin:0;text-align:center">
+                        <button class="btn sm rose" style="width:auto;padding:0 10px" @click="removeEditItem(item.product_id)">✕</button>
+                    </div>
+
+                    <div class="btnrow" style="margin-top:8px">
+                        <button class="btn sm" style="flex:1" @click="saveEdit(entry)">{{ t('offline.saveAndRetry') }}</button>
+                        <button class="btn sm ghost" style="flex:1" @click="closeEdit">{{ t('common.cancel') }}</button>
+                    </div>
+                </div>
+            </template>
+
             <div v-if="cancelingEntryId === entry.id" style="padding-top:8px;border-top:1px solid var(--line)">
                 <input v-model="cancelReason" :placeholder="t('offline.cancelReasonPlaceholder')" style="margin-bottom:6px">
                 <div class="btnrow">
@@ -746,8 +903,8 @@ const mobileNavSlots = computed(() => {
             </div>
             <template v-else>
                 <div v-if="entry.payload?.items?.length" class="btnrow" style="margin-top:8px">
-                    <button class="btn sm ghost" style="flex:1" @click="openPrintPreview(entry)">🖨️ {{ t('pos.print') }}</button>
-                    <button class="btn sm ghost" style="flex:1" @click="openPrintPreview(entry); sendPendingMemoWA()">📤 WhatsApp</button>
+                    <button class="btn sm ghost" style="flex:1" @click="openPrintPreview(entry)">{{ t('pos.print') }}</button>
+                    <button class="btn sm ghost" style="flex:1" @click="openPrintPreview(entry); sendPendingMemoWA()">💬 WhatsApp</button>
                 </div>
                 <div class="btnrow" style="margin-top:8px">
                     <!-- failureKind !== 'permanent' (not just === 'transient') deliberately
@@ -778,7 +935,7 @@ const mobileNavSlots = computed(() => {
                 <ReceiptMemo :shop="shop" :sale="printPreviewSale" :platform-logo-url="page.props.platformLogoUrl" id-suffix="-pending" />
             </div>
             <div class="no-print btnrow" style="margin-top:16px">
-                <button class="btn wa" style="flex:1" @click="sendPendingMemoWA">📤 WhatsApp</button>
+                <button class="btn wa" style="flex:1" @click="sendPendingMemoWA">💬 WhatsApp</button>
                 <button class="btn ghost" style="flex:1" @click="printPendingMemo">{{ t('pos.print') }}</button>
             </div>
         </template>

@@ -104,6 +104,113 @@ class ProductImportTest extends TestCase
         $this->assertSame(2, Product::withoutGlobalScopes()->where('barcode', '777')->count()); // a new one created for shop A instead
     }
 
+    // Added for Baby Park (docs/BABY_PARK_PLAN.md) — when a shop has
+    // product_variants on, rows sharing the same name+category with
+    // size/color filled group under one Product as ProductVariant rows,
+    // instead of each becoming its own separate Product (the behavior
+    // above, which stays unchanged for every shop without the feature).
+    public function test_variant_rows_group_under_one_product_when_the_feature_is_on(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'product_variants');
+
+        $rows = "Kids Sneaker,,SNK-32-BLACK,জুতা,জোড়া,500,900,,10,,32,কালো\n"
+            ."Kids Sneaker,,SNK-33-BLACK,জুতা,জোড়া,500,900,,8,,33,কালো\n";
+
+        $this->actingAs($owner, 'web')->post('/app/products/import', ['file' => $this->csv($rows)])->assertRedirect();
+
+        $this->assertSame(1, Product::where('name', 'Kids Sneaker')->count());
+        $product = Product::where('name', 'Kids Sneaker')->first();
+        $this->assertSame(2, ProductVariant::where('product_id', $product->id)->count());
+        $this->assertEquals(18, $product->stock); // sum of its variants, not overwritten
+    }
+
+    public function test_variant_rows_without_the_feature_still_write_size_color_directly_onto_the_product(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(); // product_variants NOT granted
+
+        $file = $this->csv("Kids Sneaker,,SNK-32-BLACK,জুতা,জোড়া,500,900,,10,,32,কালো\n");
+        $this->actingAs($owner, 'web')->post('/app/products/import', ['file' => $file])->assertRedirect();
+
+        $product = Product::where('name', 'Kids Sneaker')->first();
+        $this->assertNotNull($product);
+        $this->assertSame('32', $product->size);
+        $this->assertSame('কালো', $product->color);
+        $this->assertSame(0, ProductVariant::count()); // no variant row created at all
+    }
+
+    public function test_reuploading_the_same_variant_barcode_updates_its_stock_instead_of_duplicating(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'product_variants');
+
+        $this->actingAs($owner, 'web')->post('/app/products/import', [
+            'file' => $this->csv("Kids Sneaker,,SNK-32-BLACK,জুতা,জোড়া,500,900,,10,,32,কালো\n"),
+        ])->assertRedirect();
+
+        $this->actingAs($owner, 'web')->post('/app/products/import', [
+            'file' => $this->csv("Kids Sneaker,,SNK-32-BLACK,জুতা,জোড়া,500,900,,15,,32,কালো\n"),
+        ])->assertRedirect();
+
+        $this->assertSame(1, ProductVariant::where('barcode', 'SNK-32-BLACK')->count());
+        $variant = ProductVariant::where('barcode', 'SNK-32-BLACK')->first();
+        $this->assertEquals(15, $variant->stock);
+        $product = Product::where('name', 'Kids Sneaker')->first();
+        $this->assertEquals(15, $product->stock); // stays in sync, not 10+15
+    }
+
+    public function test_a_new_size_added_later_to_an_existing_variant_product_increases_its_total_stock(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'product_variants');
+        $this->actingAs($owner, 'web')->post('/app/products/import', [
+            'file' => $this->csv("Kids Sneaker,,SNK-32-BLACK,জুতা,জোড়া,500,900,,10,,32,কালো\n"),
+        ])->assertRedirect();
+
+        // a second upload, same product name+category, a brand new size —
+        // adds to the same product rather than creating a duplicate
+        $this->actingAs($owner, 'web')->post('/app/products/import', [
+            'file' => $this->csv("Kids Sneaker,,SNK-34-BLACK,জুতা,জোড়া,500,900,,7,,34,কালো\n"),
+        ])->assertRedirect();
+
+        $this->assertSame(1, Product::where('name', 'Kids Sneaker')->count());
+        $product = Product::where('name', 'Kids Sneaker')->first();
+        $this->assertSame(2, ProductVariant::where('product_id', $product->id)->count());
+        $this->assertEquals(17, $product->stock);
+    }
+
+    public function test_a_variant_barcode_already_used_on_another_product_is_skipped_not_moved(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'product_variants');
+        $other = Product::create(['shop_id' => $shop->id, 'name' => 'Other Shoe', 'cost' => 1, 'price' => 2, 'stock' => 0]);
+        ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $other->id, 'size' => '40', 'barcode' => 'TAKEN', 'stock' => 5]);
+
+        $file = $this->csv("Kids Sneaker,,TAKEN,জুতা,জোড়া,500,900,,10,,32,কালো\n");
+        $this->actingAs($owner, 'web')->post('/app/products/import', ['file' => $file])->assertRedirect();
+
+        $this->assertSame(0, Product::where('name', 'Kids Sneaker')->count());
+        $this->assertSame(1, ProductVariant::where('barcode', 'TAKEN')->count());
+        $this->assertSame(5, ProductVariant::where('barcode', 'TAKEN')->first()->stock); // untouched
+    }
+
+    public function test_variant_import_syncs_to_branches_when_shared_catalog_is_on(): void
+    {
+        [$main, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'product_variants');
+        $this->grantFeature($main, 'shared_catalog');
+        [$branch] = $this->createShopWithOwner(['parent_shop_id' => $main->id]);
+
+        $file = $this->csv("Kids Sneaker,,SNK-32-BLACK,জুতা,জোড়া,500,900,,10,,32,কালো\n");
+        $this->actingAs($owner, 'web')->post('/app/products/import', ['file' => $file])->assertRedirect();
+
+        $branchProduct = Product::withoutGlobalScopes()->where('shop_id', $branch->id)->where('name', 'Kids Sneaker')->first();
+        $this->assertNotNull($branchProduct);
+        $branchVariant = ProductVariant::withoutGlobalScopes()->where('product_id', $branchProduct->id)->first();
+        $this->assertNotNull($branchVariant);
+        $this->assertSame('SNK-32-BLACK', $branchVariant->barcode);
+    }
+
     public function test_template_download_returns_a_csv_with_the_expected_header(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();
