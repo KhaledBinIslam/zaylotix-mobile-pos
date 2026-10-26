@@ -2597,6 +2597,97 @@ checkout correctness is untouched; this is strictly a visibility fix.
   shows a price range when its variants' prices actually differ, and the
   Purchase/Online-Order forms show stock in their product pickers.
 
+## ধাপ ১ — বিলিং/সার্চ ভুল-সহনশীলতা ও নেভিগেশন সার্চ: মূল কারণ নিশ্চিতকরণ (root cause CONFIRMED)
+
+**ধাপ ১ সম্পূর্ণ — প্রমাণসহ নিশ্চিত। এই পাসে কোনো প্রোডাকশন কোড বদলানো হয়নি
+(pure investigation), ধাপ ২-৪ (সার্চ ইঞ্জিন বিল্ড, বিলিং UI, নেভ সার্চ) এর
+আগে Khaled-এর কনফার্মেশনের জন্য থামলাম, যেমন টিকিট নিজেই প্রতি ধাপে থামতে
+বলেছে।**
+
+### কোথায় কোথায় সার্চ লজিক আছে (সব জায়গায় আলাদা, কোনোটাই normalize করে না)
+
+সার্ভার-সাইড (৫টা স্বতন্ত্র `LIKE` ইমপ্লিমেন্টেশন, একটাও শেয়ার করে না):
+- `ProductController::search()` (`app/Http/Controllers/App/ProductController.php:30-43`) — `name`/`barcode` raw `LIKE`।
+- `ProductController::index()` (`:72-77`) — `name`/`name_en`/`barcode`/`generic_name` raw `LIKE`।
+- `PosController::search()` (`app/Http/Controllers/App/PosController.php:203-221`) — একই ৪ কলাম, আলাদা কোড কপি।
+- `CustomerController::search()` (`app/Http/Controllers/App/CustomerController.php:130+`) — নাম/ফোন raw `LIKE`।
+- `MedicineCatalogController::search()` (`app/Http/Controllers/App/MedicineCatalogController.php:12+`) — একই প্যাটার্ন।
+
+ক্লায়েন্ট-সাইড (২টা স্বতন্ত্র ইমপ্লিমেন্টেশন):
+- `Pos/Index.vue`-এর `filtered` computed (`:210-218`) — `.toLowerCase().includes()`, কোনো NFC/invisible-char/digit normalization নেই।
+- `offlineDb.js`-এর `searchProductsOffline()` (`:111-132`, IndexedDB ক্যাশ, অফলাইন ফলব্যাক) — হুবহু একই প্যাটার্নের তৃতীয় কপি।
+
+`Clothing/Pos.vue` নিজেরটাও `Pos/Index.vue`-র props থেকেই আসা ডেটার উপর
+আলাদা filter চালায় (একই গ্যাপ, উল্লেখ করা হলো ধাপ ২-এ একসাথে ঠিক করার জন্য)।
+
+**এই ৭টা জায়গার একটাও কোনো normalization করে না — সরাসরি raw bytes মেলানো
+হয়, যা Unicode-এ নিচের নির্দিষ্ট সমস্যাটার কারণে ব্যর্থ হয়।**
+
+### কোড-পয়েন্ট প্রমাণ (reproduce করে নিশ্চিত, অনুমান নয়)
+
+বাংলা স্ক্রিপ্টে য়/ড়/ঢ়-এর দুটো বৈধ ইউনিকোড রিপ্রেজেন্টেশন আছে —
+"precomposed" (এক কোডপয়েন্ট) আর "decomposed" (base letter + U+09BC নুক্তা,
+দুই কোডপয়েন্ট)। PHP (`Normalizer::FORM_C`, `intl` extension) ও Node-এর
+নেটিভ `String.prototype.normalize('NFC')` দুটোতেই সরাসরি চালিয়ে
+**reproduce করে দেখানো হয়েছে** (hex bytes):
+
+```
+য় precomposed (U+09DF):        E0 A7 9F
+য় decomposed  (U+09AF+U+09BC): E0 A6 AF E0 A6 BC
+raw string === ?                false   ← এখানেই আসল বাগ: raw LIKE এই দুটোকে আলাদা ধরে
+NFC(precomposed) === NFC(decomposed)?   true  ← দুটোই decomposed ফর্মে নিষ্পত্তি হয়
+```
+
+ড় (U+09DC ≡ U+09A1+U+09BC) ও ঢ় (U+09DD ≡ U+09A2+U+09BC)-এও হুবহু একই
+প্যাটার্ন যাচাই করা হয়েছে — তিনটাই Unicode-এর "Composition Exclusion"
+তালিকায় আছে (NFC এদের আবার precomposed ফর্মে জোড়া লাগায় না, কিন্তু
+precomposed ও decomposed দুটো ইনপুটকেই **একই decomposed ফর্মে** নামিয়ে
+আনে) — তাই সাধারণ "NFC করলেই মিলে যাবে" ধারণা আংশিক সত্যি: NFC প্রয়োগ করলে
+দুই ফর্মই সমান হয়ে যায়, কিন্তু ফলাফলটা precomposed নয়, decomposed।
+
+**এটাই "ধনিয়া"/"সয়াসস" ব্যর্থ হওয়ার সবচেয়ে সম্ভাব্য কারণ, এবং "সস" লিখলে
+দুটোই মেলে কিন্তু "সয়াসস" লিখলে মেলে না — এই অসঙ্গতিটাও পুরোপুরি ব্যাখ্যা
+করে**: "সস" শব্দে য়/ড়/ঢ় কোনোটাই নেই, তাই raw substring match এমনিতেই
+কাজ করে; "সয়াসস"/"ধনিয়া"-তে য় আছে, আর দোকানদারের কিবোর্ড যে ফর্মে টাইপ
+করছে সেটা ডাটাবেসে সেভ হওয়া নামের ফর্মের সাথে বাইট-বাই-বাইট না মিললেই পুরো
+শব্দটা না-মেলা হয়ে যায়।
+
+**এখনো সরাসরি reproduce করা যায়নি, প্রথম সুযোগে যাচাই করা উচিত**: ZWJ/ZWNJ
+(U+200D/U+200C) সত্যিই ঢুকছে কিনা — এটা Khaled-এর আসল ফোনের কিবোর্ড থেকে
+আসা প্রকৃত ইনপুট ছাড়া নিশ্চিত করা সম্ভব নয়। প্রস্তাব: পরের বার এই সমস্যা
+হলে, সমস্যার পণ্যের নামটা `php artisan tinker` দিয়ে
+`bin2hex(Product::find($id)->name)` চালিয়ে hex ডাম্প পাঠালে ১ মিনিটে
+নিশ্চিত হওয়া যাবে। ততক্ষণ ধাপ ২-এর ফিক্স যেভাবেও ZWJ/ZWNJ/ZWSP/BOM স্ট্রিপ
+করবে (এটা করা ক্ষতিকর না, নিরাপদ bydefault ধরে নেওয়া)।
+
+বাংলা সংখ্যা (০-৯ = U+09E6-U+09EF) ↔ ইংরেজি (0-9 = U+0030-U+0039) — কোনো
+ambiguity নেই, উভয়ই স্বতন্ত্র বৈধ কোডপয়েন্ট, কখনো একে অপরের সাথে মেলে না
+raw LIKE-এ — এটা normalization-এর ambiguity সমস্যা না, বরং "দুটো আলাদা
+numeral system-কে একই ধরতে হবে" সমস্যা — ধাপ ২-এ আলাদা, সহজ একটা
+লিনিয়ার রিম্যাপ টেবিল দিয়ে সমাধান হবে।
+
+### ঝুঁকি/সিদ্ধান্তের বিষয় (ধাপ ২ শুরুর আগে Khaled-কে জানানো প্রয়োজন)
+
+**`intl` PHP extension-নির্ভরতা এড়িয়ে চলা হবে।** এই dev মেশিনে
+`Normalizer` ক্লাস/`intl` extension আছে, কিন্তু Hostinger shared hosting-এ
+আছে কিনা যাচাই করার সুযোগ নেই (SSH থেকে `php -m | grep intl` চালিয়ে
+Khaled নিজে একবার দেখতে পারেন, কিন্তু সেটার উপর নির্ভর করে পুরো সার্চ
+ফিচার বানানো ঝুঁকিপূর্ণ)। যেহেতু উপরের hex প্রমাণে exact target
+(decomposed) ফর্ম জানা গেছে, ধাপ ২-এর ফিক্স **pure PHP-তে একটা ছোট,
+explicit str_replace টেবিল** দিয়ে বানানো হবে (precomposed → decomposed,
+ঠিক JS-এর native `.normalize('NFC')`-এর আউটপুটের সাথে মেলানো) — কোনো
+`ext-intl` dependency ছাড়াই, এবং পুরো general-purpose Unicode normalizer
+আমদানি না করেই। এটা শুধু এই তিনটা নির্দিষ্ট বাংলা ক্যারেক্টারের কথা বলছে,
+সব ইউনিকোড নিয়ম রিইমপ্লিমেন্ট করছে না।
+
+### পরের ধাপ
+
+ধাপ ২ (normalizeSearch শেয়ার্ড ফাংশন + fuzzy ranking + `search_text`
+কলাম/migration/backfill + সব স্ক্রিনে এক সার্চ), ধাপ ৩ (বিলিং
+speed/mobile-keyboard layout), ধাপ ৪ (নেভ সার্চ "কোথায় যেতে চান?") —
+টিকিটের নিজের নির্দেশ অনুযায়ী প্রতি ধাপের পর থামার কথা, তাই ধাপ ১-এর এই
+নিশ্চিতকরণের পর এখানেই থামলাম।
+
 ## Definition-of-done checklist (updated after every phase)
 
 - [x] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test --all`, Phase 0.6) — re-verified 2026-10-20, all 8 types OK
