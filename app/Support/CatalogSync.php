@@ -232,9 +232,10 @@ class CatalogSync
                 $existing = (filled($v->barcode) ? $byBarcode->get($v->barcode) : null) ?? $bySizeColor->get($v->size.'|'.$v->color);
 
                 // photo_path (docs/ARTICLE_SERIES_PLAN.md §4's color picker)
-                // synced the same way as everything else here — a color's
-                // photo set on the main shop should show up on the branch too
-                $attrs = ['size' => $v->size, 'color' => $v->color, 'barcode' => $v->barcode, 'price' => $v->price, 'cost' => $v->cost, 'photo_path' => $v->photo_path];
+                // and reorder_point synced the same way as everything else
+                // here — a color's photo, and its own low-stock threshold,
+                // set on the main shop should show up on the branch too
+                $attrs = ['size' => $v->size, 'color' => $v->color, 'barcode' => $v->barcode, 'price' => $v->price, 'cost' => $v->cost, 'photo_path' => $v->photo_path, 'reorder_point' => $v->reorder_point];
 
                 if ($existing) {
                     // stock deliberately excluded -- same reasoning as syncProducts
