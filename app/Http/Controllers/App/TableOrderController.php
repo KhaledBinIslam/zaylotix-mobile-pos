@@ -106,7 +106,7 @@ class TableOrderController extends Controller
                 if ($product->stock < $data['qty']) {
                     abort(422, "পর্যাপ্ত স্টক নেই: {$product->name} (আছে {$product->stock})।");
                 }
-                $product->decrement('stock', $data['qty']);
+                $product->applyStockDelta(-$data['qty']);
             } elseif ($product->stock_mode === Product::STOCK_MODE_TOGGLE && ! $product->isMarkedAvailable()) {
                 abort(422, "{$product->name} আজ শেষ (sold out)।");
             }
@@ -234,7 +234,7 @@ class TableOrderController extends Controller
                 // number away from what the owner actually set)
                 $lockedProduct = Product::whereKey($tableOrderItem->product_id)->lockForUpdate()->first();
                 if ($lockedProduct?->isStockTracked()) {
-                    $lockedProduct->increment('stock', 1);
+                    $lockedProduct->applyStockDelta(1);
                 }
             }
 
@@ -284,7 +284,7 @@ class TableOrderController extends Controller
                 // see decrementItem()'s matching comment
                 $lockedProduct = Product::whereKey($tableOrderItem->product_id)->lockForUpdate()->first();
                 if ($lockedProduct?->isStockTracked()) {
-                    $lockedProduct->increment('stock', $tableOrderItem->qty);
+                    $lockedProduct->applyStockDelta($tableOrderItem->qty);
                 }
             }
             $tableOrderItem->delete();
@@ -341,7 +341,7 @@ class TableOrderController extends Controller
                     // see decrementItem()'s matching comment
                     $lockedProduct = Product::whereKey($item->product_id)->lockForUpdate()->first();
                     if ($lockedProduct?->isStockTracked()) {
-                        $lockedProduct->increment('stock', $item->qty);
+                        $lockedProduct->applyStockDelta($item->qty);
                     }
                 }
             }

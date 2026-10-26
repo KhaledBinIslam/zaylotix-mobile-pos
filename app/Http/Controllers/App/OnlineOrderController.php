@@ -375,10 +375,10 @@ class OnlineOrderController extends Controller
                 $serial = null;
 
                 if ($line['variant']) {
-                    ProductVariant::whereKey($line['variant']->id)->decrement('stock', $line['qty']);
-                    $line['product']->decrement('stock', $line['qty']);
+                    $line['variant']->applyStockDelta(-$line['qty']);
+                    $line['product']->applyStockDelta(-$line['qty']);
                 } else {
-                    $line['product']->decrement('stock', $line['qty']);
+                    $line['product']->applyStockDelta(-$line['qty']);
                     IngredientConsumption::apply($line['product'], $line['qty']);
 
                     $batchAllocations = ($batchTrackingOn && ! $line['product']->sold_by_weight)

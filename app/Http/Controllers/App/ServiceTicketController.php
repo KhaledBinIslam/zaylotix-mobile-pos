@@ -178,7 +178,7 @@ class ServiceTicketController extends Controller
                     if ($lockedProduct->stock < $data['qty']) {
                         abort(422, "পর্যাপ্ত স্টক নেই: {$lockedProduct->name} (আছে {$lockedProduct->stock})।");
                     }
-                    $lockedProduct->decrement('stock', $data['qty']);
+                    $lockedProduct->applyStockDelta(-$data['qty']);
                 }
                 $label = $label ?: $lockedProduct->name;
                 $cost = $cost ?? (float) $lockedProduct->cost;
@@ -213,7 +213,7 @@ class ServiceTicketController extends Controller
             if ($item->product_id) {
                 $lockedProduct = Product::whereKey($item->product_id)->lockForUpdate()->first();
                 if ($lockedProduct?->isStockTracked()) {
-                    $lockedProduct->increment('stock', $item->qty);
+                    $lockedProduct->applyStockDelta($item->qty);
                 }
             }
             $item->delete();
@@ -410,7 +410,7 @@ class ServiceTicketController extends Controller
                 if ($item->product_id) {
                     $lockedProduct = Product::whereKey($item->product_id)->lockForUpdate()->first();
                     if ($lockedProduct?->isStockTracked()) {
-                        $lockedProduct->increment('stock', $item->qty);
+                        $lockedProduct->applyStockDelta($item->qty);
                     }
                 }
             }

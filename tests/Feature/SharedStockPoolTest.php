@@ -1,0 +1,213 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Product;
+use App\Models\ProductVariant;
+use App\Models\Shop;
+use App\Support\CatalogSync;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesShops;
+use Tests\TestCase;
+
+/**
+ * Online Business module, Part 8 (optional, independent of online_business
+ * itself) — see docs/FIX_PLAN.md's Phase 38 design note. Every stock
+ * mutation in the app now routes through Product::applyStockDelta() /
+ * ProductVariant::applyStockDelta() instead of a raw increment()/decrement()/
+ * update(); this is a no-op for every shop that doesn't grant the opt-in
+ * shared_stock_pool feature to its MAIN shop (same convention as
+ * shared_catalog) — that's the regression guard the first test here is for.
+ *
+ * Every cross-shop assertion reads via Product::withoutGlobalScopes() —
+ * Product is BelongsToTenant, so a plain query only ever sees whichever shop
+ * Tenancy::id() currently resolves to.
+ */
+class SharedStockPoolTest extends TestCase
+{
+    use RefreshDatabase, CreatesShops;
+
+    private function createBranch(Shop $main): Shop
+    {
+        [$branch] = $this->createShopWithOwner(['parent_shop_id' => $main->id]);
+
+        return $branch;
+    }
+
+    /** Links $branch's copy of $mainProduct and forces its stock to a chosen starting value (CatalogSync always starts a freshly-linked branch copy at 0). */
+    private function linkBranch(Shop $main, Shop $branch, Product $mainProduct, float $startingStock): Product
+    {
+        CatalogSync::syncProductToBranches($main, $mainProduct);
+        $branchProduct = Product::withoutGlobalScopes()->where('shop_id', $branch->id)->where('master_product_id', $mainProduct->id)->first();
+        Product::withoutGlobalScopes()->whereKey($branchProduct->id)->update(['stock' => $startingStock]);
+
+        return $branchProduct->refresh();
+    }
+
+    private function sell(Shop $shop, $owner, Product $product, float $qty): void
+    {
+        $response = $this->actingAs($owner, 'web')->postJson('/app/pos/checkout', [
+            'items' => [['product_id' => $product->id, 'qty' => $qty]],
+            'payments' => [['method' => 'cash', 'amount' => (float) $product->price * $qty]],
+        ]);
+        $response->assertOk();
+    }
+
+    public function test_without_the_feature_every_branch_keeps_its_own_independent_stock(): void
+    {
+        [$main] = $this->createShopWithOwner(); // feature not granted
+        $branchA = $this->createBranch($main);
+        $branchB = $this->createBranch($main);
+        $branchAOwner = $branchA->users()->first();
+
+        $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Rice', 'cost' => 50, 'price' => 100, 'stock' => 100]);
+        $branchAProduct = $this->linkBranch($main, $branchA, $mainProduct, 50);
+        $this->linkBranch($main, $branchB, $mainProduct, 30);
+
+        $this->sell($branchA, $branchAOwner, $branchAProduct, 5);
+
+        $this->assertEquals(45, (float) $branchAProduct->refresh()->stock);
+        $this->assertEquals(30, (float) Product::withoutGlobalScopes()->where('shop_id', $branchB->id)->first()->stock);
+        $this->assertEquals(100, (float) $mainProduct->refresh()->stock);
+    }
+
+    public function test_granting_the_feature_to_the_main_shop_pools_stock_across_every_branch(): void
+    {
+        [$main] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'shared_stock_pool');
+        $branchA = $this->createBranch($main);
+        $branchB = $this->createBranch($main);
+        $branchAOwner = $branchA->users()->first();
+
+        $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Rice', 'cost' => 50, 'price' => 100, 'stock' => 100]);
+        $branchAProduct = $this->linkBranch($main, $branchA, $mainProduct, 100);
+        $branchBProduct = $this->linkBranch($main, $branchB, $mainProduct, 100);
+
+        $this->sell($branchA, $branchAOwner, $branchAProduct, 5);
+
+        $this->assertEquals(95, (float) $branchAProduct->refresh()->stock);
+        $this->assertEquals(95, (float) $branchBProduct->refresh()->stock);
+        $this->assertEquals(95, (float) $mainProduct->refresh()->stock);
+    }
+
+    public function test_granting_the_feature_to_a_branch_instead_of_the_main_shop_does_nothing(): void
+    {
+        [$main] = $this->createShopWithOwner();
+        $branchA = $this->createBranch($main);
+        $branchB = $this->createBranch($main);
+        $this->grantFeature($branchA, 'shared_stock_pool'); // granted to the wrong shop on purpose
+        $branchAOwner = $branchA->users()->first();
+
+        $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Rice', 'cost' => 50, 'price' => 100, 'stock' => 100]);
+        $branchAProduct = $this->linkBranch($main, $branchA, $mainProduct, 100);
+        $branchBProduct = $this->linkBranch($main, $branchB, $mainProduct, 100);
+
+        $this->sell($branchA, $branchAOwner, $branchAProduct, 5);
+
+        $this->assertEquals(95, (float) $branchAProduct->refresh()->stock);
+        $this->assertEquals(100, (float) $branchBProduct->refresh()->stock);
+        $this->assertEquals(100, (float) $mainProduct->refresh()->stock);
+    }
+
+    public function test_stock_in_at_one_branch_raises_the_pool_everywhere(): void
+    {
+        [$main] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'shared_stock_pool');
+        $branchA = $this->createBranch($main);
+        $branchB = $this->createBranch($main);
+        $branchBOwner = $branchB->users()->first();
+
+        $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Rice', 'cost' => 50, 'price' => 100, 'stock' => 100]);
+        $branchAProduct = $this->linkBranch($main, $branchA, $mainProduct, 100);
+        $branchBProduct = $this->linkBranch($main, $branchB, $mainProduct, 100);
+
+        $response = $this->actingAs($branchBOwner, 'web')->post(route('app.products.stockIn', $branchBProduct->id), ['qty' => 20]);
+        $response->assertSessionHasNoErrors();
+
+        $this->assertEquals(120, (float) $branchBProduct->refresh()->stock);
+        $this->assertEquals(120, (float) $branchAProduct->refresh()->stock);
+        $this->assertEquals(120, (float) $mainProduct->refresh()->stock);
+    }
+
+    public function test_variant_stock_pools_across_branches_matched_by_barcode(): void
+    {
+        [$main] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'shared_stock_pool');
+        $branch = $this->createBranch($main);
+        $branchOwner = $branch->users()->first();
+
+        $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Shirt', 'cost' => 200, 'price' => 400, 'stock' => 0]);
+        $mainVariant = ProductVariant::create(['shop_id' => $main->id, 'product_id' => $mainProduct->id, 'size' => 'L', 'barcode' => 'SHIRT-L', 'stock' => 20]);
+
+        // real-time syncProductToBranches() is deliberately product-only
+        // (see CatalogSync's own docblock) — a variant needs the full sync
+        CatalogSync::syncToBranch($main, $branch);
+
+        $branchProduct = Product::withoutGlobalScopes()->where('shop_id', $branch->id)->where('master_product_id', $mainProduct->id)->first();
+        $branchVariant = ProductVariant::withoutGlobalScopes()->where('shop_id', $branch->id)->where('product_id', $branchProduct->id)->where('barcode', 'SHIRT-L')->first();
+        $this->assertNotNull($branchVariant);
+
+        // force both sides to the same pooled starting value, same as every other test here
+        Product::withoutGlobalScopes()->whereKey($mainProduct->id)->update(['stock' => 20]);
+        Product::withoutGlobalScopes()->whereKey($branchProduct->id)->update(['stock' => 20]);
+        ProductVariant::withoutGlobalScopes()->whereKey($branchVariant->id)->update(['stock' => 20]);
+
+        $response = $this->actingAs($branchOwner, 'web')->postJson('/app/pos/checkout', [
+            'items' => [['product_id' => $branchProduct->id, 'product_variant_id' => $branchVariant->id, 'qty' => 3]],
+            'payments' => [['method' => 'cash', 'amount' => 400 * 3]],
+        ]);
+        $response->assertOk();
+
+        $this->assertEquals(17, (float) $branchVariant->refresh()->stock);
+        $this->assertEquals(17, (float) $mainVariant->refresh()->stock);
+        $this->assertEquals(17, (float) $branchProduct->refresh()->stock);
+        $this->assertEquals(17, (float) $mainProduct->refresh()->stock);
+    }
+
+    public function test_transfer_between_two_pooled_siblings_nets_to_zero(): void
+    {
+        [$main] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'shared_stock_pool');
+        $branchA = $this->createBranch($main);
+        $branchB = $this->createBranch($main);
+        $branchAOwner = $branchA->users()->first();
+
+        $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Rice', 'cost' => 50, 'price' => 100, 'stock' => 100]);
+        $branchAProduct = $this->linkBranch($main, $branchA, $mainProduct, 100);
+        $this->linkBranch($main, $branchB, $mainProduct, 100);
+
+        // product_id is validated against the ACTING shop (the transfer's
+        // source) — see StockTransferController::store()'s own validation
+        $response = $this->actingAs($branchAOwner, 'web')->post(route('app.stockTransfers.store'), [
+            'to_shop_id' => $branchB->id,
+            'product_id' => $branchAProduct->id,
+            'lines' => [['qty' => 10]],
+        ]);
+        $response->assertSessionHasNoErrors();
+
+        // the "destination" row (auto-created or matched in branch B) now
+        // shares the exact same pool as the source — moving shared stock
+        // between two branches that already share it is correctly a no-op
+        $this->assertEquals(100, (float) $mainProduct->refresh()->stock);
+        $this->assertEquals(100, (float) $branchAProduct->refresh()->stock);
+    }
+
+    public function test_a_branchs_own_unlinked_product_is_never_pooled_even_with_the_feature_on(): void
+    {
+        [$main] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'shared_stock_pool');
+        $branchA = $this->createBranch($main);
+        $branchB = $this->createBranch($main);
+        $branchAOwner = $branchA->users()->first();
+
+        // created locally on branch A, never synced from the main shop —
+        // no master_product_id, so never a pool member
+        $branchAProduct = Product::create(['shop_id' => $branchA->id, 'name' => 'Local snack', 'cost' => 10, 'price' => 20, 'stock' => 50]);
+        $siblingProduct = Product::create(['shop_id' => $branchB->id, 'name' => 'Unrelated', 'cost' => 10, 'price' => 20, 'stock' => 50]);
+
+        $this->sell($branchA, $branchAOwner, $branchAProduct, 5);
+
+        $this->assertEquals(45, (float) $branchAProduct->refresh()->stock);
+        $this->assertEquals(50, (float) $siblingProduct->refresh()->stock);
+    }
+}

@@ -157,8 +157,10 @@ class PurchaseOrderController extends Controller
                 if ($item->product_variant_id) {
                     $variant = ProductVariant::whereKey($item->product_variant_id)->lockForUpdate()->first();
                     if ($variant) {
-                        $variant->update(['stock' => $variant->stock + $qty, 'cost' => $item->cost]);
-                        Product::whereKey($item->product_id)->increment('stock', $qty);
+                        $variant->applyStockDelta($qty);
+                        $variant->update(['cost' => $item->cost]);
+                        $product = Product::whereKey($item->product_id)->lockForUpdate()->first();
+                        $product?->applyStockDelta($qty);
                     }
                 } elseif ($item->product_id) {
                     $product = Product::whereKey($item->product_id)->lockForUpdate()->first();

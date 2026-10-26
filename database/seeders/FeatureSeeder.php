@@ -108,6 +108,12 @@ class FeatureSeeder extends Seeder
 
             // online — selling the same stock through several online shops/pages
             ['key' => 'online_business', 'label_bn' => 'অনলাইন বিজনেস (চ্যানেল, কুরিয়ার, মুনাফা)', 'label_en' => 'Online business (channels, couriers, profit)', 'category' => 'online', 'description' => 'Sell the same stock through several online channels (Facebook, website, Daraz, WhatsApp, catalog), track courier/COD, and see a channel-wise profit breakdown.'],
+            // Online Business module, Part 8 (optional, independent of
+            // online_business itself) — grant to a MAIN shop only, same
+            // convention as shared_catalog/transfer_confirmation. A branch
+            // keeps its own fully independent stock unless its main shop
+            // turns this on; see docs/FIX_PLAN.md's Phase 38 design note.
+            ['key' => 'shared_stock_pool', 'label_bn' => 'শেয়ার্ড স্টক পুল (ব্রাঞ্চ)', 'label_en' => 'Shared stock pool (branches)', 'category' => 'inventory', 'description' => "একটা প্রোডাক্টের স্টক সব ব্রাঞ্চ মিলিয়ে একটাই সংখ্যা হিসেবে থাকবে — এক ব্রাঞ্চে বিক্রি/স্টক-ইন হলে সাথে সাথে সব ব্রাঞ্চে আপডেট হয়ে যাবে। প্রতিটা ব্রাঞ্চের আলাদা স্টক রাখতে চাইলে এই ফিচার বন্ধ রাখুন (ডিফল্ট)।"],
         ];
 
         foreach ($features as $f) {

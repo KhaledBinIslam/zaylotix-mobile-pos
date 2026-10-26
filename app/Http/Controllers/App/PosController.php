@@ -845,10 +845,10 @@ class PosController extends Controller
                     // variants' stock — both move by the same amount so
                     // that invariant holds for every other report/alert
                     // that reads products.stock without knowing variants exist.
-                    ProductVariant::whereKey($line['variant']->id)->decrement('stock', $line['qty']);
-                    $line['product']->decrement('stock', $line['qty']);
+                    $line['variant']->applyStockDelta(-$line['qty']);
+                    $line['product']->applyStockDelta(-$line['qty']);
                 } else {
-                    $line['product']->decrement('stock', $line['base_qty']);
+                    $line['product']->applyStockDelta(-$line['base_qty']);
 
                     // best-effort ingredient consumption for a recipe-linked
                     // product (e.g. a restaurant dish) — see IngredientConsumption

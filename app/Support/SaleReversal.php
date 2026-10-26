@@ -28,12 +28,14 @@ class SaleReversal
 
         foreach ($sale->items as $item) {
             if ($item->product_id) {
-                Product::whereKey($item->product_id)->lockForUpdate()->increment('stock', $item->qty * $item->unit_factor);
+                $product = Product::whereKey($item->product_id)->lockForUpdate()->first();
+                $product?->applyStockDelta($item->qty * $item->unit_factor);
 
                 if ($item->product_variant_id) {
                     // paired with the paired decrement in PosController::checkout
                     // — keeps products.stock === sum(variants.stock) intact
-                    ProductVariant::whereKey($item->product_variant_id)->lockForUpdate()->increment('stock', $item->qty);
+                    $variant = ProductVariant::whereKey($item->product_variant_id)->lockForUpdate()->first();
+                    $variant?->applyStockDelta($item->qty);
                 } else {
                     // puts each unit back into the exact batch checkout took
                     // it from (see PosController::checkout + BatchStock::deduct)

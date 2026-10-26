@@ -275,7 +275,20 @@ class ProductController extends Controller
             $fields = array_intersect_key($fields, array_flip(['stock', 'reorder_point', 'discount_price']));
         }
 
-        $product->update($fields);
+        // Routed through applyStockDelta(), not a plain column overwrite —
+        // see docs/FIX_PLAN.md's Phase 38 design note (shared_stock_pool).
+        // Harmless no-op change in behavior for every shop not using that
+        // feature (same net SQL, just expressed as a delta); for a pooled
+        // branch, editing the number on THIS form must still move the one
+        // shared pool value, not silently desync this one row from it.
+        if (array_key_exists('stock', $fields)) {
+            $newStock = $fields['stock'];
+            unset($fields['stock']);
+            $product->update($fields);
+            $product->applyStockDelta((float) $newStock - (float) $product->stock);
+        } else {
+            $product->update($fields);
+        }
 
         // a branch's own copy never owns its tiers — same reasoning as
         // wholesale_price above, enforced here too since price_tiers isn't

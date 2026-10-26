@@ -80,7 +80,7 @@ class ProductVariantController extends Controller
             if ($isFirstVariant) {
                 $this->reconcilePreExistingStock($lockedProduct, (float) $data['stock'], (bool) ($data['write_off_rest'] ?? false));
             } else {
-                Product::whereKey($lockedProduct->id)->increment('stock', $data['stock']);
+                $lockedProduct->applyStockDelta($data['stock']);
             }
 
             Activity::log('product.variant.create', "'{$product->name}'-এ নতুন ভ্যারিয়েন্ট ({$variant->label()}) যোগ করা হয়েছে।", $variant);
@@ -151,7 +151,7 @@ class ProductVariantController extends Controller
             if ($isFirstVariant) {
                 $this->reconcilePreExistingStock($lockedProduct, (float) $totalStock, (bool) ($data['write_off_rest'] ?? false));
             } else {
-                Product::whereKey($lockedProduct->id)->increment('stock', $totalStock);
+                $lockedProduct->applyStockDelta($totalStock);
             }
 
             Activity::log('product.variant.bulkCreate', "'{$product->name}'-এ গ্রিড থেকে ".count($toCreate).'টা নতুন ভ্যারিয়েন্ট যোগ করা হয়েছে।', $product);
@@ -184,7 +184,7 @@ class ProductVariantController extends Controller
             // nothing to reconcile — this product never had unallocated
             // stock, so the new variant(s) just add normally, exactly as
             // every later (non-first) variant addition already does
-            Product::whereKey($lockedProduct->id)->increment('stock', $allocatedStock);
+            $lockedProduct->applyStockDelta($allocatedStock);
 
             return;
         }
@@ -212,7 +212,7 @@ class ProductVariantController extends Controller
                 'date' => now()->toDateString(),
             ]);
 
-            Product::whereKey($lockedProduct->id)->decrement('stock', $shortfall);
+            $lockedProduct->applyStockDelta(-$shortfall);
 
             Activity::log('product.variant.writeOffPreExistingStock', "'{$lockedProduct->name}'-এর আগের unallocated স্টক থেকে {$shortfall} ইউনিট নষ্ট হিসেবে রেকর্ড করা হয়েছে (ভ্যারিয়েন্ট যোগ করার সময়)।", $lockedProduct, ['shortfall' => $shortfall]);
         }
@@ -265,12 +265,11 @@ class ProductVariantController extends Controller
                 abort(422, 'এই ভ্যারিয়েন্টটি ইতিমধ্যে মুছে ফেলা হয়েছে।');
             }
 
-            $locked->update([
-                'stock' => $locked->stock + $data['qty'],
-                'cost' => $data['cost'] ?? $locked->cost,
-            ]);
+            $locked->applyStockDelta($data['qty']);
+            $locked->update(['cost' => $data['cost'] ?? $locked->cost]);
 
-            Product::whereKey($locked->product_id)->increment('stock', $data['qty']);
+            $product = Product::whereKey($locked->product_id)->lockForUpdate()->first();
+            $product?->applyStockDelta($data['qty']);
 
             Activity::log('product.variant.stockIn', "ভ্যারিয়েন্ট '{$locked->label()}'-এ {$data['qty']} স্টক যোগ করা হয়েছে।", $locked);
         });
@@ -293,7 +292,8 @@ class ProductVariantController extends Controller
 
             // keep products.stock's "sum of variants" invariant correct —
             // this variant's remaining stock leaves with it
-            Product::whereKey($locked->product_id)->decrement('stock', $locked->stock);
+            $product = Product::whereKey($locked->product_id)->lockForUpdate()->first();
+            $product?->applyStockDelta(-$locked->stock);
 
             $locked->delete(); // soft delete — keeps historical sale_items intact
         });

@@ -63,7 +63,7 @@ class SupplierReturnController extends Controller
                 ]);
             }
 
-            $product->decrement('stock', $data['qty']);
+            $product->applyStockDelta(-$data['qty']);
 
             SupplierReturn::create([
                 'supplier_id' => $data['supplier_id'] ?? null,

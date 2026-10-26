@@ -198,8 +198,8 @@ class StockTransferController extends Controller
                 }
 
                 $movedQty = $serials->count();
-                $sourceProduct->decrement('stock', $movedQty);
-                $destProduct->increment('stock', $movedQty);
+                $sourceProduct->applyStockDelta(-$movedQty);
+                $destProduct->applyStockDelta($movedQty);
 
                 StockTransfer::create([
                     'shop_id' => $sourceShop->id,
@@ -258,8 +258,8 @@ class StockTransferController extends Controller
                         throw ValidationException::withMessages(['lines' => "পর্যাপ্ত স্টক নেই: {$sourceProduct->name} ({$sourceVariant->label()}) — আছে {$sourceVariant->stock}।"]);
                     }
 
-                    $sourceVariant->decrement('stock', $qty);
-                    $sourceProduct->decrement('stock', $qty);
+                    $sourceVariant->applyStockDelta(-$qty);
+                    $sourceProduct->applyStockDelta(-$qty);
 
                     // same matching precedence as the plain-product match
                     // above — barcode first (if the variant has one), else
@@ -279,8 +279,8 @@ class StockTransferController extends Controller
                         ]);
                     }
                     if (! $deferDestination) {
-                        $destVariant->increment('stock', $qty);
-                        $destProduct->increment('stock', $qty);
+                        $destVariant->applyStockDelta($qty);
+                        $destProduct->applyStockDelta($qty);
                     }
 
                     $lineSummaries[] = [
@@ -291,9 +291,9 @@ class StockTransferController extends Controller
                     if ($sourceProduct->stock < $qty) {
                         throw ValidationException::withMessages(['lines' => "পর্যাপ্ত স্টক নেই: {$sourceProduct->name} (আছে {$sourceProduct->stock})।"]);
                     }
-                    $sourceProduct->decrement('stock', $qty);
+                    $sourceProduct->applyStockDelta(-$qty);
                     if (! $deferDestination) {
-                        $destProduct->increment('stock', $qty);
+                        $destProduct->applyStockDelta($qty);
                     }
                     if ($isBatchTracked) {
                         BatchStock::transferBetweenShops($sourceProduct, $destProduct, $qty);
@@ -360,10 +360,10 @@ class StockTransferController extends Controller
             // than whoever is acting here).
             if ($locked->to_product_variant_id) {
                 $variant = ProductVariant::withoutGlobalScopes()->whereKey($locked->to_product_variant_id)->lockForUpdate()->first();
-                $variant?->increment('stock', $locked->qty);
+                $variant?->applyStockDelta($locked->qty);
             }
             $product = Product::withoutGlobalScopes()->whereKey($locked->to_product_id)->lockForUpdate()->first();
-            $product?->increment('stock', $locked->qty);
+            $product?->applyStockDelta($locked->qty);
 
             $locked->update(['status' => 'completed']);
 
@@ -387,10 +387,10 @@ class StockTransferController extends Controller
 
             if ($locked->from_product_variant_id) {
                 $variant = ProductVariant::withoutGlobalScopes()->whereKey($locked->from_product_variant_id)->lockForUpdate()->first();
-                $variant?->increment('stock', $locked->qty);
+                $variant?->applyStockDelta($locked->qty);
             }
             $product = Product::withoutGlobalScopes()->whereKey($locked->from_product_id)->lockForUpdate()->first();
-            $product?->increment('stock', $locked->qty);
+            $product?->applyStockDelta($locked->qty);
 
             $locked->update(['status' => 'rejected']);
 

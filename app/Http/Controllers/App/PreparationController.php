@@ -71,7 +71,7 @@ class PreparationController extends Controller
                 ]);
             }
 
-            $product->increment('stock', $data['qty']);
+            $product->applyStockDelta($data['qty']);
 
             Activity::log('preparation.record', "{$product->name} — {$data['qty']} ইউনিট প্রস্তুত করা হয়েছে।", $preparation);
         });

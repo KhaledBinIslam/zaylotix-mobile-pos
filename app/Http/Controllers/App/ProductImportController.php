@@ -134,7 +134,18 @@ class ProductImportController extends Controller
                     if ($existing->variants()->exists()) {
                         unset($fields['stock']);
                     }
-                    $existing->update($fields);
+
+                    // Routed through applyStockDelta(), not a plain column
+                    // overwrite — same reasoning as ProductController::update()
+                    // (see docs/FIX_PLAN.md's Phase 38 design note).
+                    if (array_key_exists('stock', $fields)) {
+                        $newStock = $fields['stock'];
+                        unset($fields['stock']);
+                        $existing->update($fields);
+                        $existing->applyStockDelta((float) $newStock - (float) $existing->stock);
+                    } else {
+                        $existing->update($fields);
+                    }
                     $updated++;
                 } else {
                     Product::create($fields + ['emoji' => '📦']);

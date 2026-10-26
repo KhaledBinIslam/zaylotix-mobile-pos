@@ -2038,6 +2038,98 @@ feature flag — one stock shared across several branches) remains
 explicitly optional per the spec and has not been started; the 7 parts
 above are the complete "Online Business" module as scoped.
 
+## Phase 38 — Online Business module, Part 8: shared stock pool (optional)
+
+The last, explicitly-optional part of the spec: `shared_stock_pool`, its
+own opt-in feature flag independent of `online_business` itself, letting
+several BRANCHES of one chain share ONE physical stock count per product
+instead of each branch counting independently — built on the existing
+`master_product_id` link from Phase 4's shared-catalog work (CatalogSync).
+Granted to a MAIN shop only (same convention as `shared_catalog`/
+`transfer_confirmation`) — off by default, so every existing shop keeps
+today's exact independent-stock behavior unless its main shop turns this
+on. No new table, no new migration — just the one new `Feature` row (see
+`FeatureSeeder`) and new model methods.
+
+**The real engineering problem wasn't the feature flag — it was that
+~20 existing files mutate `products.stock`/`product_variants.stock`
+across three different call patterns** (instance `increment()`/
+`decrement()`, static query-builder `increment()`/`decrement()`, and a
+locked-read-then-absolute-`update()`), and "share one stock number across
+branches" has to apply correctly no matter which of those a given call
+site happens to use — sale, return, damage, stock-in, purchase, PO
+receiving, stock count, branch transfer, service tickets, table orders,
+preparation. Centralizing at the Eloquent query-builder level (overriding
+`increment()`/`decrement()`) would have missed every absolute-`update()`
+site; a DB trigger would have worked but only on MySQL (this app's tests
+run on SQLite — a trigger-based fix would silently diverge between test
+and production, the one thing more dangerous than not testing it at all)
+and introduces real deadlock risk with no application-level control over
+lock order.
+
+**The actual fix: one new method, `Product::applyStockDelta(float
+$delta)` / `ProductVariant::applyStockDelta(float $delta)`**, and every
+one of those ~20 call sites now expresses its change as a delta through
+it instead of a raw mutation — this was mechanical and safe precisely
+because every "absolute update" site already computed `old + delta`
+or `counted - old` internally; nothing had to guess at intent.
+- **Pool OFF** (every pre-existing shop, forever, unless its main shop
+  explicitly turns this on): identical SQL to before — a plain
+  `increment('stock', $delta)` on that one row. Zero behavior change,
+  confirmed by the full pre-existing suite staying green with no edits.
+- **Pool ON**: `Product::stockPoolMemberIds()` resolves every row that
+  shares this one physical count (the main shop's product + every linked
+  branch copy, crossing the normal per-shop tenant boundary on purpose —
+  the only other place allowed to do that for products is CatalogSync
+  itself) — then `applyStockDelta()` locks every member row together, in
+  a FIXED ascending-id order, and writes the one new value to all of them
+  atomically. The ascending-id order is what makes two concurrent sales in
+  two DIFFERENT branches of the same pooled chain safe from deadlocking
+  each other over it — see the method's own docblock. A branch-to-branch
+  transfer between two pooled siblings nets to zero (decrement then
+  increment the same shared number) with no special-casing needed —
+  moving shared stock "between" two branches that already share it is
+  correctly a no-op (tested).
+- **Variants** have no master-link column of their own, so sibling
+  variants are matched across the pool the same way CatalogSync already
+  matches them for catalog sync (barcode first, else size+color) —
+  `ProductVariant::applyStockDelta()` mirrors the product-level method
+  exactly.
+- Deliberately does NOT wrap its own `DB::transaction()` — every real
+  caller already runs inside one (this codebase's own established
+  `lockForUpdate()` convention); a genuine deadlock (two different
+  shops' checkouts, each serialized today only by its OWN shop-row lock —
+  see `PosController::performCheckout` — racing to lock the same pool at
+  the exact same instant) surfaces as a normal DB exception and fails
+  that one request cleanly, same as any other unexpected DB error already
+  does today. Accepted, documented trade-off — not solved with an
+  internal retry, since a deadlock rolls back the WHOLE surrounding
+  transaction (not just a savepoint), so retrying only the inner pool-lock
+  step while already inside, say, a checkout's outer transaction would be
+  unsound.
+- **Explicitly excluded from pooling, on purpose**: ingredients/recipe
+  stock (a different model, different inventory type entirely — spec
+  never mentioned it); batch/serial unit records (pooling the two
+  branches' COUNT, never which specific physical batch/IMEI a unit came
+  from); the 'toggle'-mode availability flag (a per-branch "today
+  available" switch, not a real quantity — pooling a boolean across
+  branches has no sensible meaning); and `variants:set-stock`'s one-time
+  CLI reconciliation tool (deliberately keeps `products.stock` untouched
+  by design — redistributing one branch's own variant breakdown to match
+  that same branch's own total, never meant to touch another branch at
+  all).
+
+Tests: `tests/Feature/SharedStockPoolTest.php` (7) — covers the pool-off
+regression guard, pooling across 2 branches, the main-shop-only gating,
+stock-in, variant pooling by barcode, the transfer-nets-to-zero case, and
+an unlinked branch product never being pooled. Full suite re-run green
+(1087 passing).
+
+**Module now fully complete**: all 8 parts of the Online Business spec
+are shipped — channels+pricing, online orders on shared stock, couriers/
+COD, returns/damage/loss, ads/overhead allocation, the profit engine,
+safety nets/polish, and this optional shared stock pool.
+
 ## Definition-of-done checklist (updated after every phase)
 
 - [x] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test --all`, Phase 0.6) — re-verified 2026-10-20, all 8 types OK

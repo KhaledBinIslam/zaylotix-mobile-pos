@@ -61,8 +61,8 @@ class StockCountController extends Controller
 
                     $delta = $counted - (float) $variant->stock;
                     $changes[] = ['product_id' => $product->id, 'product_variant_id' => $variant->id, 'from' => (float) $variant->stock, 'to' => $counted];
-                    $variant->update(['stock' => $counted]);
-                    $product->increment('stock', $delta);
+                    $variant->applyStockDelta($delta);
+                    $product->applyStockDelta($delta);
 
                     continue;
                 }
@@ -71,8 +71,9 @@ class StockCountController extends Controller
                     continue;
                 }
 
+                $delta = $counted - (float) $product->stock;
                 $changes[] = ['product_id' => $product->id, 'from' => (float) $product->stock, 'to' => $counted];
-                $product->update(['stock' => $counted]);
+                $product->applyStockDelta($delta);
             }
 
             StockCount::create([

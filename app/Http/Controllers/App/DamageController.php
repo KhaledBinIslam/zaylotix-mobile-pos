@@ -67,8 +67,8 @@ class DamageController extends Controller
                 }
 
                 $loss = ((float) ($variant->cost ?? $product->cost)) * (float) $data['qty'];
-                $variant->decrement('stock', $data['qty']);
-                $product->decrement('stock', $data['qty']);
+                $variant->applyStockDelta(-$data['qty']);
+                $product->applyStockDelta(-$data['qty']);
 
                 Damage::create([
                     'product_id' => $product->id,
@@ -114,7 +114,7 @@ class DamageController extends Controller
             }
 
             $loss = $product->cost * $data['qty'];
-            $product->decrement('stock', $data['qty']);
+            $product->applyStockDelta(-$data['qty']);
             $batch?->decrement('qty', $data['qty']);
 
             Damage::create([

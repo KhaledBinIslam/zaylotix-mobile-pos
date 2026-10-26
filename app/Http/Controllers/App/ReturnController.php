@@ -155,8 +155,8 @@ class ReturnController extends Controller
                 }
             }
 
-            $variant?->increment('stock', $data['qty']);
-            $product->increment('stock', $data['qty']);
+            $variant?->applyStockDelta($data['qty']);
+            $product->applyStockDelta($data['qty']);
             $batch?->increment('qty', $data['qty']);
 
             SalesReturn::create([
@@ -409,10 +409,10 @@ class ReturnController extends Controller
 
                 if ($condition === 'resalable') {
                     if ($targetVariant) {
-                        $targetVariant->increment('stock', $returnQty);
-                        $targetProduct->increment('stock', $returnQty);
+                        $targetVariant->applyStockDelta($returnQty);
+                        $targetProduct->applyStockDelta($returnQty);
                     } else {
-                        $targetProduct->increment('stock', $returnQty * (float) $item->unit_factor);
+                        $targetProduct->applyStockDelta($returnQty * (float) $item->unit_factor);
 
                         if (! $isCrossBranch) {
                             // Batch stock restores proportionally for a
@@ -726,8 +726,8 @@ class ReturnController extends Controller
                 if ($variant->stock < $qty) {
                     abort(422, "পর্যাপ্ত স্টক নেই: {$product->name} ({$variantLabel})।");
                 }
-                $variant->decrement('stock', $qty);
-                $product->decrement('stock', $qty);
+                $variant->applyStockDelta(-$qty);
+                $product->applyStockDelta(-$qty);
             } else {
                 if ($product->variants_count > 0) {
                     abort(422, "{$product->name}-এর জন্য একটা সাইজ/রং বাছাই করুন।");
@@ -735,7 +735,7 @@ class ReturnController extends Controller
                 if ($product->stock < $qty) {
                     abort(422, "পর্যাপ্ত স্টক নেই: {$product->name}।");
                 }
-                $product->decrement('stock', $qty);
+                $product->applyStockDelta(-$qty);
             }
 
             $lineTotal = $price * $qty;

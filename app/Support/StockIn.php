@@ -30,9 +30,7 @@ class StockIn
             $newCost = ($existingValue + $incomingValue) / ($lockedProduct->stock + $qty);
         }
 
-        $lockedProduct->update([
-            'stock' => $lockedProduct->stock + $qty,
-            'cost' => round($newCost, 2),
-        ]);
+        $lockedProduct->applyStockDelta($qty);
+        $lockedProduct->update(['cost' => round($newCost, 2)]);
     }
 }

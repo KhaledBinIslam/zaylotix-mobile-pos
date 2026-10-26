@@ -6,6 +6,7 @@ use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 
 class Product extends Model
@@ -155,6 +156,93 @@ class Product extends Model
         return $this->stock_mode === self::STOCK_MODE_TRACKED
             && (float) $this->stock > 0
             && (float) $this->stock <= ($this->sold_by_weight ? 1 : 6);
+    }
+
+    /**
+     * Every Product row that shares ONE physical stock count with this one
+     * — just [$this->id] unless the opt-in `shared_stock_pool` feature is
+     * granted to the chain's MAIN shop (same convention as `shared_catalog`
+     * — see docs/FIX_PLAN.md's Phase 38 design note) AND this row actually
+     * participates in a master/branch catalog link (CatalogSync). Crosses
+     * the normal per-shop tenant boundary on purpose — the one other place
+     * allowed to do that for products is CatalogSync itself.
+     */
+    public function stockPoolMemberIds(): Collection
+    {
+        $masterId = $this->master_product_id;
+
+        if (! $masterId) {
+            // Not a branch copy — only a pool "master" if it actually has
+            // branch copies linked to it; a main shop's product with no
+            // branches synced yet is never pooled.
+            $hasBranchCopies = static::withoutGlobalScopes()->where('master_product_id', $this->id)->exists();
+            if (! $hasBranchCopies) {
+                return collect([$this->id]);
+            }
+            $masterId = $this->id;
+        }
+
+        $master = $masterId === $this->id ? $this : static::withoutGlobalScopes()->find($masterId);
+        if (! $master || ! $master->shop?->hasFeature('shared_stock_pool')) {
+            return collect([$this->id]);
+        }
+
+        return collect([$masterId])
+            ->merge(static::withoutGlobalScopes()->where('master_product_id', $masterId)->pluck('id'))
+            ->unique()
+            ->values();
+    }
+
+    /**
+     * The one safe way to change this product's stock by a (positive or
+     * negative) amount — every stock-affecting operation in the app (sale,
+     * return, damage, stock-in, purchase, stock count, branch transfer)
+     * goes through this instead of a raw increment()/decrement()/update().
+     *
+     * Pool OFF (the default, and every pre-existing shop's exact behavior
+     * today): identical to a plain `increment('stock', $delta)` on this one
+     * row — same SQL, same performance, zero behavior change.
+     *
+     * Pool ON: every member row (the main shop's product + every linked
+     * branch copy) is locked together, in a fixed ascending-id order, so
+     * two concurrent sales in two different branches of the same chain can
+     * never deadlock each other over this pool — then all member rows are
+     * written to the same new value atomically, so the shared number can
+     * never drift and a concurrent-write lost update is impossible. A
+     * transfer between two branches that are BOTH in the same pool nets to
+     * zero (decrement then increment the same shared number) with no
+     * special-casing needed — moving shared stock "between" two branches
+     * that already share it is correctly a no-op.
+     *
+     * Deliberately does NOT open its own DB::transaction() — every real
+     * caller (checkout, return, stock-in, stock count, transfer, ...)
+     * already runs inside one, same established convention as every other
+     * lockForUpdate() in this codebase; locking here without that outer
+     * transaction would acquire and immediately release the lock, which
+     * is pointless. A genuine deadlock (two different shops' checkouts,
+     * each serialized today only by its own shop-row lock — see
+     * PosController::performCheckout — racing to lock the same pool at
+     * the same instant) surfaces as a normal DB exception and fails that
+     * one request cleanly, exactly like any other unexpected DB error
+     * already does today; nothing partially commits.
+     */
+    public function applyStockDelta(float $delta): float
+    {
+        $memberIds = $this->stockPoolMemberIds();
+
+        if ($memberIds->count() <= 1) {
+            static::withoutGlobalScopes()->whereKey($this->id)->increment('stock', $delta);
+            $this->stock = round((float) $this->stock + $delta, 3);
+
+            return (float) $this->stock;
+        }
+
+        $locked = static::withoutGlobalScopes()->whereIn('id', $memberIds)->orderBy('id')->lockForUpdate()->get();
+        $newStock = round((float) $locked->first()->stock + $delta, 3);
+        static::withoutGlobalScopes()->whereIn('id', $memberIds)->update(['stock' => $newStock]);
+        $this->stock = $newStock;
+
+        return $newStock;
     }
 
     public function isOut(): bool

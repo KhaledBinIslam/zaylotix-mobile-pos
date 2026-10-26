@@ -207,11 +207,9 @@ class PurchaseController extends Controller
                     abort(422, "{$lockedProduct->name} ({$lockedVariant->label()})-এর পরিমাণ পূর্ণ সংখ্যা হতে হবে।");
                 }
 
-                $lockedVariant->update([
-                    'stock' => $lockedVariant->stock + $data['qty'],
-                    'cost' => $data['cost'] ?? $lockedVariant->cost,
-                ]);
-                Product::whereKey($lockedProduct->id)->increment('stock', $data['qty']);
+                $lockedVariant->applyStockDelta($data['qty']);
+                $lockedVariant->update(['cost' => $data['cost'] ?? $lockedVariant->cost]);
+                $lockedProduct->applyStockDelta($data['qty']);
 
                 return;
             }
