@@ -20,10 +20,22 @@ use App\Models\Unit;
  * link set the first time a product is ever synced — survives a later
  * rename on either side), falling back to barcode/name for a row that's
  * never been synced before (first-ever sync, or a legacy branch product
- * created before this link existed) — never touches a branch's own `stock`,
- * that stays independently counted per branch always, a new variant always
- * arrives at stock 0. Deliberately best-effort: no batches/serials, no
- * deletion of a branch row that no longer exists on the main shop.
+ * created before this link existed) — an EXISTING branch row's `stock` is
+ * never touched by a sync, that stays independently counted per branch (or
+ * kept in lockstep by Product/ProductVariant::applyStockDelta()'s own
+ * pooling, if `shared_stock_pool` is also on — never written here).
+ *
+ * A brand-new row is the one exception: with `shared_stock_pool` OFF it
+ * still arrives at stock 0 (to be physically counted in), but with it ON,
+ * starting at 0 would be actively wrong — there's only ONE real stock
+ * number for a pooled product, so a freshly-synced branch copy must start
+ * already equal to the main shop's current count, not an empty shelf that
+ * happens to share a product row. (Real bug Khaled hit: a newly-imported
+ * article's branch copy sat at 0 until its first sale/stock-in anywhere in
+ * the pool happened to correct it — meaning the branch's POS couldn't
+ * sell it at all until then.) Deliberately best-effort otherwise: no
+ * batches/serials, no deletion of a branch row that no longer exists on
+ * the main shop.
  */
 class CatalogSync
 {
@@ -51,7 +63,7 @@ class CatalogSync
             $categoryMap = static::syncCategories($mainShop, $branch);
             $unitMap = static::syncUnits($mainShop, $branch);
             $existing = static::findExistingBranchProduct($branch, $product);
-            $branchProduct = static::upsertBranchProduct($branch, $product, $existing, $categoryMap, $unitMap);
+            $branchProduct = static::upsertBranchProduct($mainShop, $branch, $product, $existing, $categoryMap, $unitMap);
             static::syncPriceTiersForProduct($product, $branchProduct);
         }
     }
@@ -121,7 +133,7 @@ class CatalogSync
                 ?? (filled($p->barcode) ? $byBarcode->get($p->barcode) : null)
                 ?? $byName->get($p->name);
 
-            $branchProduct = static::upsertBranchProduct($branch, $p, $existing, $categoryMap, $unitMap);
+            $branchProduct = static::upsertBranchProduct($mainShop, $branch, $p, $existing, $categoryMap, $unitMap);
             static::syncPriceTiersForProduct($p, $branchProduct);
             $map[$p->id] = $branchProduct->id;
         }
@@ -154,7 +166,7 @@ class CatalogSync
      * here on a first-ever match) — durable across a later rename on
      * either side, unlike barcode/name alone.
      */
-    private static function upsertBranchProduct(Shop $branch, Product $p, ?Product $existing, array $categoryMap, array $unitMap): Product
+    private static function upsertBranchProduct(Shop $mainShop, Shop $branch, Product $p, ?Product $existing, array $categoryMap, array $unitMap): Product
     {
         // emoji/requires_prescription/sold_by_weight fall back here because
         // a Product instance fresh off Product::create() never reflects a
@@ -186,7 +198,12 @@ class CatalogSync
             return $existing;
         }
 
-        return Product::create(['shop_id' => $branch->id, 'stock' => 0, ...$attrs]);
+        // see this class's own docblock -- a brand-new pooled row must start
+        // already equal to the main shop's current count, never an empty 0
+        // that then has to wait for a stock-changing event to self-correct
+        $startingStock = $mainShop->hasFeature('shared_stock_pool') ? (float) $p->stock : 0;
+
+        return Product::create(['shop_id' => $branch->id, 'stock' => $startingStock, ...$attrs]);
     }
 
     /**
@@ -214,13 +231,18 @@ class CatalogSync
             foreach (ProductVariant::withoutGlobalScopes()->where('shop_id', $mainShop->id)->where('product_id', $mainProductId)->get() as $v) {
                 $existing = (filled($v->barcode) ? $byBarcode->get($v->barcode) : null) ?? $bySizeColor->get($v->size.'|'.$v->color);
 
-                $attrs = ['size' => $v->size, 'color' => $v->color, 'barcode' => $v->barcode, 'price' => $v->price, 'cost' => $v->cost];
+                // photo_path (docs/ARTICLE_SERIES_PLAN.md §4's color picker)
+                // synced the same way as everything else here — a color's
+                // photo set on the main shop should show up on the branch too
+                $attrs = ['size' => $v->size, 'color' => $v->color, 'barcode' => $v->barcode, 'price' => $v->price, 'cost' => $v->cost, 'photo_path' => $v->photo_path];
 
                 if ($existing) {
                     // stock deliberately excluded -- same reasoning as syncProducts
                     $existing->update($attrs);
                 } else {
-                    ProductVariant::create(['shop_id' => $branch->id, 'product_id' => $branchProductId, 'stock' => 0, ...$attrs]);
+                    // see this class's own docblock -- same starting-stock fix as upsertBranchProduct()
+                    $startingStock = $mainShop->hasFeature('shared_stock_pool') ? (float) $v->stock : 0;
+                    ProductVariant::create(['shop_id' => $branch->id, 'product_id' => $branchProductId, 'stock' => $startingStock, ...$attrs]);
                 }
             }
         }

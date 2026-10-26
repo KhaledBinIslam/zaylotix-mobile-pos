@@ -35,7 +35,7 @@ class SharedStockPoolTest extends TestCase
         return $branch;
     }
 
-    /** Links $branch's copy of $mainProduct and forces its stock to a chosen starting value (CatalogSync always starts a freshly-linked branch copy at 0). */
+    /** Links $branch's copy of $mainProduct and forces its stock to a chosen starting value, regardless of whatever CatalogSync itself would have started it at. */
     private function linkBranch(Shop $main, Shop $branch, Product $mainProduct, float $startingStock): Product
     {
         CatalogSync::syncProductToBranches($main, $mainProduct);
@@ -89,6 +89,50 @@ class SharedStockPoolTest extends TestCase
         $this->assertEquals(95, (float) $branchAProduct->refresh()->stock);
         $this->assertEquals(95, (float) $branchBProduct->refresh()->stock);
         $this->assertEquals(95, (float) $mainProduct->refresh()->stock);
+    }
+
+    /**
+     * Real bug Khaled hit live: products:import-articles creates the main
+     * shop's product with real stock, syncs it to the branch via
+     * CatalogSync — and before this fix, the branch's freshly-created copy
+     * sat at 0 (CatalogSync's normal "to be physically counted in" default)
+     * even though the two are supposed to share ONE pooled number, meaning
+     * the branch's POS couldn't sell it until some other stock event
+     * happened to self-correct it. A brand-new pooled row must start
+     * already equal to the main shop's current count, not an artificial 0.
+     */
+    public function test_a_freshly_synced_branch_copy_starts_with_the_pooled_stock_not_zero(): void
+    {
+        [$main] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'shared_catalog');
+        $this->grantFeature($main, 'shared_stock_pool');
+        $branch = $this->createBranch($main);
+
+        $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Rice', 'cost' => 50, 'price' => 100, 'stock' => 100]);
+        $mainVariant = ProductVariant::create(['shop_id' => $main->id, 'product_id' => $mainProduct->id, 'size' => 'L', 'barcode' => 'RICE-L', 'stock' => 20]);
+
+        CatalogSync::syncToBranch($main, $branch);
+
+        $branchProduct = Product::withoutGlobalScopes()->where('shop_id', $branch->id)->where('master_product_id', $mainProduct->id)->first();
+        $branchVariant = ProductVariant::withoutGlobalScopes()->where('shop_id', $branch->id)->where('product_id', $branchProduct->id)->first();
+
+        $this->assertEquals(100, (float) $branchProduct->stock);
+        $this->assertEquals(20, (float) $branchVariant->stock);
+    }
+
+    /** Without shared_stock_pool, a freshly-synced branch copy still starts at 0 (unchanged, pre-existing behavior) -- stock pooling must be opted into, not inferred from shared_catalog alone. */
+    public function test_a_freshly_synced_branch_copy_without_the_pool_feature_still_starts_at_zero(): void
+    {
+        [$main] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'shared_catalog'); // shared_stock_pool deliberately NOT granted
+        $branch = $this->createBranch($main);
+
+        $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Rice', 'cost' => 50, 'price' => 100, 'stock' => 100]);
+
+        CatalogSync::syncToBranch($main, $branch);
+
+        $branchProduct = Product::withoutGlobalScopes()->where('shop_id', $branch->id)->where('master_product_id', $mainProduct->id)->first();
+        $this->assertEquals(0, (float) $branchProduct->stock);
     }
 
     public function test_granting_the_feature_to_a_branch_instead_of_the_main_shop_does_nothing(): void
