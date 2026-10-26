@@ -15,7 +15,7 @@ class Product extends Model
     use BelongsToTenant, SoftDeletes;
 
     protected $fillable = [
-        'shop_id', 'master_product_id', 'category_id', 'unit_id', 'name', 'name_en', 'generic_name', 'company', 'shelf_location', 'requires_prescription', 'emoji', 'photo_path', 'barcode',
+        'shop_id', 'master_product_id', 'supplier_id', 'category_id', 'unit_id', 'name', 'name_en', 'generic_name', 'company', 'shelf_location', 'requires_prescription', 'emoji', 'photo_path', 'barcode',
         'sold_by_weight', 'weight_unit', 'track_serial',
         'cost', 'price', 'wholesale_price', 'wholesale_moq', 'discount_price', 'stock', 'stock_mode', 'expiry_date', 'batch_no', 'size', 'color', 'imei',
         'reorder_point', 'show_in_catalog', 'search_keywords',
@@ -113,6 +113,12 @@ class Product extends Model
     public function category()
     {
         return $this->belongsTo(ProductCategory::class, 'category_id');
+    }
+
+    /** Which manufacturer/purchase source this article was bought from — docs/ARTICLE_SERIES_PLAN.md §1 (reuses Supplier, not a parallel model). */
+    public function supplier()
+    {
+        return $this->belongsTo(Supplier::class);
     }
 
     /** The recipe (ingredient + qty_per_unit) this product consumes when sold/prepared — empty for a product with no ingredient tracking set up. */

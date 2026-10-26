@@ -9,7 +9,7 @@ class ProductCategory extends Model
 {
     use BelongsToTenant;
 
-    protected $fillable = ['shop_id', 'name', 'name_en', 'emoji'];
+    protected $fillable = ['shop_id', 'name', 'name_en', 'emoji', 'code'];
 
     public function shop()
     {

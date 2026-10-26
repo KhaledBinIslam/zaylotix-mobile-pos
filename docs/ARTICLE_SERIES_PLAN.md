@@ -169,18 +169,80 @@ this — no new live-update mechanism needed.
   whatever fields the server sends per product/variant, no schema change
   needed there beyond what's already generic).
 
-## Open questions (sent via AskUserQuestion alongside this document)
+## Questions — resolved
 
-1. Cost-code digit map for 2, 7, 8, 9.
-2. What the trailing "Z" means on some cost codes.
-3. Confirm (or correct) the variant barcode format
-   `{article barcode}-{color code}-{size}`.
-4. How to actually get `BabyPark_Product_Entry_1.xlsx` and `logo.jpg` into
-   this repo/session for inspection.
-5. Confirm the branch-rename-to-"Liberty" reading above is correct.
+1. **Branch rename**: confirmed by Khaled — branch becomes "Liberty", main
+   shop stays "Baby Park".
+2. **Files**: Khaled placed the real files at `D:\baby park and liberty\`;
+   copied into `docs/import/BabyPark_Product_Entry_1.xlsx` and
+   `docs/import/logo.jpg` (both verified readable — logo is a combined
+   "Baby Park and Liberty" branding image, used for both shops unless
+   Khaled wants two separate ones later).
+3. **Variant barcode format**: Khaled's answer restated/confirmed the
+   article-barcode component breakdown (MFR/CAT/SERIAL/COSTCODE) without
+   objecting to appending `-{colorcode}-{size}` for the per-variant
+   sticker — proceeding with the recommended format given the real
+   technical reason (stock-pool cross-branch matching) already in §3.
+4. **The trailing "Z" — resolved by reading the real file, not asked**:
+   `docs/import/BabyPark_Product_Entry_1.xlsx`'s own data proves Z carries
+   no cost information at all — cost `1350` appears as BOTH `NSRXZ` (row 3)
+   and `NSRX` (row 11); cost `1450` appears as BOTH `NIRXZ` (row 5) and
+   `NIRX` (rows 7, 8). Decision: strip an optional trailing `Z` before
+   decoding the 4-letter cost code, keep it as-is in the stored barcode
+   string (round-trips correctly), never assign it meaning. Matches the
+   ticket's own stated fallback exactly, now with real evidence instead of
+   just a default assumption.
 
-## Explicitly NOT started
+## Question still open (non-blocking)
 
-No migration, model, controller, or Vue file for this feature has been
-written yet. This document and the five questions above are the only
-output of this pass.
+**Cost-code letters for digits 2, 7, 8, 9** — the real import file only
+ever uses costs 1300/1350/1450/1500/1650 (digits 1,3,4,5,6,0 — all already
+known: N/S/I/R/J/X), so this import doesn't need the other four letters at
+all. **Decision: proceed without blocking** — `shops.cost_code_digit_map`
+ships with the 6 known letters pre-filled and 2/7/8/9 left unset; decoding
+a cost that needs an unset digit shows a clear "can't fully decode yet"
+state (never a wrong guess) until Khaled fills the rest in via settings
+whenever a shoe actually costs that much.
+
+## Real file inspection — confirms the plan, no surprises
+
+Read with PhpSpreadsheet directly (`maatwebsite/excel`'s underlying
+library, already a dependency): 3 sheets (`Guide`, `Products`, `Lists`).
+`Products` has only **10 real data rows** (rows 2-11) despite Excel
+reporting `highestRow=1997` (routine conditional-formatting bleed — the
+import command must stop at the first row with no manufacturer/name, not
+trust `highestRow`). Confirmed: exact 20-column header row as the ticket
+describes; `COFFE` (not `COFFEE`) really is in the file; `name_en` really
+mixes `L-10001`/`L10003` styles; grid-cell sums really do disagree with
+the flat `stock` column (e.g. row 2: SILVER 1+1+2+1+0=5, KHAKI
+1+1+2+1+1=6, total 11 vs. `stock` column's 12); `(1 & SOLD)`/`(1& SOLD)`
+both really appear (rows 8, 10); row 2's `cost` is genuinely blank (not a
+mismatch — a gap, decode `NSXXZ` → 1300 to fill it, flagged as
+"filled from barcode" in the dry-run report, not silently assumed). No
+grey "Kids Sneaker" example rows present in this file (the exclusion rule
+is still built, defensively, for a future re-upload that might have them).
+`Lists` sheet's category names are the Bengali footwear defaults already
+in `config/business_types.php` (ছেলেদের জুতা/মেয়েদের জুতা/...) — confirms
+mapping the Excel's English `LADIES` to the existing `মেয়েদের জুতা`
+("Women's Shoes") category, not creating a duplicate.
+
+## Build order for this pass (not everything in the ticket at once)
+
+Given the size of this ticket, building it in one uninterrupted pass risks
+exactly the kind of rushed mistake the house "audit-then-fix" discipline
+exists to prevent. This pass covers:
+1. Data model: `suppliers.short_code`, `product_categories.code`, the new
+   `article_series_counters` table, `shops.article_barcode_template`/
+   `cost_code_digit_map`/`color_code_map`, `products.supplier_id`,
+   variant barcode generation.
+2. `products:import-articles {file} {--dry-run}` — **run with `--dry-run`
+   only**, report shown to Khaled, explicit "ঠিক আছে" required before any
+   real import runs (per the ticket's own hard rule).
+
+Deliberately NOT in this pass (separate follow-up once the above is
+confirmed working against real data): §3 baby-shoe size-group pricing,
+§4's POS/Stock UI rework (color-chip picker, color×size matrix), §7's
+one-screen article-entry flow (draft autosave, copy-article, grid
+paste-from-Excel), and reports. Each is substantial enough to deserve its
+own test/build/commit cycle rather than being bundled sight-unseen with
+the data-model/import foundation.

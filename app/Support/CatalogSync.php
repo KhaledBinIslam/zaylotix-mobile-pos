@@ -65,10 +65,14 @@ class CatalogSync
         foreach (ProductCategory::withoutGlobalScopes()->where('shop_id', $mainShop->id)->get() as $cat) {
             $existing = $existingByName->get($cat->name);
             if ($existing) {
-                $existing->update(['name_en' => $cat->name_en, 'emoji' => $cat->emoji]);
+                // code (docs/ARTICLE_SERIES_PLAN.md §2) kept in sync too —
+                // a branch's "Ladies" must carry the SAME article-barcode
+                // category code as the main shop's, or the two shops'
+                // barcodes would silently diverge for the same category
+                $existing->update(['name_en' => $cat->name_en, 'emoji' => $cat->emoji, 'code' => $cat->code]);
                 $map[$cat->id] = $existing->id;
             } else {
-                $new = ProductCategory::create(['shop_id' => $branch->id, 'name' => $cat->name, 'name_en' => $cat->name_en, 'emoji' => $cat->emoji]);
+                $new = ProductCategory::create(['shop_id' => $branch->id, 'name' => $cat->name, 'name_en' => $cat->name_en, 'emoji' => $cat->emoji, 'code' => $cat->code]);
                 $map[$cat->id] = $new->id;
             }
         }

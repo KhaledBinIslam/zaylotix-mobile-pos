@@ -10,7 +10,7 @@ class Supplier extends Model
 {
     use BelongsToTenant, SoftDeletes;
 
-    protected $fillable = ['shop_id', 'name', 'phone', 'address', 'payable'];
+    protected $fillable = ['shop_id', 'name', 'phone', 'address', 'payable', 'short_code'];
 
     protected function casts(): array
     {
