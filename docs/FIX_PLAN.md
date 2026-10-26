@@ -2130,6 +2130,21 @@ are shipped — channels+pricing, online orders on shared stock, couriers/
 COD, returns/damage/loss, ads/overhead allocation, the profit engine,
 safety nets/polish, and this optional shared stock pool.
 
+**Follow-up (same day, prompted by a scale-readiness question — see
+`docs/SCALING_GUIDE.md`)**: `Product::stockPoolMemberIds()` originally
+ran one extra query (`where('master_product_id', $this->id)->exists()`)
+on EVERY stock mutation in the app, even for a shop that never grants
+`shared_stock_pool` — the overwhelming majority. Reordered to check
+cheap, already request-cached facts first (a branch's own
+`parent_shop_id`, and `hasFeature()` — see `SCALING_GUIDE.md` item #1)
+before ever touching the database, and reuses `Tenancy::shop()`'s
+per-request cache instead of a fresh `$this->shop` lazy-load whenever
+the product belongs to the current tenant (true for the large majority
+of calls). Net effect: zero extra queries for any shop not using this
+feature, confirmed by a new query-count regression test (same pattern
+as `TenancyScaleCacheTest`) — `tests/Feature/SharedStockPoolTest.php`
+now 8 tests, full suite re-run green (1088 passing).
+
 ## Definition-of-done checklist (updated after every phase)
 
 - [x] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test --all`, Phase 0.6) — re-verified 2026-10-20, all 8 types OK

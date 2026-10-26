@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Tenancy;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -171,26 +172,47 @@ class Product extends Model
     {
         $masterId = $this->master_product_id;
 
-        if (! $masterId) {
-            // Not a branch copy — only a pool "master" if it actually has
-            // branch copies linked to it; a main shop's product with no
-            // branches synced yet is never pooled.
-            $hasBranchCopies = static::withoutGlobalScopes()->where('master_product_id', $this->id)->exists();
-            if (! $hasBranchCopies) {
+        if ($masterId) {
+            $master = static::withoutGlobalScopes()->find($masterId);
+            if (! $master || ! $master->shop?->hasFeature('shared_stock_pool')) {
                 return collect([$this->id]);
             }
-            $masterId = $this->id;
+
+            return collect([$masterId])
+                ->merge(static::withoutGlobalScopes()->where('master_product_id', $masterId)->pluck('id'))
+                ->unique()
+                ->values();
         }
 
-        $master = $masterId === $this->id ? $this : static::withoutGlobalScopes()->find($masterId);
-        if (! $master || ! $master->shop?->hasFeature('shared_stock_pool')) {
+        // Not a branch copy. Resolved with ZERO extra queries for the
+        // overwhelming majority of calls (every shop that never grants
+        // shared_stock_pool, and every branch's own locally-created
+        // product, which is never a pool member regardless — see
+        // docs/FIX_PLAN.md's Phase 38 note): a branch always has
+        // parent_shop_id set, so it's ruled out before ever touching the
+        // DB, and hasFeature() is already request-cached (see
+        // docs/SCALING_GUIDE.md item #1) — this runs on EVERY stock
+        // mutation in the app, so a cheap, cached check first matters at
+        // scale. Uses Tenancy::shop() instead of the $this->shop relation
+        // when they're the same row (true for the vast majority of calls,
+        // since a mutation almost always acts on the current tenant's own
+        // product) to reuse that same per-request cache rather than
+        // triggering a fresh lazy-load query.
+        $shop = Tenancy::id() === $this->shop_id ? Tenancy::shop() : $this->shop;
+        if (! $shop || $shop->parent_shop_id || ! $shop->hasFeature('shared_stock_pool')) {
             return collect([$this->id]);
         }
 
-        return collect([$masterId])
-            ->merge(static::withoutGlobalScopes()->where('master_product_id', $masterId)->pluck('id'))
-            ->unique()
-            ->values();
+        // Only reached for a main shop that actually has the feature on —
+        // genuinely rare in practice, one query to learn whether it has
+        // any branch copies at all (and reuse the result if so, rather
+        // than querying it again).
+        $branchCopyIds = static::withoutGlobalScopes()->where('master_product_id', $this->id)->pluck('id');
+        if ($branchCopyIds->isEmpty()) {
+            return collect([$this->id]);
+        }
+
+        return collect([$this->id])->merge($branchCopyIds)->unique()->values();
     }
 
     /**

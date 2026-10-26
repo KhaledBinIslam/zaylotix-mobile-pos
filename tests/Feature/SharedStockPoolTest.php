@@ -7,6 +7,7 @@ use App\Models\ProductVariant;
 use App\Models\Shop;
 use App\Support\CatalogSync;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\Concerns\CreatesShops;
 use Tests\TestCase;
 
@@ -190,6 +191,34 @@ class SharedStockPoolTest extends TestCase
         // between two branches that already share it is correctly a no-op
         $this->assertEquals(100, (float) $mainProduct->refresh()->stock);
         $this->assertEquals(100, (float) $branchAProduct->refresh()->stock);
+    }
+
+    /**
+     * See docs/SCALING_GUIDE.md item #1 — applyStockDelta() runs on EVERY
+     * stock mutation in the app, so a shop that never touches this feature
+     * must pay nothing extra for it. Locks in the actual query count, not
+     * just correct behavior, same pattern as TenancyScaleCacheTest.
+     */
+    public function test_a_shop_without_the_feature_pays_zero_extra_queries_for_pooling_checks(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(); // feature not granted, no branches at all
+        $this->actingAs($owner, 'web');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 50, 'price' => 100, 'stock' => 50]);
+
+        // warm Tenancy's own per-request shop/feature caches first (see
+        // TenancyScaleCacheTest) — that one-time cost is unrelated to
+        // applyStockDelta() and every other feature-gated route already
+        // pays it regardless of this feature existing at all.
+        \App\Support\Tenancy::shop()->hasFeature('shared_stock_pool');
+
+        DB::enableQueryLog();
+        $product->applyStockDelta(-5);
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $this->assertEquals(45, (float) $product->stock);
+        // exactly the one plain increment — no pool-membership lookup query
+        $this->assertCount(1, $queries, 'applyStockDelta() ran extra queries for a shop that never granted shared_stock_pool');
     }
 
     public function test_a_branchs_own_unlinked_product_is_never_pooled_even_with_the_feature_on(): void
