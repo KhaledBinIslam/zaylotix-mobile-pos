@@ -30,6 +30,24 @@ use Inertia\Inertia;
 
 class PosController extends Controller
 {
+    /**
+     * Above this many products, index() stops sending the whole catalog
+     * as a page prop and switches to server-side search + a background
+     * sync into the offline IndexedDB cache instead (see
+     * useOfflineCatalog.js and docs/FIX_PLAN.md's scale-follow-up design
+     * note). `config/pos.php` (env `POS_FULL_CATALOG_LIMIT`, default
+     * 1500) — no real shop is anywhere near this today; it exists so a
+     * future 10,000+ SKU pharmacy/superstore doesn't ship a multi-
+     * megabyte JSON payload on every POS load, never to change behavior
+     * for a normal-sized shop. A plain config value, not a class
+     * constant, so it's tunable without a deploy and a test can exercise
+     * the 'search' path against a small, fast-to-seed product count.
+     */
+    private static function fullCatalogLimit(): int
+    {
+        return (int) config('pos.full_catalog_limit');
+    }
+
     public function index(Request $request)
     {
         $shop = Tenancy::shop();
@@ -62,27 +80,21 @@ class PosController extends Controller
             return redirect()->route('app.restaurant.tables.index');
         }
 
-        $relations = ['category', 'unit', 'productUnits.unit', 'variants'];
-        // in-stock IMEIs, only for a shop that actually tracks them — a
-        // cashier picking from a list of real in-stock units beats typing a
-        // 15-digit number from memory/the box, which is exactly what the
-        // old plain free-text field forced. Omitted entirely (relation
-        // simply absent from the payload) for every other business type.
-        if ($shop->hasFeature('serial_tracking')) {
-            $relations['serials'] = fn ($q) => $q->available()->select('id', 'product_id', 'imei', 'warranty_expiry');
-        }
-        // soonest-expiring batch still in stock — same relation Stock/Index
-        // already uses (ProductController::index), just surfaced here too
-        // so a pharmacy cashier can see/warn about it without leaving POS.
-        // FEFO already picks the actual batch automatically at checkout
-        // (BatchStock::deduct); this is purely visibility.
-        if ($shop->hasFeature('batch_tracking')) {
-            $relations[] = 'nearestBatch';
-        }
+        $relations = self::catalogRelations($shop);
 
-        $products = Product::with($relations)
-            ->orderByDesc('id')
-            ->get();
+        // Scale guard — see fullCatalogLimit()'s own docblock above.
+        // Below it: byte-identical to this app's original behavior, just
+        // with two new props added (catalogMode/productCount) that the
+        // frontend doesn't act on yet for a 'full' shop. Above it: no
+        // products are sent at all — the cashier searches instead (see
+        // search() below) and useOfflineCatalog.js's background sync
+        // keeps offline search/sale working the same way it always has.
+        $productCount = Product::count();
+        $catalogMode = $productCount > self::fullCatalogLimit() ? 'search' : 'full';
+
+        $products = $catalogMode === 'full'
+            ? Product::with($relations)->orderByDesc('id')->get()
+            : [];
 
         $categories = ProductCategory::orderBy('name')->get();
 
@@ -110,6 +122,8 @@ class PosController extends Controller
         return Inertia::render($component, [
             'products' => $products,
             'categories' => $categories,
+            'catalogMode' => $catalogMode,
+            'productCount' => $productCount,
             'salesMode' => $shop->sales_mode,
             // full cart_data isn't needed until actually resumed — this list
             // is just enough to show a picker (label + how long it's been held)
@@ -120,6 +134,99 @@ class PosController extends Controller
             // themselves, so this is safe to expose to a cashier session
             // too (they're the ones actually running checkout)
             'activeGatewayProviders' => PaymentGatewayCredential::where('shop_id', $shop->id)->where('is_active', true)->pluck('provider'),
+        ]);
+    }
+
+    /**
+     * The exact relation set every POS product payload carries — shared by
+     * index() (full-catalog mode), search(), and catalogSyncChunk(), so a
+     * product found through search/background-sync always has the same
+     * shape as one that arrived via the full catalog, and add-to-cart/IMEI
+     * picker/pack-size pricing/batch display behave identically either way.
+     */
+    private static function catalogRelations(Shop $shop): array
+    {
+        $relations = ['category', 'unit', 'productUnits.unit', 'variants'];
+        // in-stock IMEIs, only for a shop that actually tracks them — a
+        // cashier picking from a list of real in-stock units beats typing a
+        // 15-digit number from memory/the box, which is exactly what the
+        // old plain free-text field forced. Omitted entirely (relation
+        // simply absent from the payload) for every other business type.
+        if ($shop->hasFeature('serial_tracking')) {
+            $relations['serials'] = fn ($q) => $q->available()->select('id', 'product_id', 'imei', 'warranty_expiry');
+        }
+        // soonest-expiring batch still in stock — same relation Stock/Index
+        // already uses (ProductController::index), just surfaced here too
+        // so a pharmacy cashier can see/warn about it without leaving POS.
+        // FEFO already picks the actual batch automatically at checkout
+        // (BatchStock::deduct); this is purely visibility.
+        if ($shop->hasFeature('batch_tracking')) {
+            $relations[] = 'nearestBatch';
+        }
+
+        return $relations;
+    }
+
+    /**
+     * Live typed-ahead search for a shop over the configured catalog limit — the
+     * cashier's replacement for filtering an in-memory list that no
+     * longer exists client-side once index() stops sending it. Same
+     * search columns as ProductController::index()'s Stock-page search,
+     * same relation shape as this controller's own index() always sent,
+     * so everything downstream of "found a product" works identically to
+     * the full-catalog path. Capped at 50 — a cashier scans a search
+     * result, never paginates it.
+     */
+    public function search(Request $request)
+    {
+        $shop = Tenancy::shop();
+        $q = trim((string) $request->get('q', ''));
+        $categoryId = $request->get('category_id');
+
+        $products = Product::with(self::catalogRelations($shop))
+            ->when($q !== '', fn ($query) => $query->where(fn ($w) => $w
+                ->where('name', 'like', "%{$q}%")
+                ->orWhere('name_en', 'like', "%{$q}%")
+                ->orWhere('barcode', 'like', "%{$q}%")
+                ->orWhere('generic_name', 'like', "%{$q}%")))
+            ->when($categoryId, fn ($query) => $query->where('category_id', $categoryId))
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get();
+
+        return response()->json(['products' => $products]);
+    }
+
+    /**
+     * Background full-catalog sync for the offline cache (see
+     * useOfflineCatalog.js) — only reachable for a shop actually over the
+     * configured catalog limit; a normal shop never calls or needs this.
+     * Cursor-paginated by id descending (same order index()/search() use)
+     * rather than offset pagination, specifically so the repeated chunk
+     * calls this makes can never skip or repeat a row if a product is
+     * created/deleted mid-sync the way an offset page could.
+     */
+    public function catalogSyncChunk(Request $request)
+    {
+        $shop = Tenancy::shop();
+        abort_unless(Product::count() > self::fullCatalogLimit(), 403);
+
+        $afterId = $request->get('after_id');
+        $chunkSize = (int) config('pos.catalog_sync_chunk_size');
+
+        $products = Product::with(self::catalogRelations($shop))
+            ->when($afterId, fn ($query) => $query->where('id', '<', $afterId))
+            ->orderByDesc('id')
+            ->limit($chunkSize)
+            ->get();
+
+        return response()->json([
+            'products' => $products,
+            // A full chunk might have more behind it; a short one (fewer
+            // rows than asked for) means this was the last page — null
+            // tells the frontend to stop, instead of one wasted empty
+            // round trip to find that out.
+            'next_after_id' => $products->count() === $chunkSize ? $products->last()->id : null,
         ]);
     }
 

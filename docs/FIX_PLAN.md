@@ -2190,6 +2190,114 @@ unchanged — the strongest proof available that this refactor changed
 nothing about what these numbers actually are. Full suite green at
 1090.
 
+## Scale follow-up — `docs/SCALING_GUIDE.md` item #4: POS catalog scale fix
+
+**Design note**: `PosController::index()` sent the shop's entire product
+catalog (every relation eager-loaded) as a page prop on every load, with
+the 15-second background poll re-fetching the same full payload forever —
+flagged by the scale audit as the single biggest remaining risk once a
+shop's catalog grows large (a 10,000+ SKU pharmacy/superstore on a cheap
+Android phone). The naive fix ("just add server-side search") would have
+quietly broken this app's genuine offline-checkout support
+(`useOfflineSync.js`'s IndexedDB-backed sale queue), which depends on the
+whole catalog already sitting in the browser — there's no way to search a
+server endpoint with no network. Khaled was asked directly and chose the
+hybrid: zero behavior change for every normal-sized shop, and for a
+catalog over a configurable threshold, server-side search plus a
+background sync that populates a persistent local cache so offline
+search/sale still works once that sync finishes.
+
+**Threshold-gated, zero behavior change below it**: `Product::count() >
+config('pos.full_catalog_limit')` (default 1500, env-overridable via
+`POS_FULL_CATALOG_LIMIT`) decides the mode. Below it, `PosController::
+index()` is unchanged except for two extra informational props
+(`catalogMode: 'full'`, `productCount`) — the full catalog is still sent,
+the 15-second poll still runs, nothing a cashier does looks any different.
+Above it, `products: []` is sent instead and `catalogMode: 'search'` tells
+the frontend to switch modes.
+
+**New backend surface** (`app/Http/Controllers/App/PosController.php`):
+`search()` (`GET /app/pos/search`) — debounced server search (name/
+name_en/barcode/generic_name, optional category filter), same relation
+set `index()` already eager-loads, capped at 50 results, `orderByDesc
+('id')` matching house convention. `catalogSyncChunk()` (`GET /app/pos/
+catalog-sync`) — cursor-paginated by `id` descending (chunk size 500,
+`POS_CATALOG_SYNC_CHUNK_SIZE`-overridable), 403 below the threshold since
+it's sync-only. Both reuse one new `catalogRelations()` helper so the
+three methods can never drift apart on what a "product" looks like.
+
+**Offline cache** (`resources/js/support/offlineDb.js`): the existing
+single flat `kv` IndexedDB store (built for the offline sale queue) gets a
+real `products` object store (keyPath `id`, indexed on `barcode`) —
+`putProducts()`, `searchProductsOffline()` (same filter predicate the POS
+page's own `filtered` computed already uses, so online/offline results
+never look different to a cashier), `findProductByBarcode()` (indexed
+lookup, falling back to a variant-barcode scan). A new composable,
+`resources/js/composables/useOfflineCatalog.js`, wraps the server
+endpoints + this cache behind one `search()`/`resolveBarcode()`/
+`startBackgroundSync()` API, used identically by both `Pos/Index.vue` and
+`Clothing/Pos.vue` so the two stop duplicating this logic independently.
+The service worker (`public/sw.js`) was confirmed purely reactive (Cache
+API only, no IndexedDB) — confirming a page-session Vue ref alone would
+not have survived a reload, which is why this needed to be a real
+persistent store, not just in-memory state.
+
+**Real bug caught before shipping, by a new test**: the sync-chunk
+cursor returned `next_after_id` whenever the chunk wasn't EMPTY rather
+than whenever it was FULL, so the last, partial chunk still looked like
+"more to come" and triggered one wasted extra round-trip that then came
+back empty. Fixed by comparing the returned count to the chunk size
+instead. Caught by `test_catalog_sync_chunk_covers_every_product_exactly_
+once_across_multiple_chunks` before this ever reached a real shop.
+
+**Second, more serious bug caught before shipping, in review (not by a
+test)**: the first draft of the Vue wiring populated a separate
+`searchResults` ref for display but left `props.products` empty in search
+mode — and `addToCart()`/`productOf()`/the cart-line lookup all resolve a
+product exclusively from `props.products`, never from `searchResults`.
+Every "add to cart" on a search result would have silently no-op'd. Fixed
+by also merging every search/barcode result into `props.products`,
+deduped by id, accumulating and never replaced — exactly the existing
+pattern this app already uses for a barcode-resolved product.
+
+**Accepted, documented trade-offs** (deliberately not solved here):
+- Resuming a held cart (`Pos/Index.vue` only) that references a product
+  never searched for or scanned in the current browser session can't
+  resolve that product client-side for display, since `HeldCartController
+  ::resume()` only returns bare `{product_id, qty}` lines, not full
+  product snapshots. Checkout itself is unaffected — the server always
+  re-resolves everything regardless of client display state. Narrow,
+  rare, display-only; not worth the scope expansion on an already-large
+  change.
+- `genericAlternative()` (pharmacy generic-substitute suggestion) only
+  searches the currently-accumulated `props.products` pool, which starts
+  smaller in search mode and only grows as the cashier searches — weaker
+  than full mode until enough products accumulate this session. Accepted
+  UX trade-off, not fixed.
+- The 15-second `usePollingReload` full-catalog refresh is skipped
+  entirely for `catalogMode === 'search'` shops — there's no "full
+  catalog" left to poll, and checkout's own server-side `lockForUpdate` +
+  stock recheck (unchanged by this fix) already prevents overselling
+  regardless of client-side staleness; the poll was a UX nicety, not a
+  correctness mechanism, so losing it only above the threshold is a
+  deliberate choice, not an oversight.
+
+**Why the threshold is config, not a class constant**: lets a test
+exercise the 'search' + multi-chunk-sync paths with 2-7 seeded rows
+instead of needing 1500+ real ones, and lets Khaled tune it later via
+`.env` with no deploy.
+
+Tests: `tests/Feature/PosCatalogScaleTest.php` (new, 6 tests) — full vs.
+search mode selection, search by name/barcode/generic_name, category
+filter, sync-chunk 403 below threshold, sync-chunk cursor correctness
+across multiple chunks with no gaps/dupes. Full suite re-run green (1096
+passing). No JS test runner exists in this repo (confirmed earlier this
+session) — manual verification still needed: seed a shop past a lowered
+threshold, confirm search/barcode/add-to-cart/checkout all work online,
+then toggle DevTools offline after background sync completes and confirm
+the same; confirm a normal shop's POS page fires no new requests at all
+(`catalogMode: 'full'` path never calls the new endpoints).
+
 ## Definition-of-done checklist (updated after every phase)
 
 - [x] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test --all`, Phase 0.6) — re-verified 2026-10-20, all 8 types OK

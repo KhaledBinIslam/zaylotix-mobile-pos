@@ -1308,6 +1308,7 @@ export const translations = {
     'pos.subtitleScan': { bn: ' — অথবা স্ক্যান করুন', en: ' — or scan' },
     'pos.searchPlaceholder': { bn: '🔍 পণ্য/বারকোড খুঁজুন...', en: '🔍 Search product/barcode...' },
     'pos.scanTitle': { bn: 'স্ক্যান করুন', en: 'Scan' },
+    'pos.catalogSyncing': { bn: 'ক্যাটালগ সিঙ্ক হচ্ছে, অফলাইনে সার্চ কাজ করার জন্য', en: 'Syncing catalog for offline search' },
     'pos.allProducts': { bn: 'সব পণ্য', en: 'All Products' },
     'pos.unit': { bn: 'পিস', en: 'pc' },
     'pos.inStock': { bn: '{n} {u} আছে', en: '{n} {u} in stock' },

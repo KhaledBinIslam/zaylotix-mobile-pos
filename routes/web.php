@@ -176,6 +176,10 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::post('pos/discard-offline', [PosController::class, 'discardOffline'])->name('pos.discardOffline');
         Route::get('pos/barcode/{barcode}', [PosController::class, 'barcode'])
             ->middleware('sales.mode')->name('pos.barcode');
+        // Scale guard for a shop over PosController::FULL_CATALOG_LIMIT —
+        // see index()'s own docblock. Unreachable/unused by every other shop.
+        Route::get('pos/search', [PosController::class, 'search'])->name('pos.search');
+        Route::get('pos/catalog-sync', [PosController::class, 'catalogSyncChunk'])->name('pos.catalogSync');
         Route::get('products/search', [ProductController::class, 'search'])->name('products.search');
         Route::get('customers/lookup', [CustomerController::class, 'lookup'])->name('customers.lookup');
         Route::get('customers/search', [CustomerController::class, 'search'])->name('customers.search');

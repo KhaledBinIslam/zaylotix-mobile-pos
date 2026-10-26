@@ -10,6 +10,7 @@ import { useI18n } from '@/composables/useI18n';
 import { useHardwareScanner } from '@/composables/useHardwareScanner';
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts';
 import { useOfflineSync } from '@/composables/useOfflineSync';
+import { useOfflineCatalog } from '@/composables/useOfflineCatalog';
 import { usePollingReload } from '@/composables/usePollingReload';
 import { fetchWithSessionRetry } from '@/support/fetchWithSessionRetry';
 import { isStaleAutoFill } from '@/support/customerAutoFill';
@@ -19,6 +20,12 @@ import { buildReceiptWhatsAppText, whatsAppUrlFor } from '@/support/receiptMessa
 const props = defineProps({
     products: Array,
     categories: Array,
+    // 'full' (every shop today) | 'search' — only a shop over
+    // config('pos.full_catalog_limit') ever sees 'search', where `products`
+    // arrives empty and the cashier searches instead (see
+    // useOfflineCatalog.js and docs/FIX_PLAN.md's design note).
+    catalogMode: { type: String, default: 'full' },
+    productCount: { type: Number, default: 0 },
     salesMode: String, // 'scan' | 'manual' | 'both' — set by admin per shop
     heldCarts: { type: Array, default: () => [] },
     prefillQuotation: { type: Object, default: null },
@@ -60,6 +67,7 @@ function genericAlternative(p) {
 const { toast } = useToast();
 const { t } = useI18n();
 const offlineSync = useOfflineSync();
+const catalog = useOfflineCatalog();
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 
 const canScan = computed(() => props.salesMode === 'scan' || props.salesMode === 'both');
@@ -68,6 +76,28 @@ const q = ref('');
 const searchInput = ref(null);
 const cat = ref('all');
 const cart = ref([]); // [{product_id, product_unit_id, qty, discount}]
+
+// Scale follow-up — only relevant when catalogMode === 'search' (see the
+// `filtered` computed and defineProps above). `searchResults` drives
+// RENDERING only (replaced on every new query) — but addToCart() and
+// every cart-line lookup below (unitOf/variantOf/the held-cart restore,
+// etc.) all resolve a product by id from `props.products`, same as the
+// 'full' mode they were written for. So every search result (and every
+// barcode-resolved product, see handleBarcode() below) gets merged into
+// `props.products` too — an accumulating pool, never replaced — so a
+// product added to the cart from an earlier search stays resolvable even
+// after the cashier types a completely different query.
+const searchResults = ref([]);
+if (props.catalogMode === 'search') {
+    catalog.startBackgroundSync(props.productCount);
+    watch([q, cat], async () => {
+        const results = await catalog.search(q.value, cat.value);
+        searchResults.value = results;
+        for (const p of results) {
+            if (!props.products.some((existing) => existing.id === p.id)) props.products.push(p);
+        }
+    }, { immediate: true });
+}
 const cartOpen = ref(false);
 const receiptOpen = ref(false);
 const lastSale = ref(null);
@@ -172,7 +202,11 @@ onMounted(() => {
 // separate fix needed for the back-button path itself.
 watch([cart, discount, couponCode, customerPhone, customerName, payMode, splitMode, splitAmounts, prescriptionNote, prescriptionConfirmed], saveCartForRecovery, { deep: true });
 
-const filtered = computed(() => props.products.filter((p) =>
+// catalogMode === 'search': props.products is always empty (see
+// defineProps above) — searchResults (kept live by the watcher above)
+// already applied this exact same text/category match server-side (or
+// via the offline fallback), so it's used as-is here.
+const filtered = computed(() => props.catalogMode === 'search' ? searchResults.value : props.products.filter((p) =>
     (!q.value
         || p.name.toLowerCase().includes(q.value.toLowerCase())
         || p.name_en?.toLowerCase().includes(q.value.toLowerCase())
@@ -1137,12 +1171,15 @@ async function handleBarcode(decodedText, onFeedback) {
         addToCart(product.id);
         onFeedback('✅ ' + product.name);
     } else {
-        // not in the locally loaded list (e.g. added by another device since page load) — ask the server
+        // Not in the locally loaded list (e.g. added by another device
+        // since page load, or — in 'search' mode — just never loaded at
+        // all since props.products is always empty there). resolveBarcode()
+        // tries the server first, then (offline, or the server call
+        // itself failed) the local offline cache — see
+        // useOfflineCatalog.js; always resolves to this same
+        // {found, product?, variant_id?} shape, never throws.
         try {
-            const res = await fetch(route('app.pos.barcode', code), {
-                headers: { Accept: 'application/json' },
-            });
-            const data = await res.json();
+            const data = await catalog.resolveBarcode(code);
             if (data.found) {
                 props.products.push(data.product);
                 if (data.product.sold_by_weight) { closeScanner(); openWeightEntry(data.product); return; }
@@ -1214,11 +1251,20 @@ function pollPosNow() {
     if (cartOpen.value || scannerOpen.value || receiptOpen.value || submitting.value) return;
     pollReload({ only: ['products'], preserveScroll: true, preserveState: true });
 }
-onMounted(() => {
-    pollTimer = setInterval(pollPosNow, 15000);
-});
-pollOnVisible(pollPosNow);
-onBeforeUnmount(() => clearInterval(pollTimer));
+// In 'search' mode there's no full `products` prop left to refresh — see
+// defineProps above — so this stock-drift-across-terminals poll (its
+// purpose: avoid an already-doomed add-to-cart on visibly stale stock)
+// simply doesn't apply; checkout's own server-side lockForUpdate + stock
+// recheck (unchanged by this) already prevents overselling regardless, so
+// skipping the poll here only loses a UX nicety, not a correctness
+// guarantee — see docs/FIX_PLAN.md's design note for the full reasoning.
+if (props.catalogMode !== 'search') {
+    onMounted(() => {
+        pollTimer = setInterval(pollPosNow, 15000);
+    });
+    pollOnVisible(pollPosNow);
+    onBeforeUnmount(() => clearInterval(pollTimer));
+}
 
 // F-keys never collide with normal typing, so these work regardless of
 // which field currently has focus — F2 to jump into product search, F9 to
@@ -1263,6 +1309,11 @@ useKeyboardShortcuts({
                         🔄
                         <span style="position:absolute;top:-4px;right:-4px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--rose);color:#fff;font-size:9.5px;font-weight:800;display:flex;align-items:center;justify-content:center">{{ offlineSync.pendingCount.value + offlineSync.failedCount.value }}</span>
                     </button>
+                </div>
+                <!-- large-catalog shop only — see defineProps' catalogMode;
+                     lets a cashier know offline search won't fully work yet -->
+                <div v-if="catalogMode === 'search' && !catalog.syncProgress.value.complete" style="font-size:11.5px;color:var(--dim);margin:-6px 0 10px">
+                    🔄 {{ t('pos.catalogSyncing') }} ({{ catalog.syncProgress.value.done }}/{{ catalog.syncProgress.value.total }})
                 </div>
 
                 <div class="tabbar lg:hidden">

@@ -9,6 +9,7 @@ import { useToast } from '@/composables/useToast';
 import { useI18n } from '@/composables/useI18n';
 import { useHardwareScanner } from '@/composables/useHardwareScanner';
 import { useOfflineSync } from '@/composables/useOfflineSync';
+import { useOfflineCatalog } from '@/composables/useOfflineCatalog';
 import { fetchWithSessionRetry } from '@/support/fetchWithSessionRetry';
 import { buildOfflineSaleSnapshot } from '@/support/offlineSaleSnapshot';
 import { buildReceiptWhatsAppText, whatsAppUrlFor } from '@/support/receiptMessage';
@@ -29,6 +30,10 @@ import { buildReceiptWhatsAppText, whatsAppUrlFor } from '@/support/receiptMessa
 const props = defineProps({
     products: Array,
     categories: Array,
+    // see Pos/Index.vue's defineProps for the full explanation —
+    // 'search' only for a shop over config('pos.full_catalog_limit')
+    catalogMode: { type: String, default: 'full' },
+    productCount: { type: Number, default: 0 },
     salesMode: String,
     activeGatewayProviders: { type: Array, default: () => [] },
 });
@@ -44,6 +49,7 @@ const hasLowStockAlerts = computed(() => features.value.includes('low_stock_aler
 const { toast } = useToast();
 const { t } = useI18n();
 const offlineSync = useOfflineSync();
+const catalog = useOfflineCatalog();
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 
 const canScan = computed(() => props.salesMode === 'scan' || props.salesMode === 'both');
@@ -57,7 +63,23 @@ const lastSale = ref(null);
 const errorMsg = ref('');
 const submitting = ref(false);
 
-const filtered = computed(() => props.products.filter((p) =>
+// see Pos/Index.vue's identical block for the full explanation — search
+// results merge into props.products (accumulating, never replaced) so
+// addToCart()/cart-line lookups below keep resolving a product by id even
+// after the cashier's search query changes.
+const searchResults = ref([]);
+if (props.catalogMode === 'search') {
+    catalog.startBackgroundSync(props.productCount);
+    watch([q, cat], async () => {
+        const results = await catalog.search(q.value, cat.value);
+        searchResults.value = results;
+        for (const p of results) {
+            if (!props.products.some((existing) => existing.id === p.id)) props.products.push(p);
+        }
+    }, { immediate: true });
+}
+
+const filtered = computed(() => props.catalogMode === 'search' ? searchResults.value : props.products.filter((p) =>
     (!q.value
         || p.name.toLowerCase().includes(q.value.toLowerCase())
         || p.name_en?.toLowerCase().includes(q.value.toLowerCase())
@@ -553,8 +575,10 @@ async function handleBarcode(decodedText, onFeedback) {
     }
 
     try {
-        const res = await fetch(route('app.pos.barcode', code), { headers: { Accept: 'application/json' } });
-        const data = await res.json();
+        // see Pos/Index.vue's identical swap — resolveBarcode() tries the
+        // server first, then (offline, or that call failed) the local
+        // offline cache; same {found, product?, variant_id?} shape either way.
+        const data = await catalog.resolveBarcode(code);
         if (data.found) {
             props.products.push(data.product);
             if (data.variant_id) {
@@ -625,6 +649,9 @@ function sendMemoWA() {
                 <div style="display:flex;gap:8px;margin-bottom:12px">
                     <input v-model="q" :placeholder="t('pos.searchPlaceholder')" style="flex:1">
                     <button v-if="canScan" class="btn ghost" style="width:auto;padding:0 16px" :title="t('pos.scanTitle')" @click="openScanner">📷</button>
+                </div>
+                <div v-if="catalogMode === 'search' && !catalog.syncProgress.value.complete" style="font-size:11.5px;color:var(--dim);margin:-6px 0 10px">
+                    🔄 {{ t('pos.catalogSyncing') }} ({{ catalog.syncProgress.value.done }}/{{ catalog.syncProgress.value.total }})
                 </div>
 
                 <div class="tabbar lg:hidden">
