@@ -62,7 +62,10 @@ class OnlineOrderController extends Controller
     {
         return Inertia::render('App/OnlineBusiness/Orders/Create', [
             'channels' => SalesChannel::where('active', true)->orderBy('name')->get(),
-            'products' => Product::with('variants')->orderBy('name')->get(['id', 'name', 'emoji', 'price', 'discount_price', 'stock', 'sold_by_weight']),
+            // barcode added so the create form can scan-to-add a line (see
+            // Orders/Create.vue's handleBarcode()) the same way POS does —
+            // variants' own barcodes already come along via with('variants')
+            'products' => Product::with('variants')->orderBy('name')->get(['id', 'name', 'emoji', 'price', 'discount_price', 'stock', 'sold_by_weight', 'barcode']),
             'couriers' => Courier::where('active', true)->orderBy('name')->get(['id', 'name', 'charge_type']),
         ]);
     }

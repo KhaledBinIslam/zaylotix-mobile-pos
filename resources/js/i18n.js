@@ -1308,6 +1308,8 @@ export const translations = {
     'pos.subtitleScan': { bn: ' — অথবা স্ক্যান করুন', en: ' — or scan' },
     'pos.searchPlaceholder': { bn: '🔍 পণ্য/বারকোড খুঁজুন...', en: '🔍 Search product/barcode...' },
     'pos.scanTitle': { bn: 'স্ক্যান করুন', en: 'Scan' },
+    'pos.scanBarcode': { bn: 'বারকোড স্ক্যান করে যোগ করুন', en: 'Scan barcode to add' },
+    'pos.scanBarcodeHint': { bn: 'স্ক্যানার দিয়ে স্ক্যান করুন অথবা কোড টাইপ করে Enter চাপুন', en: 'Scan with a scanner, or type the code and press Enter' },
     'pos.catalogSyncing': { bn: 'ক্যাটালগ সিঙ্ক হচ্ছে, অফলাইনে সার্চ কাজ করার জন্য', en: 'Syncing catalog for offline search' },
     'pos.allProducts': { bn: 'সব পণ্য', en: 'All Products' },
     'pos.unit': { bn: 'পিস', en: 'pc' },

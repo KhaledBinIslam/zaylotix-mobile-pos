@@ -1,11 +1,15 @@
 <script setup>
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useI18n } from '@/composables/useI18n';
+import { useHardwareScanner } from '@/composables/useHardwareScanner';
+import { useToast } from '@/composables/useToast';
 
 const props = defineProps({ channels: Array, products: Array, couriers: { type: Array, default: () => [] } });
 const { t } = useI18n();
+const page = usePage();
+const { toast } = useToast();
 
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 
@@ -65,6 +69,58 @@ function onProductChange(line) {
     line.product_variant_id = '';
 }
 
+/**
+ * Khaled: "online order khetre barcode scan kore easily sales" — scan-to-
+ * add a line, same lookup order as Pos/Index.vue's handleBarcode() (a
+ * variant's own barcode first, since it's more specific, then the bare
+ * product barcode). Bumps an already-present line's qty instead of adding
+ * a duplicate one, same as a repeat scan in POS.
+ */
+const scanInput = ref('');
+function handleBarcode(code) {
+    const trimmed = code.trim();
+    if (!trimmed) return;
+
+    for (const p of props.products) {
+        const v = p.variants?.find((variant) => variant.barcode === trimmed);
+        if (v) {
+            addScannedLine(p.id, v.id, `${p.name} (${[v.size, v.color].filter(Boolean).join(', ')})`);
+            return;
+        }
+    }
+
+    const product = props.products.find((p) => p.barcode === trimmed);
+    if (product) {
+        addScannedLine(product.id, '', product.name);
+        return;
+    }
+
+    toast('❌ ' + t('pos.notFound'));
+}
+function addScannedLine(productId, variantId, label) {
+    const existing = form.items.find((l) => l.product_id === productId && (l.product_variant_id || '') === variantId);
+    if (existing) {
+        existing.qty = (Number(existing.qty) || 0) + 1;
+    } else {
+        const emptyLine = form.items.find((l) => !l.product_id);
+        if (emptyLine) {
+            emptyLine.product_id = productId;
+            emptyLine.product_variant_id = variantId;
+            emptyLine.qty = 1;
+        } else {
+            form.items.push({ product_id: productId, product_variant_id: variantId, qty: 1, imei: '' });
+        }
+    }
+    toast('✅ ' + label);
+}
+function onScanInputEnter() {
+    handleBarcode(scanInput.value);
+    scanInput.value = '';
+}
+
+const hardwareScannerEnabled = computed(() => page.props.shop?.hardware_scanner_enabled ?? true);
+useHardwareScanner(handleBarcode, hardwareScannerEnabled);
+
 const subtotal = computed(() => form.items.reduce((s, l) => s + unitPrice(l) * (Number(l.qty) || 0), 0));
 const total = computed(() => subtotal.value + (Number(form.delivery_charge) || 0));
 const dueRemainder = computed(() => Math.max(0, total.value - (Number(form.cod_amount) || 0) - (Number(form.paid_amount) || 0)));
@@ -119,6 +175,14 @@ function save() {
                 <label>{{ t('due.name') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
                 <input v-model="form.customer_name">
             </div>
+        </div>
+
+        <div class="field">
+            <label>{{ t('pos.scanBarcode') }}</label>
+            <input
+                v-model="scanInput" :placeholder="t('pos.scanBarcodeHint')" inputmode="none" autocomplete="off"
+                @keyup.enter="onScanInputEnter"
+            >
         </div>
 
         <div class="field"><label>{{ t('quotation.items') }}</label></div>
