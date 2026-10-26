@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { variantPriceBounds, variantStockTotal } from '../productDisplay';
+import { variantPriceBounds, variantStockTotal, colorGroups } from '../productDisplay';
 
 describe('variantPriceBounds', () => {
     it('returns the product price twice when there are no variants', () => {
@@ -39,5 +39,47 @@ describe('variantStockTotal', () => {
     it('treats a null/undefined variant stock as 0', () => {
         const product = { variants: [{ stock: 10 }, { stock: null }, { stock: undefined }] };
         expect(variantStockTotal(product)).toBe(10);
+    });
+});
+
+describe('colorGroups', () => {
+    it('returns an empty array for a product with no variants', () => {
+        expect(colorGroups({ variants: [] })).toEqual([]);
+    });
+
+    it('groups variants by color, preserving first-seen order', () => {
+        const product = {
+            variants: [
+                { id: 1, color: 'SILVER', size: '36' },
+                { id: 2, color: 'BLACK', size: '36' },
+                { id: 3, color: 'SILVER', size: '37' },
+            ],
+        };
+        const groups = colorGroups(product);
+        expect(groups.map((g) => g.color)).toEqual(['SILVER', 'BLACK']);
+        expect(groups[0].variants).toHaveLength(2);
+        expect(groups[1].variants).toHaveLength(1);
+    });
+
+    it('uses the first variant with a photo as the groups photo', () => {
+        const product = {
+            variants: [
+                { id: 1, color: 'SILVER', photo_url: null },
+                { id: 2, color: 'SILVER', photo_url: 'https://x/silver.jpg' },
+            ],
+        };
+        expect(colorGroups(product)[0].photoUrl).toBe('https://x/silver.jpg');
+    });
+
+    it('a group with no photo on any variant has a null photoUrl, not an error', () => {
+        const product = { variants: [{ id: 1, color: 'SILVER', photo_url: null }] };
+        expect(colorGroups(product)[0].photoUrl).toBeNull();
+    });
+
+    it('a variant with no color groups under a single null-color bucket', () => {
+        const product = { variants: [{ id: 1, color: null, size: '36' }, { id: 2, color: null, size: '37' }] };
+        const groups = colorGroups(product);
+        expect(groups).toHaveLength(1);
+        expect(groups[0].variants).toHaveLength(2);
     });
 });

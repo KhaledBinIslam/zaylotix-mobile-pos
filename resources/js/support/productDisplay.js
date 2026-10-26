@@ -24,3 +24,31 @@ export function variantPriceBounds(product) {
 export function variantStockTotal(product) {
     return (product?.variants || []).reduce((sum, v) => sum + Number(v.stock || 0), 0);
 }
+
+/**
+ * docs/ARTICLE_SERIES_PLAN.md §4 — groups a product's variants by color for
+ * the SkyBuy-style picker (color thumbnail row -> size/price/qty table),
+ * shared by Pos/Index.vue (pick-to-sell) and Stock/Index.vue (manage). A
+ * group's photo is whichever of its own variants has one set — variants
+ * sharing a color always carry the same photo_path (see
+ * ArticleController/ProductVariantController), so the first one found is
+ * enough; never blocks on a color having no photo at all. Preserves each
+ * color's first-seen order (not sorted) — the order the article was
+ * entered/imported in.
+ */
+export function colorGroups(product) {
+    const groups = [];
+    const byColor = new Map();
+    for (const v of product?.variants || []) {
+        const key = v.color || '';
+        let group = byColor.get(key);
+        if (!group) {
+            group = { color: v.color || null, photoUrl: null, variants: [] };
+            byColor.set(key, group);
+            groups.push(group);
+        }
+        group.variants.push(v);
+        if (!group.photoUrl && v.photo_url) group.photoUrl = v.photo_url;
+    }
+    return groups;
+}

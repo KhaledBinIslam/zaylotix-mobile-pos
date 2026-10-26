@@ -222,6 +222,28 @@ class ProductVariantController extends Controller
         // now already correct and must NOT be incremented again
     }
 
+    /**
+     * SkyBuy-style color picker (docs/ARTICLE_SERIES_PLAN.md §4) — one
+     * photo per color, applied to every variant sharing it so the picker's
+     * grouping (resources/js/support/productDisplay.js colorGroups()) finds
+     * it regardless of which specific size the shopper taps first.
+     */
+    public function updateColorPhoto(Request $request, Product $product)
+    {
+        $this->authorize('update', $product);
+
+        $data = $request->validate([
+            'color' => ['required', 'string', 'max:50'],
+            'photo' => ['required', 'image', 'max:3072'],
+        ]);
+
+        $path = $request->file('photo')->store('product-photos', 'public');
+
+        ProductVariant::where('product_id', $product->id)->where('color', $data['color'])->update(['photo_path' => $path]);
+
+        return back()->with('success', "'{$data['color']}' রঙের ছবি সংরক্ষণ করা হয়েছে।");
+    }
+
     public function update(Request $request, ProductVariant $productVariant)
     {
         $this->authorize('update', $productVariant->product);

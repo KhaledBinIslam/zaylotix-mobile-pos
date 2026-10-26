@@ -10,6 +10,7 @@ import { useI18n } from '@/composables/useI18n';
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts';
 import { usePollingReload } from '@/composables/usePollingReload';
 import { useToast } from '@/composables/useToast';
+import { colorGroups } from '@/support/productDisplay';
 
 const props = defineProps({
     products: Object, categories: Array, units: Array, stats: Object, q: String, categoryId: [Number, String],
@@ -431,6 +432,18 @@ function submitGrid() {
 function removeVariant(v) {
     if (!confirm(`"${variantLabel(v)}" ${t('stock.removeVariantConfirm')}`)) return;
     router.delete(route('app.productVariants.destroy', v.id), { preserveScroll: true });
+}
+
+/** SkyBuy-style color picker (docs/ARTICLE_SERIES_PLAN.md §4) — groups the flat variant list below by color so each color's photo shows once, not per size. */
+function editingColorGroups() {
+    return colorGroups(editing.value);
+}
+function uploadColorPhoto(color, event) {
+    const file = event.target.files?.[0];
+    if (!file || !editing.value) return;
+    router.post(route('app.productVariants.updateColorPhoto', editing.value.id), { color, photo: file }, {
+        forceFormData: true, preserveScroll: true,
+    });
 }
 const variantStockInQty = ref({}); // { [variantId]: qty }
 function stockInVariant(v) {
@@ -884,18 +897,29 @@ useKeyboardShortcuts({
             </div>
             <div v-if="editing && hasProductVariants" class="field">
                 <label>{{ t('stock.variants') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.variantsHint') }}</span></label>
-                <div v-for="v in editing.variants" :key="v.id" class="cart-line" style="align-items:flex-start">
-                    <div class="nm">
-                        <b>{{ variantLabel(v) }}</b>
-                        <span>{{ v.stock }} {{ t('stock.pieces') }}<template v-if="v.price"> • {{ money(v.price) }}</template><template v-if="v.barcode"> • 🏷️ {{ v.barcode }}</template><template v-if="v.reorder_point"> • ⚠ {{ v.reorder_point }}</template></span>
-                        <div style="display:flex;gap:6px;margin-top:6px">
-                            <input v-model="variantStockInQty[v.id]" type="number" :placeholder="t('stock.stockIn')" style="width:90px">
-                            <button class="btn sm ghost" @click="stockInVariant(v)">+</button>
-                            <!-- new stock just landed here — printing its label shouldn't need navigating away and re-searching for the same product by hand -->
-                            <Link :href="route('app.barcodeLabels.index') + '?q=' + encodeURIComponent(editing.name)" class="btn sm ghost" style="text-decoration:none">🏷️</Link>
-                        </div>
+                <div v-for="g in editingColorGroups()" :key="g.color ?? '_'" style="margin-bottom:10px">
+                    <div v-if="g.color" style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                        <img v-if="g.photoUrl" :src="g.photoUrl" style="width:30px;height:30px;border-radius:6px;object-fit:cover">
+                        <div v-else style="width:30px;height:30px;border-radius:6px;background:var(--panel2)"></div>
+                        <b style="font-size:13px">{{ g.color }}</b>
+                        <label style="font-size:11px;color:var(--sky);cursor:pointer">
+                            {{ g.photoUrl ? 'ছবি বদলান' : '📷 ছবি দিন' }}
+                            <input type="file" accept="image/*" style="display:none" @change="uploadColorPhoto(g.color, $event)">
+                        </label>
                     </div>
-                    <button class="btn sm rose" @click="removeVariant(v)">✕</button>
+                    <div v-for="v in g.variants" :key="v.id" class="cart-line" style="align-items:flex-start">
+                        <div class="nm">
+                            <b>{{ variantLabel(v) }}</b>
+                            <span>{{ v.stock }} {{ t('stock.pieces') }}<template v-if="v.price"> • {{ money(v.price) }}</template><template v-if="v.barcode"> • 🏷️ {{ v.barcode }}</template><template v-if="v.reorder_point"> • ⚠ {{ v.reorder_point }}</template></span>
+                            <div style="display:flex;gap:6px;margin-top:6px">
+                                <input v-model="variantStockInQty[v.id]" type="number" :placeholder="t('stock.stockIn')" style="width:90px">
+                                <button class="btn sm ghost" @click="stockInVariant(v)">+</button>
+                                <!-- new stock just landed here — printing its label shouldn't need navigating away and re-searching for the same product by hand -->
+                                <Link :href="route('app.barcodeLabels.index') + '?q=' + encodeURIComponent(editing.name)" class="btn sm ghost" style="text-decoration:none">🏷️</Link>
+                            </div>
+                        </div>
+                        <button class="btn sm rose" @click="removeVariant(v)">✕</button>
+                    </div>
                 </div>
                 <button v-if="!gridOpen" class="btn sm" style="width:100%;margin-top:10px" @click="openGrid">
                     {{ t('stock.addVariantGrid') }}

@@ -286,6 +286,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::middleware('feature:product_variants')->group(function () {
             Route::post('products/{product}/variants', [ProductVariantController::class, 'store'])->name('productVariants.store');
             Route::post('products/{product}/variants/bulk', [ProductVariantController::class, 'bulkStore'])->name('productVariants.bulkStore');
+            Route::post('products/{product}/variants/color-photo', [ProductVariantController::class, 'updateColorPhoto'])->name('productVariants.updateColorPhoto');
             Route::put('product-variants/{productVariant}', [ProductVariantController::class, 'update'])->name('productVariants.update');
             Route::post('product-variants/{productVariant}/stock-in', [ProductVariantController::class, 'stockIn'])->name('productVariants.stockIn');
             Route::delete('product-variants/{productVariant}', [ProductVariantController::class, 'destroy'])->name('productVariants.destroy');

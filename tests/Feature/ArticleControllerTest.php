@@ -9,6 +9,8 @@ use App\Models\Shop;
 use App\Models\Supplier;
 use App\Support\ArticleSerial;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\CreatesShops;
 use Tests\TestCase;
 
@@ -171,6 +173,46 @@ class ArticleControllerTest extends TestCase
 
         $product = Product::where('shop_id', $branch->id)->first();
         $this->assertSame('SMS-L-10002-NSXX', $product->barcode);
+    }
+
+    public function test_an_uploaded_color_photo_is_applied_to_every_variant_of_that_color(): void
+    {
+        Storage::fake('public');
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+
+        $this->actingAs($owner, 'web')->post('/app/articles', $this->payload([
+            'photos' => ['SILVER' => UploadedFile::fake()->image('silver.jpg')],
+        ]))->assertSessionHasNoErrors();
+
+        $product = Product::where('shop_id', $shop->id)->first();
+        $silverVariants = ProductVariant::where('product_id', $product->id)->where('color', 'SILVER')->get();
+        $this->assertCount(2, $silverVariants);
+        $this->assertTrue($silverVariants->every(fn ($v) => $v->photo_path !== null));
+        // KHAKI's cell was zero-qty and never created, so there's nothing to attach a photo to
+        $this->assertSame(0, ProductVariant::where('product_id', $product->id)->where('color', 'KHAKI')->count());
+    }
+
+    public function test_updating_a_color_photo_on_an_existing_article_applies_to_every_matching_variant(): void
+    {
+        Storage::fake('public');
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        $this->grantFeature($shop, 'product_variants');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'L-10001', 'cost' => 1300, 'price' => 1990, 'stock' => 0]);
+        $v1 = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => '36', 'color' => 'SILVER', 'stock' => 2]);
+        $v2 = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => '37', 'color' => 'SILVER', 'stock' => 1]);
+        $other = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => '36', 'color' => 'BLACK', 'stock' => 1]);
+
+        $response = $this->actingAs($owner, 'web')->post("/app/products/{$product->id}/variants/color-photo", [
+            'color' => 'SILVER', 'photo' => UploadedFile::fake()->image('silver.jpg'),
+        ]);
+        $response->assertSessionHasNoErrors();
+
+        $this->assertNotNull($v1->fresh()->photo_path);
+        $this->assertNotNull($v2->fresh()->photo_path);
+        $this->assertSame($v1->fresh()->photo_path, $v2->fresh()->photo_path);
+        $this->assertNull($other->fresh()->photo_path);
     }
 
     public function test_size_group_settings_can_be_customized_and_rejects_overlapping_ranges(): void

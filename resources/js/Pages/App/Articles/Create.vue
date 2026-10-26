@@ -28,6 +28,7 @@ const form = useForm({
     kids_prices: { Small: '', Medium: '', Large: '' },
     colorsText: '', sizesText: '',
     variants: [], // [{color, size, qty}]
+    photos: {}, // { COLOR: File } — optional, per SkyBuy-style picker (docs/ARTICLE_SERIES_PLAN.md §4)
 });
 
 try {
@@ -37,7 +38,10 @@ try {
 
 watch(form, (val) => {
     try {
-        const { client_uuid, ...rest } = val;
+        // client_uuid is regenerated per submit, not part of "what's on screen";
+        // photos (File objects) can't be restored from a reload — a saved draft
+        // just asks for the photo again, never silently drops the article
+        const { client_uuid, photos, ...rest } = val;
         localStorage.setItem(draftKey.value, JSON.stringify(rest));
     } catch (e) { /* storage full/blocked — draft just won't survive a reload */ }
 }, { deep: true });
@@ -110,6 +114,18 @@ const totalStock = computed(() => form.variants.reduce((s, v) => s + (Number(v.q
 // ---- submit + "একবার এন্ট্রি, সব জায়গায়" (next article remembers manufacturer/category/colors/sizes) ----
 const justSaved = ref(null); // { barcode } while the success banner shows
 
+function onColorPhotoChange(color, event) {
+    form.photos[color] = event.target.files?.[0] || null;
+}
+const photoPreviewUrls = ref({}); // color -> object URL, for this session's picked files only
+watch(() => ({ ...form.photos }), (photos, oldPhotos) => {
+    for (const color of Object.keys(photos)) {
+        if (photos[color] && photos[color] !== oldPhotos?.[color]) {
+            photoPreviewUrls.value[color] = URL.createObjectURL(photos[color]);
+        }
+    }
+});
+
 function save() {
     justSaved.value = null;
     form.transform((data) => ({
@@ -118,11 +134,13 @@ function save() {
         price: isKids.value ? null : data.price,
         kids_prices: isKids.value ? data.kids_prices : null,
     })).post(route('app.articles.store'), {
+        forceFormData: true,
         onSuccess: () => {
             justSaved.value = { barcode: page.props.flash?.productBarcode };
             // carries manufacturer + category + colors/sizes into the next entry; clears everything per-article
-            form.reset('cost', 'price', 'variants');
+            form.reset('cost', 'price', 'variants', 'photos');
             form.kids_prices = { Small: '', Medium: '', Large: '' };
+            photoPreviewUrls.value = {};
             form.client_uuid = uuidv4();
             buildGrid(); // re-apply the same color/size shape with qty back to 0
         },
@@ -245,7 +263,17 @@ function save() {
                     </thead>
                     <tbody>
                         <tr v-for="color in gridColors" :key="color ?? '_'">
-                            <td style="padding:4px 8px;font-weight:600">{{ color ?? '(এক রং)' }}</td>
+                            <td style="padding:4px 8px">
+                                <div style="display:flex;align-items:center;gap:6px">
+                                    <img v-if="photoPreviewUrls[color]" :src="photoPreviewUrls[color]" style="width:28px;height:28px;border-radius:6px;object-fit:cover;flex-shrink:0">
+                                    <div v-else style="width:28px;height:28px;border-radius:6px;background:var(--panel2);flex-shrink:0"></div>
+                                    <b>{{ color ?? '(এক রং)' }}</b>
+                                </div>
+                                <label v-if="color" style="font-size:11px;color:var(--sky);cursor:pointer;display:inline-block;margin-top:3px">
+                                    {{ photoPreviewUrls[color] ? 'ছবি বদলান' : '📷 ছবি (ঐচ্ছিক)' }}
+                                    <input type="file" accept="image/*" style="display:none" @change="onColorPhotoChange(color, $event)">
+                                </label>
+                            </td>
                             <td v-for="size in gridSizes" :key="size" style="padding:4px 4px">
                                 <input v-model.number="cellFor(color, size).qty" type="number" min="0" style="width:64px;text-align:center">
                             </td>
@@ -266,7 +294,7 @@ function save() {
             ১. ম্যানুফ্যাকচার কোড আর ক্যাটাগরি বেছে নিন (নতুন হলে নাম+কোড দিন)।<br>
             ২. কস্ট দিন — বারকোড নিজেই তৈরি হয়ে যাবে।<br>
             ৩. বাচ্চাদের জুতা হলে Small/Medium/Large ৩টা দাম দিন, নয়তো একটা বিক্রয় মূল্য দিন।<br>
-            ৪. রং আর সাইজ রেঞ্জ লিখে "গ্রিড তৈরি করুন" চাপুন, তারপর প্রতিটা ঘরে স্টক সংখ্যা দিন।<br>
+            ৪. রং আর সাইজ রেঞ্জ লিখে "গ্রিড তৈরি করুন" চাপুন, তারপর প্রতিটা ঘরে স্টক সংখ্যা দিন — চাইলে প্রতিটা রঙে একটা ছবিও দিতে পারেন (ঐচ্ছিক), POS আর Stock-এ রঙের থাম্বনেইল হিসেবে দেখাবে।<br>
             ৫. "আর্টিকেল যোগ করুন" চাপুন — ম্যানুফ্যাকচার/ক্যাটাগরি/রং/সাইজ পরের আর্টিকেলের জন্য থেকে যাবে, শুধু কস্ট-দাম-স্টক নতুন করে দিন।<br>
             লেখা অসম্পূর্ণ অবস্থায় পেজ বন্ধ হয়ে গেলেও এটা মনে রাখা হয়, ফিরে এলে আগের জায়গা থেকেই শুরু করতে পারবেন।
         </div>

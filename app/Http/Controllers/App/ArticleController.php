@@ -93,6 +93,11 @@ class ArticleController extends Controller
             'variants.*.color' => ['nullable', 'string', 'max:50'],
             'variants.*.size' => ['required', 'string', 'max:50'],
             'variants.*.qty' => ['required', 'integer', 'min:0'],
+            // SkyBuy-style picker (docs/ARTICLE_SERIES_PLAN.md §4) — one
+            // optional photo per color, keyed by color name; never required,
+            // the picker falls back to a plain color swatch without one
+            'photos' => ['nullable', 'array'],
+            'photos.*' => ['nullable', 'image', 'max:3072'],
         ]);
 
         // idempotent resubmit (double-tap, flaky connection retry): the
@@ -139,7 +144,7 @@ class ArticleController extends Controller
             return back()->withErrors(['variants' => 'অন্তত একটা রং/সাইজে স্টক দিতে হবে।']);
         }
 
-        $product = DB::transaction(function () use ($shop, $category, $supplier, $unitId, $data, $costCode, $isKids, $kidsPrices, $basePrice, $variantRows) {
+        $product = DB::transaction(function () use ($shop, $category, $supplier, $unitId, $data, $costCode, $isKids, $kidsPrices, $basePrice, $variantRows, $request) {
             $serial = ArticleSerial::next($shop, $category->code);
             $articleBarcode = ArticleBarcode::buildArticleBarcode($shop, strtoupper($data['manufacturer_code']), $category->code, $serial, $costCode);
             $name = "{$category->code}-{$serial}";
@@ -173,6 +178,15 @@ class ArticleController extends Controller
 
             $product->stock = $gridTotal;
             $product->saveQuietly();
+
+            // one photo per color, applied to every variant sharing it —
+            // uploaded via `photos[COLOR]` alongside the color/size grid
+            foreach (array_unique(array_filter(array_column($variantRows, 'color'))) as $color) {
+                if ($request->hasFile("photos.{$color}")) {
+                    $path = $request->file("photos.{$color}")->store('product-photos', 'public');
+                    ProductVariant::where('product_id', $product->id)->where('color', $color)->update(['photo_path' => $path]);
+                }
+            }
 
             return $product;
         });

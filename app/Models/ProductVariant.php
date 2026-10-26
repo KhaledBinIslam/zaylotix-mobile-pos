@@ -3,15 +3,19 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Storage;
 
 class ProductVariant extends Model
 {
     use BelongsToTenant, SoftDeletes;
 
-    protected $fillable = ['shop_id', 'product_id', 'size', 'color', 'barcode', 'stock', 'reorder_point', 'price', 'cost'];
+    protected $fillable = ['shop_id', 'product_id', 'size', 'color', 'barcode', 'stock', 'reorder_point', 'price', 'cost', 'photo_path'];
+
+    protected $appends = ['photo_url'];
 
     protected function casts(): array
     {
@@ -19,6 +23,12 @@ class ProductVariant extends Model
             'price' => 'decimal:2',
             'cost' => 'decimal:2',
         ];
+    }
+
+    /** Same convention as Product::photoUrl() — a color's "representative" photo, when one's been uploaded for it. */
+    protected function photoUrl(): Attribute
+    {
+        return Attribute::get(fn () => $this->photo_path ? Storage::disk('public')->url($this->photo_path) : null);
     }
 
     public function product()

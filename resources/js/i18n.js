@@ -1397,6 +1397,7 @@ export const translations = {
     'pos.imeiInStockCount': { bn: '{n}টি ইউনিট স্টকে আছে', en: '{n} units in stock' },
     'pos.imeiWarrantyUntil': { bn: 'ওয়ারেন্টি আছে {date} পর্যন্ত', en: 'Under warranty until {date}' },
     'pos.added': { bn: 'যোগ হয়েছে', en: 'added' },
+    'pos.add': { bn: 'যোগ করুন', en: 'Add' },
     'pos.checkoutError': { bn: 'বিল করতে সমস্যা হয়েছে', en: 'Something went wrong at checkout' },
     'pos.networkError': { bn: 'নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন', en: 'Network error — please try again' },
     // shown specifically when we can't tell whether the sale actually went

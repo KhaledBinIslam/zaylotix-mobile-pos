@@ -246,6 +246,33 @@ in `config/business_types.php` (ছেলেদের জুতা/মেয়�
 mapping the Excel's English `LADIES` to the existing `মেয়েদের জুতা`
 ("Women's Shoes") category, not creating a duplicate.
 
+## §4 SkyBuy-style color picker — built (POS + Stock)
+
+Per Khaled's reference screenshot and confirmation ("দুটোই" — both screens).
+**Correction found while scoping this**: Baby Park's `footwear` business
+type was never actually wired into `Clothing/Pos.vue` — `PosController::index()`'s
+component choice only checks `slug === 'clothing'`, so a shoe shop has
+always rendered the generic `Pos/Index.vue`. The redesign therefore landed
+there, not on the Clothing POS page.
+
+- `product_variants.photo_path` (nullable) — one optional photo per color,
+  applied to every variant sharing that color (never just one size), via
+  `ArticleController::store()` (new article) and a new
+  `ProductVariantController::updateColorPhoto()` (existing article, from Stock).
+- `resources/js/support/productDisplay.js`'s new `colorGroups()` — pure,
+  unit-tested grouping shared by both screens, so POS and Stock never drift.
+- **POS** (`Pos/Index.vue`): the old flat pill list of every size/color combo
+  is now a color chip row (photo or plain swatch) → the selected color's
+  sizes as a price/qty-stepper/Add table, matching the reference layout.
+  `addToCart()` gained an optional `qty` parameter (default 1, so every
+  existing caller is byte-identical) instead of looping single adds.
+- **Stock**: the existing variant-management list (stock-in/remove/barcode,
+  all unchanged) is now grouped under each color's photo + an upload/change
+  control — an editing tool, not a buying flow, so it keeps its own
+  controls rather than adopting POS's qty-stepper+Add shape verbatim.
+- A product with no photos uploaded for any color looks and behaves exactly
+  as before (plain swatch, same picker). Zero effect on checkout/stock math.
+
 ## §7 one-screen article entry — built
 
 Confirmed by Khaled ("এখনই বানাও"): `App\Http\Controllers\App\ArticleController`

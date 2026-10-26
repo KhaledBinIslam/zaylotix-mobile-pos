@@ -1,6 +1,6 @@
 <script setup>
 import { Head, router, usePage } from '@inertiajs/vue3';
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import HowToHint from '@/Components/HowToHint.vue';
@@ -16,7 +16,7 @@ import { fetchWithSessionRetry } from '@/support/fetchWithSessionRetry';
 import { isStaleAutoFill } from '@/support/customerAutoFill';
 import { buildOfflineSaleSnapshot } from '@/support/offlineSaleSnapshot';
 import { buildReceiptWhatsAppText, whatsAppUrlFor } from '@/support/receiptMessage';
-import { variantPriceBounds, variantStockTotal } from '@/support/productDisplay';
+import { variantPriceBounds, variantStockTotal, colorGroups } from '@/support/productDisplay';
 import { normalizeSearch } from '@/support/searchNormalize';
 import { bestMatchTier, levenshtein } from '@/support/searchMatch';
 import { usePermissions } from '@/composables/usePermissions';
@@ -335,8 +335,39 @@ function variantLabel(v) {
     return [v.size, v.color].filter(Boolean).join(', ');
 }
 
+/**
+ * SkyBuy-style color picker (docs/ARTICLE_SERIES_PLAN.md §4, per Khaled's
+ * reference screenshot) — a color chip row, then a size/price/qty table for
+ * whichever color is selected. Purely a front-end picker; still funnels
+ * into the exact same addToCart() above, so cart/checkout are untouched.
+ */
+const selectedColorByProduct = reactive({});
+const qtyByVariant = reactive({});
+
+function groupsFor(p) {
+    return colorGroups(p);
+}
+function activeColorGroup(p) {
+    const groups = groupsFor(p);
+    const picked = selectedColorByProduct[p.id];
+    return groups.find((g) => g.color === picked) || groups[0] || null;
+}
+function selectColor(p, color) {
+    selectedColorByProduct[p.id] = color;
+}
+function qtyFor(v) {
+    return qtyByVariant[v.id] ?? 1;
+}
+function stepQty(v, delta) {
+    qtyByVariant[v.id] = Math.max(1, Math.min((qtyByVariant[v.id] ?? 1) + delta, v.stock || 1));
+}
+function addVariantWithQty(p, v) {
+    addToCart(p.id, null, { productVariantId: v.id, qty: qtyFor(v) });
+    qtyByVariant[v.id] = 1;
+}
+
 /** A cart line is either a base sale, a pack-unit line, or a variant line — never a mix, mirrors PosController::checkout. */
-function addToCart(productId, productUnitId = null, { silent, productVariantId = null } = {}) {
+function addToCart(productId, productUnitId = null, { silent, productVariantId = null, qty = 1 } = {}) {
     if (!productId) return;
     const product = props.products.find((p) => p.id === productId);
     if (!product) return;
@@ -345,14 +376,14 @@ function addToCart(productId, productUnitId = null, { silent, productVariantId =
         const variant = variantOf(product, productVariantId);
         if (!variant) return;
         const alreadyInCart = cart.value.reduce((s, l) => s + (l.product_variant_id === productVariantId ? l.qty : 0), 0);
-        if (variant.stock <= alreadyInCart) {
+        if (variant.stock < alreadyInCart + qty) {
             toast('❌ ' + t('pos.notEnoughStock') + ' ' + product.name + ' (' + variantLabel(variant) + ')');
             return;
         }
 
         const line = cart.value.find((l) => l.product_variant_id === productVariantId);
-        if (line) line.qty++;
-        else cart.value.push({ product_id: productId, product_unit_id: null, product_variant_id: productVariantId, qty: 1, discount: 0, imei: '' });
+        if (line) line.qty += qty;
+        else cart.value.push({ product_id: productId, product_unit_id: null, product_variant_id: productVariantId, qty, discount: 0, imei: '' });
 
         if (!silent) toast('✅ ' + product.name + ' (' + variantLabel(variant) + ') ' + t('pos.added'));
         return;
@@ -1477,20 +1508,41 @@ useKeyboardShortcuts({
                                 {{ pu.unit?.name }} {{ money(pu.price) }}
                             </button>
                         </div>
-                        <!-- size/color variant options — same pill treatment as pack sizes, each carries its own stock -->
-                        <div v-if="hasProductVariants && p.variants?.length" class="punits">
-                            <!-- a variant's own price only shows when it actually
-                                 differs from the base product's — e.g. an XXL that
-                                 costs more — so the common same-price-every-size
-                                 case doesn't get cluttered with a redundant number -->
-                            <button
-                                v-for="v in p.variants" :key="v.id" class="upill"
-                                :disabled="v.stock <= 0"
-                                :style="v.stock <= 0 ? 'opacity:.45' : (hasLowStockAlerts && variantStockLevel(v) === 'low' ? 'color:var(--gold2);font-weight:700;border-color:var(--gold2)' : '')"
-                                @click="addToCart(p.id, null, { productVariantId: v.id })"
-                            >
-                                {{ variantLabel(v) }}<span v-if="v.price != null && Number(v.price) !== Number(p.price)"> {{ money(v.price) }}</span> {{ v.stock > 0 ? `(${v.stock})${hasLowStockAlerts && variantStockLevel(v) === 'low' ? ' ⚠' : ''}` : `— ${t('pos.outOfStock')}` }}
-                            </button>
+                        <!-- SkyBuy-style color picker: a chip row (photo if one's set, else a plain swatch), then the selected color's sizes as a price/qty table -->
+                        <div v-if="hasProductVariants && p.variants?.length" style="margin-top:8px" @click.stop>
+                            <div v-if="groupsFor(p).length > 1 || groupsFor(p)[0]?.color" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+                                <button
+                                    v-for="g in groupsFor(p)" :key="g.color ?? '_'" type="button"
+                                    class="upill" style="padding:4px;display:flex;align-items:center;gap:6px"
+                                    :style="activeColorGroup(p)?.color === g.color ? 'border-color:var(--sky);border-width:2px' : ''"
+                                    @click="selectColor(p, g.color)"
+                                >
+                                    <img v-if="g.photoUrl" :src="g.photoUrl" style="width:26px;height:26px;border-radius:6px;object-fit:cover">
+                                    <div v-else style="width:26px;height:26px;border-radius:6px;background:var(--panel2)"></div>
+                                    <span style="padding-right:4px">{{ g.color }}</span>
+                                </button>
+                            </div>
+                            <table v-if="activeColorGroup(p)" style="width:100%;border-collapse:collapse;font-size:13px">
+                                <tbody>
+                                    <tr v-for="v in activeColorGroup(p).variants" :key="v.id" style="border-top:1px solid var(--line)">
+                                        <td style="padding:6px 4px">{{ v.size }}</td>
+                                        <td style="padding:6px 4px" :style="hasLowStockAlerts && variantStockLevel(v) === 'low' ? 'color:var(--gold2);font-weight:700' : ''">
+                                            {{ v.price != null && Number(v.price) !== Number(p.price) ? money(v.price) : money(p.price) }}
+                                        </td>
+                                        <td style="padding:6px 4px">
+                                            <span v-if="v.stock <= 0" style="color:var(--rose)">{{ t('pos.outOfStock') }}</span>
+                                            <div v-else style="display:flex;align-items:center;gap:6px">
+                                                <button type="button" class="btn ghost sm" style="padding:2px 8px" @click="stepQty(v, -1)">−</button>
+                                                <span style="min-width:18px;text-align:center">{{ qtyFor(v) }}</span>
+                                                <button type="button" class="btn ghost sm" style="padding:2px 8px" @click="stepQty(v, 1)">+</button>
+                                            </div>
+                                        </td>
+                                        <td style="padding:6px 4px;text-align:right">
+                                            <button v-if="v.stock > 0" type="button" class="btn sm" @click="addVariantWithQty(p, v)">{{ t('pos.add') }}</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
