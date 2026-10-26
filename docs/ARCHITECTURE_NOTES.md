@@ -75,3 +75,18 @@ Phases 5-8 (service/repair, quotations, payroll/installments/wholesale/CRM, bott
 - **Accessibility (passing notes only)**: `--dim` (`#93A99A`) on white is ~2.9:1 contrast, below AA's 4.5:1, used pervasively for secondary/quiet text. A few small controls (`.qbtn`, `.sheet-close` 30×30px, `.scan-x` 40×40px) sit under a comfortable ~44px tap target, despite `.btn` itself having already had a deliberate 44px+ pass (app.css:207-213).
 - **Performance**: not a bundle-size concern (only 6/75 page files have any `<style>` block, all small). 1,439 inline `style="..."` attributes exist across Pages/Layouts — a maintainability tax (can't be changed via a single token edit), not a current perf problem. `.pcard`'s `content-visibility:auto` (app.css:372) shows the team already handles this class of problem where it matters.
 - **Scope decisions flagged for Khaled, not assumed** (see Phase 9 in FIX_PLAN.md for the safe-default work done instead): (1) add dark mode at all — net-new, no existing infra; (2) unify Admin's purple identity with App's green/gold brand, or keep Admin deliberately distinct as an "internal console" look; (3) the PWA install theme color (`app.blade.php`, `manifest.json`) currently matches Admin's purple, not the in-app functional palette — may be intentional outward-brand-identity, may be an oversight; (4) bump `--dim`'s contrast — a one-line token edit, but a visible app-wide color shift on every "quiet" text element; (5) add a loading-skeleton state — none exists anywhere today, and doing it right needs a template conditional per page, not just CSS; (6) delete the 8 confirmed-unused Breeze components.
+
+## 9. Baby Park (first paying client) setup research, 2026-10-26
+
+Full audit, decisions, and gap analysis live in `docs/BABY_PARK_PLAN.md`,
+not duplicated here. The one finding worth flagging at this level: the
+multi-branch "shared stock pool, separate sales/profit" design this
+customer needed was **already fully built and tested** before this task
+started — `Product`/`ProductVariant::stockPoolMemberIds()`/
+`applyStockDelta()` (the `shared_stock_pool` feature, from an earlier
+Online Business module pass) does exactly this, atomically, with no
+oversell risk across branches. This task was therefore mostly setup +
+small additive gaps (a business-type preset, a saved variant-size/color
+default, one new cross-branch variant report), not new core stock-logic —
+worth remembering before assuming a "multi-branch shared stock" request
+needs new core work in the future.

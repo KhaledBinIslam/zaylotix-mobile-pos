@@ -274,6 +274,28 @@ class SettingController extends Controller
         return back()->with('success', 'ক্রেডিট লিমিট সংরক্ষণ করা হয়েছে।');
     }
 
+    /**
+     * Saved comma-separated size/color defaults — Stock/Index.vue's variant
+     * grid pre-fills gridSizesInput/gridColorsInput from these (only when
+     * empty) instead of the owner retyping the same list every time. Null
+     * (default) means the grid still opens empty, exactly as before this
+     * existed.
+     */
+    public function updateVariantDefaults(Request $request)
+    {
+        $data = $request->validate([
+            'default_variant_sizes' => ['nullable', 'string', 'max:500'],
+            'default_variant_colors' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        Tenancy::shop()->update([
+            'default_variant_sizes' => $data['default_variant_sizes'] ?? null,
+            'default_variant_colors' => $data['default_variant_colors'] ?? null,
+        ]);
+
+        return back()->with('success', 'ডিফল্ট সাইজ/রং তালিকা সংরক্ষণ করা হয়েছে।');
+    }
+
     /** Shop logo, printed on POS receipts and barcode labels once uploaded. */
     public function updateLogo(Request $request)
     {

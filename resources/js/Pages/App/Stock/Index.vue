@@ -387,6 +387,11 @@ function openGrid() {
     gridStock.value = {};
     gridError.value = '';
     gridWriteOffRest.value = false;
+    // Pre-fill from the shop's saved defaults (Accounts page) only when the
+    // owner hasn't already typed something this session — never overwrite
+    // an in-progress edit.
+    if (!gridSizesInput.value && page.props.shop?.default_variant_sizes) gridSizesInput.value = page.props.shop.default_variant_sizes;
+    if (!gridColorsInput.value && page.props.shop?.default_variant_colors) gridColorsInput.value = page.props.shop.default_variant_colors;
 }
 function submitGrid() {
     const colors = gridColors.value.length ? gridColors.value : [''];

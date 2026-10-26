@@ -522,6 +522,10 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
             Route::patch('settings/credit-limit', [SettingController::class, 'updateCreditLimit'])->name('settings.creditLimit');
         });
 
+        Route::middleware('feature:product_variants')->group(function () {
+            Route::patch('settings/variant-defaults', [SettingController::class, 'updateVariantDefaults'])->name('settings.variantDefaults');
+        });
+
         Route::middleware('feature:restaurant_tables')->group(function () {
             Route::patch('settings/kitchen-whatsapp', [SettingController::class, 'updateKitchenWhatsapp'])->name('settings.kitchenWhatsapp');
             Route::patch('settings/restaurant-prefs', [SettingController::class, 'updateRestaurantPrefs'])->name('settings.restaurantPrefs');

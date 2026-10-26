@@ -14,6 +14,7 @@ const props = defineProps({
     serialProfitReport: { type: Array, default: () => [] },
     salespersonProfitReport: { type: Array, default: () => [] },
     branchProductProfitReport: { type: Array, default: () => [] },
+    branchVariantProfitReport: { type: Array, default: () => [] },
 });
 const { t } = useI18n();
 
@@ -334,6 +335,16 @@ function heatColor(count) {
             </div>
         </template>
 
+        <template v-if="isOwner && branchVariantProfitReport?.length">
+            <div class="sechead"><h2>{{ t('rep.branchVariantProfitReport') }}</h2></div>
+            <div class="card" style="padding:0;margin-bottom:14px">
+                <div v-for="(p, i) in branchVariantProfitReport" :key="p.shop_id + ':' + p.product_name + ':' + p.variant_label" class="row" style="cursor:default" :style="i > 0 ? 'border-top:1px solid var(--line)' : ''">
+                    <div class="mid"><b>{{ p.product_name }}</b><span>{{ p.variant_label || '—' }} • {{ p.shop_name }} • {{ p.qty_sold }} {{ t('rep.unitsSold') }}</span></div>
+                    <div class="end"><b :style="{ color: p.profit >= 0 ? 'var(--green)' : 'var(--rose)' }">{{ money(p.profit) }}</b></div>
+                </div>
+            </div>
+        </template>
+
         <template v-if="variantInventory?.rows?.length">
             <div class="sechead"><h2>{{ t('rep.variantInventory') }}</h2></div>
             <div class="card" style="padding:0;margin-bottom:8px">
@@ -345,7 +356,10 @@ function heatColor(count) {
             <div class="card" style="padding:0;margin-bottom:14px">
                 <div v-for="(row, i) in variantInventory.rows" :key="row.product_id + ':' + row.color + ':' + row.size" class="row" style="cursor:default" :style="i > 0 ? 'border-top:1px solid var(--line)' : ''">
                     <div class="mid"><b>{{ row.product_name }}</b><span>{{ row.category }} • {{ [row.color, row.size].filter(Boolean).join(', ') }}</span></div>
-                    <div class="end"><b>{{ row.stock }} {{ t('stock.pieces') }}</b></div>
+                    <div class="end">
+                        <b :style="row.reorder_point != null && row.stock <= row.reorder_point ? 'color:var(--rose)' : ''">{{ row.stock }} {{ t('stock.pieces') }}</b>
+                        <span v-if="row.reorder_point != null && row.stock <= row.reorder_point" style="display:block;font-size:11px;color:var(--rose)">{{ t('rep.variantRunningLow') }}</span>
+                    </div>
                 </div>
             </div>
         </template>

@@ -68,6 +68,7 @@ class ReportController extends Controller
             // and it actually has siblings, see Reports::combinedRangeStats()
             'combinedStats' => $this->combinedStatsIfMainShop($shop, $from, $to),
             'branchProductProfitReport' => $this->branchProductProfitReportIfMainShop($shop, $from, $to),
+            'branchVariantProfitReport' => $this->branchVariantProfitReportIfMainShop($shop, $from, $to),
             // one-click "everything" summary — customer due and supplier
             // payable totals alongside the P&L already in $stats, so an
             // owner never has to visit three separate pages to see the
@@ -108,6 +109,21 @@ class ReportController extends Controller
         }
 
         return Reports::branchProductProfitReport([$shop->id, ...$branchIds], $from, $to);
+    }
+
+    /** Same "main shop with real branches" gate, plus product_variants — see docs/BABY_PARK_PLAN.md. */
+    private function branchVariantProfitReportIfMainShop(?Shop $shop, string $from, string $to): ?array
+    {
+        if (! $shop || $shop->parent_shop_id || ! $shop->hasFeature('product_variants')) {
+            return null;
+        }
+
+        $branchIds = Shop::withoutGlobalScopes()->where('parent_shop_id', $shop->id)->pluck('id')->all();
+        if (! $branchIds) {
+            return null;
+        }
+
+        return Reports::branchVariantProfitReport([$shop->id, ...$branchIds], $from, $to);
     }
 
     private function resolveRange(string $preset, ?string $from, ?string $to): array

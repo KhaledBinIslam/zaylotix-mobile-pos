@@ -124,6 +124,34 @@ return [
         ],
     ],
 
+    // Added for Baby Park (docs/BABY_PARK_PLAN.md) — a shoe shop is close
+    // enough to 'clothing' (same size+color fields) to not need a new
+    // fields/feature shape, but its categories/units are genuinely
+    // different (pairs, not pieces/yards; no shirts/sarees). Purely
+    // additive — no existing shop or business type is affected.
+    'footwear' => [
+        'label_bn' => 'জুতার দোকান',
+        'label_en' => 'Shoe Shop',
+        'fields' => ['size', 'color'],
+        'features' => [
+            'memo_print', 'memo_whatsapp', 'barcode_printing', 'purchases', 'returns', 'stock_count', 'product_variants',
+            'accounts', 'expenses', 'reports', 'export', 'cashier_management', 'low_stock_alerts', 'suppliers',
+        ],
+        'categories' => [
+            ['name' => 'ছেলেদের জুতা', 'name_en' => "Men's Shoes", 'emoji' => '👞'],
+            ['name' => 'মেয়েদের জুতা', 'name_en' => "Women's Shoes", 'emoji' => '👠'],
+            ['name' => 'বাচ্চাদের জুতা', 'name_en' => "Kids' Shoes", 'emoji' => '👟'],
+            ['name' => 'স্যান্ডেল', 'name_en' => 'Sandals', 'emoji' => '👡'],
+            ['name' => 'স্নিকার', 'name_en' => 'Sneakers', 'emoji' => '👟'],
+            ['name' => 'স্কুল শু', 'name_en' => 'School Shoes', 'emoji' => '🥿'],
+            ['name' => 'অন্যান্য', 'name_en' => 'Other', 'emoji' => '📦'],
+        ],
+        'units' => [
+            ['name' => 'জোড়া', 'name_en' => 'Pair', 'code' => 'pair'],
+            ['name' => 'পিস', 'name_en' => 'Piece', 'code' => 'pcs'],
+        ],
+    ],
+
     'pharmacy' => [
         'label_bn' => 'ওষুধের দোকান',
         'label_en' => 'Pharmacy',

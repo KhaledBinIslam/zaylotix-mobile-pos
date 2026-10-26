@@ -1764,6 +1764,10 @@ export const translations = {
     'acc.creditLimitSection': { bn: '💳 ক্রেডিট লিমিট (ডিফল্ট)', en: '💳 Credit limit (default)' },
     'acc.creditLimitHint': { bn: 'একজন কাস্টমার সর্বোচ্চ কত টাকা বাকি রাখতে পারবে, শপ-ওয়াইড ডিফল্ট — খালি রাখলে কোনো লিমিট নেই। প্রতি কাস্টমারের জন্য আলাদা করে ওভাররাইডও সেট করা যাবে।', en: 'Shop-wide default ceiling on how much due one customer can carry — leave empty for no limit. Can be overridden per customer.' },
     'acc.creditLimitOffPlaceholder': { bn: 'কোনো লিমিট নেই', en: 'No limit' },
+    'acc.variantDefaultsSection': { bn: '📏 ডিফল্ট সাইজ/রং তালিকা', en: '📏 Default size/color list' },
+    'acc.variantDefaultsHint': { bn: 'স্টক পেজের ভ্যারিয়েন্ট গ্রিড খোলার সময় এই তালিকা দিয়ে প্রিফিল হবে, যাতে বারবার টাইপ করতে না হয়। কমা দিয়ে আলাদা করুন।', en: 'Pre-fills the Stock page\'s variant grid when opened, so you don\'t retype the same list every time. Comma-separated.' },
+    'acc.variantDefaultsSizesPlaceholder': { bn: 'সাইজ, যেমন: 28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44', en: 'Sizes, e.g. 28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44' },
+    'acc.variantDefaultsColorsPlaceholder': { bn: 'রং, যেমন: কালো, সাদা, বাদামী, নেভি ব্লু, লাল', en: 'Colors, e.g. Black, White, Brown, Navy Blue, Red' },
 
     // ---- reports ----
     'rep.subtitle': { bn: 'তারিখ বাছাই করুন', en: 'Select a date range' },
@@ -1816,6 +1820,8 @@ export const translations = {
     'rep.serialProfitReport': { bn: '📱 IMEI অনুযায়ী লাভ', en: '📱 Profit by IMEI' },
     'rep.salespersonProfitReport': { bn: '🧑‍💼 বিক্রেতা অনুযায়ী লাভ', en: '🧑‍💼 Profit by Salesperson' },
     'rep.branchProductProfitReport': { bn: '🏬 শাখা অনুযায়ী পণ্যের লাভ', en: '🏬 Profit by Branch & Product' },
+    'rep.branchVariantProfitReport': { bn: '🏬🎨 শাখা অনুযায়ী সাইজ/কালার লাভ', en: '🏬🎨 Profit by Branch & Size/Color' },
+    'rep.variantRunningLow': { bn: 'সাইজ শেষ হয়ে আসছে', en: 'Running low' },
     'rep.billCount': { bn: 'বিল', en: 'bills' },
     'rep.variantInventory': { bn: '🎨 বর্তমান স্টক — ক্যাটাগরি/রং/সাইজ অনুযায়ী', en: '🎨 Current Stock — by Category/Color/Size' },
     'rep.variantCount': { bn: '{n} টা ভ্যারিয়েন্ট', en: '{n} variants' },

@@ -19,6 +19,7 @@ class Shop extends Model
         'cash_balance', 'bank_balance', 'capital',
         'vat_mode', 'vat_rate', 'turnover_rate', 'invoice_counter', 'service_charge_rate',
         'loyalty_earn_rate', 'loyalty_point_value', 'referral_bonus_points', 'return_window_days', 'overhead_allocation_rule', 'dead_stock_days', 'catalog_slug', 'default_credit_limit', 'onboarded_at',
+        'default_variant_sizes', 'default_variant_colors',
     ];
 
     protected $appends = ['logo_url', 'business_type_slug'];

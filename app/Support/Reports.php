@@ -520,6 +520,38 @@ class Reports
     }
 
     /**
+     * Variant counterpart of branchProductProfitReport() — see
+     * docs/BABY_PARK_PLAN.md. A shared-stock-pool chain's variant stock is
+     * one combined number already (Product/ProductVariant::applyStockDelta()),
+     * but Sale/SaleItem stays per-branch — so "which branch sold more of
+     * size 40" can only be answered from SaleItem, grouped by both shop_id
+     * and product_variant_id, the same cross-branch withoutGlobalScopes()
+     * pattern branchProductProfitReport() already uses.
+     */
+    public static function branchVariantProfitReport(array $shopIds, string $from, string $to): array
+    {
+        $rows = SaleItem::withoutGlobalScopes()
+            ->whereIn('shop_id', $shopIds)
+            ->whereNotNull('product_variant_id')
+            ->whereHas('sale', fn ($q) => $q->withoutGlobalScopes()->whereDate('date', '>=', $from)->whereDate('date', '<=', $to))
+            ->selectRaw('shop_id, product_name, variant_label, SUM(qty) as qty_sold, SUM(qty * price - discount) as revenue, SUM((price - cost) * qty - discount) as profit')
+            ->groupBy('shop_id', 'product_name', 'variant_label')
+            ->get();
+
+        $shopNames = Shop::withoutGlobalScopes()->whereIn('id', $shopIds)->pluck('name', 'id');
+
+        return $rows->map(fn ($r) => [
+            'shop_id' => $r->shop_id,
+            'shop_name' => $shopNames->get($r->shop_id, '—'),
+            'product_name' => $r->product_name,
+            'variant_label' => $r->variant_label,
+            'qty_sold' => (float) $r->qty_sold,
+            'revenue' => round((float) $r->revenue, 2),
+            'profit' => round((float) $r->profit, 2),
+        ])->sortByDesc('qty_sold')->values()->all();
+    }
+
+    /**
      * Per-IMEI/serial profit — a serial-tracked device is always qty=1 per
      * sale line, so this is just that line's own price/cost rather than an
      * aggregate. Excludes a line whose device was later returned (the
@@ -608,6 +640,12 @@ class Reports
                 'color' => $v->color,
                 'size' => $v->size,
                 'stock' => $v->stock,
+                // lets the frontend flag "this size is running low" — see
+                // docs/BABY_PARK_PLAN.md. Branch-neutral on purpose: with
+                // shared_stock_pool on, every pooled variant's stock is
+                // already the one combined number (applyStockDelta()), so
+                // this threshold check needs no branch dimension at all.
+                'reorder_point' => $v->reorder_point,
             ]);
 
         $byCategory = $rows->groupBy('category')

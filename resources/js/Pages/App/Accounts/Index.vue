@@ -47,6 +47,15 @@ function saveCreditLimit() {
         default_credit_limit: defaultCreditLimit.value === '' ? null : defaultCreditLimit.value,
     }, { preserveScroll: true });
 }
+
+const defaultVariantSizes = ref(props.shop?.default_variant_sizes ?? '');
+const defaultVariantColors = ref(props.shop?.default_variant_colors ?? '');
+function saveVariantDefaults() {
+    router.patch(route('app.settings.variantDefaults'), {
+        default_variant_sizes: defaultVariantSizes.value === '' ? null : defaultVariantSizes.value,
+        default_variant_colors: defaultVariantColors.value === '' ? null : defaultVariantColors.value,
+    }, { preserveScroll: true });
+}
 </script>
 
 <template>
@@ -113,6 +122,18 @@ function saveCreditLimit() {
                 <div style="display:flex;gap:8px">
                     <input v-model="defaultCreditLimit" type="number" inputmode="decimal" min="0" step="50" :placeholder="t('acc.creditLimitOffPlaceholder')" style="flex:1;margin:0">
                     <button class="btn sm" style="width:auto;padding:0 16px" @click="saveCreditLimit">{{ t('stock.save') }}</button>
+                </div>
+            </div>
+        </template>
+
+        <template v-if="features.includes('product_variants')">
+            <div class="sechead"><h2>{{ t('acc.variantDefaultsSection') }}</h2></div>
+            <div class="card">
+                <div style="font-size:12.5px;color:var(--mut);margin-bottom:10px">{{ t('acc.variantDefaultsHint') }}</div>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                    <input v-model="defaultVariantSizes" type="text" :placeholder="t('acc.variantDefaultsSizesPlaceholder')" style="margin:0">
+                    <input v-model="defaultVariantColors" type="text" :placeholder="t('acc.variantDefaultsColorsPlaceholder')" style="margin:0">
+                    <button class="btn sm" style="width:auto;padding:0 16px;align-self:flex-start" @click="saveVariantDefaults">{{ t('stock.save') }}</button>
                 </div>
             </div>
         </template>
