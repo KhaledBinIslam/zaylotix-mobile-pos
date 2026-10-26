@@ -2688,6 +2688,119 @@ speed/mobile-keyboard layout), ধাপ ৪ (নেভ সার্চ "কো�
 টিকিটের নিজের নির্দেশ অনুযায়ী প্রতি ধাপের পর থামার কথা, তাই ধাপ ১-এর এই
 নিশ্চিতকরণের পর এখানেই থামলাম।
 
+## ধাপ ২ — ভুল-সহনশীল সার্চ ইঞ্জিন (normalization + fuzzy ranking + unified search)
+
+**ধাপ ১-এর root cause অনুসারে বিল্ড করা। ধাপ ৩ (বিলিং স্পিড/মোবাইল লেআউট) আর
+ধাপ ৪ (নেভ সার্চ) এখনো শুরু হয়নি — টিকিটের নিজের নির্দেশ অনুযায়ী এখানে
+থামলাম।**
+
+### ক. Normalization — `SearchNormalizer`/`normalizeSearch`
+`app/Support/SearchNormalizer.php` + `resources/js/support/searchNormalize.js`
+— pure PHP/JS, কোনো `intl` extension নির্ভরতা নেই (ধাপ ১-এর ঝুঁকি এড়ানো
+হলো)। য়/ড়/ঢ় composition-exclusion ফিক্স + চন্দ্রবিন্দু/ZWJ/ZWNJ/ZWSP/BOM
+স্ট্রিপ + ৎ→ত + বাংলা সংখ্যা→ASCII + whitespace collapse + lowercase। একই
+`tests/fixtures/search_normalize_cases.json` ফিক্সচার দুটো ভাষায় পাস করে
+(১৯টা কেস) — `tests/Unit/SearchNormalizerTest.php` ও
+`resources/js/support/__tests__/searchNormalize.test.js`।
+
+### খ. Fuzzy ranking — `SearchMatcher`/searchMatch.js
+`app/Support/SearchMatcher.php` + `resources/js/support/searchMatch.js` —
+৬-স্তর ranking (barcode > prefix > word-prefix (word-order independent) >
+substring > typo-tolerant Levenshtein (codepoint-level, grapheme-cluster
+না — ছোট সার্চ শব্দের জন্য যথেষ্ট ভালো approximation) > phonetic
+(ি/ী, ু/ূ, শ/ষ/স, ন/ণ, জ/য — য়-সিকোয়েন্স protected via negative lookahead)।
+শেয়ার্ড ফিক্সচার `tests/fixtures/search_match_cases.json` (৭ কেস, tier-6
+পর্যন্ত reachable — দুইটা phonetic substitution মিলে typo-tolerance-এর
+threshold ছাড়িয়ে গেলেই tier-6 আসলে reach হয়, নিশ্চিত করে টেস্ট করা)।
+
+### গ. বাংলা-ইংরেজি মিশ্র
+`products.search_keywords` (নতুন কলাম, মালিক-সম্পাদনযোগ্য) যুক্ত হয়েছে এবং
+`search_text`-এ ফোল্ড হয়। **Avro-ধরনের Banglish transliteration ইঞ্জিন
+বানানো হয়নি** — টিকিটের নিজের অনুমতি অনুযায়ী ("জটিল হলে প্রথম সংস্করণে
+কেবল keywords ও সরল ম্যাপিং রাখো") এই সংস্করণে শুধু keywords ফিল্ডেই
+সীমাবদ্ধ রাখা হলো; "soya sas" টাইপ করলে "সয়াসস" মিলবে একমাত্র keywords-এ
+সেটা লেখা থাকলে, স্বয়ংক্রিয় transliteration ছাড়া না।
+
+### ঘ. Storage
+মাইগ্রেশন `2026_10_26_000005_add_search_text_to_products_table.php` —
+`search_keywords` + `search_text` (দুটোই nullable TEXT, additive,
+reversible)। `Product::booted()`-এর `saving()` hook প্রতিটা save-এ
+`search_text` রিবিল্ড করে (name+name_en+generic_name+barcode+keywords,
+normalize করা) — stock-only movement (`applyStockDelta`, checkout-এর
+`increment`/`update`) এই hook ছোঁয় না কারণ সেগুলো raw query builder কল,
+`->save()` নয়, তাই কোনো পারফরম্যান্স প্রভাব নেই। পুরনো পণ্যের জন্য:
+```
+php artisan products:backfill-search-text --dry-run   # প্রিভিউ
+php artisan products:backfill-search-text --confirm    # আসলে লেখে
+```
+লোকাল ডেভ DB-এ চালিয়ে যাচাই করা হয়েছে (৫৮৬টা পণ্য, সব ঠিকভাবে
+normalize হয়েছে, বাংলা সংখ্যা/চন্দ্রবিন্দু সহ)। **প্রোডাকশনে ডিপ্লয়ের পর
+এই `--confirm` কমান্ডটা একবার চালাতে হবে** — এটা ছাড়া পুরনো পণ্য
+`search_text` খালি থাকবে এবং এখনো পুরনো বাগে পড়বে (নতুন পণ্য/edit করা
+পণ্য স্বয়ংক্রিয়ভাবে ঠিক থাকবে)।
+
+IndexedDB অফলাইন ক্যাশে আলাদা `search_text` কলাম রাখা হয়নি — ক্লায়েন্ট
+নিজেই `normalizeSearch`/`bestMatchTier` প্রতিটা প্রোডাক্টের name/name_en/
+generic_name ফিল্ডের উপর রিয়েল-টাইমে চালায় (একই শেয়ার্ড ফাংশন), তাই
+সার্ভার থেকে একটা রিডান্ড্যান্ট ফিল্ড পাঠানোর দরকার হয়নি — অনলাইন/অফলাইন
+দুটোই একই লজিক, একই ফল।
+
+### ঙ-চ. Ranking boost + "did you mean"
+স্টক-শেষ পণ্য একই tier-এর মধ্যে সবসময় শেষে। "সম্প্রতি যোগ হওয়া" (id desc)
+tie-break হিসেবে — **"বেশি বিক্রি হওয়া" বুস্ট বিল্ড করা হয়নি** (sales-count
+জয়েনের প্রয়োজন, এই পাসে স্কোপের বাইরে রাখা হলো, ভবিষ্যতে দরকার হলে
+আলাদাভাবে যুক্ত করা যাবে)। "আপনি কি এটা বুঝিয়েছেন" (৩টা পর্যন্ত, পুরো-
+স্ট্রিং Levenshtein distance-ভিত্তিক looser শেষ-ধাপ, শুধু তখনই দেখায় যখন
+layered tier ৬টাও কিছু পায়নি) + "নতুন পণ্য যোগ করুন" শর্টকাট (`hasPerm
+('stock')` গেটেড) — POS ও Clothing POS দুটোতেই, Stock/Index.vue-এ
+`?new_name=` কুয়েরি-প্যারাম দিয়ে প্রি-ফিল হয়।
+
+### ছ. ইনপুট আচরণ
+`autocomplete/autocorrect/autocapitalize="off"` + `spellcheck="false"` —
+POS সার্চ, কাস্টমার-নাম সার্চ, Stock পেজ সার্চ সব জায়গায়। IME composition
+guard (`compositionstart`-চলাকালীন আংশিক টেক্সটে ফিল্টার না চালানো) POS/
+Clothing POS-এর মূল সার্চ বক্সে — `:value` + `@input`/`@compositionend`
+প্যাটার্নে (`v-model` থেকে সরে আসা হয়েছে, যাতে কম্পোজিশনের মাঝে
+`e.isComposing` চেক করা যায়)। লোকাল-ফার্স্ট ফিল্টার ইচ্ছাকৃতভাবে
+ডিবাউন্স করা হয়নি (ধাপ ৩-এর নিজের "তাৎক্ষণিক ফল" দাবির সাথে সঙ্গতি রেখে)
+— সার্ভার-সাইড `search()` কল (বড় ক্যাটালগ শপের জন্য) আগে থেকেই ৩০০ms
+ডিবাউন্স করে (`useOfflineCatalog.js`)।
+
+### জ. সব বাছাই-স্ক্রিনে একই সার্চ — আসলে কী হলো, কী হয়নি
+পুরো fuzzy/ranked/did-you-mean ইঞ্জিন: **POS (`Pos/Index.vue`), Clothing
+POS, offline cache (`offlineDb.js`)** — এই তিনটায় client-side। **Stock
+পেজ, POS-এর `search()` এন্ডপয়েন্ট** — সার্ভার-সাইড, একই
+`ProductSearch::run()` শেয়ার্ড helper দিয়ে (আগে ৫টা আলাদা `LIKE`
+ইমপ্লিমেন্টেশন ছিল, এখন একটাই)। **Customer সার্চ** — normalize + fallback
+(stored column ছাড়া, ছোট ক্যাটালগ বলে রানটাইমে normalize করাই যথেষ্ট)।
+
+**যেখানে প্রয়োগ হয়নি, আর কেন**: ক্রয় (Purchase)/কোটেশন/Damage/Return/
+Supplier-Return-এর প্রোডাক্ট পিকার আসলে প্লেইন HTML `<select>` — কোনো
+ফ্রি-টেক্সট সার্চ বক্সই নেই, তাই "ফাজি সার্চ" প্রযোজ্য নয় (ব্রাউজারের নিজের
+type-ahead ছাড়া)। নতুন করে এগুলোকে সার্চ-বক্স-সহ কম্পোনেন্টে রূপান্তর করা
+এই পাসের স্কোপে ধরা হয়নি (আলাদা, বড় UI কাজ)। `MedicineCatalogController::
+search()` (ফার্মেসি-ভার্টিকাল-নির্দিষ্ট ওষুধ-ক্যাটালগ লুকআপ) ইচ্ছাকৃতভাবে
+ছোঁয়া হয়নি — রিপোর্ট করা বাগের আসল বিষয় নয়, এবং এই সার্চের রিপোর্ট করা
+সমস্যা এটা না।
+
+### টেস্ট
+- `tests/Unit/SearchNormalizerTest.php`, `SearchMatcherTest.php` — শেয়ার্ড
+  ফিক্সচার, JS-এর সাথে identical আউটপুট প্রমাণিত।
+- `tests/Feature/ProductSearchNormalizationTest.php` (নতুন, ৮টা) — আসল
+  HTTP এন্ডপয়েন্ট দিয়ে এন্ড-টু-এন্ড প্রমাণ: precomposed/decomposed য়
+  মিসম্যাচ, বাংলা/ASCII সংখ্যা, word-order, টাইপো fallback, barcode-first
+  ranking, টেন্যান্ট আইসোলেশন, কাস্টমার সার্চ fallback।
+- বিদ্যমান সব স্টক/POS/টেন্যান্ট টেস্ট পুনরায় চালিয়ে green (কোনো regression
+  নেই) — `OfflineSyncProductResolutionTest`, `PosCatalogScaleTest`,
+  `PosIndexPropsTest`, `CustomerSearchTest`, `WholesaleCustomerGroupsTest`,
+  এবং আরো ১২টা Stock/Product-সংক্রান্ত ফাইল, মোট ১০১+ টেস্ট।
+- vitest: `searchNormalize.test.js`, `searchMatch.test.js` (শেয়ার্ড
+  ফিক্সচার + levenshtein/phoneticFold/bestMatchTier ইউনিট টেস্ট)।
+- `offlineDb.js`-এর `searchProductsOffline()`-এর নতুন লজিক নিজে আলাদা
+  টেস্ট করা হয়নি (IndexedDB মক করার কোনো dependency এই রিপোতে নেই) —
+  কিন্তু এটা পুরোপুরি ইতিমধ্যে টেস্ট করা `normalizeSearch`/`bestMatchTier`
+  ফাংশনের সরল composition, নতুন কোনো লজিক নেই, তাই ঝুঁকি কম ধরা হলো।
+
 ## Definition-of-done checklist (updated after every phase)
 
 - [x] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test --all`, Phase 0.6) — re-verified 2026-10-20, all 8 types OK

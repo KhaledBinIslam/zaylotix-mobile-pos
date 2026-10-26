@@ -14,6 +14,9 @@ import { fetchWithSessionRetry } from '@/support/fetchWithSessionRetry';
 import { buildOfflineSaleSnapshot } from '@/support/offlineSaleSnapshot';
 import { buildReceiptWhatsAppText, whatsAppUrlFor } from '@/support/receiptMessage';
 import { variantPriceBounds, variantStockTotal } from '@/support/productDisplay';
+import { normalizeSearch } from '@/support/searchNormalize';
+import { bestMatchTier, levenshtein } from '@/support/searchMatch';
+import { usePermissions } from '@/composables/usePermissions';
 
 /**
  * A dedicated, clothing-specific POS — category tabs -> product grid ->
@@ -80,14 +83,49 @@ if (props.catalogMode === 'search') {
     }, { immediate: true });
 }
 
-const filtered = computed(() => props.catalogMode === 'search' ? searchResults.value : props.products.filter((p) =>
-    (!q.value
-        || p.name.toLowerCase().includes(q.value.toLowerCase())
-        || p.name_en?.toLowerCase().includes(q.value.toLowerCase())
-        || (p.barcode || '').includes(q.value)
-    ) &&
-    (cat.value === 'all' || p.category_id === cat.value)
-));
+// See Pos/Index.vue's identical comment/pattern (docs/FIX_PLAN.md's
+// search-normalization fix) — same reasoning, same shared helpers.
+const normalizedCatalog = computed(() => props.products.map((p) => ({
+    product: p,
+    fields: [normalizeSearch(p.name), normalizeSearch(p.name_en || '')],
+})));
+
+const filtered = computed(() => {
+    if (props.catalogMode === 'search') return searchResults.value;
+
+    const inCategory = normalizedCatalog.value.filter(({ product: p }) => cat.value === 'all' || p.category_id === cat.value);
+    if (!q.value) return inCategory.map(({ product }) => product);
+
+    const normalizedQ = normalizeSearch(q.value);
+
+    return inCategory
+        .map(({ product, fields }) => ({ product, tier: bestMatchTier(normalizedQ, fields, { barcodeExact: (product.barcode || '') === q.value }) }))
+        .filter((row) => row.tier !== null)
+        .sort((a, b) => a.tier - b.tier)
+        .map((row) => row.product);
+});
+
+function onSearchInput(e) {
+    if (e.isComposing) return;
+    q.value = e.target.value;
+}
+
+const { hasPerm } = usePermissions();
+
+// See Pos/Index.vue's identical computed/comment (ধাপ ২.চ).
+const didYouMeanSuggestions = computed(() => {
+    if (props.catalogMode === 'search' || filtered.value.length || !q.value.trim()) return [];
+
+    const normalizedQ = normalizeSearch(q.value);
+    const maxDistance = Math.max(3, Math.ceil(normalizedQ.length * 0.6));
+
+    return normalizedCatalog.value
+        .map(({ product, fields }) => ({ product, distance: Math.min(...fields.filter(Boolean).map((f) => levenshtein(normalizedQ, f))) }))
+        .filter((row) => row.distance <= maxDistance)
+        .sort((a, b) => a.distance - b.distance)
+        .slice(0, 3)
+        .map((row) => row.product);
+});
 
 function productOf(id) {
     return props.products.find((p) => p.id === id);
@@ -667,7 +705,11 @@ function sendMemoWA() {
 
             <div class="lg:order-2 lg:flex-1 lg:min-w-0">
                 <div style="display:flex;gap:8px;margin-bottom:12px">
-                    <input v-model="q" :placeholder="t('pos.searchPlaceholder')" style="flex:1">
+                    <input
+                        :value="q" @input="onSearchInput" @compositionend="onSearchInput"
+                        :placeholder="t('pos.searchPlaceholder')" style="flex:1"
+                        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                    >
                     <button v-if="canScan" class="btn ghost" style="width:auto;padding:0 16px" :title="t('pos.scanTitle')" @click="openScanner">📷</button>
                 </div>
                 <div v-if="catalogMode === 'search' && !catalog.syncProgress.value.complete" style="font-size:11.5px;color:var(--dim);margin:-6px 0 10px">
@@ -700,7 +742,14 @@ function sendMemoWA() {
                         </div>
                     </button>
                 </div>
-                <div v-else class="empty"><div class="big">👕</div>{{ t('pos.noProducts') }}</div>
+                <div v-else class="empty">
+                    <div class="big">👕</div>{{ t('pos.noProducts') }}
+                    <div v-if="didYouMeanSuggestions.length" style="margin-top:12px">
+                        <div style="font-size:12px;color:var(--dim);margin-bottom:6px">{{ t('pos.didYouMean') }}</div>
+                        <button v-for="s in didYouMeanSuggestions" :key="s.id" type="button" class="btn ghost sm" style="margin:0 4px 6px" @click="q = s.name">{{ s.emoji }} {{ s.name }}</button>
+                    </div>
+                    <button v-if="hasPerm('stock')" type="button" class="btn ghost sm" style="margin-top:6px" @click="router.visit(route('app.stock') + '?new_name=' + encodeURIComponent(q))">{{ t('pos.addNewProductShortcut') }}</button>
+                </div>
             </div>
 
             <!-- order panel — desktop only, a live read view of the cart with the
@@ -801,7 +850,7 @@ function sendMemoWA() {
                 </div>
                 <div class="field">
                     <label>{{ t('pos.customerName') }}</label>
-                    <input v-model="customerName" :placeholder="t('pos.customerName')">
+                    <input v-model="customerName" :placeholder="t('pos.customerName')" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                 </div>
 
                 <div class="field">

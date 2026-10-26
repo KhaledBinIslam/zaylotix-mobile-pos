@@ -512,6 +512,15 @@ function pollStockNow() {
 }
 onMounted(() => {
     pollTimer = setInterval(pollStockNow, 15000);
+
+    // ধাপ ২.চ (docs/FIX_PLAN.md) — the POS "did you mean... + নতুন পণ্য
+    // যোগ করুন" shortcut lands here with the typed, not-found text
+    // prefilled, so the owner doesn't have to retype it.
+    const newName = new URLSearchParams(window.location.search).get('new_name');
+    if (newName) {
+        openNew();
+        form.name = newName;
+    }
 });
 pollOnVisible(pollStockNow);
 onBeforeUnmount(() => clearInterval(pollTimer));
@@ -552,7 +561,10 @@ useKeyboardShortcuts({
         </Link>
 
         <div style="display:flex;gap:8px;margin-bottom:12px">
-            <input ref="searchInput" v-model="q" :placeholder="isRestaurant ? t('stock.searchPlaceholderRestaurant') : t('stock.searchPlaceholder')" style="flex:1" @keyup.enter="applyFilter">
+            <input
+                ref="searchInput" v-model="q" :placeholder="isRestaurant ? t('stock.searchPlaceholderRestaurant') : t('stock.searchPlaceholder')" style="flex:1" @keyup.enter="applyFilter"
+                autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+            >
             <button class="btn ghost" style="width:auto;padding:0 16px" :title="t('pos.scanTitle')" @click="openScanner">📷</button>
             <button class="btn sm" style="width:auto;padding:0 16px" @click="applyFilter">{{ t('sales.searchButton') }}</button>
         </div>

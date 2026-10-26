@@ -1319,6 +1319,8 @@ export const translations = {
     'pos.soldOutToday': { bn: 'আজ শেষ', en: 'Sold out today' },
     'pos.lowStock': { bn: '— কম আছে', en: '— low' },
     'pos.notFound': { bn: 'কোনো পণ্য পাওয়া যায়নি', en: 'No products found' },
+    'pos.didYouMean': { bn: 'আপনি কি এটা বুঝিয়েছেন:', en: 'Did you mean:' },
+    'pos.addNewProductShortcut': { bn: '+ নতুন পণ্য যোগ করুন', en: '+ Add new product' },
     'pos.cartEmptyHint': { bn: 'কার্ট খালি — পণ্যে ট্যাপ করুন', en: 'Cart empty — tap a product' },
     'pos.orScan': { bn: ' বা স্ক্যান করুন', en: ' or scan' },
     'pos.billButton': { bn: 'বিল করুন', en: 'Checkout' },

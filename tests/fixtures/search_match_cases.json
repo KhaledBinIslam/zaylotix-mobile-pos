@@ -1,0 +1,44 @@
+[
+    {
+        "name": "text starts with the query (prefix tier)",
+        "query": "সয়া",
+        "text": "সয়া সস",
+        "expectedTier": 2
+    },
+    {
+        "name": "word order does not matter (sos tometo vs tometo sos, word-prefix tier)",
+        "query": "সস টমেটো",
+        "text": "টমেটো সস",
+        "expectedTier": 3
+    },
+    {
+        "name": "query matches somewhere inside the text, not at a word start (substring tier)",
+        "query": "মেটো",
+        "text": "টমেটো সস",
+        "expectedTier": 4
+    },
+    {
+        "name": "a one-character-missing typo still matches (typo-tolerant tier)",
+        "query": "টমটো",
+        "text": "টমেটো সস",
+        "expectedTier": 5
+    },
+    {
+        "name": "two combined phonetic substitutions (sha+ssa vs sa+sa) only resolve at the phonetic tier, too far apart for typo-tolerance",
+        "query": "শষ",
+        "text": "সস",
+        "expectedTier": 6
+    },
+    {
+        "name": "completely unrelated words never match",
+        "query": "কলম",
+        "text": "চাল",
+        "expectedTier": null
+    },
+    {
+        "name": "empty query never matches",
+        "query": "",
+        "text": "সস",
+        "expectedTier": null
+    }
+]

@@ -17,6 +17,9 @@ import { isStaleAutoFill } from '@/support/customerAutoFill';
 import { buildOfflineSaleSnapshot } from '@/support/offlineSaleSnapshot';
 import { buildReceiptWhatsAppText, whatsAppUrlFor } from '@/support/receiptMessage';
 import { variantPriceBounds, variantStockTotal } from '@/support/productDisplay';
+import { normalizeSearch } from '@/support/searchNormalize';
+import { bestMatchTier, levenshtein } from '@/support/searchMatch';
+import { usePermissions } from '@/composables/usePermissions';
 
 const props = defineProps({
     products: Array,
@@ -41,6 +44,7 @@ const paperClass = computed(() => 'paper-' + (shop.value?.memo_settings?.paper_w
 const isOwner = computed(() => page.props.auth?.user?.role === 'owner');
 const features = computed(() => page.props.features || []);
 const platformLogoUrl = computed(() => page.props.platformLogoUrl);
+const { hasPerm } = usePermissions();
 const hasUnitConversion = computed(() => features.value.includes('unit_conversion'));
 const hasSerialTracking = computed(() => features.value.includes('serial_tracking'));
 const hasProductVariants = computed(() => features.value.includes('product_variants'));
@@ -203,22 +207,71 @@ onMounted(() => {
 // separate fix needed for the back-button path itself.
 watch([cart, discount, couponCode, customerPhone, customerName, payMode, splitMode, splitAmounts, prescriptionNote, prescriptionConfirmed], saveCartForRecovery, { deep: true });
 
+// Root cause (docs/FIX_PLAN.md's search-normalization fix): a raw
+// .toLowerCase().includes() here is exactly why "ধনিয়া"/"সয়াসস" failed to
+// match — see searchNormalize.js's own docblock for the Unicode byte-level
+// proof. Each product's searchable fields are normalized ONCE here (not
+// per keystroke) since props.products itself never changes mid-session;
+// only normalizeSearch(q.value) below re-runs on every keystroke, kept
+// deliberately synchronous/undebounced — ধাপ ৩ asks for this local-first
+// path to feel instant, not to wait even ~100ms.
+const normalizedCatalog = computed(() => props.products.map((p) => ({
+    product: p,
+    fields: [normalizeSearch(p.name), normalizeSearch(p.name_en || ''), normalizeSearch(p.generic_name || '')],
+})));
+
 // catalogMode === 'search': props.products is always empty (see
 // defineProps above) — searchResults (kept live by the watcher above)
-// already applied this exact same text/category match server-side (or
-// via the offline fallback), so it's used as-is here.
-const filtered = computed(() => props.catalogMode === 'search' ? searchResults.value : props.products.filter((p) =>
-    (!q.value
-        || p.name.toLowerCase().includes(q.value.toLowerCase())
-        || p.name_en?.toLowerCase().includes(q.value.toLowerCase())
-        || (p.barcode || '').includes(q.value)
-        // generic-name search: if the exact brand a customer asks for is
-        // out of stock, typing the active ingredient (e.g. "Paracetamol")
-        // still surfaces every other brand that shares it
-        || (p.generic_name || '').toLowerCase().includes(q.value.toLowerCase())
-    ) &&
-    (cat.value === 'all' || p.category_id === cat.value)
-));
+// already applied this exact same normalized match server-side (or via
+// the offline fallback), so it's used as-is here.
+const filtered = computed(() => {
+    if (props.catalogMode === 'search') return searchResults.value;
+
+    const inCategory = normalizedCatalog.value.filter(({ product: p }) => cat.value === 'all' || p.category_id === cat.value);
+    if (!q.value) return inCategory.map(({ product }) => product);
+
+    const normalizedQ = normalizeSearch(q.value);
+
+    // generic-name search: if the exact brand a customer asks for is out
+    // of stock, typing the active ingredient (e.g. "Paracetamol") still
+    // surfaces every other brand that shares it — unchanged behavior,
+    // just now through the shared normalized/ranked matcher.
+    return inCategory
+        .map(({ product, fields }) => ({ product, tier: bestMatchTier(normalizedQ, fields, { barcodeExact: (product.barcode || '') === q.value }) }))
+        .filter((row) => row.tier !== null)
+        .sort((a, b) => a.tier - b.tier)
+        .map((row) => row.product);
+});
+
+// ধাপ ২.চ — when even the fuzzy/phonetic tiers in `filtered` above find
+// nothing at all, this is a looser LAST-resort guess: whole-string
+// Levenshtein distance to every product's name (not word-level, not
+// tier-gated), capped so a genuinely unrelated query suggests nothing
+// instead of a random "closest" product that isn't actually close.
+const didYouMeanSuggestions = computed(() => {
+    if (props.catalogMode === 'search' || filtered.value.length || !q.value.trim()) return [];
+
+    const normalizedQ = normalizeSearch(q.value);
+    const maxDistance = Math.max(3, Math.ceil(normalizedQ.length * 0.6));
+
+    return normalizedCatalog.value
+        .map(({ product, fields }) => ({ product, distance: Math.min(...fields.filter(Boolean).map((f) => levenshtein(normalizedQ, f))) }))
+        .filter((row) => row.distance <= maxDistance)
+        .sort((a, b) => a.distance - b.distance)
+        .slice(0, 3)
+        .map((row) => row.product);
+});
+
+// IME composition guard (ধাপ ২.ছ) — during active composition (some
+// Android Bengali layouts/compose-style typing), `isComposing` is true for
+// every intermediate keystroke; skipping those avoids filtering on a
+// half-typed character and flashing a wrong/empty result mid-composition.
+// The final compositionend fires its own event this also listens to, so
+// the completed text is never missed.
+function onSearchInput(e) {
+    if (e.isComposing) return;
+    q.value = e.target.value;
+}
 
 // Lazy-loading fallback for the list-virtualization request (see .pcard's
 // content-visibility in app.css for the other half) — a shop with
@@ -1335,7 +1388,11 @@ useKeyboardShortcuts({
             <!-- menu -->
             <div class="lg:order-2 lg:flex-1 lg:min-w-0">
                 <div style="display:flex;gap:8px;margin-bottom:12px">
-                    <input ref="searchInput" v-model="q" :placeholder="t('pos.searchPlaceholder')" style="flex:1">
+                    <input
+                        ref="searchInput" :value="q" @input="onSearchInput" @compositionend="onSearchInput"
+                        :placeholder="t('pos.searchPlaceholder')" style="flex:1"
+                        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                    >
                     <button v-if="canScan" class="btn ghost" style="width:auto;padding:0 16px" :title="t('pos.scanTitle')" @click="openScanner">📷</button>
                     <button class="btn ghost lg:hidden" style="width:auto;padding:0 16px;position:relative" :title="t('pos.heldCarts')" @click="heldSheet = true">
                         📋
@@ -1437,7 +1494,14 @@ useKeyboardShortcuts({
                         </div>
                     </div>
                 </div>
-                <div v-else class="empty"><div class="big">🔍</div>{{ t('pos.notFound') }}</div>
+                <div v-else class="empty">
+                    <div class="big">🔍</div>{{ t('pos.notFound') }}
+                    <div v-if="didYouMeanSuggestions.length" style="margin-top:12px">
+                        <div style="font-size:12px;color:var(--dim);margin-bottom:6px">{{ t('pos.didYouMean') }}</div>
+                        <button v-for="s in didYouMeanSuggestions" :key="s.id" type="button" class="btn ghost sm" style="margin:0 4px 6px" @click="q = s.name">{{ s.emoji }} {{ s.name }}</button>
+                    </div>
+                    <button v-if="hasPerm('stock')" type="button" class="btn ghost sm" style="margin-top:6px" @click="router.visit(route('app.stock') + '?new_name=' + encodeURIComponent(q))">{{ t('pos.addNewProductShortcut') }}</button>
+                </div>
                 <!-- invisible trigger for the lazy-loading fallback (see
                      loadMoreObserver above) — grows visibleProducts by
                      another chunk once this scrolls near the viewport,
@@ -1604,7 +1668,7 @@ useKeyboardShortcuts({
                 </div>
                 <div class="field" style="position:relative">
                     <label>{{ t('pos.customerName') }}</label>
-                    <input v-model="customerName" :placeholder="t('pos.customerName')" autocomplete="off">
+                    <input v-model="customerName" :placeholder="t('pos.customerName')" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                     <div v-if="nameSearchResults.length" style="position:absolute;z-index:5;left:0;right:0;top:100%;margin-top:4px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.12)">
                         <button
                             v-for="c in nameSearchResults" :key="c.id" type="button"

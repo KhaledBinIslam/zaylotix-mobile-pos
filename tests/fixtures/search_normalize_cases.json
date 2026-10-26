@@ -1,0 +1,92 @@
+[
+    {
+        "name": "yya precomposed (U+09DF) decomposes to ya+nukta, same as the already-decomposed spelling",
+        "input": "ধনিয়া",
+        "expected": "ধনিয়া"
+    },
+    {
+        "name": "dhonia already typed with decomposed ya+nukta stays identical",
+        "input": "ধনিয়া",
+        "expected": "ধনিয়া"
+    },
+    {
+        "name": "rra precomposed (U+09DC, bo-ro) decomposes to dda+nukta",
+        "input": "বড়",
+        "expected": "বড়"
+    },
+    {
+        "name": "rra already decomposed stays identical",
+        "input": "বড়",
+        "expected": "বড়"
+    },
+    {
+        "name": "rha precomposed (U+09DD, ashardh) decomposes to ddha+nukta",
+        "input": "আষাঢ়",
+        "expected": "আষাঢ়"
+    },
+    {
+        "name": "soya-sauce (precomposed yya) matches the decomposed spelling after normalization",
+        "input": "সয়াসস",
+        "expected": "সয়াসস"
+    },
+    {
+        "name": "soya-sauce (already decomposed) is unchanged",
+        "input": "সয়াসস",
+        "expected": "সয়াসস"
+    },
+    {
+        "name": "bengali digits convert to ascii digits",
+        "input": "২০০ মিলি",
+        "expected": "200 মিলি"
+    },
+    {
+        "name": "ascii digits already typed are unchanged",
+        "input": "200 মিলি",
+        "expected": "200 মিলি"
+    },
+    {
+        "name": "ZWNJ inserted mid-word is stripped, result matches the clean spelling",
+        "input": "সয়‌াসস",
+        "expected": "সয়াসস"
+    },
+    {
+        "name": "ZWJ, ZWSP and a leading BOM are all stripped",
+        "input": "﻿সস‍​",
+        "expected": "সস"
+    },
+    {
+        "name": "extra and repeated whitespace collapses to single spaces, trimmed",
+        "input": "  সস   টমেটো  ",
+        "expected": "সস টমেটো"
+    },
+    {
+        "name": "english text is lowercased",
+        "input": "Soy Sauce",
+        "expected": "soy sauce"
+    },
+    {
+        "name": "khanda-ta (U+09CE, hothat) folds to plain ta",
+        "input": "হঠাৎ",
+        "expected": "হঠাত"
+    },
+    {
+        "name": "the same word already spelled with plain ta is unchanged",
+        "input": "হঠাত",
+        "expected": "হঠাত"
+    },
+    {
+        "name": "candrabindu (U+0981, chand/moon) is stripped",
+        "input": "চাঁদ",
+        "expected": "চাদ"
+    },
+    {
+        "name": "empty string stays empty",
+        "input": "",
+        "expected": ""
+    },
+    {
+        "name": "null-ish/whitespace-only input normalizes to empty",
+        "input": "   ",
+        "expected": ""
+    }
+]

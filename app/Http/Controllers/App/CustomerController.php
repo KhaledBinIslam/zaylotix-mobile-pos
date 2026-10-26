@@ -134,15 +134,32 @@ class CustomerController extends Controller
             return response()->json(['results' => []]);
         }
 
-        $customers = Customer::where('name', 'like', '%'.$q.'%')
+        $normalizedQ = \App\Support\SearchNormalizer::normalize($q);
+
+        $customers = Customer::where(fn ($w) => $w->where('name', 'like', '%'.$q.'%')->orWhere('phone', 'like', '%'.$q.'%'))
             ->orderBy('name')
             ->limit(8)
-            ->get(['id', 'name', 'phone', 'due', 'loyalty_points', 'credit_limit', 'is_wholesale', 'shop_id'])
-            ->map(fn ($c) => [
-                'id' => $c->id, 'name' => $c->name, 'phone' => $c->phone, 'due' => (float) $c->due,
-                'loyalty_points' => $c->loyalty_points, 'credit_limit' => $c->effectiveCreditLimit(),
-                'is_wholesale' => $c->is_wholesale,
-            ]);
+            ->get(['id', 'name', 'phone', 'due', 'loyalty_points', 'credit_limit', 'is_wholesale', 'shop_id']);
+
+        // Customers has no stored search_text column (its catalog is tiny
+        // compared to products — see docs/FIX_PLAN.md's scope note), so
+        // this fallback normalizes on the fly over a capped candidate set
+        // instead, for the same Unicode-spelling-mismatch case the raw
+        // LIKE above can't catch.
+        if ($customers->isEmpty()) {
+            $customers = Customer::orderByDesc('id')->limit(300)
+                ->get(['id', 'name', 'phone', 'due', 'loyalty_points', 'credit_limit', 'is_wholesale', 'shop_id'])
+                ->filter(fn ($c) => \App\Support\SearchMatcher::bestTier($normalizedQ, [\App\Support\SearchNormalizer::normalize($c->name)]) !== null)
+                ->sortBy(fn ($c) => \App\Support\SearchMatcher::bestTier($normalizedQ, [\App\Support\SearchNormalizer::normalize($c->name)]))
+                ->take(8)
+                ->values();
+        }
+
+        $customers = $customers->map(fn ($c) => [
+            'id' => $c->id, 'name' => $c->name, 'phone' => $c->phone, 'due' => (float) $c->due,
+            'loyalty_points' => $c->loyalty_points, 'credit_limit' => $c->effectiveCreditLimit(),
+            'is_wholesale' => $c->is_wholesale,
+        ]);
 
         return response()->json(['results' => $customers]);
     }

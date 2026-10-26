@@ -206,16 +206,13 @@ class PosController extends Controller
         $q = trim((string) $request->get('q', ''));
         $categoryId = $request->get('category_id');
 
-        $products = Product::with(self::catalogRelations($shop))
-            ->when($q !== '', fn ($query) => $query->where(fn ($w) => $w
-                ->where('name', 'like', "%{$q}%")
-                ->orWhere('name_en', 'like', "%{$q}%")
-                ->orWhere('barcode', 'like', "%{$q}%")
-                ->orWhere('generic_name', 'like', "%{$q}%")))
+        $base = Product::with(self::catalogRelations($shop))
             ->when($categoryId, fn ($query) => $query->where('category_id', $categoryId))
-            ->orderByDesc('id')
-            ->limit(50)
-            ->get();
+            ->orderByDesc('id');
+
+        // ধাপ ২ (docs/FIX_PLAN.md) — normalized match + typo/phonetic
+        // "did you mean" fallback, shared with ProductController::search()
+        $products = \App\Support\ProductSearch::run($base, $q, 50);
 
         return response()->json(['products' => self::hideCost($products)]);
     }

@@ -18,7 +18,7 @@ class Product extends Model
         'shop_id', 'master_product_id', 'category_id', 'unit_id', 'name', 'name_en', 'generic_name', 'company', 'shelf_location', 'requires_prescription', 'emoji', 'photo_path', 'barcode',
         'sold_by_weight', 'weight_unit', 'track_serial',
         'cost', 'price', 'wholesale_price', 'wholesale_moq', 'discount_price', 'stock', 'stock_mode', 'expiry_date', 'batch_no', 'size', 'color', 'imei',
-        'reorder_point', 'show_in_catalog',
+        'reorder_point', 'show_in_catalog', 'search_keywords',
     ];
 
     /** 'toggle' mode's stock column doesn't hold a real count — 1 means available, 0 means marked sold out today (see the add_stock_mode_to_products_table migration and TableOrderController). */
@@ -56,6 +56,29 @@ class Product extends Model
     protected function photoUrl(): Attribute
     {
         return Attribute::get(fn () => $this->photo_path ? Storage::disk('public')->url($this->photo_path) : null);
+    }
+
+    protected static function booted(): void
+    {
+        // docs/FIX_PLAN.md's search-normalization fix: search_text is kept
+        // in lockstep with every field a cashier might actually search by,
+        // so it's always accurate without a separate "did you forget to
+        // reindex" step. Recomputed on every save (not just when a
+        // relevant field is dirty) — cheap (one string concat), and avoids
+        // ever missing a case where a non-obvious caller path changed one
+        // of these fields without going through a dirty-tracked attribute
+        // setter.
+        static::saving(function (Product $product) {
+            $product->search_text = $product->buildSearchText();
+        });
+    }
+
+    /** Every field a cashier might type to find this product, normalized once and stored — see SearchNormalizer::normalize(). */
+    public function buildSearchText(): string
+    {
+        $parts = [$this->name, $this->name_en, $this->generic_name, $this->barcode, $this->search_keywords];
+
+        return \App\Support\SearchNormalizer::normalize(implode(' ', array_filter($parts, fn ($p) => $p !== null && $p !== '')));
     }
 
     /** False for 'untracked' (always sellable) and 'toggle' (a plain switch, not a count) — only 'tracked' products have a stock number that means anything. */

@@ -13,6 +13,9 @@
 // favor of the PRODUCTS store; kept only so an old cached value (if any)
 // is harmlessly ignored rather than crashing a read.
 
+import { normalizeSearch } from './searchNormalize';
+import { bestMatchTier } from './searchMatch';
+
 const DB_NAME = 'zaylotix-offline';
 const DB_VERSION = 2;
 const STORE = 'kv';
@@ -119,16 +122,25 @@ export async function searchProductsOffline(query, categoryId) {
             req.onerror = () => reject(req.error);
         });
 
-        const q = (query || '').toLowerCase();
-        return all.filter((p) => (
-            (!query
-                || p.name?.toLowerCase().includes(q)
-                || p.name_en?.toLowerCase().includes(q)
-                || (p.barcode || '').includes(query)
-                || (p.generic_name || '').toLowerCase().includes(q)
-            ) &&
-            (!categoryId || categoryId === 'all' || p.category_id === categoryId)
-        ));
+        // docs/FIX_PLAN.md's search-normalization fix — same shared
+        // normalizeSearch/bestMatchTier used by Pos/Index.vue and the
+        // server, so offline search never finds something the online path
+        // wouldn't (or vice versa).
+        if (!query) {
+            return all.filter((p) => !categoryId || categoryId === 'all' || p.category_id === categoryId);
+        }
+
+        const normalizedQ = normalizeSearch(query);
+
+        return all
+            .filter((p) => !categoryId || categoryId === 'all' || p.category_id === categoryId)
+            .map((p) => ({
+                product: p,
+                tier: bestMatchTier(normalizedQ, [normalizeSearch(p.name), normalizeSearch(p.name_en || ''), normalizeSearch(p.generic_name || '')], { barcodeExact: (p.barcode || '') === query }),
+            }))
+            .filter((row) => row.tier !== null)
+            .sort((a, b) => a.tier - b.tier)
+            .map((row) => row.product);
     } catch {
         return [];
     }

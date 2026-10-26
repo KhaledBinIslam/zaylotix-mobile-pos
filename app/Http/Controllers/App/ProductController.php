@@ -34,10 +34,8 @@ class ProductController extends Controller
             return response()->json(['results' => []]);
         }
 
-        $products = Product::where(fn ($query) => $query->where('name', 'like', '%'.$q.'%')->orWhere('barcode', 'like', '%'.$q.'%'))
-            ->orderBy('name')
-            ->limit(8)
-            ->get(['id', 'name', 'barcode', 'price', 'stock']);
+        $products = \App\Support\ProductSearch::run(Product::query(), $q, 8)
+            ->map(fn ($p) => ['id' => $p->id, 'name' => $p->name, 'barcode' => $p->barcode, 'price' => $p->price, 'stock' => $p->stock]);
 
         return response()->json(['results' => $products]);
     }
@@ -69,20 +67,31 @@ class ProductController extends Controller
         // still run server-side against the whole table, only the *rendered
         // page* is capped, so finding a specific product by name/barcode
         // still searches everything, not just the current page.
-        $products = Product::with($with)
-            ->when($q !== '', fn ($query) => $query->where(fn ($w) => $w
-                ->where('name', 'like', "%{$q}%")
-                ->orWhere('name_en', 'like', "%{$q}%")
-                ->orWhere('barcode', 'like', "%{$q}%")
-                ->orWhere('generic_name', 'like', "%{$q}%")))
+        $base = Product::with($with)
             ->when($categoryId, fn ($query) => $query->where('category_id', $categoryId))
             ->when($company, fn ($query) => $query->where('company', $company))
             ->when($genericName, fn ($query) => $query->where('generic_name', $genericName))
             ->when($stockStatus === 'low', fn ($query) => $query->lowStock())
             ->when($stockStatus === 'out', fn ($query) => $query->outOfStock())
-            ->orderByDesc('id')
-            ->paginate(30)
-            ->withQueryString();
+            ->orderByDesc('id');
+
+        if ($q !== '') {
+            // ধাপ ২ (docs/FIX_PLAN.md) — same normalized/ranked/fuzzy
+            // search as POS, via the shared ProductSearch helper. A search
+            // result is shown as one unpaginated list (capped at 200,
+            // generous for "find a specific product") rather than forced
+            // through the normal 30-per-page browsing pagination — a
+            // cashier/stock-keeper searching wants every match visible,
+            // not page 2 of a filtered list. Clearing the search returns
+            // to the normal paginated browse below, byte-identical to before.
+            $matches = \App\Support\ProductSearch::run($base, $q, 200);
+            $products = new \Illuminate\Pagination\LengthAwarePaginator(
+                $matches, $matches->count(), max($matches->count(), 1), 1,
+                ['path' => $request->url(), 'query' => $request->query()]
+            );
+        } else {
+            $products = $base->paginate(30)->withQueryString();
+        }
 
         // computed against the WHOLE catalog, independent of the current
         // page/search/filter — these are dashboard-style totals, not a
