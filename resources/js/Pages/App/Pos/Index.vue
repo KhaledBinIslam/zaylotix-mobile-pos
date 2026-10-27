@@ -1345,6 +1345,13 @@ function onScanSuccess(decodedText) {
     handleBarcode(decodedText, (msg) => (scanHint.value = msg));
 }
 
+const manualScanInput = ref('');
+function onManualScanEnter() {
+    if (!manualScanInput.value.trim()) return;
+    handleBarcode(manualScanInput.value, (msg) => (scanHint.value = msg));
+    manualScanInput.value = '';
+}
+
 // --- hardware (USB/Bluetooth keyboard-wedge) scanner ---
 const hardwareScannerEnabled = computed(() => shop.value?.hardware_scanner_enabled ?? true);
 useHardwareScanner((code) => handleBarcode(code, (msg) => toast(msg)), hardwareScannerEnabled);
@@ -1649,6 +1656,19 @@ useKeyboardShortcuts({
                 <div id="reader"></div>
                 <div class="scan-frame"></div>
                 <div class="scan-hint">{{ scanHint }}</div>
+                <!-- camera can't always decode a long, densely-printed article barcode —
+                     typing the code (e.g. read straight off the label's own printed text)
+                     is the fallback, not just a convenience -->
+                <div class="scan-manual" style="display:flex;gap:6px">
+                    <input
+                        v-model="manualScanInput" :placeholder="t('pos.scanBarcodeHint')"
+                        style="flex:1;background:rgba(0,0,0,.55);color:#fff;border-color:rgba(255,255,255,.25)"
+                        @keyup.enter="onManualScanEnter"
+                    >
+                    <button class="btn ghost" style="width:auto;padding:0 14px;background:rgba(0,0,0,.55);color:#fff;border-color:rgba(255,255,255,.25)" @click="onManualScanEnter">
+                        {{ t('pos.add') }}
+                    </button>
+                </div>
                 <div class="scan-manual">
                     <button class="btn ghost" style="background:rgba(0,0,0,.55);color:#fff;border-color:rgba(255,255,255,.25)" @click="closeScanner">
                         {{ t('pos.addFromList') }}
