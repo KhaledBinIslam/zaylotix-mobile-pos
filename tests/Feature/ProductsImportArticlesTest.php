@@ -108,6 +108,28 @@ class ProductsImportArticlesTest extends TestCase
 
         // grid sum (1+0=1) used for the product's own stock, NOT the sheet's stock=12
         $this->assertEquals(1, $product->fresh()->stock);
+
+        // Khaled: a shoe is sold by the pair, not "পিস" -- the sheet's own "PAIR" must actually land on the product, not be silently dropped.
+        // Queried directly (withoutGlobalScopes), not via $product->unit -- that lazy
+        // relation resolves through Unit's own tenant scope, which this console-style
+        // test has no ambient Tenancy context for (same gotcha as ProductVariant::product above).
+        $unit = \App\Models\Unit::withoutGlobalScopes()->find($product->unit_id);
+        $this->assertNotNull($unit);
+        $this->assertSame('জোড়া', $unit->name);
+        $this->assertSame('Pair', $unit->name_en);
+    }
+
+    public function test_the_unit_is_reused_across_rows_not_recreated_per_row(): void
+    {
+        [$shop] = $this->createShopWithOwner();
+        $row2 = $this->rowOne();
+        $row2[1] = 'L10002';
+        $row2[2] = 'SMS-L-10002-NSRX';
+        $path = $this->buildXlsx([$this->rowOne(), $row2]);
+
+        $this->runImport($path, $shop->id)->assertSuccessful();
+
+        $this->assertSame(1, \App\Models\Unit::withoutGlobalScopes()->where('shop_id', $shop->id)->where('name', 'জোড়া')->count());
     }
 
     public function test_an_existing_category_is_reused_not_duplicated(): void

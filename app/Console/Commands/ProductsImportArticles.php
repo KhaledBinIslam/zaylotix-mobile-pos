@@ -7,6 +7,7 @@ use App\Models\ProductCategory;
 use App\Models\ProductVariant;
 use App\Models\Shop;
 use App\Models\Supplier;
+use App\Models\Unit;
 use App\Support\ArticleBarcode;
 use App\Support\ArticleSerial;
 use App\Support\CatalogSync;
@@ -56,6 +57,22 @@ class ProductsImportArticles extends Command
     /** one letter per category code, assigned in the order first encountered — overridden by an existing category's own `code` if it already has one */
     private const CATEGORY_CODE_FALLBACK_LETTERS = ['L', 'M', 'K', 'S', 'N', 'O', 'P', 'Q', 'T', 'U'];
 
+    /**
+     * Real bug Khaled hit live: the sheet's own `unit` column (real file:
+     * "PAIR" on every row) was read into $unit but never actually wired to
+     * Product.unit_id, so every imported article silently fell back to the
+     * generic "পিস" (pieces) display default — wrong for a shoe shop. A
+     * shoe is sold by the pair, not the piece; English label in the sheet
+     * -> this shop-appropriate Bengali/English pair.
+     */
+    private const UNIT_SYNONYMS = [
+        'PAIR' => ['জোড়া', 'Pair'],
+        'PAIRS' => ['জোড়া', 'Pair'],
+        'PCS' => ['পিস', 'Pcs'],
+        'PIECE' => ['পিস', 'Pcs'],
+        'PIECES' => ['পিস', 'Pcs'],
+    ];
+
     public function handle(): int
     {
         $path = $this->argument('file');
@@ -96,6 +113,7 @@ class ProductsImportArticles extends Command
 
         $categoryCodeCache = []; // name|en name -> ProductCategory
         $supplierCache = []; // short_code -> Supplier
+        $unitCache = []; // sheet's own unit text -> Unit
 
         foreach ($rows as $rowNum => $row) {
             $mfr = trim((string) ($row['mfr'] ?? ''));
@@ -118,7 +136,7 @@ class ProductsImportArticles extends Command
             }
 
             try {
-                $this->processRow($shop, $row, $rowNum, $report, $categoryCodeCache, $supplierCache, $isDryRun);
+                $this->processRow($shop, $row, $rowNum, $report, $categoryCodeCache, $supplierCache, $unitCache, $isDryRun);
             } catch (\Throwable $e) {
                 $report['errors'][] = "সারি {$rowNum}: ".$e->getMessage();
             }
@@ -147,7 +165,7 @@ class ProductsImportArticles extends Command
         return self::SUCCESS;
     }
 
-    private function processRow($shop, array $row, int $rowNum, array &$report, array &$categoryCodeCache, array &$supplierCache, bool $isDryRun): void
+    private function processRow($shop, array $row, int $rowNum, array &$report, array &$categoryCodeCache, array &$supplierCache, array &$unitCache, bool $isDryRun): void
     {
         $mfr = strtoupper(trim((string) $row['mfr']));
         $categoryLabel = strtoupper(trim((string) ($row['category'] ?? '')));
@@ -183,6 +201,21 @@ class ProductsImportArticles extends Command
                 }
             }
             $supplierCache[$mfr] = $supplier;
+        }
+
+        // --- unit: the sheet's own text (e.g. "PAIR"), never left unresolved ---
+        $unitKey = strtoupper($unit);
+        $unitObj = $unitCache[$unitKey] ?? null;
+        if (! $unitObj) {
+            [$unitName, $unitNameEn] = self::UNIT_SYNONYMS[$unitKey] ?? [$unit, $unit];
+            $unitObj = Unit::withoutGlobalScopes()->where('shop_id', $shop->id)->where('name', $unitName)->first();
+            if (! $unitObj) {
+                $unitObj = new Unit(['shop_id' => $shop->id, 'name' => $unitName, 'name_en' => $unitNameEn]);
+                if (! $isDryRun) {
+                    $unitObj->save();
+                }
+            }
+            $unitCache[$unitKey] = $unitObj;
         }
 
         // --- cost: validate against the barcode's own cost-code, fill if blank ---
@@ -255,11 +288,12 @@ class ProductsImportArticles extends Command
             return;
         }
 
-        DB::transaction(function () use ($shop, $category, $supplier, $canonicalName, $barcode, $unit, $cost, $price, $discountPrice, $reorderPoint, $variantSpecs, $gridTotal) {
+        DB::transaction(function () use ($shop, $category, $supplier, $unitObj, $canonicalName, $barcode, $cost, $price, $discountPrice, $reorderPoint, $variantSpecs, $gridTotal) {
             $product = Product::create([
                 'shop_id' => $shop->id,
                 'category_id' => $category->id,
                 'supplier_id' => $supplier->id,
+                'unit_id' => $unitObj->id,
                 'name' => $canonicalName,
                 'name_en' => $canonicalName,
                 'barcode' => $barcode ?: null,
