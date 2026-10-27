@@ -82,6 +82,20 @@ const previewBarcode = computed(() => {
     return `${mfr}-${catCode}-${previewSerial.value}-?`; // cost-code segment resolves only after cost is typed and validated server-side
 });
 
+// docs/ARTICLE_SERIES_PLAN.md §9 — the color's own short code (shop setting,
+// falling back to the color name itself uppercased — mirrors
+// ArticleBarcode::colorCode() exactly) and the resulting sticker preview
+function colorCode(color) {
+    if (!color) return null;
+
+    return props.colorCodeMap?.[color] ?? (/^[A-Za-z]+$/.test(color.replace(/\s/g, '')) ? color.toUpperCase() : color);
+}
+function previewColorBarcode(color) {
+    if (!previewBarcode.value) return null;
+
+    return `${previewBarcode.value}-${colorCode(color)}`;
+}
+
 // ---- color x size grid ----
 function buildGrid() {
     const colors = form.colorsText.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean);
@@ -154,9 +168,12 @@ function save() {
         <div class="pgttl">নতুন আর্টিকেল</div>
         <div class="pgsub">ম্যানুফ্যাকচার, ক্যাটাগরি, কস্ট আর রং×সাইজ গ্রিড — সব একই স্ক্রিনে</div>
 
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
             <Link :href="route('app.stock')" class="btn ghost sm" style="text-decoration:none">← স্টকে ফিরুন</Link>
-            <Link :href="route('app.articles.sizeGroupSettings.edit')" class="btn ghost sm" style="text-decoration:none">⚙️ সাইজ-গ্রুপ সেটিংস</Link>
+            <div style="display:flex;gap:8px">
+                <Link :href="route('app.articles.colorCodeSettings.edit')" class="btn ghost sm" style="text-decoration:none">⚙️ রং-কোড সেটিংস</Link>
+                <Link :href="route('app.articles.sizeGroupSettings.edit')" class="btn ghost sm" style="text-decoration:none">⚙️ সাইজ-গ্রুপ সেটিংস</Link>
+            </div>
         </div>
 
         <div v-if="justSaved" class="card" style="background:var(--green-bg,#eafaf0);border-color:var(--green,#1aa260);margin-bottom:16px">
@@ -273,6 +290,7 @@ function save() {
                                     {{ photoPreviewUrls[color] ? 'ছবি বদলান' : '📷 ছবি (ঐচ্ছিক)' }}
                                     <input type="file" accept="image/*" style="display:none" @change="onColorPhotoChange(color, $event)">
                                 </label>
+                                <div v-if="color && previewColorBarcode(color)" style="font-family:monospace;font-size:10px;color:var(--mut);margin-top:3px">{{ previewColorBarcode(color) }}</div>
                             </td>
                             <td v-for="size in gridSizes" :key="size" style="padding:4px 4px">
                                 <input v-model.number="cellFor(color, size).qty" type="number" min="0" style="width:64px;text-align:center">

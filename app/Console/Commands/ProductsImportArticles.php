@@ -11,6 +11,7 @@ use App\Models\Unit;
 use App\Support\ArticleBarcode;
 use App\Support\ArticleSerial;
 use App\Support\CatalogSync;
+use App\Support\ColorBarcodeResolver;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -319,6 +320,11 @@ class ProductsImportArticles extends Command
 
             $product->stock = $gridTotal;
             $product->saveQuietly();
+
+            // docs/ARTICLE_SERIES_PLAN.md §9 — the scannable "tier 2" sticker barcode, one per color
+            foreach (array_unique(array_filter(array_column($variantSpecs, 'color'))) as $color) {
+                ColorBarcodeResolver::resolve($shop, $product, $color, $barcode);
+            }
         });
     }
 

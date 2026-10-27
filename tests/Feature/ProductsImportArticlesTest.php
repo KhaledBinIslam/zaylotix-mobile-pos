@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Models\ProductColorBarcode;
 use App\Models\ProductVariant;
 use App\Models\Supplier;
 use App\Support\ArticleSerial;
@@ -117,6 +118,19 @@ class ProductsImportArticlesTest extends TestCase
         $this->assertNotNull($unit);
         $this->assertSame('জোড়া', $unit->name);
         $this->assertSame('Pair', $unit->name_en);
+    }
+
+    public function test_imported_articles_get_a_scannable_color_barcode_per_color(): void
+    {
+        [$shop] = $this->createShopWithOwner();
+        $path = $this->buildXlsx([$this->rowOne()]);
+
+        $this->runImport($path, $shop->id)->assertSuccessful();
+
+        $product = Product::withoutGlobalScopes()->where('shop_id', $shop->id)->first();
+        $silver = ProductColorBarcode::withoutGlobalScopes()->where('product_id', $product->id)->where('color', 'SILVER')->first();
+        $this->assertNotNull($silver);
+        $this->assertSame('SMS-L-10001-NSXXZ-SILVER', $silver->barcode);
     }
 
     public function test_the_unit_is_reused_across_rows_not_recreated_per_row(): void

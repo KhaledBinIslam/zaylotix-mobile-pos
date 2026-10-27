@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Models\ProductColorBarcode;
 use App\Models\ProductVariant;
 use App\Models\Shop;
 use App\Models\Supplier;
@@ -191,6 +192,20 @@ class ArticleControllerTest extends TestCase
         $this->assertTrue($silverVariants->every(fn ($v) => $v->photo_path !== null));
         // KHAKI's cell was zero-qty and never created, so there's nothing to attach a photo to
         $this->assertSame(0, ProductVariant::where('product_id', $product->id)->where('color', 'KHAKI')->count());
+    }
+
+    public function test_each_color_in_the_grid_gets_its_own_scannable_color_barcode(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+
+        $this->actingAs($owner, 'web')->post('/app/articles', $this->payload())->assertSessionHasNoErrors();
+
+        $product = Product::where('shop_id', $shop->id)->first();
+        $colorBarcodes = ProductColorBarcode::withoutGlobalScopes()->where('product_id', $product->id)->pluck('barcode', 'color');
+        $this->assertSame('SMS-L-10001-NSXX-SILVER', $colorBarcodes['SILVER']);
+        // KHAKI's only cell in the payload was zero-qty, so no variant (and no color barcode) exists for it
+        $this->assertArrayNotHasKey('KHAKI', $colorBarcodes->toArray());
     }
 
     public function test_updating_a_color_photo_on_an_existing_article_applies_to_every_matching_variant(): void

@@ -303,6 +303,9 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
             Route::get('articles/peek-serial', [ArticleController::class, 'peekSerial'])->name('articles.peekSerial');
             Route::get('articles/size-group-settings', [ArticleController::class, 'sizeGroupSettingsEdit'])->name('articles.sizeGroupSettings.edit');
             Route::patch('articles/size-group-settings', [ArticleController::class, 'sizeGroupSettingsUpdate'])->name('articles.sizeGroupSettings.update');
+            // docs/ARTICLE_SERIES_PLAN.md §9
+            Route::get('articles/color-code-settings', [ArticleController::class, 'colorCodeSettingsEdit'])->name('articles.colorCodeSettings.edit');
+            Route::patch('articles/color-code-settings', [ArticleController::class, 'colorCodeSettingsUpdate'])->name('articles.colorCodeSettings.update');
         });
     });
 

@@ -12,6 +12,7 @@ use App\Support\Activity;
 use App\Support\ArticleBarcode;
 use App\Support\ArticleSerial;
 use App\Support\CatalogSync;
+use App\Support\ColorBarcodeResolver;
 use App\Support\SizeGroupPricing;
 use App\Support\Tenancy;
 use Illuminate\Http\Request;
@@ -188,6 +189,11 @@ class ArticleController extends Controller
                 }
             }
 
+            // docs/ARTICLE_SERIES_PLAN.md §9 — the scannable "tier 2" sticker barcode, one per color
+            foreach (array_unique(array_filter(array_column($variantRows, 'color'))) as $color) {
+                ColorBarcodeResolver::resolve($shop, $product, $color, $articleBarcode);
+            }
+
             return $product;
         });
 
@@ -235,6 +241,43 @@ class ArticleController extends Controller
         Tenancy::shop()->update(['kids_shoe_size_groups' => $groups]);
 
         return back()->with('success', 'সাইজ-গ্রুপ সেটিংস সংরক্ষণ করা হয়েছে।');
+    }
+
+    /** docs/ARTICLE_SERIES_PLAN.md §9 — editable রং-কোড list, suggestion-prefilled client-side (see resources/js/support/colorCodeSuggestions.js, the same table as ArticleBarcode::COLOR_CODE_SUGGESTIONS). */
+    public function colorCodeSettingsEdit()
+    {
+        $shop = Tenancy::shop();
+
+        return Inertia::render('App/Articles/ColorCodeSettings', [
+            'colorCodeMap' => $shop->colorCodeMap(),
+            'barcodeIncludeSize' => $shop->barcodeIncludeSize(),
+        ]);
+    }
+
+    public function colorCodeSettingsUpdate(Request $request)
+    {
+        $data = $request->validate([
+            'rows' => ['required', 'array', 'min:1'],
+            'rows.*.color' => ['required', 'string', 'max:50'],
+            'rows.*.code' => ['required', 'string', 'max:10'],
+            'barcode_include_size' => ['required', 'boolean'],
+        ]);
+
+        $map = [];
+        $usedCodes = [];
+        foreach ($data['rows'] as $row) {
+            $color = trim($row['color']);
+            $code = strtoupper(trim($row['code']));
+            if (isset($usedCodes[$code]) && $usedCodes[$code] !== $color) {
+                return back()->withErrors(['rows' => "কোড \"{$code}\" ইতিমধ্যে \"{$usedCodes[$code]}\"-এর জন্য ব্যবহার হচ্ছে — প্রতিটা রঙের কোড অবশ্যই আলাদা হতে হবে।"]);
+            }
+            $usedCodes[$code] = $color;
+            $map[$color] = $code;
+        }
+
+        Tenancy::shop()->update(['color_code_map' => $map, 'barcode_include_size' => $data['barcode_include_size']]);
+
+        return back()->with('success', 'রং-কোড সেটিংস সংরক্ষণ করা হয়েছে।');
     }
 
     private function resolveCategory(array $data): ProductCategory|\Illuminate\Http\RedirectResponse
