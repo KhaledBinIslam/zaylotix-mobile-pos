@@ -150,6 +150,12 @@ class Product extends Model
         return $this->hasMany(ProductVariant::class);
     }
 
+    /** docs/ARTICLE_SERIES_PLAN.md §9 — one row per color this article comes in, the scannable "tier 2" sticker barcode. */
+    public function colorBarcodes()
+    {
+        return $this->hasMany(ProductColorBarcode::class);
+    }
+
     /** Quantity-break wholesale prices (see docs/FIX_PLAN.md's Phase 30 design note, Part A) — only meaningful under the wholesale_tiers feature; empty for a product that only uses the flat wholesale_price. */
     public function priceTiers()
     {

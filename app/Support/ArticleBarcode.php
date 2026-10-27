@@ -106,4 +106,54 @@ class ArticleBarcode
 
         return $map[$color] ?? (ctype_alpha(str_replace(' ', '', $color)) ? strtoupper($color) : $color);
     }
+
+    /**
+     * docs/ARTICLE_SERIES_PLAN.md §9 — the "tier 2" color-level barcode
+     * (one per product+color, shared by every size — $size is always ''
+     * here, by construction; see ProductColorBarcode's own docblock for
+     * why this is never per-size). {SIZE} resolving to empty gets cleaned
+     * up, not left as a stray trailing/doubled hyphen. $articleBarcode is
+     * passed in already-built, same reasoning as buildVariantBarcode()
+     * above. Whether a LABEL actually prints this or the full
+     * buildVariantBarcode() value is Shop::barcodeIncludeSize()'s call —
+     * deliberately not this function's concern, so it stays a pure
+     * function of its literal inputs.
+     */
+    public static function buildColorBarcode(Shop $shop, string $articleBarcode, ?string $color): string
+    {
+        $colorCode = self::colorCode($shop, $color) ?? '';
+
+        $built = strtr($shop->stickerBarcodeTemplate(), [
+            '{ARTICLE}' => $articleBarcode,
+            '{COLOR}' => $colorCode,
+            '{SIZE}' => '',
+        ]);
+
+        return self::cleanupHyphens($built);
+    }
+
+    /** Collapses a run of hyphens (left by an empty substituted token) and trims a leading/trailing one — never changes a template that had no empty token to begin with. */
+    private static function cleanupHyphens(string $value): string
+    {
+        return trim(preg_replace('/-{2,}/', '-', $value), '-');
+    }
+
+    /**
+     * First-3-letters suggestion for a brand-new color's code, confirmed
+     * with Khaled against the real colors already in Baby Park's data —
+     * never auto-applied, always a suggestion the owner can edit on the
+     * color-code settings screen (see ArticleController::colorCodeSettingsEdit()).
+     */
+    public const COLOR_CODE_SUGGESTIONS = [
+        'SILVER' => 'SIL', 'KHAKI' => 'KHK', 'GOLDEN' => 'GLD', 'WHITE' => 'WHT',
+        'BLACK' => 'BLK', 'BROWN' => 'BRN', 'COFFEE' => 'COF', 'MAROON' => 'MRN', 'GREY' => 'GRY',
+    ];
+
+    /** A known color's suggested code, or (for an unlisted color) its own first 3 letters uppercased — always just a starting point, never forced. */
+    public static function suggestColorCode(string $color): string
+    {
+        $key = strtoupper(trim($color));
+
+        return self::COLOR_CODE_SUGGESTIONS[$key] ?? strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $color), 0, 3));
+    }
 }

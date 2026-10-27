@@ -106,4 +106,49 @@ class ArticleBarcodeTest extends TestCase
 
         $this->assertSame('SMS-L-10001-NSXXZ-38', $barcode);
     }
+
+    public function test_build_color_barcode_matches_khaleds_own_example(): void
+    {
+        $shop = new Shop(['color_code_map' => ['SILVER' => 'SIL']]);
+
+        $barcode = ArticleBarcode::buildColorBarcode($shop, 'SMS-L-10001-NSXXZ', 'SILVER');
+
+        $this->assertSame('SMS-L-10001-NSXXZ-SIL', $barcode);
+    }
+
+    public function test_build_color_barcode_omits_the_color_segment_when_theres_no_color(): void
+    {
+        $shop = new Shop();
+
+        $barcode = ArticleBarcode::buildColorBarcode($shop, 'SMS-L-10001-NSXXZ', null);
+
+        $this->assertSame('SMS-L-10001-NSXXZ', $barcode);
+    }
+
+    public function test_build_color_barcode_respects_a_custom_sticker_template(): void
+    {
+        $shop = new Shop(['sticker_barcode_template' => '{COLOR}/{ARTICLE}', 'color_code_map' => ['SILVER' => 'SIL']]);
+
+        $barcode = ArticleBarcode::buildColorBarcode($shop, 'SMS-L-10001-NSXXZ', 'SILVER');
+
+        $this->assertSame('SIL/SMS-L-10001-NSXXZ', $barcode);
+    }
+
+    public function test_suggest_color_code_uses_khaleds_confirmed_table(): void
+    {
+        $this->assertSame('SIL', ArticleBarcode::suggestColorCode('SILVER'));
+        $this->assertSame('KHK', ArticleBarcode::suggestColorCode('KHAKI'));
+        $this->assertSame('GLD', ArticleBarcode::suggestColorCode('GOLDEN'));
+        $this->assertSame('WHT', ArticleBarcode::suggestColorCode('WHITE'));
+        $this->assertSame('BLK', ArticleBarcode::suggestColorCode('BLACK'));
+        $this->assertSame('BRN', ArticleBarcode::suggestColorCode('BROWN'));
+        $this->assertSame('COF', ArticleBarcode::suggestColorCode('COFFEE'));
+        $this->assertSame('MRN', ArticleBarcode::suggestColorCode('MAROON'));
+        $this->assertSame('GRY', ArticleBarcode::suggestColorCode('GREY'));
+    }
+
+    public function test_suggest_color_code_falls_back_to_first_three_letters_for_an_unlisted_color(): void
+    {
+        $this->assertSame('PIN', ArticleBarcode::suggestColorCode('Pink'));
+    }
 }

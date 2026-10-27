@@ -314,3 +314,109 @@ one-screen article-entry flow (draft autosave, copy-article, grid
 paste-from-Excel), and reports. Each is substantial enough to deserve its
 own test/build/commit cycle rather than being bundled sight-unseen with
 the data-model/import foundation.
+
+## §9 Color-in-barcode (new client request)
+
+New ticket: the printed sticker's barcode should encode the article's
+color too, so scanning it alone (no need to read the color-code digits by
+eye) tells you which color. Read `ArticleBarcode.php`, `Shop.php`'s
+template settings, `CatalogSync.php`, `BarcodeLabelController`/
+`BarcodeLabelCard.vue`, `Pos/Index.vue`'s `handleBarcode()`, and
+`PosController::barcode()` before writing this.
+
+### Design decisions
+
+**A NEW setting, not an extension of `article_barcode_template`.** The
+ticket describes "the template" gaining `{COLOR}`/`{SIZE}` tokens, but
+`article_barcode_template` already has one clean job — building the
+ARTICLE-level barcode (`Product.barcode`, e.g. `SMS-L-10001-NSXXZ`), with
+a default every existing shop already relies on unchanged. Overloading
+it with color/size tokens that only make sense for a *different* output
+(a per-sticker code) would mean `buildArticleBarcode()` has to special-
+case stripping tokens it doesn't have values for. Instead: a new
+`shops.sticker_barcode_template` (default `{ARTICLE}-{COLOR}-{SIZE}`),
+where `{ARTICLE}` is simply the already-built article barcode substituted
+whole — so the default resolves to exactly the ticket's own example
+(`SMS-L-10001-NSXXZ-SIL`) once `{SIZE}` is stripped. `article_barcode_template`
+itself is untouched; zero behavior change to `Product.barcode` generation.
+
+**`{SIZE}` is a toggle, not something the owner types into the template.**
+New `shops.barcode_include_size` (boolean, default off). When off,
+`{SIZE}` in the template resolves to empty (and the resulting stray
+hyphen is cleaned up) — not a half-filled token the owner has to remember
+to remove. When on, `{SIZE}` resolves to the real size, and the sticker
+barcode becomes byte-identical to what `buildVariantBarcode()` already
+produces today — meaning turning the toggle on is a no-op for a shop that
+was always printing full per-size barcodes, and the toggle genuinely only
+matters for a shop that wants the new, shorter color-grouped stickers.
+
+**Three barcode tiers now, not two.** `ProductVariant.barcode` (exact,
+one per size+color — UNCHANGED, never recomputed by this feature, still
+the thing `stockPoolMemberIds()` matches on for cross-branch pooling) is
+tier 1. `Product.barcode` (article-level, no color — already handled:
+scanning it opens the full color×size picker, shipped two passes ago) is
+tier 3. New tier 2 — the color-level sticker barcode — sits between them:
+scanning it means "this article, this color, which size?" A new table,
+**not a column on `ProductVariant`**: every variant of the same color
+needs to share the identical value, and a plain unique index on
+`product_variants.color_barcode` would reject the 2nd+ variant of a color
+group for colliding with the 1st — the exact kind of row-vs-group
+mismatch a dedicated table avoids outright.
+
+```
+product_color_barcodes: id, shop_id, product_id, color, barcode (unique per shop_id+barcode)
+product_color_barcode_aliases: id, shop_id, product_id, color, barcode (unique per shop_id+barcode)
+```
+
+A `product_color_barcodes` row's `barcode` is the only thing this feature
+ever recomputes (color-code rename, template edit, re-running the
+regenerate command) — every time it changes, the OLD value moves to the
+aliases table first, never deleted. `ProductVariant.barcode` and
+`Product.barcode` are never recomputed by anything in this feature, so
+"old already-printed barcodes keep working" is true for them by
+construction, not something that needs its own alias mechanism.
+
+**Scan resolution order** (POS, Online Order, and the `PosController::barcode()`
+server fallback, all three): (1) `ProductVariant.barcode` exact → add
+straight to cart, unchanged from today. (2) `product_color_barcodes` or
+`product_color_barcode_aliases` exact match → open `ColorSizePicker`
+pre-filtered to that one color (new `onlyColor` prop, hides the color-chip
+row); if exactly one size is in stock, skip the picker and add it
+directly, same spirit as a tier-1 scan. (3) `Product.barcode` exact →
+today's full all-colors picker, unchanged.
+
+**Color codes: suggested, shop-scoped, not chain-wide-validated.** A
+3-letter suggestion table (SILVER→SIL, KHAKI→KHK, GOLDEN→GLD, WHITE→WHT,
+BLACK→BLK, BROWN→BRN, COFFEE→COF, MAROON→MRN, GREY→GRY — confirmed with
+Khaled) feeds a new "রং-কোড সেটিংস" page, editable, uniqueness-checked
+against `shops.color_code_map` **within that one shop** — not across
+Baby Park and Liberty. `color_code_map` was never synced chain-wide by
+`CatalogSync` before this (same as `cost_code_digit_map`), and nothing
+about scanning requires it to be: a shop only ever matches barcodes
+against its own catalog, so two branches picking different codes for the
+same color causes no collision, only a cosmetic inconsistency Khaled can
+avoid by setting them the same in both shops' settings himself. Making
+that automatic is a real but separate improvement, not needed for
+correctness — noted here, not built this pass.
+
+### Build order for this pass
+
+Built: migrations (the two tables + two shop columns); `ArticleBarcode::
+buildColorBarcode()` + color-code suggestion helper; wiring into
+`ArticleController::store()` and `products:import-articles` (every new
+article gets its color-level barcodes alongside the existing per-variant
+ones); `articles:regenerate-barcodes {--shop=} {--dry-run}` for
+Baby Park's already-imported articles; POS + Online Order scan (tier 2,
+online path: in-memory product list, then `PosController::barcode()`
+server fallback); `ColorSizePicker`'s new `onlyColor` mode; barcode label
+printing (prints the color barcode when the size toggle is off, the
+existing per-variant barcode when it's on); the new article form's live
+per-color sticker preview; the color-code settings page.
+
+Deliberately deferred (same reasoning as §7's own deferred list — each
+is substantial enough to want its own pass): full offline (IndexedDB)
+matching for the new tier-2 barcodes (today's offline cache still
+resolves tier 1 and tier 3 exactly as before; tier-2 scanning needs a
+network round trip until this is built); Return/Exchange and Stock
+Count's own scan entry points; sales/stock reports broken down by color;
+searching Stock/POS's product search box by color code.

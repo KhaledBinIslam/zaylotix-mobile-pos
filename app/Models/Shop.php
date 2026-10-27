@@ -21,6 +21,7 @@ class Shop extends Model
         'loyalty_earn_rate', 'loyalty_point_value', 'referral_bonus_points', 'return_window_days', 'overhead_allocation_rule', 'dead_stock_days', 'catalog_slug', 'default_credit_limit', 'onboarded_at',
         'default_variant_sizes', 'default_variant_colors',
         'article_barcode_template', 'cost_code_digit_map', 'color_code_map', 'kids_shoe_size_groups',
+        'sticker_barcode_template', 'barcode_include_size',
     ];
 
     protected $appends = ['logo_url', 'business_type_slug'];
@@ -136,6 +137,27 @@ class Shop extends Model
         return $this->kids_shoe_size_groups ?? self::KIDS_SHOE_SIZE_GROUPS_DEFAULT;
     }
 
+    /**
+     * docs/ARTICLE_SERIES_PLAN.md §9 — the printed sticker's barcode, kept
+     * deliberately separate from article_barcode_template (that one still
+     * builds Product.barcode exactly as before this feature). {ARTICLE} is
+     * substituted as the already-built article barcode whole, so the
+     * default resolves to "SMS-L-10001-NSXXZ-SIL" once {SIZE} is stripped
+     * (see barcodeIncludeSize() below) — Khaled's own example.
+     */
+    public const STICKER_BARCODE_TEMPLATE_DEFAULT = '{ARTICLE}-{COLOR}-{SIZE}';
+
+    public function stickerBarcodeTemplate(): string
+    {
+        return $this->sticker_barcode_template ?: self::STICKER_BARCODE_TEMPLATE_DEFAULT;
+    }
+
+    /** Off by default — {SIZE} resolves to empty (then cleaned up) until this is turned on, matching Khaled's "ডিফল্ট বন্ধ" instruction. */
+    public function barcodeIncludeSize(): bool
+    {
+        return (bool) $this->barcode_include_size;
+    }
+
     protected function casts(): array
     {
         return [
@@ -147,6 +169,7 @@ class Shop extends Model
             'cost_code_digit_map' => 'array',
             'color_code_map' => 'array',
             'kids_shoe_size_groups' => 'array',
+            'barcode_include_size' => 'boolean',
             'subscription_start' => 'date:Y-m-d',
             'subscription_expiry' => 'date:Y-m-d',
             'cash_balance' => 'decimal:2',
