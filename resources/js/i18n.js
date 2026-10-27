@@ -1890,6 +1890,7 @@ export const translations = {
     'bc.subtitle': { bn: 'নিয়মিত দাম ও ছাড়ের দাম সহ লেবেল', en: 'Labels with regular & discount price' },
     'bc.searchPlaceholder': { bn: '🔍 পণ্য/বারকোড খুঁজুন...', en: '🔍 Search product/barcode...' },
     'bc.noBarcode': { bn: 'বারকোড নেই', en: 'No barcode' },
+    'bc.colorLabelsHint': { bn: 'রং-ভিত্তিক লেবেল (সব সাইজে একই বারকোড স্ক্যান হবে)', en: 'Color-level labels (same barcode scans for every size)' },
     'bc.noProducts': { bn: 'কোনো পণ্য নেই', en: 'No products' },
     'bc.print': { bn: '🖨️ প্রিন্ট করুন', en: '🖨️ Print' },
     'bc.close': { bn: 'বন্ধ করুন', en: 'Close' },

@@ -374,13 +374,35 @@ function addVariantWithQty(p, v) {
 /** Scanning an ARTICLE-level barcode (ambiguous size/color) opens this instead of a dead-end "pick a variant" error. */
 const scanVariantSheetOpen = ref(false);
 const scanVariantProduct = ref(null);
+const scanVariantOnlyColor = ref(null);
 function openScanVariantPicker(product) {
     scanVariantProduct.value = product;
+    scanVariantOnlyColor.value = null;
     scanVariantSheetOpen.value = true;
 }
 function onScanVariantPick(variantId, qty) {
     addToCart(scanVariantProduct.value.id, null, { productVariantId: variantId, qty });
     scanVariantSheetOpen.value = false;
+}
+
+/**
+ * docs/ARTICLE_SERIES_PLAN.md §9 — a scanned COLOR-level barcode (tier 2):
+ * exactly one in-stock size for that color adds straight to cart, same
+ * spirit as an exact (tier 1) scan; more than one opens the picker
+ * pre-filtered to just that color, never the full "every color" one.
+ */
+function openScanColorPicker(product, color, onFeedback) {
+    const sizesInStock = (product.variants || []).filter((v) => v.color === color && Number(v.stock) > 0);
+    if (sizesInStock.length === 1) {
+        const v = sizesInStock[0];
+        addToCart(product.id, null, { productVariantId: v.id });
+        onFeedback?.('✅ ' + product.name + ' (' + variantLabel(v) + ')');
+        return;
+    }
+    closeScanner();
+    scanVariantProduct.value = product;
+    scanVariantOnlyColor.value = color;
+    scanVariantSheetOpen.value = true;
 }
 
 /** A cart line is either a base sale, a pack-unit line, or a variant line — never a mix, mirrors PosController::checkout. */
@@ -1292,6 +1314,15 @@ async function handleBarcode(decodedText, onFeedback) {
         }
     }
 
+    // tier 2 — docs/ARTICLE_SERIES_PLAN.md §9's color-level barcode
+    for (const p of props.products) {
+        const cb = p.color_barcodes?.find((c) => c.barcode === code);
+        if (cb) {
+            openScanColorPicker(p, cb.color, onFeedback);
+            return;
+        }
+    }
+
     const product = props.products.find((p) => p.barcode === code);
     if (product) {
         // a weighed product's barcode can't carry a fixed qty — always
@@ -1325,6 +1356,8 @@ async function handleBarcode(decodedText, onFeedback) {
                     const v = data.product.variants?.find((variant) => variant.id === data.variant_id);
                     addToCart(data.product.id, null, { productVariantId: data.variant_id });
                     onFeedback('✅ ' + data.product.name + (v ? ' (' + variantLabel(v) + ')' : ''));
+                } else if (data.color) {
+                    openScanColorPicker(data.product, data.color, onFeedback);
                 } else if (hasProductVariants.value && data.product.variants?.length) {
                     closeScanner();
                     openScanVariantPicker(data.product);
@@ -1932,7 +1965,7 @@ useKeyboardShortcuts({
 
         <!-- scanning an article-level barcode (ambiguous size/color) opens this instead of a dead-end error -->
         <Sheet v-model="scanVariantSheetOpen" :title="scanVariantProduct?.name" :subtitle="t('pos.pickVariantHint')">
-            <ColorSizePicker v-if="scanVariantProduct" :product="scanVariantProduct" @pick="onScanVariantPick" />
+            <ColorSizePicker v-if="scanVariantProduct" :product="scanVariantProduct" :only-color="scanVariantOnlyColor" @pick="onScanVariantPick" />
         </Sheet>
 
         <!-- weight/volume quick-entry — the only way a loose kg/litre product gets added to (or edited in) the cart -->

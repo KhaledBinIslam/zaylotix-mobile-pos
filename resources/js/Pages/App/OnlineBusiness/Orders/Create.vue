@@ -92,6 +92,15 @@ function handleBarcode(code) {
         }
     }
 
+    // tier 2 — docs/ARTICLE_SERIES_PLAN.md §9's color-level barcode
+    for (const p of props.products) {
+        const cb = p.color_barcodes?.find((c) => c.barcode === trimmed);
+        if (cb) {
+            openScanColorPicker(p, cb.color);
+            return;
+        }
+    }
+
     const product = props.products.find((p) => p.barcode === trimmed);
     if (product) {
         // the ARTICLE's own barcode (e.g. a shelf tag) is ambiguous — which
@@ -99,6 +108,7 @@ function handleBarcode(code) {
         if (product.variants?.length) {
             closeCamera();
             scanVariantProduct.value = product;
+            scanVariantOnlyColor.value = null;
             scanVariantSheetOpen.value = true;
             return;
         }
@@ -110,10 +120,25 @@ function handleBarcode(code) {
 }
 const scanVariantSheetOpen = ref(false);
 const scanVariantProduct = ref(null);
+const scanVariantOnlyColor = ref(null);
 function onScanVariantPick(variantId, qty) {
     const v = scanVariantProduct.value.variants.find((x) => x.id === variantId);
     addScannedLine(scanVariantProduct.value.id, variantId, `${scanVariantProduct.value.name} (${[v.size, v.color].filter(Boolean).join(', ')})`, qty);
     scanVariantSheetOpen.value = false;
+}
+
+/** Exactly one in-stock size for that color adds straight to the line, same spirit as an exact scan; more than one opens the picker filtered to just that color. */
+function openScanColorPicker(product, color) {
+    const sizesInStock = (product.variants || []).filter((v) => v.color === color && Number(v.stock) > 0);
+    if (sizesInStock.length === 1) {
+        const v = sizesInStock[0];
+        addScannedLine(product.id, v.id, `${product.name} (${[v.size, v.color].filter(Boolean).join(', ')})`);
+        return;
+    }
+    closeCamera();
+    scanVariantProduct.value = product;
+    scanVariantOnlyColor.value = color;
+    scanVariantSheetOpen.value = true;
 }
 function addScannedLine(productId, variantId, label, qty = 1) {
     const existing = form.items.find((l) => l.product_id === productId && (l.product_variant_id || '') === variantId);
@@ -228,7 +253,7 @@ function save() {
         <CameraScanner v-if="cameraOpen" ref="cameraRef" @scan="onCameraScan" @close="closeCamera" @error="toast('❌ ' + t('pos.cameraNotFound'))" />
 
         <Sheet v-model="scanVariantSheetOpen" :title="scanVariantProduct?.name" :subtitle="t('pos.pickVariantHint')">
-            <ColorSizePicker v-if="scanVariantProduct" :product="scanVariantProduct" @pick="onScanVariantPick" />
+            <ColorSizePicker v-if="scanVariantProduct" :product="scanVariantProduct" :only-color="scanVariantOnlyColor" @pick="onScanVariantPick" />
         </Sheet>
 
         <div class="field"><label>{{ t('quotation.items') }}</label></div>

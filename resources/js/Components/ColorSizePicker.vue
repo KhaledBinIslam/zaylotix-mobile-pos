@@ -12,12 +12,19 @@ import { useI18n } from '@/composables/useI18n';
  * caller decide what that means (addToCart in POS, fill an order line in
  * Online Order).
  */
-const props = defineProps({ product: Object });
+// onlyColor: docs/ARTICLE_SERIES_PLAN.md §9 — a scanned color-level barcode
+// already answers "which color", so the chip row (and every other color)
+// is just noise here; only that one color's size table is shown.
+const props = defineProps({ product: Object, onlyColor: { type: String, default: null } });
 const emit = defineEmits(['pick']);
 const { t } = useI18n();
 
-const groups = computed(() => colorGroups(props.product));
-const selectedColor = ref(groups.value[0]?.color ?? null);
+const groups = computed(() => {
+    const all = colorGroups(props.product);
+
+    return props.onlyColor ? all.filter((g) => g.color === props.onlyColor) : all;
+});
+const selectedColor = ref(props.onlyColor ?? groups.value[0]?.color ?? null);
 const activeGroup = computed(() => groups.value.find((g) => g.color === selectedColor.value) || groups.value[0] || null);
 
 const qtyByVariant = ref({});
@@ -39,7 +46,7 @@ function money(n) {
 
 <template>
     <div>
-        <div v-if="groups.length > 1 || groups[0]?.color" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <div v-if="!onlyColor && (groups.length > 1 || groups[0]?.color)" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
             <button
                 v-for="g in groups" :key="g.color ?? '_'" type="button"
                 class="upill" style="padding:4px;display:flex;align-items:center;gap:6px"

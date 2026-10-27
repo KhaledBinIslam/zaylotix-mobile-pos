@@ -10,6 +10,8 @@ use App\Models\HeldCart;
 use App\Models\PaymentGatewayCredential;
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Models\ProductColorBarcode;
+use App\Models\ProductColorBarcodeAlias;
 use App\Models\ProductUnit;
 use App\Models\ProductVariant;
 use App\Models\Promotion;
@@ -146,7 +148,11 @@ class PosController extends Controller
      */
     private static function catalogRelations(Shop $shop): array
     {
-        $relations = ['category', 'unit', 'productUnits.unit', 'variants'];
+        // colorBarcodes: docs/ARTICLE_SERIES_PLAN.md §9's "tier 2" scan match
+        // — included unconditionally (cheap, a handful of rows per product at
+        // most) so a color-level scan resolves from the already-loaded
+        // catalog without a round trip, same as variants' own barcodes do
+        $relations = ['category', 'unit', 'productUnits.unit', 'variants', 'colorBarcodes'];
         // in-stock IMEIs, only for a shop that actually tracks them — a
         // cashier picking from a list of real in-stock units beats typing a
         // 15-digit number from memory/the box, which is exactly what the
@@ -1093,6 +1099,19 @@ class PosController extends Controller
             $product->setRelation('variants', $product->variants()->get());
 
             return response()->json(['found' => true, 'product' => $product, 'variant_id' => $variant->id]);
+        }
+
+        // docs/ARTICLE_SERIES_PLAN.md §9 — "tier 2": the color-level sticker
+        // barcode (and its history of old values, once a color's code is
+        // renamed) resolves to a product + which color, not one exact
+        // variant — the frontend opens ColorSizePicker filtered to it
+        $colorBarcode = ProductColorBarcode::where('barcode', $barcode)->first()
+            ?? ProductColorBarcodeAlias::where('barcode', $barcode)->first();
+        if ($colorBarcode) {
+            $product = Product::with(['productUnits.unit', 'variants'])->find($colorBarcode->product_id);
+            if ($product) {
+                return response()->json(['found' => true, 'product' => $product, 'color' => $colorBarcode->color]);
+            }
         }
 
         $product = Product::with(['productUnits.unit', 'variants'])->where('barcode', $barcode)->first();

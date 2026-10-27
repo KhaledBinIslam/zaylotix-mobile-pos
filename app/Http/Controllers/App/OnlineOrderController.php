@@ -64,8 +64,9 @@ class OnlineOrderController extends Controller
             'channels' => SalesChannel::where('active', true)->orderBy('name')->get(),
             // barcode added so the create form can scan-to-add a line (see
             // Orders/Create.vue's handleBarcode()) the same way POS does —
-            // variants' own barcodes already come along via with('variants')
-            'products' => Product::with('variants')->orderBy('name')->get(['id', 'name', 'emoji', 'price', 'discount_price', 'stock', 'sold_by_weight', 'barcode']),
+            // variants' own barcodes already come along via with('variants');
+            // colorBarcodes is docs/ARTICLE_SERIES_PLAN.md §9's "tier 2" scan match
+            'products' => Product::with(['variants', 'colorBarcodes'])->orderBy('name')->get(['id', 'name', 'emoji', 'price', 'discount_price', 'stock', 'sold_by_weight', 'barcode']),
             'couriers' => Courier::where('active', true)->orderBy('name')->get(['id', 'name', 'charge_type']),
         ]);
     }
