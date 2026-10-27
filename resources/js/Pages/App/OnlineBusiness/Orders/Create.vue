@@ -1,9 +1,10 @@
 <script setup>
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
-import { computed, ref, watch } from 'vue';
+import { computed, ref, watch, nextTick } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import ColorSizePicker from '@/Components/ColorSizePicker.vue';
+import CameraScanner from '@/Components/CameraScanner.vue';
 import { useI18n } from '@/composables/useI18n';
 import { useHardwareScanner } from '@/composables/useHardwareScanner';
 import { useToast } from '@/composables/useToast';
@@ -96,6 +97,7 @@ function handleBarcode(code) {
         // the ARTICLE's own barcode (e.g. a shelf tag) is ambiguous — which
         // size/color? Open the picker instead of leaving a half-filled line.
         if (product.variants?.length) {
+            closeCamera();
             scanVariantProduct.value = product;
             scanVariantSheetOpen.value = true;
             return;
@@ -132,6 +134,25 @@ function addScannedLine(productId, variantId, label, qty = 1) {
 function onScanInputEnter() {
     handleBarcode(scanInput.value);
     scanInput.value = '';
+}
+
+// visible 📷 button, same recognizable affordance as POS's own scanner —
+// Khaled: "r oneline order e abar gelam kono option dkehlam na san korar"
+// — the hardware-scanner/manual-type field alone wasn't obviously a "scan"
+// option to look for; this gives Online Order the same camera overlay POS has.
+const cameraOpen = ref(false);
+const cameraRef = ref(null);
+async function openCamera() {
+    cameraOpen.value = true;
+    await nextTick();
+    cameraRef.value?.open();
+}
+function closeCamera() {
+    cameraOpen.value = false;
+}
+function onCameraScan(decodedText, onFeedback) {
+    handleBarcode(decodedText);
+    onFeedback('✅');
 }
 
 const hardwareScannerEnabled = computed(() => page.props.shop?.hardware_scanner_enabled ?? true);
@@ -195,11 +216,16 @@ function save() {
 
         <div class="field">
             <label>{{ t('pos.scanBarcode') }}</label>
-            <input
-                v-model="scanInput" :placeholder="t('pos.scanBarcodeHint')" inputmode="none" autocomplete="off"
-                @keyup.enter="onScanInputEnter"
-            >
+            <div style="display:flex;gap:8px">
+                <input
+                    v-model="scanInput" :placeholder="t('pos.scanBarcodeHint')" inputmode="none" autocomplete="off"
+                    style="flex:1" @keyup.enter="onScanInputEnter"
+                >
+                <button type="button" class="btn ghost" style="width:auto;padding:0 16px" :title="t('pos.scanTitle')" @click="openCamera">📷</button>
+            </div>
         </div>
+
+        <CameraScanner v-if="cameraOpen" ref="cameraRef" @scan="onCameraScan" @close="closeCamera" @error="toast('❌ ' + t('pos.cameraNotFound'))" />
 
         <Sheet v-model="scanVariantSheetOpen" :title="scanVariantProduct?.name" :subtitle="t('pos.pickVariantHint')">
             <ColorSizePicker v-if="scanVariantProduct" :product="scanVariantProduct" @pick="onScanVariantPick" />
