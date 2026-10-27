@@ -33,7 +33,14 @@ class BarcodeLabelController extends Controller
             // below handle assigning one on demand, same as the variant side
             // already did.
             'products' => Product::orderBy('name')
-                ->with(['variants' => fn ($q) => $q->orderBy('size')->orderBy('color')])
+                ->with([
+                    'variants' => fn ($q) => $q->orderBy('size')->orderBy('color'),
+                    // docs/ARTICLE_SERIES_PLAN.md §9 — lets this page offer
+                    // "one label per color" (summed stock across every size)
+                    // as an alternative to picking each size variant one by
+                    // one, for a shop that hasn't turned barcode_include_size on
+                    'colorBarcodes',
+                ])
                 ->get(['id', 'name', 'name_en', 'emoji', 'barcode', 'price', 'discount_price'])
                 ->map(fn ($p) => [
                     'id' => $p->id, 'name' => $p->name, 'name_en' => $p->name_en, 'emoji' => $p->emoji,
@@ -41,6 +48,10 @@ class BarcodeLabelController extends Controller
                     'variants' => $p->variants->map(fn ($v) => [
                         'id' => $v->id, 'size' => $v->size, 'color' => $v->color,
                         'barcode' => $v->barcode, 'price' => $v->price, 'stock' => $v->stock,
+                    ]),
+                    'color_barcodes' => $p->colorBarcodes->map(fn ($cb) => [
+                        'id' => $cb->id, 'color' => $cb->color, 'barcode' => $cb->barcode,
+                        'stock' => $p->variants->where('color', $cb->color)->sum('stock'),
                     ]),
                 ]),
         ]);

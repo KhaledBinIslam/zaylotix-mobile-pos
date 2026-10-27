@@ -32,6 +32,12 @@ function toggleVariant(v) {
     if (selected.value[key]) delete selected.value[key];
     else selected.value[key] = 1;
 }
+/** docs/ARTICLE_SERIES_PLAN.md §9 — one label per color (every size shares it) instead of one per size — copies default to that color's TOTAL stock across sizes, editable same as any other row. */
+function toggleColorBarcode(cb) {
+    const key = 'c:' + cb.id;
+    if (selected.value[key]) delete selected.value[key];
+    else selected.value[key] = Math.max(1, cb.stock);
+}
 function selectAllVariants(p) {
     const allSelected = p.variants.every((v) => !v.barcode || selected.value['v:' + v.id]);
     p.variants.forEach((v) => {
@@ -77,6 +83,13 @@ function buildAndPreview() {
             if (!copies) continue;
             for (let i = 0; i < copies; i++) {
                 list.push({ name: p.name, variantLabel: variantLabel(v), barcode: v.barcode, price: v.price ?? p.price, discount_price: null });
+            }
+        }
+        for (const cb of p.color_barcodes || []) {
+            const copies = selected.value['c:' + cb.id];
+            if (!copies) continue;
+            for (let i = 0; i < copies; i++) {
+                list.push({ name: p.name, variantLabel: cb.color, barcode: cb.barcode, price: p.price, discount_price: p.discount_price });
             }
         }
     }
@@ -138,6 +151,18 @@ const printCss = computed(() => `
                     </div>
                     <div class="end" @click.stop>
                         <button class="btn sm ghost" style="width:auto;padding:6px 10px" @click="selectAllVariants(p)">{{ t('bc.selectAllVariants') }}</button>
+                    </div>
+                </div>
+                <!-- docs/ARTICLE_SERIES_PLAN.md §9 — one label per color (every size shares it), an alternative to picking each size below when the shop hasn't turned "include size in barcode" on -->
+                <div v-if="p.color_barcodes?.length" style="padding:8px 12px 2px 20px;font-size:11px;color:var(--mut)">{{ t('bc.colorLabelsHint') }}</div>
+                <div v-for="cb in p.color_barcodes" :key="'c' + cb.id" class="row" style="border-top:1px solid var(--line);padding-left:20px" :class="{ incart: selected['c:' + cb.id] }" :style="selected['c:' + cb.id] ? 'background:var(--goldSoft)' : ''" @click="toggleColorBarcode(cb)">
+                    <div class="ava" style="font-size:16px">🎨</div>
+                    <div class="mid">
+                        <b>{{ cb.color }}</b>
+                        <span>{{ cb.barcode }} • {{ money(p.price) }}</span>
+                    </div>
+                    <div class="end" @click.stop>
+                        <input v-if="selected['c:' + cb.id]" v-model.number="selected['c:' + cb.id]" type="number" min="1" style="width:60px;padding:6px;text-align:center">
                     </div>
                 </div>
                 <div v-for="v in p.variants" :key="v.id" class="row" style="border-top:1px solid var(--line);padding-left:20px" :class="{ incart: selected['v:' + v.id] }" :style="selected['v:' + v.id] ? 'background:var(--goldSoft)' : ''" @click="toggleVariant(v)">
