@@ -9,13 +9,33 @@ const props = defineProps({
     domId: { type: String, required: true }, // unique id for this card's <svg> — caller guarantees uniqueness across a print run
 });
 
+/**
+ * docs/ARTICLE_SERIES_PLAN.md §9 — measured against a real scan failure:
+ * rendering at a fixed width:1 and letting CSS `max-width:100%` squeeze it
+ * down to fit silently thins every bar as the barcode string grows longer
+ * (a color/variant barcode with more characters), to the point of being
+ * unscannable by a phone camera — even when the label has width to spare
+ * for a shorter code, since a fixed width never grows to use it either.
+ * Two-pass render: first at width:1 to learn how much raw space this
+ * barcode naturally needs, then again at whatever module width makes it
+ * fill the label's own available width exactly (never past it, so nothing
+ * clips) — always the thickest bars this label's physical size allows,
+ * for every barcode, short or long.
+ */
 async function render() {
     if (!props.label.barcode) return;
     const { default: JsBarcode } = await import('jsbarcode');
     const el = document.getElementById(props.domId);
     if (!el) return;
+    const displayValue = props.settings.show_barcode_number !== false;
     try {
-        JsBarcode(el, props.label.barcode, { format: 'CODE128', width: 1, height: 22, fontSize: 8, margin: 2, displayValue: props.settings.show_barcode_number !== false });
+        JsBarcode(el, props.label.barcode, { format: 'CODE128', width: 1, height: 22, fontSize: 8, margin: 2, displayValue });
+        const naturalWidth = parseFloat(el.getAttribute('width')) || 0;
+        const availableWidth = el.closest('.label-card')?.clientWidth - 12; // minus the card's own 6px+6px padding
+        if (naturalWidth > 0 && availableWidth > 0) {
+            const scale = Math.min(availableWidth / naturalWidth, 2.5);
+            JsBarcode(el, props.label.barcode, { format: 'CODE128', width: scale, height: 22, fontSize: 8, margin: 2, displayValue });
+        }
     } catch (e) { /* invalid barcode value for CODE128 — leave blank */ }
 }
 onMounted(render);
