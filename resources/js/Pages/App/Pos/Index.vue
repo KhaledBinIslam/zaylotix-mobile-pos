@@ -1266,11 +1266,34 @@ let html5Qrcode = null;
 let lastScanCode = '';
 let lastScanAt = 0;
 
+// Khaled: scanning a 2nd item right after the auto-opened checkout
+// (the "📷 স্ক্যান করুন" button) would just hang mid-scan forever. Root
+// cause: maybeAutoOpenCheckout() fires closeScanner() without awaiting it
+// (it has a sale to add to the cart and a sheet to open, it can't block
+// on the camera teardown), and if the cashier tapped "scan more" quickly,
+// openScanner() ran concurrently and reassigned the shared `html5Qrcode`
+// variable to a brand-new instance WHILE the old close was still
+// mid-`await html5Qrcode.stop()`. The close's later `html5Qrcode.clear();
+// html5Qrcode = null;` then ran against that new instance instead — tearing
+// down a camera session that had just started, with nothing left watching
+// it to restart. This queue forces every open/close to run one at a time,
+// in the order requested, so a "scan more" tap always waits for the
+// previous close to fully finish before starting its own camera session.
+let scannerTask = Promise.resolve();
+function queueScannerOp(fn) {
+    scannerTask = scannerTask.then(fn, fn);
+    return scannerTask;
+}
+
 async function openScanner() {
     if (!canScan.value) {
         toast('❌ ' + t('pos.scannerDisabled'));
         return;
     }
+    return queueScannerOp(doOpenScanner);
+}
+
+async function doOpenScanner() {
     scannerOpen.value = true;
     scanHint.value = t('pos.scanHintDefault');
 
@@ -1285,18 +1308,23 @@ async function openScanner() {
         );
     } catch (e) {
         toast('❌ ' + t('pos.cameraNotFound'));
-        closeScanner();
+        await doCloseScanner();
     }
 }
 
 async function closeScanner() {
+    return queueScannerOp(doCloseScanner);
+}
+
+async function doCloseScanner() {
     scannerOpen.value = false;
-    if (html5Qrcode) {
+    const instance = html5Qrcode;
+    html5Qrcode = null;
+    if (instance) {
         try {
-            await html5Qrcode.stop();
-            html5Qrcode.clear();
+            await instance.stop();
+            instance.clear();
         } catch (e) { /* already stopped */ }
-        html5Qrcode = null;
     }
 }
 
