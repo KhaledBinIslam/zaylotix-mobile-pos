@@ -435,7 +435,13 @@ class ProductVariantTest extends TestCase
 
         $this->artisan('product:stock-history', ['product_id' => $product->id])
             ->expectsOutputToContain('Investigated Shirt')
-            ->expectsOutputToContain('28')
+            // 'যোগফল: 28' (not bare '28'): the purchase row below also prints
+            // today's date, e.g. "2026-10-28" — Laravel's test double matches
+            // each printed console line against exactly one expected
+            // substring and never retries a line against a later one, so a
+            // bare '28' can "steal" that date-bearing line before the
+            // Bengali assertion below ever gets a chance to match it.
+            ->expectsOutputToContain('যোগফল: 28')
             ->expectsOutputToContain('কোনো variant বলা হয়নি')
             ->assertExitCode(0);
     }
