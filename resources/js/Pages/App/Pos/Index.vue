@@ -388,26 +388,26 @@ function onScanVariantPick(variantId, qty) {
 }
 
 /**
- * Khaled: scanning a single item should go straight to checkout instead of
- * needing a manual tap on the cart button — but only when the cart ends up
- * with exactly one line, so a cashier scanning several items for one
- * customer isn't kicked into checkout after the first scan. Called only
- * from scan-triggered adds (never a tap on the product grid), since that's
- * the only flow this was asked for.
+ * Khaled: every successful scan should land the cashier on checkout, not
+ * just the first one — tried gating this to a single-item cart so a
+ * multi-item sale wouldn't get interrupted, but in practice that just
+ * left the camera running after item 2+ with no visible feedback, forcing
+ * a manual back/close every time. So this now always closes the scanner
+ * and opens checkout, for every scan-triggered add. Called only from
+ * scan-triggered adds (never a tap on the product grid), since that's the
+ * only flow this was asked for.
  *
  * Also closes the scanner: #scanwrap is a full-screen, opaque, higher
  * z-index overlay than the cart Sheet (70 vs 60), so leaving the camera
  * running on top would make the checkout sheet open invisibly behind it —
  * the cashier would see no change at all. Closing it here is what actually
- * surfaces checkout. Scanning more items afterwards is the "📷 স্ক্যান করুন"
- * button inside the checkout sheet (re-opens the camera on top; closing it
- * again just reveals the same still-open checkout sheet underneath).
+ * surfaces checkout. Scanning the next item is the "📷 স্ক্যান করুন" button
+ * inside the checkout sheet (re-opens the camera on top; this same
+ * function closes it again and brings checkout back once that item's added).
  */
 function maybeAutoOpenCheckout() {
-    if (cart.value.length === 1) {
-        closeScanner();
-        cartOpen.value = true;
-    }
+    closeScanner();
+    cartOpen.value = true;
 }
 
 /**
