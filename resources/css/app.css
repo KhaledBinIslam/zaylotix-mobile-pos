@@ -468,7 +468,11 @@ body {
    place, which this alone doesn't do. */
 .pcard { content-visibility: auto; contain-intrinsic-size: 0 140px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--sh); position: relative; width: 100%; }
 .pcard-main { display: block; width: 100%; padding: 12px; text-align: left; background: transparent; border: none; }
-.pcard .em { font-size: 22px; }
+/* a product with no photo and no emoji set falls back to a bare glyph
+   (sometimes literally "?", left over from data entry) floating with no
+   shape of its own — looked like a missing/broken image rather than an
+   intentional placeholder. A fixed tinted tile gives it a shape either way. */
+.pcard .em { width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; font-size: 19px; background: var(--greenSoft); border-radius: 10px; }
 /* a real product photo bleeds to the card's edges and sits above the name/
    price, matching a photo-forward catalog look — falls back to the big
    emoji glyph above when no photo is set, so nothing looks unfinished for

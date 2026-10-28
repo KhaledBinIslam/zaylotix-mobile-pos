@@ -1673,23 +1673,29 @@ useKeyboardShortcuts({
                                     <span style="padding-right:4px">{{ g.color }}</span>
                                 </button>
                             </div>
-                            <table v-if="activeColorGroup(p)" style="width:100%;border-collapse:collapse;font-size:13px">
+                            <table v-if="activeColorGroup(p)" style="width:100%;border-collapse:collapse;font-size:13px;margin-top:4px;padding-top:6px;border-top:1px solid var(--line)">
                                 <tbody>
                                     <tr
                                         v-for="v in activeColorGroup(p).variants" :key="v.id"
                                         style="border-top:1px solid var(--line)"
                                         :style="variantQtyInCart(v.id) ? 'background:var(--goldSoft)' : ''"
                                     >
-                                        <td style="padding:6px 4px">
+                                        <td style="padding:7px 4px;font-weight:600">
                                             {{ v.size }}
                                             <!-- exactly which row is "marked" and by how much — the whole-card gold
                                                  highlight used to make this ambiguous across many size/color rows -->
                                             <div v-if="variantQtyInCart(v.id)" style="font-size:10.5px;color:var(--gold2);font-weight:700">✓ {{ variantQtyInCart(v.id) }} {{ t('pos.added') }}</div>
                                         </td>
-                                        <td style="padding:6px 4px" :style="hasLowStockAlerts && variantStockLevel(v) === 'low' ? 'color:var(--gold2);font-weight:700' : ''">
+                                        <!-- a size-specific price override is worth flagging in full color/weight;
+                                             the common case (same price as the card header, repeated on every row)
+                                             is muted instead of shouting the same number five times down the card -->
+                                        <td
+                                            style="padding:7px 4px;text-align:right"
+                                            :style="hasLowStockAlerts && variantStockLevel(v) === 'low' ? 'color:var(--gold2);font-weight:700' : (v.price != null && Number(v.price) !== Number(p.price) ? 'color:var(--green);font-weight:700' : 'color:var(--dim)')"
+                                        >
                                             {{ v.price != null && Number(v.price) !== Number(p.price) ? money(v.price) : money(p.price) }}
                                         </td>
-                                        <td style="padding:6px 4px">
+                                        <td style="padding:7px 4px">
                                             <span v-if="v.stock <= 0" style="color:var(--rose)">{{ t('pos.outOfStock') }}</span>
                                             <div v-else style="display:flex;align-items:center;gap:6px">
                                                 <button type="button" class="btn ghost sm" style="padding:2px 8px" @click="stepQty(v, -1)">−</button>
@@ -1697,7 +1703,7 @@ useKeyboardShortcuts({
                                                 <button type="button" class="btn ghost sm" style="padding:2px 8px" @click="stepQty(v, 1)">+</button>
                                             </div>
                                         </td>
-                                        <td style="padding:6px 4px;text-align:right">
+                                        <td style="padding:7px 4px;text-align:right">
                                             <button v-if="v.stock > 0" type="button" class="btn sm" @click="addVariantWithQty(p, v)">{{ t('pos.add') }}</button>
                                         </td>
                                     </tr>
