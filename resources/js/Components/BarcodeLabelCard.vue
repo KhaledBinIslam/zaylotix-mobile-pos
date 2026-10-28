@@ -3,24 +3,31 @@ import { onMounted, watch } from 'vue';
 
 /** One printable barcode label card — shared by BarcodeLabels/Index.vue's real print run and Settings/ReceiptLabel.vue's live preview, so they can never visually drift apart. */
 const props = defineProps({
-    label: { type: Object, required: true }, // { name, variantLabel, barcode, price, discount_price }
+    label: { type: Object, required: true }, // { name, variantLabel, barcode, scanCode, price, discount_price }
     shop: { type: Object, default: null },
     settings: { type: Object, required: true }, // Shop::LABEL_SETTINGS_DEFAULTS-shaped
     domId: { type: String, required: true }, // unique id for this card's <svg> — caller guarantees uniqueness across a print run
 });
 
 /**
- * docs/ARTICLE_SERIES_PLAN.md §9 — measured against a real scan failure:
- * rendering at a fixed width:1 and letting CSS `max-width:100%` squeeze it
- * down to fit silently thins every bar as the barcode string grows longer
- * (a color/variant barcode with more characters), to the point of being
- * unscannable by a phone camera — even when the label has width to spare
- * for a shorter code, since a fixed width never grows to use it either.
- * Two-pass render: first at width:1 to learn how much raw space this
- * barcode naturally needs, then again at whatever module width makes it
- * fill the label's own available width exactly (never past it, so nothing
- * clips) — always the thickest bars this label's physical size allows,
- * for every barcode, short or long.
+ * docs/ARTICLE_SERIES_PLAN.md §10 — live scan failure, measured and
+ * confirmed: a color/variant barcode's full descriptive text (the client's
+ * explicit requirement — it stays on the label exactly as before) is
+ * physically too long to print at a scannable module width on Khaled's
+ * fixed-size label stock, no matter how the available width is used (a
+ * dynamic fill-width pass alone, §9, wasn't enough — see the chat for the
+ * measurements). So what the BARS actually encode (scanCode, e.g.
+ * "ZV4821") is now deliberately a short id-derived code, decoupled from
+ * what's PRINTED AS TEXT below them (label.barcode, unchanged) via
+ * JsBarcode's own `text` option — encoding and the displayed string are
+ * independent by design in that library, not a hack. Falls back to
+ * encoding label.barcode itself when scanCode isn't given (the plain
+ * product-level label, whose own barcode was already short before this
+ * and was never the reported problem).
+ *
+ * The fill-width pass from §9 still applies on top of this — now against
+ * the much shorter scanCode, so a label's bars end up both short AND as
+ * thick as the label's own width allows.
  */
 async function render() {
     if (!props.label.barcode) return;
@@ -28,13 +35,15 @@ async function render() {
     const el = document.getElementById(props.domId);
     if (!el) return;
     const displayValue = props.settings.show_barcode_number !== false;
+    const encoded = props.label.scanCode || props.label.barcode;
+    const opts = { format: 'CODE128', height: 22, fontSize: 8, margin: 2, displayValue, text: props.label.barcode };
     try {
-        JsBarcode(el, props.label.barcode, { format: 'CODE128', width: 1, height: 22, fontSize: 8, margin: 2, displayValue });
+        JsBarcode(el, encoded, { ...opts, width: 1 });
         const naturalWidth = parseFloat(el.getAttribute('width')) || 0;
         const availableWidth = el.closest('.label-card')?.clientWidth - 12; // minus the card's own 6px+6px padding
         if (naturalWidth > 0 && availableWidth > 0) {
             const scale = Math.min(availableWidth / naturalWidth, 2.5);
-            JsBarcode(el, props.label.barcode, { format: 'CODE128', width: scale, height: 22, fontSize: 8, margin: 2, displayValue });
+            JsBarcode(el, encoded, { ...opts, width: scale });
         }
     } catch (e) { /* invalid barcode value for CODE128 — leave blank */ }
 }

@@ -84,6 +84,32 @@ function handleBarcode(code) {
     const trimmed = code.trim();
     if (!trimmed) return;
 
+    // docs/ARTICLE_SERIES_PLAN.md §10 — a short printed-symbol code
+    // (ZV{variantId}/ZC{colorBarcodeId}), decoupled from the full
+    // descriptive text still printed on the label below it.
+    const zv = trimmed.match(/^ZV(\d+)$/);
+    if (zv) {
+        const vid = Number(zv[1]);
+        for (const p of props.products) {
+            const v = p.variants?.find((variant) => variant.id === vid);
+            if (v) {
+                addScannedLine(p.id, v.id, `${p.name} (${[v.size, v.color].filter(Boolean).join(', ')})`);
+                return;
+            }
+        }
+    }
+    const zc = trimmed.match(/^ZC(\d+)$/);
+    if (zc) {
+        const cid = Number(zc[1]);
+        for (const p of props.products) {
+            const cb = p.color_barcodes?.find((c) => c.id === cid);
+            if (cb) {
+                openScanColorPicker(p, cb.color);
+                return;
+            }
+        }
+    }
+
     for (const p of props.products) {
         const v = p.variants?.find((variant) => variant.barcode === trimmed);
         if (v) {

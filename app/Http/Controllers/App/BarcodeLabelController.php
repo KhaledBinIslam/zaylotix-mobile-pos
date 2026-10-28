@@ -45,12 +45,18 @@ class BarcodeLabelController extends Controller
                 ->map(fn ($p) => [
                     'id' => $p->id, 'name' => $p->name, 'name_en' => $p->name_en, 'emoji' => $p->emoji,
                     'barcode' => $p->barcode, 'price' => $p->price, 'discount_price' => $p->discount_price,
+                    // docs/ARTICLE_SERIES_PLAN.md §10 — scan_code is what the
+                    // printed label's bars actually ENCODE (short, scannable
+                    // by a phone camera); barcode stays the full descriptive
+                    // value still printed as readable text below the bars.
                     'variants' => $p->variants->map(fn ($v) => [
                         'id' => $v->id, 'size' => $v->size, 'color' => $v->color,
-                        'barcode' => $v->barcode, 'price' => $v->price, 'stock' => $v->stock,
+                        'barcode' => $v->barcode, 'scan_code' => 'ZV'.$v->id,
+                        'price' => $v->price, 'stock' => $v->stock,
                     ]),
                     'color_barcodes' => $p->colorBarcodes->map(fn ($cb) => [
                         'id' => $cb->id, 'color' => $cb->color, 'barcode' => $cb->barcode,
+                        'scan_code' => 'ZC'.$cb->id,
                         'stock' => $p->variants->where('color', $cb->color)->sum('stock'),
                     ]),
                 ]),

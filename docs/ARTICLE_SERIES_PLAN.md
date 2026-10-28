@@ -420,3 +420,47 @@ resolves tier 1 and tier 3 exactly as before; tier-2 scanning needs a
 network round trip until this is built); Return/Exchange and Stock
 Count's own scan entry points; sales/stock reports broken down by color;
 searching Stock/POS's product search box by color code.
+
+## §10 Short printed-code (live incident, 2026-10-28)
+
+Live report from Khaled: scanning a printed/displayed color or per-size
+variant barcode with a phone camera stopped working after this feature
+shipped. Measured (Playwright + the real JsBarcode print settings, see
+chat for the numbers): the printed module width for a color/variant
+barcode is 0.11-0.17mm across every label size this app offers — well
+under the ~0.33mm a phone camera needs — and a bigger label isn't an
+option (Khaled's printer/roll is a fixed size), and the full descriptive
+barcode text must stay on the label exactly as-is (explicit client
+requirement, not negotiable). Those two constraints together make the
+long descriptive string physically unscannable by a phone camera no
+matter what the camera-side code does — confirmed, not guessed.
+
+**Decision**: decouple what gets PRINTED AS TEXT (unchanged — the full
+`SMS-L-10001-NSXXZ-KHK-38`-style string, still the real value of
+`ProductVariant.barcode`/`Product.barcode`/`ProductColorBarcode.barcode`,
+still what search/typing/the hardware scanner/stock-pool matching use,
+all completely unchanged) from what gets ENCODED IN THE BARS. The bars
+instead encode a short, deterministic code derived from the row's own id
+— `ZV{variantId}` for a per-size label, `ZC{colorBarcodeId}` for a
+per-color label — reusing the exact naming convention
+`BarcodeLabelController::generateVariantBarcode()`/`generateProductBarcode()`
+already established (`'ZV'.$variant->id`, `'ZP'.$product->id`) for a
+product/variant that never had a barcode at all. No new migration: the id
+already exists and is already globally unique (never reused across shops
+or after a delete), so `ZV4821`/`C118` resolve via a straight `::find()`
+scoped to the current shop — no new table, no alias bookkeeping, nothing
+to keep in sync. `JsBarcode`'s own `text` option (separate from what it
+encodes) prints the full original string as before; only the symbol
+changes. A product-level (no-variant) label keeps encoding its own
+`Product.barcode` as-is — that one was already short before this feature
+and was never the reported problem, so it's left untouched rather than
+switched to `ZP{id}` for no reason.
+
+New tier (checked first, cheap regex, never collides with the existing
+`{MFR}-...` formats): `PosController::barcode()` and every scan consumer
+(Pos/Index.vue, Clothing/Pos.vue, Online Order's Create.vue) gain a
+`^ZV(\d+)$` / `^ZC(\d+)$` check ahead of the existing tier 1/2/3 string
+matches, resolving straight to the variant/color-barcode row by id
+(tenant-scoped). Everything downstream (add to cart, ColorSizePicker,
+offline fallback) is identical to today's tier-1/tier-2 handling — only
+how the code is DECODED into "which row" changes.

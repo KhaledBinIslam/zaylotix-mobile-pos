@@ -1091,6 +1091,38 @@ class PosController extends Controller
 
     public function barcode(string $barcode)
     {
+        // docs/ARTICLE_SERIES_PLAN.md §10 — a short printed-symbol code
+        // (ZV{variantId}/ZC{colorBarcodeId}): what's actually ENCODED in a
+        // label's bars, decoupled from the full descriptive text still
+        // printed below it (and still the real .barcode value everywhere
+        // else) — see BarcodeLabelCard.vue. Checked first since it's the
+        // normal path for a newly-printed label going forward; a global
+        // auto-increment id is unique by construction, so a straight
+        // ::find() (tenant-scoped by the model's own global scope, same as
+        // every lookup below) is all this needs — no new table.
+        if (preg_match('/^ZV(\d+)$/', $barcode, $m)) {
+            $variant = ProductVariant::with('product.productUnits.unit')->find((int) $m[1]);
+            if ($variant) {
+                $product = $variant->product;
+                $product->setRelation('variants', $product->variants()->get());
+
+                return response()->json(['found' => true, 'product' => $product, 'variant_id' => $variant->id]);
+            }
+
+            return response()->json(['found' => false], 404);
+        }
+        if (preg_match('/^ZC(\d+)$/', $barcode, $m)) {
+            $colorBarcode = ProductColorBarcode::find((int) $m[1]);
+            if ($colorBarcode) {
+                $product = Product::with(['productUnits.unit', 'variants'])->find($colorBarcode->product_id);
+                if ($product) {
+                    return response()->json(['found' => true, 'product' => $product, 'color' => $colorBarcode->color]);
+                }
+            }
+
+            return response()->json(['found' => false], 404);
+        }
+
         // a variant's own barcode (e.g. printed for "নীল শার্ট M" specifically)
         // takes priority — it's more specific than the product's own barcode
         $variant = ProductVariant::with('product.productUnits.unit')->where('barcode', $barcode)->first();

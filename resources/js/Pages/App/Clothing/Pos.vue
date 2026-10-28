@@ -614,6 +614,22 @@ async function handleBarcode(decodedText, onFeedback) {
 
     const code = decodedText.trim();
 
+    // docs/ARTICLE_SERIES_PLAN.md §10 — a short printed-symbol code
+    // (ZV{variantId}), decoupled from the full descriptive text still
+    // printed on the label below it. See Pos/Index.vue's identical tier.
+    const zv = code.match(/^ZV(\d+)$/);
+    if (zv) {
+        const vid = Number(zv[1]);
+        for (const p of props.products) {
+            const v = p.variants?.find((variant) => variant.id === vid);
+            if (v) {
+                addToCart(p.id, v.id);
+                onFeedback('✅ ' + p.name + ' (' + variantLabel(v) + ')');
+                return;
+            }
+        }
+    }
+
     // a variant's own barcode is more specific than the product's — check
     // it first so a size/color sticker always resolves to that exact one
     for (const p of props.products) {

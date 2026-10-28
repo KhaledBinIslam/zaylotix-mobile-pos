@@ -1302,6 +1302,34 @@ async function handleBarcode(decodedText, onFeedback) {
 
     const code = decodedText.trim();
 
+    // docs/ARTICLE_SERIES_PLAN.md §10 — a short printed-symbol code
+    // (ZV{variantId}/ZC{colorBarcodeId}), decoupled from the full
+    // descriptive text still printed on the label below it. Checked first
+    // since it's the normal format a label prints going forward.
+    const zv = code.match(/^ZV(\d+)$/);
+    if (zv) {
+        const vid = Number(zv[1]);
+        for (const p of props.products) {
+            const v = p.variants?.find((variant) => variant.id === vid);
+            if (v) {
+                addToCart(p.id, null, { productVariantId: v.id });
+                onFeedback('✅ ' + p.name + ' (' + variantLabel(v) + ')');
+                return;
+            }
+        }
+    }
+    const zc = code.match(/^ZC(\d+)$/);
+    if (zc) {
+        const cid = Number(zc[1]);
+        for (const p of props.products) {
+            const cb = p.color_barcodes?.find((c) => c.id === cid);
+            if (cb) {
+                openScanColorPicker(p, cb.color, onFeedback);
+                return;
+            }
+        }
+    }
+
     // a variant's own barcode (e.g. printed for "নীল শার্ট M" specifically) is
     // more specific than the product's own barcode — check it first so a
     // variant-labeled sticker always resolves to that exact color/size, never

@@ -82,14 +82,14 @@ function buildAndPreview() {
             const copies = selected.value['v:' + v.id];
             if (!copies) continue;
             for (let i = 0; i < copies; i++) {
-                list.push({ name: p.name, variantLabel: variantLabel(v), barcode: v.barcode, price: v.price ?? p.price, discount_price: null });
+                list.push({ name: p.name, variantLabel: variantLabel(v), barcode: v.barcode, scanCode: v.scan_code, price: v.price ?? p.price, discount_price: null });
             }
         }
         for (const cb of p.color_barcodes || []) {
             const copies = selected.value['c:' + cb.id];
             if (!copies) continue;
             for (let i = 0; i < copies; i++) {
-                list.push({ name: p.name, variantLabel: cb.color, barcode: cb.barcode, price: p.price, discount_price: p.discount_price });
+                list.push({ name: p.name, variantLabel: cb.color, barcode: cb.barcode, scanCode: cb.scan_code, price: p.price, discount_price: p.discount_price });
             }
         }
     }
