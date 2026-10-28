@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onBeforeUnmount } from 'vue';
 import { useI18n } from '@/composables/useI18n';
+import { scanBoxSize } from '@/support/scanBoxSize';
 
 /**
  * Standalone camera barcode scanner overlay — same html5-qrcode wiring and
@@ -26,8 +27,8 @@ async function open() {
         const { Html5Qrcode } = await import('html5-qrcode');
         html5Qrcode = new Html5Qrcode('reader', { verbose: false });
         await html5Qrcode.start(
-            { facingMode: 'environment' },
-            { fps: 12, qrbox: { width: 260, height: 200 } },
+            { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+            { fps: 12, qrbox: scanBoxSize },
             onScanSuccess,
             () => {},
         );
@@ -54,6 +55,9 @@ function onScanSuccess(decodedText) {
     lastScanCode = decodedText;
     lastScanAt = now;
     if (navigator.vibrate) navigator.vibrate(40);
+    // Confirms the camera actually read something, distinct from whatever the
+    // caller's lookup decides right after — see Pos/Index.vue's onScanSuccess.
+    scanHint.value = '✅ ' + t('pos.scannedCode') + ': ' + decodedText;
     emit('scan', decodedText, (msg) => (scanHint.value = msg));
 }
 

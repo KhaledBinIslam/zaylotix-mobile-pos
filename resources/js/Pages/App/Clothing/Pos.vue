@@ -17,6 +17,7 @@ import { variantPriceBounds, variantStockTotal } from '@/support/productDisplay'
 import { normalizeSearch } from '@/support/searchNormalize';
 import { bestMatchTier, levenshtein } from '@/support/searchMatch';
 import { usePermissions } from '@/composables/usePermissions';
+import { scanBoxSize } from '@/support/scanBoxSize';
 
 /**
  * A dedicated, clothing-specific POS — category tabs -> product grid ->
@@ -583,9 +584,12 @@ async function openScanner() {
         const { Html5Qrcode } = await import('html5-qrcode');
         html5Qrcode = new Html5Qrcode('clothing-reader', { verbose: false });
         await html5Qrcode.start(
-            { facingMode: 'environment' },
-            { fps: 12, qrbox: { width: 260, height: 200 } },
-            (text) => handleBarcode(text, (msg) => (scanHint.value = msg)),
+            { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+            { fps: 12, qrbox: scanBoxSize },
+            (text) => {
+                scanHint.value = '✅ ' + t('pos.scannedCode') + ': ' + text;
+                handleBarcode(text, (msg) => (scanHint.value = msg));
+            },
             () => {},
         );
     } catch (e) {

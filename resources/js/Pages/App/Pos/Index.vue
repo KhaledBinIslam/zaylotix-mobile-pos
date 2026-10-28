@@ -21,6 +21,7 @@ import { variantPriceBounds, variantStockTotal, colorGroups } from '@/support/pr
 import { normalizeSearch } from '@/support/searchNormalize';
 import { bestMatchTier, levenshtein } from '@/support/searchMatch';
 import { usePermissions } from '@/composables/usePermissions';
+import { scanBoxSize } from '@/support/scanBoxSize';
 
 const props = defineProps({
     products: Array,
@@ -1252,8 +1253,8 @@ async function openScanner() {
         const { Html5Qrcode } = await import('html5-qrcode');
         html5Qrcode = new Html5Qrcode('reader', { verbose: false });
         await html5Qrcode.start(
-            { facingMode: 'environment' },
-            { fps: 12, qrbox: { width: 260, height: 200 } },
+            { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+            { fps: 12, qrbox: scanBoxSize },
             onScanSuccess,
             () => {},
         );
@@ -1375,6 +1376,11 @@ async function handleBarcode(decodedText, onFeedback) {
 }
 
 function onScanSuccess(decodedText) {
+    // Confirms the camera actually read something, distinct from the lookup
+    // result that follows right after — without this, "camera never decoded
+    // anything" and "decoded fine but barcode not in the system" look
+    // identical to a cashier (silence either way).
+    scanHint.value = '✅ ' + t('pos.scannedCode') + ': ' + decodedText;
     handleBarcode(decodedText, (msg) => (scanHint.value = msg));
 }
 

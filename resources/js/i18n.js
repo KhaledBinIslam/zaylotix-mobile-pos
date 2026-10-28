@@ -1471,6 +1471,7 @@ export const translations = {
     'pos.scannerDisabled': { bn: 'এই দোকানের জন্য স্ক্যানার বন্ধ আছে', en: 'Scanning is disabled for this shop' },
     'pos.cameraNotFound': { bn: 'ক্যামেরা পাওয়া যায়নি — তালিকা থেকে যোগ করুন', en: 'Camera not found — add from the list instead' },
     'pos.productNotFound': { bn: 'পণ্য পাওয়া যায়নি:', en: 'Product not found:' },
+    'pos.scannedCode': { bn: 'স্ক্যান হয়েছে', en: 'Scanned' },
 
     // ---- stock ----
     'stock.subtitle': { bn: 'পণ্য যোগ করুন, স্টক দেখুন •', en: 'Add products, view stock •' },

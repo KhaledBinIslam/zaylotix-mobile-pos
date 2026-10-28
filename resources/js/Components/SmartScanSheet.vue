@@ -19,6 +19,7 @@ import Sheet from './Sheet.vue';
 import { useI18n } from '@/composables/useI18n';
 import { useToast } from '@/composables/useToast';
 import { parseProductText } from '@/support/smartScanParser';
+import { scanBoxSize } from '@/support/scanBoxSize';
 
 const props = defineProps({ modelValue: Boolean });
 const emit = defineEmits(['update:modelValue', 'detected', 'barcode-found']);
@@ -40,10 +41,11 @@ async function startBarcodeScan() {
         const { Html5Qrcode } = await import('html5-qrcode');
         html5Qrcode = new Html5Qrcode('smart-scan-reader', { verbose: false });
         await html5Qrcode.start(
-            { facingMode: 'environment' },
-            { fps: 12, qrbox: { width: 260, height: 200 } },
+            { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+            { fps: 12, qrbox: scanBoxSize },
             async (decodedText) => {
                 if (navigator.vibrate) navigator.vibrate(40);
+                toast('✅ ' + t('pos.scannedCode') + ': ' + decodedText);
                 await stopBarcodeScanner();
                 await checkBarcode(decodedText.trim());
             },
