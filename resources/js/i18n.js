@@ -1472,6 +1472,7 @@ export const translations = {
     'pos.cameraNotFound': { bn: 'ক্যামেরা পাওয়া যায়নি — তালিকা থেকে যোগ করুন', en: 'Camera not found — add from the list instead' },
     'pos.productNotFound': { bn: 'পণ্য পাওয়া যায়নি:', en: 'Product not found:' },
     'pos.scannedCode': { bn: 'স্ক্যান হয়েছে', en: 'Scanned' },
+    'pos.scanMore': { bn: 'স্ক্যান করুন', en: 'Scan more' },
 
     // ---- stock ----
     'stock.subtitle': { bn: 'পণ্য যোগ করুন, স্টক দেখুন •', en: 'Add products, view stock •' },

@@ -394,9 +394,20 @@ function onScanVariantPick(variantId, qty) {
  * customer isn't kicked into checkout after the first scan. Called only
  * from scan-triggered adds (never a tap on the product grid), since that's
  * the only flow this was asked for.
+ *
+ * Also closes the scanner: #scanwrap is a full-screen, opaque, higher
+ * z-index overlay than the cart Sheet (70 vs 60), so leaving the camera
+ * running on top would make the checkout sheet open invisibly behind it —
+ * the cashier would see no change at all. Closing it here is what actually
+ * surfaces checkout. Scanning more items afterwards is the "📷 স্ক্যান করুন"
+ * button inside the checkout sheet (re-opens the camera on top; closing it
+ * again just reveals the same still-open checkout sheet underneath).
  */
 function maybeAutoOpenCheckout() {
-    if (cart.value.length === 1) cartOpen.value = true;
+    if (cart.value.length === 1) {
+        closeScanner();
+        cartOpen.value = true;
+    }
 }
 
 /**
@@ -1767,7 +1778,17 @@ useKeyboardShortcuts({
              spec: a real side-by-side modal there, not the phone-shaped
              bottom drawer stretched wider), unchanged bottom sheet on mobile -->
         <Sheet v-model="cartOpen" wide>
-            <div class="shttl">{{ t('pos.cartTitle') }} <span class="pill gold" style="vertical-align:middle">{{ t('pos.cartItemsCount', { n: cartCount }) }}</span></div>
+            <div class="shttl" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <span>{{ t('pos.cartTitle') }} <span class="pill gold" style="vertical-align:middle">{{ t('pos.cartItemsCount', { n: cartCount }) }}</span></span>
+                <!-- Khaled: scanning one item jumps straight here, but a sale
+                     is often more than one item — this is how to keep
+                     scanning without leaving checkout (the camera overlay
+                     sits on top of this sheet, not instead of it; closing it
+                     again just reveals this same sheet with the new item in it) -->
+                <button v-if="canScan" type="button" class="btn ghost sm" style="width:auto;padding:5px 12px;margin-left:auto" @click="openScanner">
+                    📷 {{ t('pos.scanMore') }}
+                </button>
+            </div>
 
             <div v-if="cart.length" class="checkout-cols">
             <div>
