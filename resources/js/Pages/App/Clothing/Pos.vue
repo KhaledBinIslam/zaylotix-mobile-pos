@@ -584,8 +584,8 @@ async function openScanner() {
         const { Html5Qrcode } = await import('html5-qrcode');
         html5Qrcode = new Html5Qrcode('clothing-reader', { verbose: false });
         await html5Qrcode.start(
-            { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
-            { fps: 12, qrbox: scanBoxSize },
+            { facingMode: 'environment' },
+            { fps: 12, qrbox: scanBoxSize, videoConstraints: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } },
             (text) => {
                 scanHint.value = '✅ ' + t('pos.scannedCode') + ': ' + text;
                 handleBarcode(text, (msg) => (scanHint.value = msg));
