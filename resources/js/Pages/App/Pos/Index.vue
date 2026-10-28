@@ -384,6 +384,19 @@ function openScanVariantPicker(product) {
 function onScanVariantPick(variantId, qty) {
     addToCart(scanVariantProduct.value.id, null, { productVariantId: variantId, qty });
     scanVariantSheetOpen.value = false;
+    maybeAutoOpenCheckout();
+}
+
+/**
+ * Khaled: scanning a single item should go straight to checkout instead of
+ * needing a manual tap on the cart button — but only when the cart ends up
+ * with exactly one line, so a cashier scanning several items for one
+ * customer isn't kicked into checkout after the first scan. Called only
+ * from scan-triggered adds (never a tap on the product grid), since that's
+ * the only flow this was asked for.
+ */
+function maybeAutoOpenCheckout() {
+    if (cart.value.length === 1) cartOpen.value = true;
 }
 
 /**
@@ -398,6 +411,7 @@ function openScanColorPicker(product, color, onFeedback) {
         const v = sizesInStock[0];
         addToCart(product.id, null, { productVariantId: v.id });
         onFeedback?.('✅ ' + product.name + ' (' + variantLabel(v) + ')');
+        maybeAutoOpenCheckout();
         return;
     }
     closeScanner();
@@ -1314,6 +1328,7 @@ async function handleBarcode(decodedText, onFeedback) {
             if (v) {
                 addToCart(p.id, null, { productVariantId: v.id });
                 onFeedback('✅ ' + p.name + ' (' + variantLabel(v) + ')');
+                maybeAutoOpenCheckout();
                 return;
             }
         }
@@ -1339,6 +1354,7 @@ async function handleBarcode(decodedText, onFeedback) {
         if (v) {
             addToCart(p.id, null, { productVariantId: v.id });
             onFeedback('✅ ' + p.name + ' (' + variantLabel(v) + ')');
+            maybeAutoOpenCheckout();
             return;
         }
     }
@@ -1368,6 +1384,7 @@ async function handleBarcode(decodedText, onFeedback) {
         }
         addToCart(product.id);
         onFeedback('✅ ' + product.name);
+        maybeAutoOpenCheckout();
     } else {
         // Not in the locally loaded list (e.g. added by another device
         // since page load, or — in 'search' mode — just never loaded at
@@ -1385,6 +1402,7 @@ async function handleBarcode(decodedText, onFeedback) {
                     const v = data.product.variants?.find((variant) => variant.id === data.variant_id);
                     addToCart(data.product.id, null, { productVariantId: data.variant_id });
                     onFeedback('✅ ' + data.product.name + (v ? ' (' + variantLabel(v) + ')' : ''));
+                    maybeAutoOpenCheckout();
                 } else if (data.color) {
                     openScanColorPicker(data.product, data.color, onFeedback);
                 } else if (hasProductVariants.value && data.product.variants?.length) {
@@ -1393,6 +1411,7 @@ async function handleBarcode(decodedText, onFeedback) {
                 } else {
                     addToCart(data.product.id);
                     onFeedback('✅ ' + data.product.name);
+                    maybeAutoOpenCheckout();
                 }
             } else {
                 onFeedback('❌ ' + t('pos.productNotFound') + ' ' + decodedText);
