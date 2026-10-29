@@ -14,6 +14,16 @@ class BarcodeLabelController extends Controller
     /** Product picker for printing barcode labels (shop name, optionally regular/discount price — see priceMode in BarcodeLabels/Index.vue) on a barcode printer. */
     public function index()
     {
+        $shop = Tenancy::shop();
+        // Once a shop has turned "বারকোডে সাইজও যোগ করুন" on, a scan must
+        // always resolve straight to one exact size+color — never leave the
+        // ambiguous "one sticker per color" choice sitting next to it, or a
+        // cashier can still pick it by accident and recreate the exact
+        // "scan, then pick a size" problem the setting exists to remove.
+        // Below (off) this is unchanged — every color_barcodes consumer
+        // keeps seeing it exactly as before.
+        $includeSize = $shop?->barcodeIncludeSize() ?? false;
+
         return Inertia::render('App/BarcodeLabels/Index', [
             // never the raw model, see Shop::toArrayForUser() — carries
             // label_settings (already defaults-merged) alongside shop.name/logo_url
@@ -54,7 +64,7 @@ class BarcodeLabelController extends Controller
                         'barcode' => $v->barcode, 'scan_code' => 'ZV'.$v->id,
                         'price' => $v->price, 'stock' => $v->stock,
                     ]),
-                    'color_barcodes' => $p->colorBarcodes->map(fn ($cb) => [
+                    'color_barcodes' => $includeSize ? [] : $p->colorBarcodes->map(fn ($cb) => [
                         'id' => $cb->id, 'color' => $cb->color, 'barcode' => $cb->barcode,
                         'scan_code' => 'ZC'.$cb->id,
                         'stock' => $p->variants->where('color', $cb->color)->sum('stock'),

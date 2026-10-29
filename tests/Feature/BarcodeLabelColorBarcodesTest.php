@@ -46,4 +46,40 @@ class BarcodeLabelColorBarcodesTest extends TestCase
 
         $response->assertOk()->assertInertia(fn ($page) => $page->has('products.0.color_barcodes', 0));
     }
+
+    /**
+     * Once a shop turns "বারকোডে সাইজও যোগ করুন" on, a scan must always
+     * resolve straight to one exact size+color -- the ambiguous "one
+     * sticker per color" option (scan, then pick a size) must disappear
+     * from the print page entirely, or a cashier can still pick it by
+     * accident and recreate the exact problem the setting exists to fix.
+     */
+    public function test_color_only_barcodes_are_hidden_once_barcode_include_size_is_on(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['barcode_include_size' => true]);
+        $this->grantFeature($shop, 'barcode_printing');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'L-10001', 'barcode' => 'SMS-L-10001-NSXX', 'cost' => 1300, 'price' => 1990, 'stock' => 8]);
+        ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => '36', 'color' => 'SILVER', 'stock' => 5]);
+        ProductColorBarcode::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'color' => 'SILVER', 'barcode' => 'SMS-L-10001-NSXX-SILVER']);
+
+        $response = $this->actingAs($owner, 'web')->get('/app/barcode-labels');
+
+        $response->assertOk()->assertInertia(fn ($page) => $page
+            ->has('products.0.color_barcodes', 0) // hidden -- the ambiguous option is gone
+            ->where('products.0.variants.0.color', 'SILVER') // per-size printing is still there, unaffected
+        );
+    }
+
+    public function test_color_only_barcodes_still_show_when_barcode_include_size_is_off(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['barcode_include_size' => false]);
+        $this->grantFeature($shop, 'barcode_printing');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'L-10001', 'barcode' => 'SMS-L-10001-NSXX', 'cost' => 1300, 'price' => 1990, 'stock' => 8]);
+        ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => '36', 'color' => 'SILVER', 'stock' => 5]);
+        ProductColorBarcode::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'color' => 'SILVER', 'barcode' => 'SMS-L-10001-NSXX-SILVER']);
+
+        $response = $this->actingAs($owner, 'web')->get('/app/barcode-labels');
+
+        $response->assertOk()->assertInertia(fn ($page) => $page->has('products.0.color_barcodes', 1));
+    }
 }
