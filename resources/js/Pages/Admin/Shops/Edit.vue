@@ -7,6 +7,7 @@ import { matchPackage, tierPrice } from '@/composables/usePackageMatch';
 const props = defineProps({
     shop: Object, businessTypes: Array, features: Array, shopFeatureKeys: Array, branches: { type: Array, default: null },
     ambassadors: { type: Array, default: null }, currentAmbassadorId: { type: Number, default: null },
+    customization: { type: Object, default: () => ({}) }, canEditCustomization: Boolean,
 });
 
 // separate from the main shop form above -- posts to its own endpoint
@@ -86,6 +87,23 @@ const recommendedFeatureKeys = () => {
     const type = props.businessTypes.find((t) => t.id === form.business_type_id);
     return type?.default_features || [];
 };
+
+// --- Phase 40: customization panel (effective value + source per setting) ---
+// read-only for every admin; edits/resets are super-admin-only routes
+const labelHeaderForm = useForm({ label_header: props.shop.label_header || '' });
+function saveLabelHeader() {
+    labelHeaderForm.patch(route('admin.shops.customization.labelHeader', props.shop.id), { preserveScroll: true });
+}
+const resetForm = useForm({ key: '' });
+function resetCustomization(key) {
+    if (!confirm(`'${key}' ডিফল্টে ফেরাবেন? শপটির আউটপুট সাথে সাথে ডিফল্ট আচরণে ফিরে যাবে।`)) return;
+    resetForm.key = key;
+    resetForm.post(route('admin.shops.customization.reset', props.shop.id), { preserveScroll: true });
+}
+const sourceBadgeClass = (source) => ({
+    'শপ': 'bg-brand-purple-100 text-brand-purple-700',
+    'ব্যবসা': 'bg-amber-100 text-amber-700',
+}[source] || 'bg-gray-100 text-gray-500');
 </script>
 
 <template>
@@ -275,6 +293,51 @@ const recommendedFeatureKeys = () => {
                 {{ ambassadorForm.processing ? 'Saving...' : 'Save ambassador' }}
             </button>
         </form>
+
+        <!-- Phase 40 — effective customization per setting, with its source
+             layer. Every admin can SEE this (first stop when a client says
+             "আমার লেবেল/মেমো অন্যরকম দেখাচ্ছে"); editing/resetting is
+             super-admin-only. Same data as `php artisan shop:effective-settings`. -->
+        <div class="bg-white border rounded-xl p-6 max-w-2xl mt-6">
+            <h2 class="text-lg font-bold">🎨 Customization (কাস্টমাইজেশন)</h2>
+            <p class="text-xs text-gray-400 mt-1 mb-4">
+                প্রতিটি সেটিংয়ের কার্যকর মান ও উৎস — <b>শপ</b> = এই শপ নিজে বদলেছে, <b>ব্যবসা</b> = মূল শপ থেকে এসেছে, <b>ডিফল্ট</b> = সিস্টেম ডিফল্ট।
+                মান বদলাতে হলে শপটি impersonate করে owner-এর সেটিংস পেজ থেকে লাইভ প্রিভিউসহ বদলান; এখান থেকে শুধু লেবেল হেডার সেট আর "ডিফল্টে ফেরান" করা যায়।
+            </p>
+
+            <form v-if="canEditCustomization && !shop.parent_shop_id" @submit.prevent="saveLabelHeader" class="flex items-end gap-2 mb-4 p-3 rounded-lg bg-gray-50">
+                <div class="flex-1">
+                    <label class="text-sm font-medium text-gray-600">Label header <span class="text-xs font-normal text-gray-400">— barcode stickers, business-wide (branches inherit)</span></label>
+                    <input v-model="labelHeaderForm.label_header" placeholder="e.g. Baby Park &amp; Liberty" class="mt-1 w-full rounded-lg border-gray-300 text-sm">
+                    <div v-if="labelHeaderForm.errors.label_header" class="text-rose-600 text-xs mt-1">{{ labelHeaderForm.errors.label_header }}</div>
+                </div>
+                <button class="px-4 py-2 rounded-lg bg-brand-purple text-white text-sm font-bold" :disabled="labelHeaderForm.processing">Save</button>
+            </form>
+
+            <div v-for="(items, group) in customization" :key="group" class="mb-4">
+                <div class="flex items-center justify-between mb-1.5">
+                    <div class="text-xs font-bold uppercase text-gray-400">{{ group }}</div>
+                    <!-- মেমো/লেবেল সেটিংস ব্লক হিসেবে একসাথে reset হয় (একেকটা
+                         checkbox আলাদা নয়) — শপ-স্তরের override থাকলেই দেখায় -->
+                    <button v-if="canEditCustomization && group === 'মেমো সেটিংস' && items.some((r) => r.source === 'শপ')" type="button" class="text-xs text-rose-600 hover:underline" @click="resetCustomization('memo_settings')">পুরো ব্লক ডিফল্টে ফেরান</button>
+                    <button v-else-if="canEditCustomization && group === 'লেবেল সেটিংস' && items.some((r) => r.source === 'শপ')" type="button" class="text-xs text-rose-600 hover:underline" @click="resetCustomization('label_settings')">পুরো ব্লক ডিফল্টে ফেরান</button>
+                </div>
+                <div class="border rounded-lg divide-y">
+                    <div v-for="row in items" :key="row.key" class="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                        <div class="min-w-0">
+                            <div class="font-medium truncate">{{ row.label }}</div>
+                            <div class="text-xs text-gray-500 truncate">{{ row.value }}</div>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <span class="px-2 py-0.5 rounded text-[11px] font-semibold" :class="sourceBadgeClass(row.source)">{{ row.source }}</span>
+                            <button v-if="canEditCustomization && row.resettable" type="button" class="text-xs text-rose-600 hover:underline" @click="resetCustomization(row.key.split('.')[0])">
+                                ডিফল্টে ফেরান
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <div v-if="branches" class="bg-white border rounded-xl p-6 max-w-2xl mt-6">
             <h2 class="text-lg font-bold mb-3">Branches</h2>

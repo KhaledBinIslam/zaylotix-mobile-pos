@@ -114,6 +114,10 @@ class ShopController extends Controller
             'branches' => $shop->parent_shop_id ? null : $shop->branches()->get(['id', 'name', 'area', 'status', 'is_warehouse', 'created_at']),
             'ambassadors' => $isSuperAdmin ? \App\Models\Ambassador::where('status', 'active')->orderBy('name')->get(['id', 'name', 'employee_id']) : null,
             'currentAmbassadorId' => $isSuperAdmin ? $shop->currentAmbassador()?->id : null,
+            // Phase 40 — every customizable setting's effective value and
+            // its source layer (শপ/ব্যবসা/ডিফল্ট); see App\Support\ShopCustomization
+            'customization' => \App\Support\ShopCustomization::effective($shop),
+            'canEditCustomization' => $isSuperAdmin,
         ]);
     }
 

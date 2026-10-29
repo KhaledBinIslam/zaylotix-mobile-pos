@@ -73,6 +73,12 @@ Route::middleware('admin')->group(function () {
     Route::middleware('super.admin')->group(function () {
         Route::delete('shops/{shop}', [ShopController::class, 'destroy'])->name('shops.destroy');
 
+        // Phase 40 — shop customization panel's write actions (the shop
+        // edit page shows effective values to every admin; changing another
+        // shop's printed output stays super-admin-only)
+        Route::patch('shops/{shop}/customization/label-header', [\App\Http\Controllers\Admin\ShopCustomizationController::class, 'updateLabelHeader'])->name('shops.customization.labelHeader');
+        Route::post('shops/{shop}/customization/reset', [\App\Http\Controllers\Admin\ShopCustomizationController::class, 'reset'])->name('shops.customization.reset');
+
         Route::get('business-types', [BusinessTypeController::class, 'index'])->name('businessTypes.index');
         Route::post('business-types', [BusinessTypeController::class, 'store'])->name('businessTypes.store');
         Route::put('business-types/{businessType}', [BusinessTypeController::class, 'update'])->name('businessTypes.update');

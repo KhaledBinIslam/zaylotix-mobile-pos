@@ -168,6 +168,12 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
     // see docs/SESSION_FIX.md — lets fetchWithSessionRetry.js recover a
     // stale CSRF meta tag on a long-open tab instead of failing with 419
     Route::get('csrf-token', [CsrfTokenController::class, 'show'])->name('csrfToken');
+    // Phase 40 (docs/CUSTOMIZATION_AUDIT.md কারণ ৩) — the deployed build's
+    // version, for AppLayout's "নতুন সংস্করণ এসেছে — রিফ্রেশ করুন" banner.
+    // A tab/PWA that just sits open never navigates, so Inertia's own 409
+    // version check never fires for it — this is the lightweight poll that
+    // closes that gap (never a forced reload; see sw.js v4 incident).
+    Route::get('app-version', fn () => response()->json(['v' => \Inertia\Inertia::getVersion()]))->name('appVersion');
 
     Route::middleware('perm:pos')->group(function () {
         Route::get('pos', [PosController::class, 'index'])->name('pos');

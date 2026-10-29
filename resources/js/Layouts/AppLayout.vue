@@ -8,6 +8,7 @@ import ReceiptMemo from '@/Components/ReceiptMemo.vue';
 import { useToast } from '@/composables/useToast';
 import { useI18n } from '@/composables/useI18n';
 import { useOfflineSync } from '@/composables/useOfflineSync';
+import { useVersionCheck } from '@/composables/useVersionCheck';
 import { usePermissions } from '@/composables/usePermissions';
 import { buildOfflineSaleSnapshot } from '@/support/offlineSaleSnapshot';
 import { buildReceiptWhatsAppText, whatsAppUrlFor } from '@/support/receiptMessage';
@@ -17,6 +18,11 @@ const props = defineProps({ active: { type: String, default: 'home' } });
 
 const page = usePage();
 const offlineSync = useOfflineSync();
+// Phase 40 — "নতুন সংস্করণ এসেছে" banner for a tab that sits open across a
+// deploy (docs/CUSTOMIZATION_AUDIT.md কারণ ৩); refresh stays the USER's
+// choice, this never reloads on its own
+const versionCheck = useVersionCheck();
+const reloadForNewVersion = () => window.location.reload();
 // Pending-sales sheet now shows every still-unsynced entry (pending AND
 // failed), not just failures — open state moved into useOfflineSync.js
 // itself (pendingSheetOpen) so Pos/Index.vue's own "pending sales" button
@@ -706,6 +712,13 @@ const mobileNavSlots = computed(() => {
                     <div v-if="!offlineSync.isOnline.value" class="expiry-banner urgent">
                         📴 {{ t('offline.banner') }}
                         <span v-if="lastOnlineText">{{ t('offline.lastSyncedAt', { time: lastOnlineText }) }}</span>
+                    </div>
+                    <div v-if="versionCheck.newVersionAvailable.value && !versionCheck.dismissed.value" class="expiry-banner" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                        <span>⬆️ {{ t('version.newBuild') }}</span>
+                        <span style="display:flex;gap:6px">
+                            <button type="button" class="btn sm" style="width:auto;padding:4px 12px" @click="reloadForNewVersion">{{ t('version.refresh') }}</button>
+                            <button type="button" class="btn sm ghost" style="width:auto;padding:4px 10px" @click="versionCheck.dismissed.value = true">✕</button>
+                        </span>
                     </div>
                     <!-- Last-chance countdown before 'auto' mode actually
                          sends anything (docs/FIX_PLAN.md Phase 12) — shown

@@ -2980,6 +2980,49 @@ checkout→void, loyalty/coupon+BOGO/advance/referral দুই কেস/quotat
 SalesReconcileCommandTest (২), vitest saleVoidPreview (৬)। পুরো suite:
 1295 PHP + 184 JS pass, build সফল।
 
+## Phase 40 — শপ-ভিত্তিক কাস্টমাইজেশন ব্যবস্থা (কাজ ২)
+
+**প্রশ্ন ছিল:** Baby Park-এর কাস্টমাইজেশন মালিকের আসল ভিউতে পৌঁছায় না কেন,
+আর কাস্টমাইজেশন যেন অন্য শপে কখনো সমস্যা না বাধায়।
+
+**ধাপ ১ — নির্ণয়:** সম্পূর্ণ ফল `docs/CUSTOMIZATION_AUDIT.md`-এ (ফাইল:লাইনসহ)।
+সারমর্ম: ভুল-স্তর/সেটিংস-ক্যাশ/হার্ডকোড/ফিচার-ফ্ল্যাগ — চারটাই বাতিল;
+আসল কারণ দুটো: **(ক) খোলা ট্যাব/PWA পুরনো JS বান্ডলে বসে থাকে** — বসে-থাকা
+ট্যাবে Inertia-র 409 version-চেক কখনো চলে না, আর app.js-এর reload-পথ শুধু
+sw.js নিজে বদলালে চলত (প্রায় কখনোই না); **(খ) অর্ধেক-ডিপ্লয়** (migrate
+প্রম্পটে চেইন cancel — 2026-10-29-এ বাস্তবে ঘটেছে)।
+
+**ধাপ ২ — স্থায়ী ব্যবস্থা (সবগুলো additive, বিদ্যমান আচরণ অপরিবর্তিত):**
+- কেন্দ্রীয় স্তর **আগে থেকেই ছিল** (Shop model-এর defaults-merge accessor-রা:
+  memoSettings/labelSettings/labelHeader/stickerBarcodeTemplate/মোবাইল নেভ
+  ইত্যাদি) — নতুন করে বানানো হয়নি, **দৃশ্যমান** করা হয়েছে:
+  `app/Support/ShopCustomization.php` = এক জায়গায় সব কাস্টমাইজযোগ্য সেটিং,
+  কার্যকর মান + উৎস (শপ/ব্যবসা/ডিফল্ট) + কোনটা reset-যোগ্য।
+- `php artisan shop:effective-settings {shop}` — উৎসসহ টেবিল; `--all` = সব
+  শপ resolve-যাচাই (ডিপ্লয় চেকলিস্টের ধাপ)।
+- Admin shop edit পেজে **"🎨 Customization" প্যানেল**: প্রতিটি সেটিংয়ের
+  কার্যকর মান + উৎস ব্যাজ; super-admin: লেবেল হেডার সেট (মূল শপে,
+  ব্রাঞ্চে সার্ভার-সাইড block) + প্রতি-সেটিং **"ডিফল্টে ফেরান" কিল-সুইচ**
+  (ShopCustomization::RESETTABLE_COLUMNS whitelist-এর বাইরে কিছুই ছোঁয়া
+  যায় না); support admin শুধু দেখে। সব লেখা AdminActivity-তে লগ হয়।
+- **ফ্রন্টএন্ড ভার্সনিং**: প্রতি পেজে shared `assetVersion` (Inertia manifest
+  hash); হালকা `GET /app/app-version` endpoint; `useVersionCheck.js` —
+  অ্যাপ foreground-এ এলে (+১৫ মিনিট অন্তর, ২ মিনিট throttle) চেক, নতুন
+  সংস্করণ পেলে AppLayout-এ "⬆️ নতুন সংস্করণ এসেছে — রিফ্রেশ করুন" ব্যানার।
+  **কখনোই অটো-রিলোড নয়** (sw.js v4-এর লাইভ দুর্ঘটনার শিক্ষা)। More পেজের
+  নিচে সংস্করণ নম্বর।
+- `docs/DEPLOY_CHECKLIST.md` — পূর্ণ ক্রম + `shop:smoke-test --all`
+  (Phase 0.6-এর বিদ্যমান কমান্ড পুনর্ব্যবহার) বাধ্যতামূলক + নতুন কাস্টম
+  ফিচারের স্থায়ী নিয়ম (শপ-আইডি ধরে if নয়; ডিফল্ট বন্ধ; টেস্ট আবশ্যিক)।
+- সেটিংসের সার্ভার-সাইড ক্যাশ নেই বলে invalidation-ঝুঁকিও নেই — ভবিষ্যতে যোগ
+  হলে shop-key namespace নিয়ম চেকলিস্টে লেখা।
+
+**টেস্ট (ShopCustomizationTest, ৮টা):** শপ>ব্যবসা>ডিফল্ট precedence;
+never-customized শপ = exact defaults snapshot; টেন্যান্ট-লিক (শপ ক কাস্টমাইজ
+→ শপ খ byte-identical + HTTP-স্তরে নিজের নাম); impersonation == মালিকের ভিউ
+(আসল route দিয়ে); কমান্ড; super/support admin অনুমতি + reset whitelist;
+ব্রাঞ্চে হেডার block; version endpoint == shared prop।
+
 ## Definition-of-done checklist (updated after every phase)
 
 - [x] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test --all`, Phase 0.6) — re-verified 2026-10-20, all 8 types OK

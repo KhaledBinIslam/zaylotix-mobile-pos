@@ -34,6 +34,14 @@ class HandleInertiaRequests extends Middleware
                 'admin' => $admin,
             ],
             'shop' => fn () => $shopUser ? Tenancy::shop()?->toArrayForUser($shopUser) : null,
+            // Phase 40 (docs/CUSTOMIZATION_AUDIT.md কারণ ৩) — the deployed
+            // frontend build's version (Inertia's own manifest hash). The
+            // client captures it at load, re-checks it when the app comes
+            // back to the foreground (VersionCheckController), and shows a
+            // "নতুন সংস্করণ এসেছে" banner on mismatch — never a forced
+            // reload (sw.js v4 incident). Also shown at the bottom of the
+            // More page so a phone's running version can be read off-screen.
+            'assetVersion' => $this->version($request),
             // owner-only -- the branch switcher in AppLayout's header. Null
             // for a shop with no branches (every shop today, unchanged) or
             // for a staff account (always fixed to one branch, never sees

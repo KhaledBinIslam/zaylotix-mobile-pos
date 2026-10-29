@@ -676,6 +676,10 @@ onMounted(() => {
             <div style="font-size:12.5px;color:var(--mut)">A <a href="https://zaylotix.com/" target="_blank" rel="noopener" style="color:var(--purple);font-weight:800;text-decoration:none">Zaylotix →</a> product</div>
             <div v-if="shop?.support_contact_name" style="font-size:12.5px;color:var(--mut);margin-top:5px">{{ t('more.supportContact') }}: <span style="color:var(--green);font-weight:800">{{ shop.support_contact_name }}</span></div>
             <div v-if="shop?.support_contact_phone" style="font-size:12.5px;color:var(--mut);margin-top:5px">{{ t('common.contact') }}: <a :href="'tel:' + shop.support_contact_phone" style="color:var(--gold);font-weight:800;text-decoration:none">{{ shop.support_contact_phone }}</a></div>
+            <!-- Phase 40 — which build this device is actually running (first
+                 question when "আপডেট আসছে না"; compare against the server's
+                 current hash, docs/CUSTOMIZATION_AUDIT.md ডিবাগ রেসিপি) -->
+            <div v-if="page.props.assetVersion" style="font-size:11px;color:var(--dim);margin-top:5px">{{ t('more.appVersion') }}: {{ String(page.props.assetVersion).slice(0, 8) }}</div>
         </div>
 
         <!-- shop logo -->
