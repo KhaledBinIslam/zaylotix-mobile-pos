@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, watch, ref, computed, nextTick } from 'vue';
+import { onMounted, watch } from 'vue';
 
 /** One printable barcode label card — shared by BarcodeLabels/Index.vue's real print run and Settings/ReceiptLabel.vue's live preview, so they can never visually drift apart. */
 const props = defineProps({
@@ -8,46 +8,6 @@ const props = defineProps({
     settings: { type: Object, required: true }, // Shop::LABEL_SETTINGS_DEFAULTS-shaped
     domId: { type: String, required: true }, // unique id for this card's <svg> — caller guarantees uniqueness across a print run
 });
-
-const headerFontSize = ref(14);
-const headerEl = ref(null);
-
-const headerText = computed(() => props.shop?.resolved_label_header || props.shop?.name || '');
-
-/**
- * Shrink-to-fit for the sticker header — mirrors render()'s own two-pass
- * JsBarcode width-measurement pattern below, but for text instead of SVG
- * bars. headerEl is a per-instance template ref (not a document-wide
- * selector), since a bulk print run renders many BarcodeLabelCards on the
- * same page at once and a shared `[data-barcode-header]` selector would
- * always resize the FIRST label on the page, not this one.
- */
-async function fitHeaderText() {
-    if (!props.settings.show_shop_name || !headerText.value || !headerEl.value) {
-        headerFontSize.value = 14;
-        return;
-    }
-
-    const container = headerEl.value.closest('.label-card');
-    if (!container) return;
-
-    const availableWidth = container.clientWidth - 12;
-    let size = 14;
-    headerFontSize.value = size;
-    headerEl.value.style.fontSize = size + 'px';
-
-    await nextTick();
-
-    // iterative, not a single division — a scaled-by-formula guess can still
-    // overshoot slightly (font rendering isn't perfectly linear with size),
-    // and the label must NEVER clip this text, so keep shrinking until it
-    // genuinely fits or hits a floor too small to usefully shrink further
-    while (headerEl.value.scrollWidth > availableWidth && size > 4) {
-        size -= 1;
-        headerEl.value.style.fontSize = size + 'px';
-    }
-    headerFontSize.value = size;
-}
 
 /**
  * docs/ARTICLE_SERIES_PLAN.md §10 — live scan failure, measured and
@@ -87,24 +47,15 @@ async function render() {
         }
     } catch (e) { /* invalid barcode value for CODE128 — leave blank */ }
 }
-
-onMounted(async () => {
-    render();
-    await nextTick();
-    fitHeaderText();
-});
-
+onMounted(render);
 watch(() => [props.label.barcode, props.settings.show_barcode_number], render);
-watch(() => [props.shop?.resolved_label_header, props.shop?.name, props.settings.show_shop_name], async () => {
-    await nextTick();
-    fitHeaderText();
-}, { flush: 'post' });
 </script>
 
 <template>
     <div class="label-card">
-        <div v-if="settings.show_shop_name && headerText" class="label-head">
-            <div ref="headerEl" class="label-shop" :style="{ fontSize: headerFontSize + 'px' }">{{ headerText }}</div>
+        <div v-if="settings.show_shop_name" class="label-head">
+            <img v-if="shop?.logo_url" :src="shop.logo_url" class="label-logo">
+            <div class="label-shop">{{ shop?.name }}</div>
         </div>
         <div v-if="settings.show_product_name" class="label-name">{{ label.name }}</div>
         <div v-if="settings.show_variant && label.variantLabel" class="label-variant">{{ label.variantLabel }}</div>
@@ -121,8 +72,9 @@ watch(() => [props.shop?.resolved_label_header, props.shop?.name, props.settings
 
 <style>
 .label-card { border: 1px dashed #999; border-radius: 6px; padding: 6px; text-align: center; overflow: hidden; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.label-head { display: flex; align-items: center; justify-content: center; margin-bottom: 1px; width: 100%; }
-.label-shop { font-weight: 900; color: #000; white-space: nowrap; line-height: 1.1; max-width: 100%; }
+.label-head { display: flex; align-items: center; justify-content: center; gap: 3px; }
+.label-logo { width: 9px; height: 9px; object-fit: contain; flex: 0 0 auto; }
+.label-shop { font-size: 7px; font-weight: 700; color: #444; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .label-name { font-size: 9px; font-weight: 700; margin-bottom: 1px; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .label-variant { font-size: 8px; font-weight: 600; color: #333; margin-bottom: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .label-price { font-size: 12px; color: #000; margin-top: 1px; display: flex; flex-direction: column; align-items: center; gap: 0; line-height: 1.15; }

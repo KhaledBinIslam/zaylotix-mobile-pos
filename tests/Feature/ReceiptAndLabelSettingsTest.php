@@ -55,7 +55,7 @@ class ReceiptAndLabelSettingsTest extends TestCase
 
         $this->actingAs($owner, 'web')->patch('/app/settings/business-info', [
             'email' => 'shop@example.com', 'website' => 'facebook.com/shop',
-            'trade_license_no' => 'TL-123', 'tin_no' => 'TIN-456', 'label_header' => 'Baby Park & Liberty',
+            'trade_license_no' => 'TL-123', 'tin_no' => 'TIN-456',
         ])->assertRedirect();
 
         $shop->refresh();
@@ -63,53 +63,6 @@ class ReceiptAndLabelSettingsTest extends TestCase
         $this->assertSame('facebook.com/shop', $shop->website);
         $this->assertSame('TL-123', $shop->trade_license_no);
         $this->assertSame('TIN-456', $shop->tin_no);
-        $this->assertSame('Baby Park & Liberty', $shop->label_header);
-    }
-
-    public function test_label_header_falls_back_to_the_shops_own_name_when_unset(): void
-    {
-        [$shop, $owner] = $this->createShopWithOwner(['name' => 'Shoe World']);
-        $shop->refresh();
-
-        $this->assertSame('Shoe World', $shop->labelHeader());
-
-        $resolved = $shop->toArrayForUser($owner);
-        $this->assertSame('Shoe World', $resolved['resolved_label_header']);
-        $this->assertNull($resolved['label_header']); // raw value stays null -- the settings form must not see a filled-in fallback
-    }
-
-    public function test_label_header_set_on_a_main_shop_is_used_on_its_own_labels(): void
-    {
-        [$shop, $owner] = $this->createShopWithOwner(['name' => 'Baby Park', 'label_header' => 'Baby Park & Liberty']);
-
-        $this->assertSame('Baby Park & Liberty', $shop->labelHeader());
-        $this->assertSame('Baby Park & Liberty', $shop->toArrayForUser($owner)['resolved_label_header']);
-    }
-
-    public function test_a_branch_resolves_its_label_header_through_its_main_shop(): void
-    {
-        [$main] = $this->createShopWithOwner(['name' => 'Baby Park', 'label_header' => 'Baby Park & Liberty']);
-        [$branch, $branchOwner] = $this->createShopWithOwner(['name' => 'Liberty', 'parent_shop_id' => $main->id]);
-
-        $this->assertSame('Baby Park & Liberty', $branch->labelHeader());
-        $this->assertSame($main->labelHeader(), $branch->labelHeader()); // identical header printed from either shop
-        $this->assertSame('Baby Park & Liberty', $branch->toArrayForUser($branchOwner)['resolved_label_header']);
-    }
-
-    public function test_a_branchs_own_label_header_column_is_never_actually_used(): void
-    {
-        [$main] = $this->createShopWithOwner(['name' => 'Baby Park', 'label_header' => 'Baby Park & Liberty']);
-        [$branch] = $this->createShopWithOwner(['name' => 'Liberty', 'parent_shop_id' => $main->id, 'label_header' => 'Should Be Ignored']);
-
-        $this->assertSame('Baby Park & Liberty', $branch->labelHeader());
-    }
-
-    public function test_an_unrelated_shop_is_unaffected_by_another_shops_label_header(): void
-    {
-        $this->createShopWithOwner(['name' => 'Baby Park', 'label_header' => 'Baby Park & Liberty']);
-        [$other] = $this->createShopWithOwner(['name' => 'Some Other Shop']);
-
-        $this->assertSame('Some Other Shop', $other->labelHeader());
     }
 
     public function test_owner_can_save_memo_settings_and_they_stick(): void
