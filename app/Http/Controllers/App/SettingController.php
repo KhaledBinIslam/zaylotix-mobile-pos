@@ -194,6 +194,7 @@ class SettingController extends Controller
             'show_vat_inclusive_note' => ['required', 'boolean'],
             'show_exchange_policy' => ['required', 'boolean'],
             'exchange_policy_text' => ['nullable', 'string', 'max:500'],
+            'show_shop_qr' => ['required', 'boolean'],
             'paper_width' => ['required', 'in:58mm,80mm,a4'],
         ]);
 

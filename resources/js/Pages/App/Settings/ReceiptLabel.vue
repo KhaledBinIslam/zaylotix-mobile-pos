@@ -27,7 +27,7 @@ const memoForm = useForm({
     show_customer_phone: ms.show_customer_phone, show_payment_method: ms.show_payment_method,
     show_tendered_change: ms.show_tendered_change, show_vat_inclusive_note: ms.show_vat_inclusive_note,
     show_exchange_policy: ms.show_exchange_policy, exchange_policy_text: ms.exchange_policy_text || '',
-    paper_width: ms.paper_width,
+    show_shop_qr: ms.show_shop_qr, paper_width: ms.paper_width,
 });
 function saveMemoSettings() {
     memoForm.patch(route('app.settings.memo'), { preserveScroll: true });
@@ -96,6 +96,7 @@ const sampleLabel = { name: 'নমুনা পণ্য', variantLabel: '42, �
                 <div v-if="memoForm.show_exchange_policy" class="field" style="margin-top:6px">
                     <textarea v-model="memoForm.exchange_policy_text" placeholder="বিক্রিত পণ্য ৭ দিনের মধ্যে রসিদসহ এক্সচেঞ্জযোগ্য" rows="2"></textarea>
                 </div>
+                <label class="chk"><input type="checkbox" v-model="memoForm.show_shop_qr"> দোকানের ওয়েবসাইট/Facebook পেজের QR কোড (উপরের "ওয়েবসাইট / Facebook পেজ" ঘরে লিংক দিন)</label>
 
                 <div class="field" style="margin-top:10px">
                     <label>কাগজের সাইজ</label>

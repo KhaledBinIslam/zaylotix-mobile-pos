@@ -36,6 +36,17 @@ const paymentMethodLabel = computed(() => ({
 
 const barcodeId = computed(() => 'memo-barcode-svg' + props.idSuffix);
 const qrId = computed(() => 'memo-rating-qr' + props.idSuffix);
+const shopQrId = computed(() => 'memo-shop-qr' + props.idSuffix);
+
+// Khaled: a client wanted their shop's own Facebook page as a scannable QR
+// on the printed memo — reuses shops.website (already the exact field the
+// "ওয়েবসাইট / Facebook পেজ" settings field writes to, typed without a
+// protocol, e.g. "facebook.com/babypark"), so no new shop field was needed.
+const shopQrUrl = computed(() => {
+    const site = props.shop?.website?.trim();
+    if (!site) return null;
+    return /^https?:\/\//i.test(site) ? site : 'https://' + site;
+});
 
 async function renderCodes() {
     if (!props.showBarcodeAndQr) return;
@@ -47,16 +58,24 @@ async function renderCodes() {
             JsBarcode(el, 'INV-' + props.sale.id, { format: 'CODE128', width: 1.3, height: 30, fontSize: 9, margin: 2 });
         } catch (e) { /* non-numeric sample id in preview mode — harmless */ }
     }
-    if (props.sale.rating_url) {
+    if (props.sale.rating_url || (settings.value.show_shop_qr && shopQrUrl.value)) {
         const QRCode = (await import('qrcode')).default;
-        const qrEl = document.getElementById(qrId.value);
-        if (qrEl) {
-            try { await QRCode.toCanvas(qrEl, props.sale.rating_url, { width: 90, margin: 1 }); } catch (e) { /* non-critical */ }
+        if (props.sale.rating_url) {
+            const qrEl = document.getElementById(qrId.value);
+            if (qrEl) {
+                try { await QRCode.toCanvas(qrEl, props.sale.rating_url, { width: 90, margin: 1 }); } catch (e) { /* non-critical */ }
+            }
+        }
+        if (settings.value.show_shop_qr && shopQrUrl.value) {
+            const shopQrEl = document.getElementById(shopQrId.value);
+            if (shopQrEl) {
+                try { await QRCode.toCanvas(shopQrEl, shopQrUrl.value, { width: 90, margin: 1 }); } catch (e) { /* non-critical */ }
+            }
         }
     }
 }
 onMounted(renderCodes);
-watch(() => [props.sale.id, props.sale.invoice_no], renderCodes);
+watch(() => [props.sale.id, props.sale.invoice_no, settings.value.show_shop_qr, props.shop?.website], renderCodes);
 </script>
 
 <template>
@@ -108,6 +127,10 @@ watch(() => [props.sale.id, props.sale.invoice_no], renderCodes);
             <div v-if="sale.rating_url" class="rm-qr-wrap">
                 <canvas :id="qrId"></canvas>
                 <div class="rm-qr-hint">{{ t('sales.rateHint') }}</div>
+            </div>
+            <div v-if="settings.show_shop_qr && shopQrUrl" class="rm-qr-wrap">
+                <canvas :id="shopQrId"></canvas>
+                <div class="rm-qr-hint">{{ shop?.website }}</div>
             </div>
         </template>
         <div class="rc-brand">

@@ -28,6 +28,7 @@ class ReceiptAndLabelSettingsTest extends TestCase
         $this->assertTrue($memo['show_bin']); // BIN already showed automatically once set -- must stay on
         $this->assertFalse($memo['show_email']); // brand new field -- must default off
         $this->assertFalse($memo['show_cashier']);
+        $this->assertFalse($memo['show_shop_qr']); // brand new field -- must default off
         $this->assertSame('58mm', $memo['paper_width']); // the pre-existing fixed size
 
         $this->assertSame('38x25', $label['size']); // the pre-existing fixed size
@@ -79,6 +80,18 @@ class ReceiptAndLabelSettingsTest extends TestCase
         $this->assertTrue($shop->memoSettings()['show_customer_phone']);
         $this->assertSame('80mm', $shop->memoSettings()['paper_width']);
         $this->assertTrue($shop->memoSettings()['show_bin']); // untouched defaults still present
+    }
+
+    public function test_owner_can_enable_the_shop_qr_setting(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+
+        $payload = array_merge(Shop::MEMO_SETTINGS_DEFAULTS, ['show_shop_qr' => true]);
+
+        $this->actingAs($owner, 'web')->patch('/app/settings/memo', $payload)->assertRedirect();
+
+        $shop->refresh();
+        $this->assertTrue($shop->memoSettings()['show_shop_qr']);
     }
 
     public function test_owner_can_save_label_settings(): void

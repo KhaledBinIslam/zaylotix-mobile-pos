@@ -40,6 +40,7 @@ class Shop extends Model
         'show_vat_inclusive_note' => false,
         'show_exchange_policy' => false,
         'exchange_policy_text' => null,
+        'show_shop_qr' => false, // a scannable QR of the shop's own website/Facebook page (shops.website), separate from the per-sale rating QR below it
         'paper_width' => '58mm', // '58mm' | '80mm' | 'a4' -- preserves the pre-existing fixed 58mm print size
     ];
 
