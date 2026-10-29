@@ -9,7 +9,7 @@ import { useToast } from '@/composables/useToast';
 import { usePermissions } from '@/composables/usePermissions';
 import { buildVoidPreview } from '@/support/saleVoidPreview';
 
-const props = defineProps({ sale: Object, collectedTotal: Number });
+const props = defineProps({ sale: Object, collectedTotal: Number, hasReturn: Boolean });
 const { toast } = useToast();
 const { hasPerm } = usePermissions();
 
@@ -57,7 +57,16 @@ function submitVoid() {
     voidSubmitting.value = true;
     router.delete(route('app.sales.destroy', props.sale.id), {
         data: { reason: composedVoidReason.value },
-        onSuccess: () => router.visit(route('app.sales')),
+        // a refused void (already voided / has a return / past the time
+        // limit) comes back as a flash.error redirect — AppLayout's toast
+        // shows the reason; only a genuinely voided sale leaves this page
+        onSuccess: (visitedPage) => {
+            if (visitedPage.props.flash?.error) {
+                voidSheet.value = false;
+            } else {
+                router.visit(route('app.sales'));
+            }
+        },
         onFinish: () => (voidSubmitting.value = false),
     });
 }
@@ -299,7 +308,10 @@ const justBilled = ref(false);
                 <textarea v-model="voidReasonText" rows="2"></textarea>
             </div>
 
-            <button class="btn" style="background:var(--rose)" :disabled="!voidReasonValid || voidSubmitting" @click="submitVoid">
+            <div v-if="hasReturn" style="font-size:12.5px;color:var(--rose);font-weight:600;margin-bottom:10px">
+                ⚠️ {{ t('sales.voidBlockedReturn') }}
+            </div>
+            <button class="btn" style="background:var(--rose)" :disabled="hasReturn || !voidReasonValid || voidSubmitting" @click="submitVoid">
                 {{ voidSubmitting ? '...' : t('sales.voidConfirmButton') }}
             </button>
             <button class="btn ghost" style="margin-top:10px" @click="voidSheet = false">{{ t('common.cancel') }}</button>

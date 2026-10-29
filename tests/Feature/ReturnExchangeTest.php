@@ -399,8 +399,16 @@ class ReturnExchangeTest extends TestCase
 
         $response = $this->actingAs($owner, 'web')->delete("/app/sales/{$sale->id}", ['reason' => 'trying to void after a return']);
 
-        $response->assertStatus(422);
+        // refused with a flash error (not abort(422) — Inertia would bury
+        // the Bengali message behind its generic error modal)
+        $response->assertRedirect();
+        $response->assertSessionHas('error');
         $this->assertNull($sale->fresh()->voided_at);
+
+        // and the show page tells the void sheet about the conflict up
+        // front, so the button is disabled before anyone types a reason
+        $this->actingAs($owner, 'web')->get("/app/sales/{$sale->id}")
+            ->assertInertia(fn ($page) => $page->where('hasReturn', true)->etc());
     }
 
     public function test_loyalty_points_are_deducted_proportionally_to_the_refund(): void

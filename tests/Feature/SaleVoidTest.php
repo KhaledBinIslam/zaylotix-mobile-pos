@@ -104,10 +104,13 @@ class SaleVoidTest extends TestCase
         $stockAfterFirst = $product->fresh()->stock;
         $cashAfterFirst = (float) $shop->fresh()->cash_balance;
 
-        // second attempt (double tap / retried request) — a clear 422, and
-        // absolutely no second reversal of stock or cash
+        // second attempt (double tap / retried request) — a clear flash
+        // error (NOT abort(422): Inertia renders that as a generic "Oops"
+        // modal that hides the Bengali message), and absolutely no second
+        // reversal of stock or cash
         $this->actingAs($owner, 'web')->delete("/app/sales/{$sale->id}", ['reason' => 'mistake entry again'])
-            ->assertStatus(422);
+            ->assertRedirect()
+            ->assertSessionHas('error');
 
         $this->assertEquals($stockAfterFirst, $product->fresh()->stock);
         $this->assertEquals($cashAfterFirst, (float) $shop->fresh()->cash_balance);
@@ -151,9 +154,10 @@ class SaleVoidTest extends TestCase
         $oldSale = $this->makeSale($shop->id, $product->id, ['date' => now()->subDays(10)->toDateString()]);
         $freshSale = $this->makeSale($shop->id, $product->id, ['date' => now()->toDateString()]);
 
-        // too old → blocked
+        // too old → blocked, reason delivered as a flash error toast
         $this->actingAs($owner, 'web')->delete("/app/sales/{$oldSale->id}", ['reason' => 'too late attempt'])
-            ->assertStatus(422);
+            ->assertRedirect()
+            ->assertSessionHas('error');
         $this->assertNull($oldSale->fresh()->voided_at);
 
         // within the window → fine

@@ -1774,6 +1774,7 @@ export const translations = {
     'sales.voidReasonDuplicate': { bn: 'ডুপ্লিকেট বিল', en: 'Duplicate bill' },
     'sales.voidReasonOther': { bn: 'অন্যান্য', en: 'Other' },
     'sales.voidConfirmButton': { bn: '🗑️ নিশ্চিত — বাতিল করুন', en: '🗑️ Confirm — void it' },
+    'sales.voidBlockedReturn': { bn: 'এই বিলে ইতিমধ্যে রিটার্ন/এক্সচেঞ্জ করা হয়েছে — এটা আর বাতিল করা যাবে না।', en: 'This bill already has a return/exchange — it can no longer be voided.' },
     'sales.paymentBreakdown': { bn: 'পেমেন্টের বিবরণ', en: 'Payment breakdown' },
     'sales.dueRemainder': { bn: 'বাকি', en: 'Due' },
 

@@ -58,6 +58,11 @@ class SalesController extends Controller
             // "এই টাকা কাস্টমারের অগ্রিম হয়ে যাবে" (see SaleReversal's
             // collected→advance handling)
             'collectedTotal' => (float) \App\Models\Payment::where('sale_id', $saleModel->id)->sum('amount'),
+            // destroy() refuses to void a sale that already has a
+            // return/exchange — the void sheet uses this to say so UP FRONT
+            // (disabled button + note) instead of letting the user fill in a
+            // reason and only then get refused
+            'hasReturn' => \App\Models\SalesReturn::where('sale_id', $saleModel->id)->exists(),
         ]);
     }
 
@@ -78,7 +83,13 @@ class SalesController extends Controller
             'reason' => ['required', 'string', 'min:5', 'max:255'],
         ]);
 
-        $invoiceNo = DB::transaction(function () use ($request, $sale, $data) {
+        // The guard branches below RETURN a blocked-message instead of
+        // abort(422): an aborted Inertia request renders the generic full-
+        // screen "Oops! An Error Occurred" modal and the Bengali message
+        // never reaches the user (seen live on a real void attempt). A
+        // back()->with('error', …) surfaces through AppLayout's existing
+        // flash.error toast watcher instead, with zero new UI.
+        $result = DB::transaction(function () use ($request, $sale, $data) {
             $lockedShop = Shop::whereKey(Tenancy::id())->lockForUpdate()->first();
 
             // withVoided() + explicit isVoided() check — before Phase 39 a
@@ -91,7 +102,7 @@ class SalesController extends Controller
             $this->authorize('delete', $saleModel);
 
             if ($saleModel->isVoided()) {
-                abort(422, 'এই বিলটি ইতিমধ্যে বাতিল করা হয়েছে — নতুন করে কিছু বদলানো হয়নি।');
+                return ['blocked' => 'এই বিলটি ইতিমধ্যে বাতিল করা হয়েছে — নতুন করে কিছু বদলানো হয়নি।'];
             }
 
             // A sale that already has a return/exchange against it can't be
@@ -100,7 +111,7 @@ class SalesController extends Controller
             // double-crediting both. Void the return first isn't possible
             // either (no undo for a return yet), so this is simply blocked.
             if (\App\Models\SalesReturn::where('sale_id', $saleModel->id)->exists()) {
-                abort(422, 'এই বিলে ইতিমধ্যে রিটার্ন/এক্সচেঞ্জ করা হয়েছে — এটা আর বাতিল করা যাবে না।');
+                return ['blocked' => 'এই বিলে ইতিমধ্যে রিটার্ন/এক্সচেঞ্জ করা হয়েছে — এটা আর বাতিল করা যাবে না।'];
             }
 
             // Optional owner-set age limit (shops.void_time_limit_days, null
@@ -110,7 +121,7 @@ class SalesController extends Controller
                 $ageDays = (int) \Carbon\Carbon::parse($saleModel->date)->diffInDays(now());
                 $user = Auth::guard('web')->user();
                 if ($ageDays > $lockedShop->void_time_limit_days && ! ($user && $user->isOwner() && $request->boolean('override_window'))) {
-                    abort(422, "এই বিলের বয়স {$lockedShop->void_time_limit_days} দিনের বেশি — আর বাতিল করা যাবে না। শুধু মালিক এটি override করতে পারবেন।");
+                    return ['blocked' => "এই বিলের বয়স {$lockedShop->void_time_limit_days} দিনের বেশি — আর বাতিল করা যাবে না। শুধু মালিক এটি override করতে পারবেন।"];
                 }
             }
 
@@ -127,9 +138,13 @@ class SalesController extends Controller
                 'reason' => $data['reason'],
             ]);
 
-            return $saleModel->invoice_no;
+            return ['ok' => $saleModel->invoice_no];
         });
 
-        return back()->with('success', "মেমো '{$invoiceNo}' বাতিল করা হয়েছে — স্টক ও ব্যালেন্স ফিরিয়ে দেওয়া হয়েছে।");
+        if (isset($result['blocked'])) {
+            return back()->with('error', $result['blocked']);
+        }
+
+        return back()->with('success', "মেমো '{$result['ok']}' বাতিল করা হয়েছে — স্টক ও ব্যালেন্স ফিরিয়ে দেওয়া হয়েছে।");
     }
 }
