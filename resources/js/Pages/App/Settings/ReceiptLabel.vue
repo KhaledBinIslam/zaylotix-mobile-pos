@@ -15,6 +15,7 @@ const { t } = useI18n();
 const businessForm = useForm({
     email: shop.value?.email || '', website: shop.value?.website || '',
     trade_license_no: shop.value?.trade_license_no || '', tin_no: shop.value?.tin_no || '',
+    label_header: shop.value?.label_header || '',
 });
 function saveBusinessInfo() {
     businessForm.patch(route('app.settings.businessInfo'), { preserveScroll: true });
@@ -76,6 +77,14 @@ const sampleLabel = { name: 'নমুনা পণ্য', variantLabel: '42, �
             <div class="field"><label>ওয়েবসাইট / Facebook পেজ</label><input v-model="businessForm.website" placeholder="facebook.com/yourshop"></div>
             <div class="field"><label>ট্রেড লাইসেন্স নম্বর</label><input v-model="businessForm.trade_license_no"></div>
             <div class="field"><label>TIN নম্বর (ঐচ্ছিক)</label><input v-model="businessForm.tin_no"></div>
+            <!-- business-level: only a main shop can set this (Shop::labelHeader() always
+                 resolves a branch through its own main shop) — a branch's own value here
+                 would never actually be used, so the input only makes sense on the main shop -->
+            <div v-if="!shop?.parent_shop_id" class="field">
+                <label>লেবেল হেডার (বারকোড স্টিকারে দোকানের নামের জায়গায়, ঐচ্ছিক)</label>
+                <input v-model="businessForm.label_header" placeholder="যেমন: Baby Park & Liberty">
+            </div>
+            <div v-else style="font-size:11.5px;color:var(--mut);margin:6px 0">লেবেল হেডার মূল দোকানের সেটিংস থেকে আসে।</div>
             <button class="btn sm" style="margin-top:6px" :disabled="businessForm.processing" @click="saveBusinessInfo">সংরক্ষণ করুন</button>
         </div>
 
