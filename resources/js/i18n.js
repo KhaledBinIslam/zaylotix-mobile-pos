@@ -1065,6 +1065,7 @@ export const translations = {
     'more.offlineSyncModeReviewSub': { bn: 'ইন্টারনেট এলে অপেক্ষা করবে — আপনাকে যাচাই করে "সিঙ্ক করুন" চাপতে হবে', en: 'Waits for you to review and tap "Sync" before sending' },
     'more.voidTimeLimit': { bn: 'মেমো বাতিলের সময়সীমা', en: 'Sale void time limit' },
     'more.appVersion': { bn: 'অ্যাপ সংস্করণ', en: 'App version' },
+    'bc.thermalPrintHint': { bn: 'প্রিন্ট ডায়ালগে: Scale 100%, Margins: None, Headers/footers বন্ধ, Paper size {w}×{h}mm', en: 'In the print dialog: Scale 100%, Margins: None, headers/footers off, paper size {w}×{h}mm' },
     'version.newBuild': { bn: 'নতুন সংস্করণ এসেছে — রিফ্রেশ করলে আপডেট পাবেন', en: 'A new version is available — refresh to update' },
     'version.refresh': { bn: 'রিফ্রেশ', en: 'Refresh' },
     'more.voidTimeLimitSub': { bn: 'এত দিনের বেশি পুরনো বিল বাতিল করা যাবে না — খালি রাখলে কোনো সীমা নেই', en: 'Bills older than this many days cannot be voided — empty means no limit' },

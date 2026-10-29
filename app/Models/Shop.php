@@ -48,6 +48,13 @@ class Shop extends Model
         'size' => '38x25', // '38x25' | '50x25' | '40x30' | 'custom'
         'custom_width_mm' => null,
         'custom_height_mm' => null,
+        // Phase 41 (docs/LABEL_PRINT_PLAN.md) — 'classic' keeps the exact
+        // pre-Phase-41 print output; 'thermal' turns on the fixed-dot
+        // barcode sizing + offsets tuned for a 38×25 roll on an XP-365B.
+        'print_mode' => 'classic', // 'classic' | 'thermal'
+        'label_gap_mm' => 2, // physical gap between labels on the roll (future TSPL path + calibration display)
+        'offset_x_mm' => 0, // thermal mode only: shift printed content to correct head misalignment
+        'offset_y_mm' => 0,
         'per_row' => 2, // preserves the pre-existing 2-per-row grid
         'show_shop_name' => true,
         'show_product_name' => true,

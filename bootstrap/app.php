@@ -55,6 +55,25 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->respond(function (Response $response, Throwable $exception, Request $request) {
             $status = $response->getStatusCode();
 
+            // 422 — every abort(422, '…') in this app is a deliberately
+            // written Bengali business-rule message (stock short, shift
+            // already open, plan already exists, …). For an Inertia visit,
+            // falling through here rendered Symfony's bare English "Oops!
+            // An Error Occurred" page inside Inertia's error modal and the
+            // actual message never reached the user — seen live on the sale
+            // page (void/installment sheet). Redirect back with the message
+            // as a flash error instead: AppLayout's and AdminLayout's
+            // existing flash.error toast watchers display it on every page.
+            // Deliberately scoped to requests carrying the X-Inertia header:
+            // plain JSON/fetch callers (POS checkout reads data.message)
+            // and ValidationException responses (422 with an `errors` bag,
+            // not an HttpException) keep their exact current behavior.
+            if ($status === 422
+                && $request->header('X-Inertia')
+                && $exception instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface) {
+                return back()->with('error', $exception->getMessage() ?: 'অনুরোধটি সম্পন্ন করা যায়নি — আবার চেষ্টা করুন।');
+            }
+
             if (! in_array($status, [419, 403, 404, 429, 500, 503], true)) {
                 return $response;
             }

@@ -1,11 +1,14 @@
 <script setup>
 import { Head, useForm, usePage, Link } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { computed, ref, nextTick } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import ReceiptMemo from '@/Components/ReceiptMemo.vue';
 import BarcodeLabelCard from '@/Components/BarcodeLabelCard.vue';
 import { useI18n } from '@/composables/useI18n';
 import { LABEL_SIZE_PRESETS, labelSizeMm } from '@/support/labelSizes';
+import { thermalModuleWidth, mmToPx } from '@/support/barcodeFit';
+
+const props = defineProps({ longestLabelBarcode: { type: Object, default: null } });
 
 const page = usePage();
 const shop = computed(() => page.props.shop);
@@ -39,6 +42,9 @@ const labelForm = useForm({
     size: ls.size, custom_width_mm: ls.custom_width_mm, custom_height_mm: ls.custom_height_mm,
     per_row: ls.per_row, show_shop_name: ls.show_shop_name, show_product_name: ls.show_product_name,
     show_variant: ls.show_variant, price_mode: ls.price_mode, show_barcode_number: ls.show_barcode_number,
+    // Phase 41 (docs/LABEL_PRINT_PLAN.md) — thermal-roll print mode
+    print_mode: ls.print_mode || 'classic', label_gap_mm: ls.label_gap_mm ?? 2,
+    offset_x_mm: ls.offset_x_mm ?? 0, offset_y_mm: ls.offset_y_mm ?? 0,
 });
 function saveLabelSettings() {
     labelForm.patch(route('app.settings.label'), { preserveScroll: true });
@@ -63,6 +69,46 @@ const sampleSale = {
     ],
 };
 const sampleLabel = { name: 'নমুনা পণ্য', variantLabel: '42, কালো', barcode: '2000000012345', price: 850, discount_price: 799 };
+
+// --- Phase 41: printer calibration test print (docs/LABEL_PRINT_PLAN.md §৬) ---
+// One exact-size page: edge border + center cross + 1mm scale + this shop's
+// longest encoded barcode — printed once to dial in offset_x/y and prove
+// the hardest label scans on the actual XP-365B roll.
+const calibrating = ref(false);
+const calibSize = computed(() => labelSizeMm(labelForm));
+const calibSample = computed(() => props.longestLabelBarcode || { encoded: 'ZV12345', text: 'ZV12345' });
+const calibCss = computed(() => `
+@page { size: ${calibSize.value.width}mm ${calibSize.value.height}mm; margin: 0; }
+@media print {
+    #app { display: none !important; }
+    #calib-overlay { position: static !important; }
+    .calib-card { transform: translate(${Number(labelForm.offset_x_mm) || 0}mm, ${Number(labelForm.offset_y_mm) || 0}mm); }
+}
+`);
+function printCalibration() {
+    window.print();
+}
+async function openCalibration() {
+    calibrating.value = true;
+    await nextTick();
+    const el = document.getElementById('calib-barcode-svg');
+    if (!el) return;
+    const { default: JsBarcode } = await import('jsbarcode');
+    const fit = thermalModuleWidth(calibSample.value.encoded, calibSize.value.width - 5);
+    try {
+        JsBarcode(el, calibSample.value.encoded, {
+            format: 'CODE128', margin: 0, height: mmToPx(6), fontSize: 7,
+            displayValue: true, text: calibSample.value.text, width: mmToPx(fit.moduleMm),
+        });
+    } catch (e) { /* leave blank */ }
+}
+// tick marks every 1mm along the top edge, taller every 5mm — SVG viewBox is
+// in mm so coordinates map 1:1 to the physical label
+const calibTicks = computed(() => {
+    const ticks = [];
+    for (let x = 1; x < calibSize.value.width; x++) ticks.push({ x, len: x % 5 === 0 ? 2 : 1 });
+    return ticks;
+});
 </script>
 
 <template>
@@ -147,6 +193,26 @@ const sampleLabel = { name: 'নমুনা পণ্য', variantLabel: '42, �
                     </div>
                 </div>
 
+                <!-- Phase 41 — docs/LABEL_PRINT_PLAN.md: 'classic' = আগের
+                     আউটপুট হুবহু; 'thermal' = XP-365B জাতীয় থার্মাল রোলের
+                     জন্য fixed-dot বারকোড + offset সংশোধন -->
+                <div class="field">
+                    <label>প্রিন্ট মোড</label>
+                    <div class="seg">
+                        <button type="button" :class="{ on: labelForm.print_mode === 'classic' }" @click="labelForm.print_mode = 'classic'">সাধারণ</button>
+                        <button type="button" :class="{ on: labelForm.print_mode === 'thermal' }" @click="labelForm.print_mode = 'thermal'">থার্মাল রোল (XP-365B)</button>
+                    </div>
+                </div>
+                <template v-if="labelForm.print_mode === 'thermal'">
+                    <div style="display:flex;gap:8px">
+                        <div class="field"><label>লেবেলের ফাঁক (mm)</label><input v-model.number="labelForm.label_gap_mm" type="number" min="0" max="10" step="0.5"></div>
+                        <div class="field"><label>Offset X (mm)</label><input v-model.number="labelForm.offset_x_mm" type="number" min="-5" max="5" step="0.5"></div>
+                        <div class="field"><label>Offset Y (mm)</label><input v-model.number="labelForm.offset_y_mm" type="number" min="-5" max="5" step="0.5"></div>
+                    </div>
+                    <div style="font-size:11.5px;color:var(--mut);margin:2px 0 6px">ছাপা একপাশে সরে গেলে Offset দিয়ে ঠিক করুন — নিচের "লেবেল টেস্ট প্রিন্ট" দিয়ে মেপে নিন।</div>
+                    <button type="button" class="btn sm ghost" style="margin-bottom:8px" @click="openCalibration">📐 লেবেল টেস্ট প্রিন্ট (ক্যালিব্রেশন)</button>
+                </template>
+
                 <label class="chk"><input type="checkbox" v-model="labelForm.show_shop_name"> দোকানের নাম</label>
                 <label class="chk"><input type="checkbox" v-model="labelForm.show_product_name"> পণ্যের নাম</label>
                 <label class="chk"><input type="checkbox" v-model="labelForm.show_variant"> সাইজ/কালার</label>
@@ -171,6 +237,31 @@ const sampleLabel = { name: 'নমুনা পণ্য', variantLabel: '42, �
                 </div>
             </div>
         </div>
+        <!-- Phase 41 — calibration test print overlay -->
+        <Teleport to="body">
+            <div v-if="calibrating" id="calib-overlay" style="position:fixed;inset:0;background:#fff;z-index:200;overflow-y:auto">
+                <component :is="'style'" v-html="calibCss"></component>
+                <div class="no-print" style="padding:12px;display:flex;gap:10px;align-items:center;background:var(--panel);border-bottom:1px solid var(--line)">
+                    <button class="btn sm" style="width:auto" @click="printCalibration">🖨️ প্রিন্ট</button>
+                    <button class="btn sm ghost" style="width:auto" @click="calibrating = false">বন্ধ</button>
+                    <span style="font-size:12px;color:var(--mut)">প্রিন্ট ডায়ালগে: Scale 100%, Margins: None, Headers/footers বন্ধ, Paper size {{ calibSize.width }}×{{ calibSize.height }}</span>
+                </div>
+                <div class="no-print" style="padding:8px 12px;font-size:12px;color:var(--mut)">
+                    ছাপার পর: চারপাশের বর্ডার লেবেলের কিনারা থেকে সমান দূরে আছে কিনা দেখুন — না থাকলে Offset X/Y বদলে আবার টেস্ট করুন। নিচের বারকোডটা ডাটাবেসের সবচেয়ে লম্বা মান — এটা স্ক্যান হলে সব লেবেলই হবে।
+                </div>
+                <div class="calib-card" :style="{ width: calibSize.width + 'mm', height: calibSize.height + 'mm', position: 'relative', margin: '12px', boxSizing: 'border-box', overflow: 'hidden' }">
+                    <svg :viewBox="`0 0 ${calibSize.width} ${calibSize.height}`" :style="{ width: calibSize.width + 'mm', height: calibSize.height + 'mm', position: 'absolute', inset: 0 }">
+                        <rect x="0.1" y="0.1" :width="calibSize.width - 0.2" :height="calibSize.height - 0.2" fill="none" stroke="#000" stroke-width="0.2" />
+                        <line :x1="calibSize.width / 2 - 3" :y1="calibSize.height / 2" :x2="calibSize.width / 2 + 3" :y2="calibSize.height / 2" stroke="#000" stroke-width="0.15" />
+                        <line :x1="calibSize.width / 2" :y1="calibSize.height / 2 - 3" :x2="calibSize.width / 2" :y2="calibSize.height / 2 + 3" stroke="#000" stroke-width="0.15" />
+                        <line v-for="tk in calibTicks" :key="tk.x" :x1="tk.x" y1="0" :x2="tk.x" :y2="tk.len" stroke="#000" stroke-width="0.12" />
+                    </svg>
+                    <div style="position:absolute;left:0;right:0;bottom:1.5mm;text-align:center">
+                        <svg id="calib-barcode-svg" style="display:inline-block"></svg>
+                    </div>
+                </div>
+            </div>
+        </Teleport>
     </AppLayout>
 </template>
 

@@ -160,7 +160,26 @@ class SettingController extends Controller
     /** Page with checkbox toggles + a live preview for what the printed memo and barcode label show — see Shop::MEMO_SETTINGS_DEFAULTS/LABEL_SETTINGS_DEFAULTS. */
     public function receiptLabelEdit()
     {
-        return Inertia::render('App/Settings/ReceiptLabel');
+        // Phase 41 (docs/LABEL_PRINT_PLAN.md) — the calibration test print
+        // needs this shop's WORST CASE: the longest value the bars would
+        // ever actually encode (a plain product's own barcode is encoded
+        // directly; a variant/color label encodes the short ZV/ZC id).
+        // Scanning the calibration page proves the hardest label works.
+        $candidates = [];
+        if ($p = \App\Models\Product::whereNotNull('barcode')->orderByRaw('LENGTH(barcode) DESC')->first(['barcode'])) {
+            $candidates[] = ['encoded' => $p->barcode, 'text' => $p->barcode];
+        }
+        if ($v = \App\Models\ProductVariant::whereNotNull('barcode')->orderByDesc('id')->first(['id', 'barcode'])) {
+            $candidates[] = ['encoded' => 'ZV'.$v->id, 'text' => $v->barcode];
+        }
+        if ($c = \App\Models\ProductColorBarcode::orderByDesc('id')->first(['id', 'barcode'])) {
+            $candidates[] = ['encoded' => 'ZC'.$c->id, 'text' => $c->barcode];
+        }
+        usort($candidates, fn ($a, $b) => strlen($b['encoded']) <=> strlen($a['encoded']));
+
+        return Inertia::render('App/Settings/ReceiptLabel', [
+            'longestLabelBarcode' => $candidates[0] ?? null,
+        ]);
     }
 
     /** Extra shop-identity fields a receipt can optionally print — none of these existed before, so every one is nullable and off by default (see memo_settings' show_* toggles). */
@@ -217,6 +236,14 @@ class SettingController extends Controller
             'show_variant' => ['required', 'boolean'],
             'price_mode' => ['required', 'in:both,single,none'],
             'show_barcode_number' => ['required', 'boolean'],
+            // Phase 41 (docs/LABEL_PRINT_PLAN.md) — thermal-roll print mode.
+            // `sometimes`, not `required`: a still-open tab running the
+            // pre-Phase-41 bundle posts the old payload without these keys,
+            // and labelSettings()'s defaults-merge fills them in anyway.
+            'print_mode' => ['sometimes', 'in:classic,thermal'],
+            'label_gap_mm' => ['sometimes', 'numeric', 'min:0', 'max:10'],
+            'offset_x_mm' => ['sometimes', 'numeric', 'min:-5', 'max:5'],
+            'offset_y_mm' => ['sometimes', 'numeric', 'min:-5', 'max:5'],
         ]);
 
         if ($data['size'] === 'custom' && (! $data['custom_width_mm'] || ! $data['custom_height_mm'])) {

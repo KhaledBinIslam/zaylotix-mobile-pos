@@ -157,6 +157,73 @@ class ReceiptAndLabelSettingsTest extends TestCase
         $this->assertSame('none', $shop->labelSettings()['price_mode']);
     }
 
+    /** Phase 41 (docs/LABEL_PRINT_PLAN.md) — thermal-roll print mode settings. */
+    public function test_owner_can_save_thermal_print_mode_with_offsets(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+
+        $payload = array_merge(Shop::LABEL_SETTINGS_DEFAULTS, [
+            'print_mode' => 'thermal', 'label_gap_mm' => 2, 'offset_x_mm' => 1.5, 'offset_y_mm' => -0.5,
+        ]);
+
+        $this->actingAs($owner, 'web')->patch('/app/settings/label', $payload)->assertRedirect();
+
+        $settings = $shop->fresh()->labelSettings();
+        $this->assertSame('thermal', $settings['print_mode']);
+        $this->assertEquals(1.5, $settings['offset_x_mm']);
+        $this->assertEquals(-0.5, $settings['offset_y_mm']);
+    }
+
+    public function test_a_pre_phase_41_payload_without_the_thermal_keys_still_saves(): void
+    {
+        // a still-open tab on the old bundle posts the old payload shape —
+        // the new keys are `sometimes`, and the defaults-merge fills them
+        [$shop, $owner] = $this->createShopWithOwner();
+
+        $payload = ['size' => '50x25', 'custom_width_mm' => null, 'custom_height_mm' => null,
+            'per_row' => 1, 'show_shop_name' => true, 'show_product_name' => true,
+            'show_variant' => true, 'price_mode' => 'both', 'show_barcode_number' => true];
+
+        $this->actingAs($owner, 'web')->patch('/app/settings/label', $payload)->assertRedirect();
+
+        $settings = $shop->fresh()->labelSettings();
+        $this->assertSame('50x25', $settings['size']);
+        $this->assertSame('classic', $settings['print_mode']); // default fills in
+    }
+
+    public function test_an_out_of_range_offset_is_rejected(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+
+        $payload = array_merge(Shop::LABEL_SETTINGS_DEFAULTS, ['print_mode' => 'thermal', 'offset_x_mm' => 50]);
+
+        $this->actingAs($owner, 'web')->patch('/app/settings/label', $payload)->assertSessionHasErrors('offset_x_mm');
+        $this->assertSame('classic', $shop->fresh()->labelSettings()['print_mode']); // unchanged
+    }
+
+    public function test_an_untouched_shop_defaults_to_classic_print_mode(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+
+        // the "existing shops' output unchanged" guarantee: no saved
+        // label_settings at all resolves to classic + zero offsets
+        $resolved = $shop->toArrayForUser($owner)['label_settings'];
+        $this->assertSame('classic', $resolved['print_mode']);
+        $this->assertSame(0, $resolved['offset_x_mm']);
+        $this->assertSame(0, $resolved['offset_y_mm']);
+        $this->assertSame(2, $resolved['label_gap_mm']);
+    }
+
+    public function test_label_settings_page_carries_the_longest_barcode_sample(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        \App\Models\Product::create(['shop_id' => $shop->id, 'name' => 'Shoe', 'cost' => 100, 'price' => 200, 'stock' => 5, 'barcode' => 'SMS-L-10001-NSXXZ']);
+
+        $this->actingAs($owner, 'web')->get('/app/receipt-label-settings')
+            ->assertInertia(fn ($page) => $page
+                ->where('longestLabelBarcode.encoded', 'SMS-L-10001-NSXXZ')->etc());
+    }
+
     public function test_custom_label_size_requires_both_dimensions(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();

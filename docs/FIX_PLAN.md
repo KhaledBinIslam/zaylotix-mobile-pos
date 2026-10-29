@@ -3034,6 +3034,8 @@ never-customized শপ = exact defaults snapshot; টেন্যান্ট-�
 - [x] Final comprehensive Bengali report for Khaled covering what changed, deploy steps, remaining risks, open questions — sent after Phase 3 feature 10 shipped
 
 ### Genuinely still open
-- **Phase 4** (enterprise gap-filling, see `docs/ENTERPRISE_GAP_REPORT.md`) — approved and in progress. Done: item #1 (shared catalog sync + branch transfer accept/reject), item #2 (PO/GRN), item #3 (cross-branch promotion pooling — branch price override turned out already covered). Still to come: the full Wholesale system (tiered pricing/MOQ/customer groups/invoices — approved, not yet started). Separately noted-but-deferred: a scheduled/date-windowed markdown engine (item #3's other sub-gap).
-- The Android APK rebuild reminder (new theme colors) — not a code task, tracked against the separate TWA plan below.
-- A separate TWA-replaces-Capacitor plan (Part 1 of 2, a different planning session) is sitting unstarted — not touched this session since Khaled's attention has been on Phase 3/4.
+(সবশেষ হালনাগাদ: 2026-10-29 — আগের তিনটা এন্ট্রিই বাসি হয়ে গিয়েছিল, বাস্তব অবস্থা:)
+- **Phase 4 সম্পূর্ণ** — Wholesale সহ (Phase 30: price tiers/MOQ/wholesale customers/WS- invoice series), এবং তার পরের Online Business module-ও সম্পূর্ণ (Phases 31-38, সব ৮ পার্ট, shared_stock_pool সহ)।
+- **TWA সম্পূর্ণ** — `android/` এখন TWA প্রজেক্ট (pos.zaylotix.com, launchUrl `/login?source=app`), signed APK + AAB build করা (2026-10-08), `/.well-known/assetlinks.json` লাইভে 200। TWA সরাসরি লাইভ সাইট লোড করে, তাই frontend আপডেটের জন্য APK rebuild **লাগে না** — শুধু আইকন/থিম/signing বদলালে লাগবে।
+- POS catalog scale fix (threshold-gated server-side search + offline catalog sync) — সম্পূর্ণ (`PosCatalogScaleTest`)।
+- deferred-by-Khaled: VPS/Redis infra move (তিনি বললে তবেই; see `docs/SCALING_GUIDE.md`)।

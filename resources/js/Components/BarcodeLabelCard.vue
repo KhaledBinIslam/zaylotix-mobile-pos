@@ -1,5 +1,7 @@
 <script setup>
 import { onMounted, watch, ref, computed, nextTick } from 'vue';
+import { labelSizeMm } from '@/support/labelSizes';
+import { thermalModuleWidth, mmToPx } from '@/support/barcodeFit';
 
 /** One printable barcode label card — shared by BarcodeLabels/Index.vue's real print run and Settings/ReceiptLabel.vue's live preview, so they can never visually drift apart. */
 const props = defineProps({
@@ -13,6 +15,12 @@ const headerFontSize = ref(14);
 const headerEl = ref(null);
 
 const headerText = computed(() => props.shop?.resolved_label_header || props.shop?.name || '');
+
+// Phase 41 (docs/LABEL_PRINT_PLAN.md) — thermal-roll mode: fixed whole-dot
+// barcode sizing for the XP-365B instead of the fill-to-width scale below.
+// 'classic' (the default for every shop) keeps the old path byte-identical.
+const thermal = computed(() => props.settings.print_mode === 'thermal');
+const barcodeWarn = ref(''); // '' | 'onedot' | 'overflow'
 
 /**
  * Shrink-to-fit for the sticker header — mirrors render()'s own two-pass
@@ -32,7 +40,9 @@ async function fitHeaderText() {
     if (!container) return;
 
     const availableWidth = container.clientWidth - 12;
-    let size = 14;
+    // thermal: start at ~8pt so the 25mm height budget holds (the shrink
+    // loop below still applies for a very long business name)
+    let size = thermal.value ? 11 : 14;
     headerFontSize.value = size;
     headerEl.value.style.fontSize = size + 'px';
 
@@ -77,6 +87,26 @@ async function render() {
     const displayValue = props.settings.show_barcode_number !== false;
     const encoded = props.label.scanCode || props.label.barcode;
     const opts = { format: 'CODE128', height: 22, fontSize: 8, margin: 2, displayValue, text: props.label.barcode };
+
+    // Phase 41 thermal mode — a fixed whole-dot module width (2 dots =
+    // 0.25mm at 203dpi, 1 dot if the value is long), NEVER the fractional
+    // fill-to-width scale of the classic branch below: fractional module
+    // widths rasterize to uneven bars on a thermal head and scanning dies.
+    // Bars ~8mm tall per the 25mm height budget (docs/LABEL_PRINT_PLAN.md).
+    if (thermal.value) {
+        const usableMm = labelSizeMm(props.settings).width - 5; // 2×2.5mm quiet zone target
+        const fit = thermalModuleWidth(encoded, usableMm);
+        barcodeWarn.value = fit.fits ? (fit.twoDot ? '' : 'onedot') : 'overflow';
+        if (!fit.fits) {
+            el.replaceChildren(); // warning text below takes the label instead
+            return;
+        }
+        try {
+            JsBarcode(el, encoded, { ...opts, margin: 0, height: mmToPx(8), width: mmToPx(fit.moduleMm) });
+        } catch (e) { /* invalid barcode value for CODE128 — leave blank */ }
+        return;
+    }
+
     try {
         JsBarcode(el, encoded, { ...opts, width: 1 });
         const naturalWidth = parseFloat(el.getAttribute('width')) || 0;
@@ -94,7 +124,7 @@ onMounted(async () => {
     fitHeaderText();
 });
 
-watch(() => [props.label.barcode, props.settings.show_barcode_number], render);
+watch(() => [props.label.barcode, props.settings.show_barcode_number, props.settings.print_mode], render);
 watch(() => [props.shop?.resolved_label_header, props.shop?.name, props.settings.show_shop_name], async () => {
     await nextTick();
     fitHeaderText();
@@ -102,12 +132,17 @@ watch(() => [props.shop?.resolved_label_header, props.shop?.name, props.settings
 </script>
 
 <template>
-    <div class="label-card">
+    <div class="label-card" :class="{ thermal }">
         <div v-if="settings.show_shop_name && headerText" class="label-head">
             <div ref="headerEl" class="label-shop" :style="{ fontSize: headerFontSize + 'px' }">{{ headerText }}</div>
         </div>
         <div v-if="settings.show_product_name" class="label-name">{{ label.name }}</div>
         <div v-if="settings.show_variant && label.variantLabel" class="label-variant">{{ label.variantLabel }}</div>
+        <!-- Phase 41 — never shrink a too-long barcode silently: say so.
+             Screen-only (no-print): the preview is a mandatory tap before
+             printing, so the warning is always seen before paper is used. -->
+        <div v-if="thermal && barcodeWarn === 'overflow'" class="label-warn no-print">⚠️ বারকোডটি এই লেবেলের জন্য খুব লম্বা — ছাপা হয়নি</div>
+        <div v-else-if="thermal && barcodeWarn === 'onedot'" class="label-warn no-print">⚠️ লম্বা বারকোড — সরু বারে ছাপা হবে, স্ক্যান টেস্ট করে নিন</div>
         <svg :id="domId"></svg>
         <div v-if="settings.price_mode !== 'none'" class="label-price">
             <template v-if="settings.price_mode === 'both' && label.discount_price">
@@ -129,4 +164,13 @@ watch(() => [props.shop?.resolved_label_header, props.shop?.name, props.settings
 .label-price-reg { font-size: 8px; color: #888; text-decoration: line-through; }
 .label-price-disc { font-size: 12px; }
 .label-card svg { display: block; margin: 1px auto; max-width: 100%; }
+
+/* Phase 41 — thermal-roll mode: everything pure black (grey fades on a
+   thermal head), tight line-height so all six lines fit the 25mm budget.
+   Classic mode's rules above stay untouched for every other shop. */
+.label-card.thermal { line-height: 1; }
+.label-card.thermal .label-variant { color: #000; }
+.label-card.thermal .label-price-reg { color: #000; }
+.label-card.thermal svg { max-width: none; }
+.label-warn { font-size: 8px; font-weight: 700; color: #c0392b; }
 </style>

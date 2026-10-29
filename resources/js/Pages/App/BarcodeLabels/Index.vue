@@ -107,13 +107,29 @@ function closePrint() {
     labels.value = [];
 }
 
-const printCss = computed(() => `
+const thermal = computed(() => settings.value.print_mode === 'thermal');
+
+const printCss = computed(() => {
+    const base = `
 @page { size: ${sizeMm.value.width}mm ${sizeMm.value.height}mm; margin: 0; }
 .label-grid { grid-template-columns: repeat(${settings.value.per_row || 2}, 1fr); }
 @media print {
     .label-card { width: ${sizeMm.value.width}mm; height: ${sizeMm.value.height}mm; }
 }
-`);
+`;
+    if (!thermal.value) return base; // classic: byte-identical to pre-Phase-41
+    // Phase 41 — offset_x/y shift the whole label's content to correct a
+    // roll narrower than the print head sitting off-center (the label
+    // settings page's calibration test print is how the right values get
+    // found). The page box itself stays exactly the label size.
+    const ox = Number(settings.value.offset_x_mm) || 0;
+    const oy = Number(settings.value.offset_y_mm) || 0;
+    return base + `
+@media print {
+    .label-card.thermal { transform: translate(${ox}mm, ${oy}mm); }
+}
+`;
+});
 </script>
 
 <template>
@@ -195,6 +211,11 @@ const printCss = computed(() => `
                 <div class="no-print" style="padding:12px;display:flex;gap:10px;background:var(--panel);border-bottom:1px solid var(--line)">
                     <button class="btn sm" @click="doPrint">🖨️ {{ t('bc.print') }}</button>
                     <button class="btn sm ghost" @click="closePrint">{{ t('bc.close') }}</button>
+                </div>
+                <!-- Phase 41 — browser print-dialog settings that make the
+                     38×25 output land exactly; screen-only, never printed -->
+                <div v-if="thermal" class="no-print" style="padding:8px 12px;font-size:12px;color:var(--mut);background:var(--panel);border-bottom:1px solid var(--line)">
+                    {{ t('bc.thermalPrintHint', { w: sizeMm.width, h: sizeMm.height }) }}
                 </div>
                 <div class="label-grid">
                     <BarcodeLabelCard
