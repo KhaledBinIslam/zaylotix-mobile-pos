@@ -91,6 +91,48 @@ class PaymentController extends Controller
         return back()->with('success', 'Payment recorded.');
     }
 
+    /**
+     * Phase 39 — spends a void-created advance_balance (store credit)
+     * against the customer's running due. A pure internal transfer: no cash
+     * or bank balance moves (the shop already has that money — it was
+     * collected against the since-voided bill). Writes a method='advance'
+     * Payment row so the collection ledger shows exactly when/by whom the
+     * credit was applied, with the same due_before/due_after snapshots
+     * every other collection records.
+     */
+    public function applyAdvance(Customer $customer)
+    {
+        $this->authorize('update', $customer);
+
+        DB::transaction(function () use ($customer) {
+            $locked = Customer::whereKey($customer->id)->lockForUpdate()->first();
+
+            $amount = round(min((float) $locked->advance_balance, (float) $locked->due), 2);
+            if ($amount <= 0) {
+                throw ValidationException::withMessages([
+                    'amount' => 'সমন্বয় করার মতো অগ্রিম বা বাকি নেই।',
+                ]);
+            }
+
+            $dueBefore = (float) $locked->due;
+            $locked->advance_balance = (float) $locked->advance_balance - $amount;
+            $locked->due = $dueBefore - $amount;
+            $locked->save();
+
+            $locked->payments()->create([
+                'shop_id' => Tenancy::id(),
+                'user_id' => Auth::guard('web')->id() ?? Auth::guard('sanctum')->id(),
+                'amount' => $amount,
+                'due_before' => $dueBefore,
+                'due_after' => $dueBefore - $amount,
+                'method' => 'advance',
+                'date' => now()->toDateString(),
+            ]);
+        });
+
+        return back()->with('success', 'অগ্রিম থেকে বাকি সমন্বয় করা হয়েছে।');
+    }
+
     /** Per-customer payment ledger — date, amount, and the due snapshot right before/after that specific collection. */
     public function history(Customer $customer)
     {

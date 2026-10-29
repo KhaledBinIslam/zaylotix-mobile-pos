@@ -314,9 +314,11 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::get('sales/{sale}', [SalesController::class, 'show'])->name('sales.show');
     });
 
-    // void is owner-only regardless of sales_history grant — a cashier who
-    // can view sales history must never be able to reverse one
-    Route::middleware('owner')->group(function () {
+    // Phase 39: owner always passes perm: (User::hasPermission() is
+    // unconditionally true for owners); a cashier only with the explicit
+    // sales_void grant — ungranted by default everywhere, so this stays
+    // effectively owner-only until an owner deliberately delegates it.
+    Route::middleware('perm:sales_void')->group(function () {
         Route::delete('sales/{sale}', [SalesController::class, 'destroy'])->name('sales.destroy');
     });
 
@@ -358,6 +360,9 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::post('customers/{customer}/payments/full', [PaymentController::class, 'full'])->name('payments.full');
         Route::get('customers/{customer}/payments', [PaymentController::class, 'history'])->name('payments.history');
         Route::get('customers/{customer}/invoices', [PaymentController::class, 'invoices'])->name('payments.invoices');
+        // Phase 39 — spends a void-created advance_balance against the
+        // customer's running due; a pure internal transfer, no cash moves
+        Route::post('customers/{customer}/payments/apply-advance', [PaymentController::class, 'applyAdvance'])->name('payments.applyAdvance');
     });
 
     Route::middleware(['perm:installments', 'feature:installment_sales'])->group(function () {
@@ -544,6 +549,12 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
             Route::patch('settings/kitchen-whatsapp', [SettingController::class, 'updateKitchenWhatsapp'])->name('settings.kitchenWhatsapp');
             Route::patch('settings/restaurant-prefs', [SettingController::class, 'updateRestaurantPrefs'])->name('settings.restaurantPrefs');
         });
+    });
+
+    // Phase 39 — void age-limit policy: owner-only (not perm:settings),
+    // since it directly controls who can reverse money/stock and when
+    Route::middleware('owner')->group(function () {
+        Route::patch('settings/void-time-limit', [SettingController::class, 'updateVoidTimeLimit'])->name('settings.voidTimeLimit');
     });
 
     // cashier management — owner-only, regardless of any permission grant,

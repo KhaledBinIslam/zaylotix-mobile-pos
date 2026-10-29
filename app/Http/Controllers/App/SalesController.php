@@ -53,17 +53,24 @@ class SalesController extends Controller
             // so this page can offer the combined kitchen+customer
             // print/WhatsApp without a second round trip
             'sale' => $saleModel->load(['items', 'customer', 'user', 'payments', 'voidedByUser', 'tableOrder.table', 'installmentPlan:id,sale_id,status']),
+            // due already collected against THIS invoice (sale_id-tagged
+            // collections) — the void confirmation modal needs it to show
+            // "এই টাকা কাস্টমারের অগ্রিম হয়ে যাবে" (see SaleReversal's
+            // collected→advance handling)
+            'collectedTotal' => (float) \App\Models\Payment::where('sale_id', $saleModel->id)->sum('amount'),
         ]);
     }
 
     /**
-     * Owner-only void — the `owner` middleware on this route (not a
-     * delegatable perm: key) IS the manager-approval boundary: a cashier's
-     * session can never reach this route at all, matching how staff
-     * management is already owner-exclusive. Reverses the exact same
-     * stock/balance/due effects the admin's hard-delete tool does (shared
-     * via SaleReversal), but marks the row voided instead of deleting it, so
-     * the invoice and the reason stay visible in history.
+     * Void — gated by `perm:sales_void` (Phase 39): an owner always passes
+     * (User::hasPermission() is unconditionally true for owners), and a
+     * cashier only if the owner has explicitly ticked the new "বিক্রি বাতিল
+     * (ভয়েড)" permission for them — ungranted everywhere by default, so
+     * every existing shop keeps the old owner-only behavior until its owner
+     * deliberately changes it. Reverses the exact same stock/balance/due
+     * effects the admin's hard-delete tool does (shared via SaleReversal),
+     * but marks the row voided instead of deleting it, so the invoice and
+     * the reason stay visible in history.
      */
     public function destroy(Request $request, int $sale)
     {
@@ -71,10 +78,21 @@ class SalesController extends Controller
             'reason' => ['required', 'string', 'min:5', 'max:255'],
         ]);
 
-        $invoiceNo = DB::transaction(function () use ($sale, $data) {
+        $invoiceNo = DB::transaction(function () use ($request, $sale, $data) {
             $lockedShop = Shop::whereKey(Tenancy::id())->lockForUpdate()->first();
-            $saleModel = Sale::with(['items', 'payments'])->findOrFail($sale);
+
+            // withVoided() + explicit isVoided() check — before Phase 39 a
+            // second void attempt (double tap / retried request) fell into
+            // Sale's default scope excluding voided rows and surfaced as a
+            // bare 404. Financially that was already safe (the reversal
+            // could never run twice), but "idempotent with a clear message"
+            // is the contract, not an accident of scoping.
+            $saleModel = Sale::withVoided()->with(['items', 'payments'])->findOrFail($sale);
             $this->authorize('delete', $saleModel);
+
+            if ($saleModel->isVoided()) {
+                abort(422, 'এই বিলটি ইতিমধ্যে বাতিল করা হয়েছে — নতুন করে কিছু বদলানো হয়নি।');
+            }
 
             // A sale that already has a return/exchange against it can't be
             // voided — SaleReversal would re-credit stock/cash for the FULL
@@ -83,6 +101,17 @@ class SalesController extends Controller
             // either (no undo for a return yet), so this is simply blocked.
             if (\App\Models\SalesReturn::where('sale_id', $saleModel->id)->exists()) {
                 abort(422, 'এই বিলে ইতিমধ্যে রিটার্ন/এক্সচেঞ্জ করা হয়েছে — এটা আর বাতিল করা যাবে না।');
+            }
+
+            // Optional owner-set age limit (shops.void_time_limit_days, null
+            // = off) — mirrors ReturnController's return_window_days check,
+            // including the owner-only override escape hatch.
+            if ($lockedShop->void_time_limit_days !== null) {
+                $ageDays = (int) \Carbon\Carbon::parse($saleModel->date)->diffInDays(now());
+                $user = Auth::guard('web')->user();
+                if ($ageDays > $lockedShop->void_time_limit_days && ! ($user && $user->isOwner() && $request->boolean('override_window'))) {
+                    abort(422, "এই বিলের বয়স {$lockedShop->void_time_limit_days} দিনের বেশি — আর বাতিল করা যাবে না। শুধু মালিক এটি override করতে পারবেন।");
+                }
             }
 
             SaleReversal::reverse($saleModel, $lockedShop);

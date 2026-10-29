@@ -949,6 +949,15 @@ class PosController extends Controller
                 'sale_type' => $isWholesale ? 'wholesale' : 'retail',
                 'prescription_note' => $data['prescription_note'] ?? null,
                 'coupon_code' => $couponResult['promotion']?->code,
+                // Phase 39 — which Promotion rows the used_count increments
+                // below actually hit (coupon + BOGO triggers together), so a
+                // later void can give those exact counters back. BOGO ids
+                // were purely ephemeral before this; coupon_code alone can't
+                // identify a since-renamed code's row.
+                'promotion_ids' => array_values(array_unique(array_merge(
+                    $couponResult['promotion'] ? [$couponResult['promotion']->id] : [],
+                    $bogoResult['triggeredIds'] ?? []
+                ))) ?: null,
                 'points_earned' => $pointsEarned ?: null,
                 'points_redeemed' => $redeemPoints ?: null,
                 'client_uuid' => $data['client_uuid'] ?? null,

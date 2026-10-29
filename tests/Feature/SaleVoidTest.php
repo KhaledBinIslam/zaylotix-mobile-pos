@@ -89,6 +89,96 @@ class SaleVoidTest extends TestCase
         $this->assertNull($sale->fresh()->voided_at);
     }
 
+    public function test_voiding_the_same_sale_twice_changes_nothing_and_says_so_clearly(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 100, 'price' => 200, 'stock' => 5]);
+        $sale = $this->makeSale($shop->id, $product->id);
+        SaleItem::create([
+            'shop_id' => $shop->id, 'sale_id' => $sale->id, 'product_id' => $product->id,
+            'product_name' => 'Rice', 'unit_factor' => 1, 'qty' => 1, 'price' => 200, 'cost' => 100,
+        ]);
+        $product->decrement('stock', 1);
+
+        $this->actingAs($owner, 'web')->delete("/app/sales/{$sale->id}", ['reason' => 'mistake entry'])->assertRedirect();
+        $stockAfterFirst = $product->fresh()->stock;
+        $cashAfterFirst = (float) $shop->fresh()->cash_balance;
+
+        // second attempt (double tap / retried request) — a clear 422, and
+        // absolutely no second reversal of stock or cash
+        $this->actingAs($owner, 'web')->delete("/app/sales/{$sale->id}", ['reason' => 'mistake entry again'])
+            ->assertStatus(422);
+
+        $this->assertEquals($stockAfterFirst, $product->fresh()->stock);
+        $this->assertEquals($cashAfterFirst, (float) $shop->fresh()->cash_balance);
+        $this->assertSame('mistake entry', $sale->fresh()->voided_reason); // first reason kept
+    }
+
+    public function test_a_cashier_with_the_sales_void_permission_can_void(): void
+    {
+        [$shop] = $this->createShopWithOwner();
+        $cashier = User::create([
+            'shop_id' => $shop->id, 'name' => 'Trusted', 'phone' => '01900006666',
+            'password' => 'secret1', 'role' => 'staff', 'permissions' => ['sales_history', 'sales_void'], 'lang' => 'bn',
+        ]);
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 100, 'price' => 200, 'stock' => 5]);
+        $sale = $this->makeSale($shop->id, $product->id);
+
+        $this->actingAs($cashier, 'web')->delete("/app/sales/{$sale->id}", ['reason' => 'Customer cancelled'])
+            ->assertRedirect();
+
+        $this->assertNotNull($sale->fresh()->voided_at);
+        $this->assertSame($cashier->id, $sale->fresh()->voided_by);
+    }
+
+    public function test_an_owner_of_another_shop_cannot_void_this_shops_sale(): void
+    {
+        [$shopA] = $this->createShopWithOwner();
+        [, $ownerB] = $this->createShopWithOwner();
+        $product = Product::create(['shop_id' => $shopA->id, 'name' => 'Rice', 'cost' => 100, 'price' => 200, 'stock' => 5]);
+        $sale = $this->makeSale($shopA->id, $product->id);
+
+        $response = $this->actingAs($ownerB, 'web')->delete("/app/sales/{$sale->id}", ['reason' => 'cross shop attempt']);
+
+        $this->assertContains($response->status(), [403, 404]); // tenant isolation — never succeeds
+        $this->assertNull($sale->fresh()->voided_at);
+    }
+
+    public function test_the_void_time_limit_blocks_old_bills_but_an_owner_can_override(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['void_time_limit_days' => 7]);
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 100, 'price' => 200, 'stock' => 5]);
+        $oldSale = $this->makeSale($shop->id, $product->id, ['date' => now()->subDays(10)->toDateString()]);
+        $freshSale = $this->makeSale($shop->id, $product->id, ['date' => now()->toDateString()]);
+
+        // too old → blocked
+        $this->actingAs($owner, 'web')->delete("/app/sales/{$oldSale->id}", ['reason' => 'too late attempt'])
+            ->assertStatus(422);
+        $this->assertNull($oldSale->fresh()->voided_at);
+
+        // within the window → fine
+        $this->actingAs($owner, 'web')->delete("/app/sales/{$freshSale->id}", ['reason' => 'mistake entry'])
+            ->assertRedirect();
+        $this->assertNotNull($freshSale->fresh()->voided_at);
+
+        // owner override on the old one → allowed
+        $this->actingAs($owner, 'web')->delete("/app/sales/{$oldSale->id}", ['reason' => 'owner override case', 'override_window' => true])
+            ->assertRedirect();
+        $this->assertNotNull($oldSale->fresh()->voided_at);
+    }
+
+    public function test_no_time_limit_set_means_any_age_can_be_voided(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(); // void_time_limit_days stays null
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 100, 'price' => 200, 'stock' => 5]);
+        $ancient = $this->makeSale($shop->id, $product->id, ['date' => now()->subDays(400)->toDateString()]);
+
+        $this->actingAs($owner, 'web')->delete("/app/sales/{$ancient->id}", ['reason' => 'very old mistake'])
+            ->assertRedirect();
+
+        $this->assertNotNull($ancient->fresh()->voided_at);
+    }
+
     public function test_voiding_a_split_payment_sale_reverses_every_tender_and_the_due_remainder(): void
     {
         [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000, 'bank_balance' => 500]);

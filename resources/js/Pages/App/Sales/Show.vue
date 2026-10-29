@@ -7,8 +7,9 @@ import Sheet from '@/Components/Sheet.vue';
 import { useI18n } from '@/composables/useI18n';
 import { useToast } from '@/composables/useToast';
 import { usePermissions } from '@/composables/usePermissions';
+import { buildVoidPreview } from '@/support/saleVoidPreview';
 
-const props = defineProps({ sale: Object });
+const props = defineProps({ sale: Object, collectedTotal: Number });
 const { toast } = useToast();
 const { hasPerm } = usePermissions();
 
@@ -29,12 +30,35 @@ const dueRemainder = computed(() => {
     return Math.max(0, Number(props.sale.total) - tendered);
 });
 
-function voidSale() {
-    const reason = prompt(t('sales.voidReasonPrompt'));
-    if (reason === null) return;
+// Phase 39 — proper confirmation modal in place of the old browser
+// prompt(): mandatory reason (dropdown + free text) and a summary of
+// exactly what the void will reverse (display-only; the real reversal math
+// stays 100% server-side in SaleReversal).
+const voidSheet = ref(false);
+const voidReasonChoice = ref('');
+const voidReasonText = ref('');
+const voidSubmitting = ref(false);
+const voidPreview = computed(() => buildVoidPreview(props.sale, props.collectedTotal || 0));
+const voidReasonOptions = computed(() => [
+    t('sales.voidReasonWrongEntry'),
+    t('sales.voidReasonCustomerCancelled'),
+    t('sales.voidReasonDuplicate'),
+    t('sales.voidReasonOther'),
+]);
+const composedVoidReason = computed(() => {
+    const extra = voidReasonText.value.trim();
+    if (voidReasonChoice.value === t('sales.voidReasonOther')) return extra;
+    return extra ? `${voidReasonChoice.value} — ${extra}` : voidReasonChoice.value;
+});
+const voidReasonValid = computed(() => voidReasonChoice.value && composedVoidReason.value.length >= 5);
+
+function submitVoid() {
+    if (!voidReasonValid.value || voidSubmitting.value) return;
+    voidSubmitting.value = true;
     router.delete(route('app.sales.destroy', props.sale.id), {
-        data: { reason },
+        data: { reason: composedVoidReason.value },
         onSuccess: () => router.visit(route('app.sales')),
+        onFinish: () => (voidSubmitting.value = false),
     });
 }
 
@@ -242,9 +266,44 @@ const justBilled = ref(false);
             📅 {{ t('installment.splitButton') }}
         </button>
 
-        <button v-if="isOwner && !sale.voided_at" class="no-print btn ghost" style="margin-top:16px;color:var(--rose);border-color:var(--rose)" @click="voidSale">
+        <!-- hasPerm('sales_void') mirrors the server's perm:sales_void gate:
+             always true for an owner, true for a cashier only when the owner
+             granted the new sales_void permission (Phase 39) -->
+        <button v-if="hasPerm('sales_void') && !sale.voided_at" class="no-print btn ghost" style="margin-top:16px;color:var(--rose);border-color:var(--rose)" @click="voidSheet = true">
             {{ t('sales.voidButton') }}
         </button>
+
+        <Sheet v-model="voidSheet" :title="t('sales.voidSheetTitle')">
+            <div class="card" style="margin-bottom:12px;background:var(--roseSoft);border-color:var(--rose)">
+                <div style="font-size:13px;font-weight:700;margin-bottom:6px">{{ t('sales.voidSummaryTitle') }}</div>
+                <div style="font-size:12.5px;margin-bottom:2px">📦 {{ t('sales.voidSummaryStock') }}:</div>
+                <div v-for="(line, i) in voidPreview.items" :key="i" style="font-size:12.5px;display:flex;justify-content:space-between;padding:1px 0 1px 16px">
+                    <span>{{ line.name }}{{ line.variantLabel ? ' (' + line.variantLabel + ')' : '' }}</span><b>+{{ line.qty }}</b>
+                </div>
+                <div v-if="voidPreview.cashBack > 0" style="font-size:12.5px;display:flex;justify-content:space-between;padding:2px 0"><span>💵 {{ t('sales.voidSummaryCash') }}</span><b>− {{ money(voidPreview.cashBack) }}</b></div>
+                <div v-if="voidPreview.bankBack > 0" style="font-size:12.5px;display:flex;justify-content:space-between;padding:2px 0"><span>🏦 {{ t('sales.voidSummaryBank') }}</span><b>− {{ money(voidPreview.bankBack) }}</b></div>
+                <div v-if="voidPreview.dueReduction > 0" style="font-size:12.5px;display:flex;justify-content:space-between;padding:2px 0"><span>📒 {{ t('sales.voidSummaryDue') }}</span><b>− {{ money(voidPreview.dueReduction) }}</b></div>
+                <div v-if="voidPreview.advanceCredit > 0" style="font-size:12.5px;display:flex;justify-content:space-between;padding:2px 0"><span>💳 {{ t('sales.voidSummaryAdvance') }}</span><b>+ {{ money(voidPreview.advanceCredit) }}</b></div>
+                <div v-if="voidPreview.pointsDelta !== 0" style="font-size:12.5px;display:flex;justify-content:space-between;padding:2px 0"><span>⭐ {{ t('sales.voidSummaryPoints') }}</span><b>{{ voidPreview.pointsDelta > 0 ? '+' : '' }}{{ voidPreview.pointsDelta }}</b></div>
+            </div>
+
+            <div class="field">
+                <label>{{ t('sales.voidReasonLabel') }}</label>
+                <select v-model="voidReasonChoice">
+                    <option value="" disabled>{{ t('sales.voidReasonPlaceholder') }}</option>
+                    <option v-for="opt in voidReasonOptions" :key="opt" :value="opt">{{ opt }}</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>{{ t('sales.voidReasonTextLabel') }} <span v-if="voidReasonChoice !== t('sales.voidReasonOther')" style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
+                <textarea v-model="voidReasonText" rows="2"></textarea>
+            </div>
+
+            <button class="btn" style="background:var(--rose)" :disabled="!voidReasonValid || voidSubmitting" @click="submitVoid">
+                {{ voidSubmitting ? '...' : t('sales.voidConfirmButton') }}
+            </button>
+            <button class="btn ghost" style="margin-top:10px" @click="voidSheet = false">{{ t('common.cancel') }}</button>
+        </Sheet>
 
         <Sheet v-model="installmentSheet" :title="installmentForm.booking ? t('installment.bookingTitle') : t('installment.splitButton')">
             <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:14px;padding:10px;background:var(--goldSoft);border-radius:10px">

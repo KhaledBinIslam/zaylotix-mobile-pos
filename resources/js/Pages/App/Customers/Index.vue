@@ -143,6 +143,17 @@ function markPaid(c) {
     });
 }
 
+// Phase 39 — spend a void-created advance (store credit) against the
+// running due; server computes min(advance, due) itself, this just asks
+const applyingAdvance = ref(false);
+function applyAdvance(c) {
+    applyingAdvance.value = true;
+    router.post(route('app.payments.applyAdvance', c.id), {}, {
+        onSuccess: () => (collectSheet.value = false),
+        onFinish: () => (applyingAdvance.value = false),
+    });
+}
+
 // --- payment history ledger — date, amount, and the due snapshot right
 // before/after each collection (Khaled's explicit request: no way to look
 // back and see "who paid what, when, leaving how much still owed" before
@@ -340,7 +351,14 @@ function closeQueue() {
             <div v-if="collecting" class="card" style="margin-bottom:16px;text-align:center">
                 <div style="color:var(--mut);font-size:12px">{{ t('due.currentDue') }}</div>
                 <div style="font-size:28px;font-weight:850;color:var(--rose)">{{ money(collecting.due) }}</div>
+                <div v-if="Number(collecting.advance_balance) > 0" style="font-size:13px;font-weight:700;color:var(--green);margin-top:4px">💳 {{ t('due.advanceBalance') }}: {{ money(collecting.advance_balance) }}</div>
             </div>
+            <!-- Phase 39 — a voided bill's already-collected due sits as the
+                 customer's advance (store credit); one tap applies it against
+                 their running due. Pure internal transfer, no cash moves. -->
+            <button v-if="collecting && Number(collecting.advance_balance) > 0 && Number(collecting.due) > 0" class="btn ghost" style="margin-bottom:14px;color:var(--green);border-color:var(--green)" :disabled="applyingAdvance" @click="applyAdvance(collecting)">
+                {{ applyingAdvance ? '...' : t('due.applyAdvance', { amount: money(Math.min(Number(collecting.advance_balance), Number(collecting.due))) }) }}
+            </button>
             <div class="field">
                 <label>{{ t('due.collectAmount') }}</label>
                 <input v-model="collectForm.amount" type="number" :placeholder="String(collecting?.due || 0)">

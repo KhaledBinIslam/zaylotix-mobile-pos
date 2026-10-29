@@ -2,9 +2,13 @@
 
 namespace App\Support;
 
+use App\Models\ActivityLog;
 use App\Models\Customer;
+use App\Models\Payment;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Models\Promotion;
+use App\Models\Quotation;
 use App\Models\Sale;
 use App\Models\Shop;
 
@@ -73,7 +77,24 @@ class SaleReversal
             $tendered = (float) $sale->payments->sum('amount');
             $dueRemainder = (float) $sale->total - $tendered;
             if ($customer && $dueRemainder > 0) {
-                $customer->due = max(0, $customer->due - $dueRemainder);
+                // Phase 39: part of this bill's due may ALREADY have been
+                // collected (Payment rows tagged with this sale_id). That
+                // money is real and stays with the shop — per Khaled's
+                // explicit decision it becomes the customer's advance/store
+                // credit instead of a cash refund, spendable later from the
+                // due screen ("অগ্রিম সমন্বয়"). Only the still-outstanding
+                // part comes back off the running due. A collection taken
+                // WITHOUT picking an invoice (sale_id null) can't be
+                // attributed to this bill, so it's deliberately not counted
+                // — same reasoning as PaymentController::invoices().
+                $collected = min(
+                    (float) Payment::withoutGlobalScopes()->where('sale_id', $sale->id)->sum('amount'),
+                    $dueRemainder
+                );
+                $customer->due = max(0, $customer->due - ($dueRemainder - $collected));
+                if ($collected > 0) {
+                    $customer->advance_balance = (float) $customer->advance_balance + $collected;
+                }
             }
         } else {
             // Legacy pre-split-payment sale (or a pure-credit sale, which
@@ -84,16 +105,105 @@ class SaleReversal
             } elseif (in_array($sale->payment_mode, ['bkash', 'nagad'], true)) {
                 $lockedShop->bank_balance = max(0, $lockedShop->bank_balance - $sale->total);
             } elseif ($sale->payment_mode === 'credit' && $customer) {
-                $customer->due = max(0, $customer->due - $sale->total);
+                // same collected-due → advance handling as the split-payment
+                // branch above — a pure-credit sale is exactly the case where
+                // a later collection is most likely
+                $collected = min(
+                    (float) Payment::withoutGlobalScopes()->where('sale_id', $sale->id)->sum('amount'),
+                    (float) $sale->total
+                );
+                $customer->due = max(0, $customer->due - ((float) $sale->total - $collected));
+                if ($collected > 0) {
+                    $customer->advance_balance = (float) $customer->advance_balance + $collected;
+                }
             }
         }
 
         if ($customer) {
             $customer->total_spent = max(0, $customer->total_spent - $sale->total);
             $customer->visits = max(0, $customer->visits - 1);
+
+            // Phase 39: give redeemed points back, take earned points away —
+            // exactly undoing what checkout did to this customer's balance.
+            // Clamped at 0: the customer may have already spent the earned
+            // points elsewhere; a void must never push a balance negative.
+            $pointsDelta = (int) ($sale->points_redeemed ?? 0) - (int) ($sale->points_earned ?? 0);
+            if ($pointsDelta !== 0) {
+                $customer->loyalty_points = max(0, (int) $customer->loyalty_points + $pointsDelta);
+            }
+
             $customer->save();
+
+            self::reverseReferralBonus($sale, $customer, $lockedShop);
         }
 
+        // Phase 39: give the coupon/BOGO usage counters back. promotion_ids
+        // is only populated on sales created after its migration — null for
+        // every older sale, whose void simply skips this (same as before).
+        foreach ((array) ($sale->promotion_ids ?? []) as $promotionId) {
+            Promotion::withoutGlobalScopes()
+                ->whereKey($promotionId)->where('shop_id', $sale->shop_id)
+                ->where('used_count', '>', 0)->decrement('used_count');
+        }
+
+        // Phase 39: a sale converted from a quotation leaves that quotation
+        // stuck on 'converted', pointing at a now-dead bill — reopen it so
+        // it can be quoted/converted again, as if the conversion never
+        // happened. withoutGlobalScopes + explicit shop_id: this runs from
+        // the admin hard-delete path too, where no tenant is set.
+        Quotation::withoutGlobalScopes()
+            ->where('shop_id', $sale->shop_id)->where('sale_id', $sale->id)
+            ->update(['status' => 'open', 'sale_id' => null]);
+
         $lockedShop->save();
+    }
+
+    /**
+     * Khaled's Phase 39 decision: a referral bonus paid out because of this
+     * sale gets clawed back — but only when voiding this sale leaves the
+     * referred customer with no real (non-voided) sale at all, i.e. the
+     * referral genuinely hasn't produced a paying customer anymore. If they
+     * have other live sales, the bonus stands. referral_rewarded_at is
+     * cleared so their next "first" sale pays the referrer again, exactly
+     * like PosController's own grant condition re-evaluates it.
+     *
+     * The clawed-back amount comes from the grant's own Activity log row
+     * (meta.points — exact even if the owner changed referral_bonus_points
+     * since), falling back to the shop's current setting. Clamped at 0:
+     * the referrer may have already spent the points.
+     */
+    private static function reverseReferralBonus(Sale $sale, Customer $customer, Shop $lockedShop): void
+    {
+        if (! $customer->referred_by_customer_id || ! $customer->referral_rewarded_at) {
+            return;
+        }
+
+        $hasOtherLiveSale = Sale::withoutGlobalScopes()
+            ->where('customer_id', $customer->id)
+            ->where('id', '!=', $sale->id)
+            ->whereNull('voided_at')
+            ->exists();
+        if ($hasOtherLiveSale) {
+            return;
+        }
+
+        $grantLog = ActivityLog::withoutGlobalScopes()
+            ->where('shop_id', $sale->shop_id)
+            ->where('action', 'customer.referralReward')
+            ->where('meta->referred_customer_id', $customer->id)
+            ->latest('id')->first();
+        $bonus = (int) ($grantLog->meta['points'] ?? $lockedShop->referral_bonus_points ?? 0);
+
+        if ($bonus > 0) {
+            $referrer = Customer::withoutGlobalScopes()
+                ->whereKey($customer->referred_by_customer_id)->lockForUpdate()->first();
+            if ($referrer) {
+                $referrer->loyalty_points = max(0, (int) $referrer->loyalty_points - $bonus);
+                $referrer->save();
+            }
+        }
+
+        $customer->referral_rewarded_at = null;
+        $customer->save();
     }
 }

@@ -298,6 +298,23 @@ class SettingController extends Controller
         return back()->with('success', 'ডিফল্ট সাইজ/রং তালিকা সংরক্ষণ করা হয়েছে।');
     }
 
+    /**
+     * Phase 39 — "বিল N দিনের বেশি পুরনো হলে ভয়েড করা যাবে না"। Null
+     * (default, every existing shop) = no limit, behavior unchanged; mirrors
+     * shops.return_window_days. Route is owner-only — this is void policy,
+     * not a display preference.
+     */
+    public function updateVoidTimeLimit(Request $request)
+    {
+        $data = $request->validate([
+            'void_time_limit_days' => ['nullable', 'integer', 'min:1', 'max:365'],
+        ]);
+
+        Tenancy::shop()->update(['void_time_limit_days' => $data['void_time_limit_days'] ?? null]);
+
+        return back()->with('success', 'ভয়েডের সময়সীমা সংরক্ষণ করা হয়েছে।');
+    }
+
     /** Shop logo, printed on POS receipts and barcode labels once uploaded. */
     public function updateLogo(Request $request)
     {

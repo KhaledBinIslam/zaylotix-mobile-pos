@@ -11,6 +11,11 @@
 return [
     'pos' => ['label_bn' => 'বিক্রি (POS)', 'label_en' => 'Sell (POS)', 'category' => 'বিক্রি'],
     'sales_history' => ['label_bn' => 'বিক্রির ইতিহাস', 'label_en' => 'Sales history', 'category' => 'বিক্রি'],
+    // Phase 39 — void stays effectively owner-only until an owner
+    // deliberately grants this (money+stock reversal, so the default is the
+    // most restrictive): no existing staff row has it, and an owner passes
+    // hasPermission() unconditionally anyway.
+    'sales_void' => ['label_bn' => 'বিক্রি বাতিল (ভয়েড)', 'label_en' => 'Void sales', 'category' => 'বিক্রি'],
     'promotions' => ['label_bn' => 'অফার/কুপন ব্যবস্থাপনা', 'label_en' => 'Promotions/coupons management', 'category' => 'বিক্রি'],
     'online_business' => ['label_bn' => 'অনলাইন বিজনেস (চ্যানেল/অর্ডার)', 'label_en' => 'Online business (channels/orders)', 'category' => 'বিক্রি'],
 

@@ -14,7 +14,7 @@ class Sale extends Model
 
     protected $fillable = [
         'shop_id', 'customer_id', 'table_order_id', 'user_id', 'invoice_no', 'date', 'time',
-        'subtotal', 'discount', 'is_complimentary', 'service_charge', 'vat', 'total', 'profit', 'payment_mode', 'sale_type', 'counted_in_reports', 'prescription_note', 'coupon_code',
+        'subtotal', 'discount', 'is_complimentary', 'service_charge', 'vat', 'total', 'profit', 'payment_mode', 'sale_type', 'counted_in_reports', 'prescription_note', 'coupon_code', 'promotion_ids',
         'points_earned', 'points_redeemed',
         'voided_at', 'voided_reason', 'voided_by',
         'client_uuid',
@@ -31,6 +31,7 @@ class Sale extends Model
             'vat' => 'decimal:2',
             'total' => 'decimal:2',
             'profit' => 'decimal:2',
+            'promotion_ids' => 'array',
             'voided_at' => 'datetime',
         ];
     }

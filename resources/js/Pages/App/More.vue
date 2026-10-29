@@ -46,6 +46,15 @@ function setSyncMode(value) {
     router.patch(route('app.settings.offlineSyncMode'), { mode: value }, { preserveScroll: true });
 }
 
+// Phase 39 — owner-only void age-limit policy ("বিল N দিনের বেশি পুরনো হলে
+// ভয়েড নয়"); empty = no limit, the pre-existing behavior
+const voidLimitInput = ref(props.shop?.void_time_limit_days ?? '');
+function saveVoidLimit() {
+    router.patch(route('app.settings.voidTimeLimit'), {
+        void_time_limit_days: voidLimitInput.value === '' ? null : Number(voidLimitInput.value),
+    }, { preserveScroll: true });
+}
+
 // theme is client-only (localStorage, see useTheme.js) — purely a display
 // preference, not something that needs to sync across a shop's devices
 const theme = ref(resolvedTheme());
@@ -548,6 +557,14 @@ onMounted(() => {
                     <button :class="{ on: (shop?.offline_sync_mode || 'auto') === 'auto' }" @click="setSyncMode('auto')">{{ t('more.offlineSyncModeAuto') }}</button>
                     <button :class="{ on: shop?.offline_sync_mode === 'review' }" @click="setSyncMode('review')">{{ t('more.offlineSyncModeReview') }}</button>
                 </div>
+            </div>
+        </div>
+        <div v-if="isOwner" class="row" style="cursor:default">
+            <div class="ava">🗑️</div>
+            <div class="mid"><b>{{ t('more.voidTimeLimit') }}</b><span>{{ t('more.voidTimeLimitSub') }}</span></div>
+            <div class="end" style="display:flex;gap:6px;align-items:center">
+                <input v-model="voidLimitInput" type="number" inputmode="numeric" min="1" max="365" :placeholder="t('more.voidTimeLimitOff')" style="width:72px;margin:0;padding:6px 8px;font-size:13px">
+                <button class="btn sm" style="margin:0;width:auto;padding:6px 10px" @click="saveVoidLimit">{{ t('common.save') }}</button>
             </div>
         </div>
         <button v-if="hasPerm('settings')" class="row" style="width:100%;text-align:left" @click="logoSheet = true">

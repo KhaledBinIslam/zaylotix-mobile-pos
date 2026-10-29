@@ -2801,6 +2801,185 @@ search()` (ফার্মেসি-ভার্টিকাল-নির্দ�
   কিন্তু এটা পুরোপুরি ইতিমধ্যে টেস্ট করা `normalizeSearch`/`bestMatchTier`
   ফাংশনের সরল composition, নতুন কোনো লজিক নেই, তাই ঝুঁকি কম ধরা হলো।
 
+## Phase 39 — "ভুল বিক্রি বাতিল" (sale void) hardening — audit before build
+
+### হেডলাইন আবিষ্কার: void ফিচার already সম্পূর্ণ বানানো এবং production-এ চলছে
+
+কাজের অনুরোধে ধরে নেওয়া হয়েছিল void একটা নতুন ফিচার। কোড পড়ে দেখা গেল **এটা
+ইতিমধ্যেই পুরোপুরি বানানো, wired, এবং টেস্ট করা আছে** — নতুন করে বানালে এটাই
+হবে "দ্বিতীয় সমান্তরাল পথ", যেটা নিজের spec-ই নিষেধ করেছে। তাই Phase 39-এর
+আসল কাজ হলো: existing ফিচার আর spec-এর চাহিদার মধ্যে যে ফাঁকগুলো (gaps) আছে,
+শুধু সেগুলো বন্ধ করা — ছোট, surgical, additive patch, নতুন সিস্টেম নয়।
+
+**যা ইতিমধ্যে আছে (নিশ্চিত, কোড পড়ে):**
+- `app/Support/SaleReversal.php` — checkout যা করে তার সবকিছু উল্টায়: stock
+  (variant/batch FEFO-aware/serial/IMEI/fractional unit, shared-stock-pool-
+  aware কারণ `applyStockDelta()` নিজেই pool resolve করে), cash/bank
+  balance, customer due/total_spent/visits — সবকিছু `max(0, ...)` দিয়ে
+  ক্ল্যাম্প করা।
+- `SalesController::destroy()` (`app/Http/Controllers/App/SalesController.php:68-105`)
+  — `DELETE /app/sales/{sale}`, route `owner` middleware-এ gated
+  (`routes/web.php:317-320`), reason বাধ্যতামূলক (min 5 char), transaction
+  + shop row lock, `Activity::log('sale.void', ...)`, soft-void
+  (`voided_at/voided_reason/voided_by`), **ইতিমধ্যে return/exchange হওয়া বিল
+  ব্লক করে** (ডাবল-ক্রেডিট এড়াতে — spec-এর নিজের fallback অপশনের সাথেই মিলে
+  যায়)।
+- `Sale`-এর global scope (`app/Models/Sale.php:57-60`) স্বয়ংক্রিয়ভাবে
+  voided বিল বাদ দেয় সব জায়গা থেকে — Reports/Dashboard/export কোনো আলাদা
+  ফিল্টার ছাড়াই ঠিকমতো কাজ করে (`Reports.php` এর ডকব্লক অনুযায়ী)।
+- `tests/Feature/SaleVoidTest.php` — ৫টা টেস্ট (owner void করতে পারে+stock/
+  cash ফেরত, voided বিল default query-তে বাদ, voided বিল show page-এ
+  দেখা যায়, cashier পারমিশন থাকলেও পারে না, split-payment+due reversal)।
+
+### যা গ্যাপ (spec-এর চাহিদার সাথে না মেলা অংশ) — এগুলোই Phase 39-এর আসল scope
+
+1. **লয়্যালটি পয়েন্ট ফেরত হয় না** — `SaleReversal::reverse()` কখনোই
+   `customer.loyalty_points` ছোঁয় না। `Sale.points_earned`/`points_redeemed`
+   কলাম already আছে, তাই ফিক্স সহজ: void করলে `points_redeemed` ফেরত
+   (কাস্টমার খরচ করেছিল, বাতিলে ফেরত), `points_earned` বাদ (বাতিল হওয়া
+   বিল থেকে অর্জিত পয়েন্ট রাখা ঠিক না) — দুটোই `max(0, ...)` ক্ল্যাম্প।
+2. **Promotion.used_count ফেরত হয় না** — `PosController::performCheckout()`
+   কুপন ও BOGO উভয়ের জন্য `used_count` বাড়ায় (লাইন ৯৬১-৯৬৬), কিন্তু কোন
+   `Promotion` id(গুলো) প্রযোজ্য হয়েছিল তা `Sale`-এ কোথাও সংরক্ষিত হয় না —
+   `coupon_code` (string) আছে কিন্তু BOGO-র triggered id গুলো সম্পূর্ণ
+   ephemeral। **ফিক্স:** নতুন additive nullable কলাম `sales.promotion_ids`
+   (JSON array, migration), checkout-এ পপুলেট করা (কুপন + BOGO উভয়ের id
+   একসাথে), void-এ `SaleReversal` প্রতিটা id-র `used_count` কমাবে
+   (ক্ল্যাম্প করে, যাতে অন্য বিল একই promotion ব্যবহার করলেও নেগেটিভ না হয়)।
+3. **রেফারেল বোনাস ফেরত হয় না** — `referred_by_customer_id`/
+   `referral_rewarded_at`/referrer-এর পয়েন্ট — এটা **জিজ্ঞেস করার তালিকায়**
+   (নিচে দেখুন), কারণ "এই বিলটাই কি সত্যিই প্রথম বিল ছিল" voided অবস্থায়
+   বিশ্বাসযোগ্যভাবে পুনর্গণনা করা যায় না যদি কাস্টমার এর মধ্যে আরও বিল
+   করে থাকে, আর referrer ইতিমধ্যে সেই পয়েন্ট খরচ করে ফেললে claw-back
+   নেগেটিভ ব্যালেন্সের ঝুঁকি তৈরি করে। আন্দাজ করে একটা ভঙ্গুর সমাধান বানানোর
+   চেয়ে জিজ্ঞেস করা ভালো মনে হয়েছে।
+4. **Idempotency — ইতিমধ্যে নিরাপদ, কিন্তু by accident, by design না।**
+   `destroy()`-এ `isVoided()` এর explicit চেক নেই, কিন্তু `Sale`-এর global
+   scope (`whereNull('voided_at')`) থাকায় `Sale::findOrFail($sale)` একটা
+   already-voided বিলের জন্য স্বয়ংক্রিয়ভাবে **404 ছুঁড়ে** — তাই দ্বিতীয়বার
+   ভয়েডের চেষ্টায় কখনো ডাবল-রিভার্সাল **হয় না** (টাকা/স্টক নিরাপদ)। কিন্তু
+   ইউজার একটা raw 404 দেখে, "এটা আগেই বাতিল হয়ে গেছে" এমন পরিষ্কার বার্তা
+   না। **ফিক্স:** explicit `Sale::withVoided()->findOrFail()` + `if
+   ($saleModel->isVoided())` চেক দিয়ে পরিষ্কার বাংলা এরর বার্তা, আর একটা
+   টেস্ট লিখে প্রমাণ করা (এখন পর্যন্ত কোনো টেস্ট এই কেসটা ঢাকে না)।
+5. **কারণ ড্রপডাউন + নিশ্চিতকরণ সারাংশ নেই** — এখনকার ফ্রন্টএন্ড
+   (`Sales/Show.vue:32-39`) শুধু browser `prompt()` ব্যবহার করে। **ফিক্স:**
+   একটা proper modal (বিদ্যমান `Sheet`/ডায়ালগ প্যাটার্ন পুনর্ব্যবহার
+   করে) — ড্রপডাউন (কয়েকটা common কারণ + "অন্যান্য" ফ্রি-টেক্সট) এবং নিচে
+   কী কী ফেরত/বাদ যাবে তার সারাংশ (স্টক কত আইটেম, ক্যাশ/ব্যাংক কত, বাকি কত
+   কমবে, পয়েন্ট কত বদলাবে) — এই সারাংশ পুরোপুরি client-side, `sale.items`/
+   `sale.payments` prop থেকে গণনা করা যায় (পেজে already লোড করা আছে), তাই
+   নতুন backend endpoint লাগবে না — শুধু `SaleReversal`-এর অঙ্কটা মিরর করা
+   একটা pure JS ফাংশন (`resources/js/support/saleVoidPreview.js`, টেস্টেবল,
+   display-only — আসল reversal সবসময় 100% server-side-ই থাকবে)।
+6. **সময়সীমা সেটিং নেই** — নতুন nullable shop-level সেটিং
+   `void_time_limit_days` (ডিফল্ট null = কোনো সীমা নেই, বিদ্যমান আচরণ
+   অপরিবর্তিত)। সেট থাকলে `destroy()` বিলের `created_at` থেকে দিন গুনে
+   ব্লক করবে, পরিষ্কার বার্তা দিয়ে। (spec-এর "শিফট/দিন বন্ধ হলে শুধু মালিক"
+   অংশ আসলে already true — void route already owner-only, তাই এই উপ-
+   শর্তের জন্য আলাদা কিছু লাগছে না।)
+7. **Delegable permission নেই** — এখন void সম্পূর্ণ hard `owner` middleware
+   দিয়ে gated, মালিক চাইলেও কোনো cashier-কে দিতে পারেন না। **ফিক্স:**
+   `config/staff_permissions.php`-এ নতুন `sales_void` key (ডিফল্ট কোনো
+   শপেই granted না, pure opt-in), route-এর `owner` middleware বদলে
+   owner-OR-has-permission('sales_void') চেক (বিদ্যমান `perm:` middleware-
+   এর প্যাটার্ন অনুসরণ করে) — কোনো শপ এই পারমিশন owner কখনো না দিলে
+   behavior অবিকল আগের মতোই থাকবে (owner-only)।
+8. **কোটেশন থেকে রূপান্তরিত বিল ভয়েড হলে কোটেশন status ফেরে না** —
+   `performCheckout()` কনভার্সনে status='converted' সেট করে
+   (`quotation_id` থাকলে), কিন্তু `destroy()` ভয়েডের সময় এটা উল্টায় না —
+   কোটেশনটা চিরকালের জন্য "converted" থেকে যায়, একটা এখন-বাতিল বিল পয়েন্ট
+   করে। এটা স্পষ্টতই ভুল আচরণ (sale-এর ঠিক সেই রেফারেন্সটাই আর বৈধ না),
+   তাই **void করলে কোটেশন status 'open'-এ ফিরবে, sale_id null হবে**
+   ('accepted' বলে কোনো status এই সিস্টেমে নেই — আসল মানগুলো open/
+   converted/cancelled) — নিরাপদ ও সুস্পষ্টভাবে সঠিক, জিজ্ঞেস না করেই
+   করা হলো।
+9. **`sales:reconcile` কমান্ড নেই** — spec চাচ্ছে বাতিল বিলের স্টক/টাকা
+   ঠিকমতো উল্টেছে কিনা যাচাই করার একটা diagnostic। **যা বাস্তবসম্মতভাবে
+   চেক করা যায়** (কোনো "sale-এর আগের snapshot" সংরক্ষিত নেই বলে পুরো historical
+   diff সম্ভব না): (a) কোনো voided বিলে একই সাথে `SalesReturn` row আছে কিনা
+   (এটা হওয়ার কথা না, থাকলে ডাবল-রিভার্সালের ইঙ্গিত); (b) কোনো voided বিলের
+   customer-এর due/total_spent/visits আসলেই reversal অনুযায়ী কমেছে কিনা
+   (ActivityLog-এর meta.total-এর সাথে মিলিয়ে, যতটা সম্ভব আনুমানিক); (c)
+   কোনো বিল দুইবার voided_at পেয়েছে কিনা (স্ট্রাকচারালি অসম্ভব হওয়ার কথা,
+   সেফটি-নেট হিসেবে)। **এটা জিজ্ঞেস করার তালিকায়** — কতটা গভীর reconcile
+   দরকার confirm করে নিচ্ছি, যাতে একটা false-confidence টুল না বানাই।
+
+### টেস্ট পরিকল্পনা
+- "বিক্রি + বাতিল = কিছুই হয়নি" — `SaleVoidTest.php`-এ বিদ্যমান ৫টার উপর
+  নতুন কম্বিনেশন যোগ: লয়্যালটি রিডিম+আর্ন একসাথে, কুপন+BOGO একসাথে,
+  batch-tracked পণ্য, serial/IMEI পণ্য, shared-stock-pool (Baby Park/
+  Liberty), ভগ্নাংশ ইউনিট (ওজন-ভিত্তিক), কোটেশন থেকে রূপান্তরিত বিল।
+  প্রতিটায় before-sale ও after-void অবস্থা bit-for-bit সমান তা assert করা।
+- ডাবল-ভয়েড টেস্ট (এখন পরিষ্কার বার্তা, কোনো ডাবল-রিভার্সাল না)।
+- ইতিমধ্যে return/exchange হওয়া বিল ভয়েড ব্লক (বিদ্যমান আচরণ, রিগ্রেশন-
+  প্রুফ টেস্ট যোগ)।
+- অন্য শপের বিল ভয়েডের চেষ্টা (tenant isolation, ব্যর্থ হতে হবে)।
+- `sales_void` পারমিশন ছাড়া/সহ cashier — দুই অবস্থা।
+- সময়সীমা সেটিং অন/অফ।
+- `php artisan sales:reconcile --dry-run` কমান্ডের নিজস্ব টেস্ট।
+
+### "জিজ্ঞেস করো" তালিকা (Phase 39 শুরুর আগে Khaled-কে জিজ্ঞাসা)
+0. **বাকির বিল ভয়েড, কিন্তু বাকি ইতিমধ্যে (আংশিক/পুরো) আদায় হয়ে গেছে** —
+   `payments` টেবিলে (due collection ledger, `payments.sale_id` লিংক-সহ) সেই
+   আদায়ের row আছে। বর্তমান `SaleReversal` এগুলো একদমই দেখে না — শুধু
+   না-আদায়-হওয়া remainder-টা due থেকে কমায়, আর আদায় হওয়া টাকা চুপচাপ
+   দোকানের কাছেই থেকে যায় (কাস্টমার একটা বাতিল বিলের টাকা দিয়ে বসে
+   থাকেন)। সিদ্ধান্ত দরকার: আদায় হওয়া টাকাটা (ক) ক্যাশ রিফান্ড (shop-এর
+   cash_balance কমবে, কাস্টমারকে হাতে ফেরত), নাকি (খ) কাস্টমারের ক্রেডিট/
+   অগ্রিম হিসেবে জমা (পরের কেনাকাটায় কাটা যাবে)?
+1. **রেফারেল বোনাস** — voided বিল customer-এর প্রথম বিল ছিল আর তার জন্য
+   referrer বোনাস পয়েন্ট পেয়েছিলেন এমন ক্ষেত্রে, ভয়েডে কি সেই বোনাস
+   claw-back করা উচিত? নাকি referrer-এর পয়েন্ট ছুঁয়ে না রাখাই নিরাপদ
+   (রেফারেল বোনাসকে "একবার দেওয়া, ফেরত না নেওয়া" হিসেবে রাখা)?
+2. **`sales:reconcile` কতটা গভীর হবে** — উপরে বর্ণিত ৩-পয়েন্ট (return-সহ
+   voided, due/spent mismatch, double-void সেফটি-নেট) যথেষ্ট, নাকি আরও কিছু
+   নির্দিষ্ট চেক চান?
+3. **Delegable permission** — `sales_void` নামটা ঠিক আছে, নাকি অন্য নাম/
+   ক্যাটাগরি চান (`config/staff_permissions.php`-এ 'বিক্রি' ক্যাটাগরিতে
+   রাখার প্রস্তাব)?
+4. **সময়সীমা সেটিং-এর ডিফল্ট মান** — "কোনো সীমা নেই" ডিফল্ট ঠিক আছে, নাকি
+   একটা যুক্তিসঙ্গত ডিফল্ট (যেমন ৭ দিন) চান নতুন শপের জন্য?
+
+### Khaled-এর সিদ্ধান্ত (প্রশ্নের উত্তর) ও বাস্তবায়িত রূপ — সম্পূর্ণ, সব টেস্ট green
+
+- **আদায় হওয়া বাকি → কাস্টমারের ক্রেডিট/অগ্রিম।** নতুন
+  `customers.advance_balance` কলাম (negative due নয় — `due:reconcile`
+  negative due-কে corruption signal ধরে, তাই অগ্রিমের নিজের কলাম লাগত)।
+  Void-এ sale_id-ট্যাগ করা collection-গুলোর যোগফল advance হয়ে যায়
+  (dueRemainder-এ ক্যাপ করা), শুধু এখনো-না-আদায় অংশটা due থেকে কমে, টাকা
+  দোকানের কাছেই থাকে। খরচ করা হয় বাকি-তোলা শিটের নতুন "অগ্রিম সমন্বয়"
+  বাটন দিয়ে (`PaymentController::applyAdvance` — pure transfer, cash
+  অপরিবর্তিত, method='advance' Payment row সহ ledger-এ দৃশ্যমান)। sale_id
+  ছাড়া general collection ইচ্ছাকৃতভাবে ধরা হয় না (PaymentController::
+  invoices()-এর একই যুক্তি)।
+- **রেফারেল বোনাস → claw-back,** তবে শুধু তখনই যখন void-এর পর referred
+  কাস্টমারের আর কোনো live (non-voided) বিল থাকে না — অন্য বিল থাকলে
+  রেফারেলটা সত্যিই একজন paying কাস্টমার এনেছে, বোনাস থাকে। পরিমাণ grant-এর
+  নিজের Activity log (meta.points) থেকে, fallback বর্তমান সেটিং; ০-এ
+  ক্ল্যাম্প; `referral_rewarded_at` reset হয় যাতে পরের "প্রথম" বিলে আবার
+  বোনাস পায় (checkout-এর নিজের শর্ত voided বিল এমনিতেই গোনে না)।
+- **`sales:reconcile`** — প্রস্তাবিত ৩টা চেক-ই: voided+return conflict,
+  voided বিলের কাস্টমারের negative balance (due/advance/points/visits),
+  একই বিলে একাধিক void activity entry। Read-only, `--shop=`/`--dry-run`।
+- **সময়সীমা ডিফল্ট: কোনো সীমা নেই** (null)। মালিক More পেজের নতুন
+  owner-only row থেকে সেট করেন; `return_window_days`-এর হুবহু প্যাটার্নে
+  মালিকের `override_window` escape hatch সহ।
+
+বাকি সব গ্যাপও বাস্তবায়িত: loyalty points reversal (`SaleReversal`-এ),
+`sales.promotion_ids` JSON কলাম + checkout-এ পপুলেট + void-এ `used_count`
+ফেরত (০-এ গার্ড), explicit idempotency (`withVoided()->findOrFail` +
+পরিষ্কার ৪২২ বার্তা), কোটেশন reopen, `perm:sales_void` route (মালিক সবসময়
+pass, staff শুধু grant পেলে — config/staff_permissions.php-এ নতুন key,
+ডিফল্টে কাউকে দেওয়া নেই), Sales/Show.vue-তে prompt()-এর বদলে Sheet modal
+(কারণ ড্রপডাউন+টেক্সট, client-side সারাংশ `support/saleVoidPreview.js`
+দিয়ে — display-only, আসল reversal সবসময় server-side)।
+
+**টেস্ট:** SaleVoidTest ৫→১০, নতুন SaleVoidCompletenessTest (৭টা — আসল
+checkout→void, loyalty/coupon+BOGO/advance/referral দুই কেস/quotation),
+SalesReconcileCommandTest (২), vitest saleVoidPreview (৬)। পুরো suite:
+1295 PHP + 184 JS pass, build সফল।
+
 ## Definition-of-done checklist (updated after every phase)
 
 - [x] Per-business-type + mixed-shop smoke tests all passing (`shop:smoke-test --all`, Phase 0.6) — re-verified 2026-10-20, all 8 types OK
