@@ -171,6 +171,7 @@ class SettingController extends Controller
             'website' => ['nullable', 'string', 'max:255'],
             'trade_license_no' => ['nullable', 'string', 'max:100'],
             'tin_no' => ['nullable', 'string', 'max:100'],
+            'label_header' => ['nullable', 'string', 'max:255'],
         ]);
 
         Tenancy::shop()->update(array_map(fn ($v) => $v ?: null, $data));

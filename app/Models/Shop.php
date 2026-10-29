@@ -13,7 +13,7 @@ class Shop extends Model
     // Shop itself is NOT tenant-scoped (it *is* the tenant) — access control
     // happens via ShopPolicy (owner can only see their own; admin sees all).
     protected $fillable = [
-        'parent_shop_id', 'brought_by_ambassador_id', 'is_warehouse', 'business_type_id', 'name', 'name_en', 'phone', 'email', 'website', 'kitchen_whatsapp', 'payment_timing', 'kitchen_print_order', 'area', 'owner_name', 'support_contact_name', 'support_contact_phone', 'logo_path', 'receipt_footer', 'bin_no', 'trade_license_no', 'tin_no', 'memo_settings', 'label_settings', 'mobile_nav_items', 'offline_sync_mode',
+        'parent_shop_id', 'brought_by_ambassador_id', 'is_warehouse', 'business_type_id', 'name', 'name_en', 'label_header', 'phone', 'email', 'website', 'kitchen_whatsapp', 'payment_timing', 'kitchen_print_order', 'area', 'owner_name', 'support_contact_name', 'support_contact_phone', 'logo_path', 'receipt_footer', 'bin_no', 'trade_license_no', 'tin_no', 'memo_settings', 'label_settings', 'mobile_nav_items', 'offline_sync_mode',
         'sales_mode', 'hardware_scanner_enabled', 'lang', 'plan', 'account_type', 'monthly_fee', 'staff_limit', 'status',
         'subscription_start', 'subscription_expiry',
         'cash_balance', 'bank_balance', 'capital',
@@ -208,6 +208,22 @@ class Shop extends Model
         return $this->hasMany(Shop::class, 'parent_shop_id');
     }
 
+    /**
+     * The barcode-sticker header this shop prints -- label_header is a
+     * business-level override (only ever set on a main shop), so a branch
+     * always resolves through its parent: both Baby Park and Liberty print
+     * the exact same header once it's set once, on Baby Park. Blank
+     * anywhere in the chain falls back to THIS shop's own name, so an
+     * unrelated shop that never touched this field keeps printing exactly
+     * what it always has.
+     */
+    public function labelHeader(): string
+    {
+        $mainShop = $this->parent_shop_id ? ($this->parentShop ?? $this) : $this;
+
+        return $mainShop->label_header ?: $this->name;
+    }
+
     public function owner()
     {
         return $this->hasOne(User::class)->where('role', 'owner');
@@ -312,6 +328,12 @@ class Shop extends Model
         $data['memo_settings'] = $this->memoSettings();
         $data['label_settings'] = $this->labelSettings();
         $data['mobile_nav_items'] = $this->mobileNavItems();
+        // the RAW label_header column stays as-is above (the settings form needs
+        // to see this shop's own unresolved value, not a filled-in fallback, or
+        // saving the form unchanged would silently turn "inherits from main shop"
+        // into "pinned to whatever it resolved to today"). This resolved key is
+        // what a barcode label actually prints -- see labelHeader().
+        $data['resolved_label_header'] = $this->labelHeader();
 
         return $data;
     }
