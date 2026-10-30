@@ -133,7 +133,7 @@ function sendMemoWA() {
     if (settings.show_tendered_change && change > 0) totals.push(`ফেরত: ${money(change)}`);
     if (due > 0) totals.push(`বাকি বিল: ${money(due)}`);
 
-    const footerLines = [shop.value?.receipt_footer || 'ধন্যবাদ! আবার আসবেন 🙏'];
+    const footerLines = [shop.value?.receipt_footer || 'ধন্যবাদ! আবার আসবেন'];
     if (settings.show_exchange_policy && settings.exchange_policy_text) footerLines.push(settings.exchange_policy_text);
 
     const divider = '─'.repeat(16);

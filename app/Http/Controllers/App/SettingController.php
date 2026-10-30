@@ -216,6 +216,11 @@ class SettingController extends Controller
             'exchange_policy_text' => ['nullable', 'string', 'max:500'],
             'show_shop_qr' => ['required', 'boolean'],
             'paper_width' => ['required', 'in:58mm,80mm,a4'],
+            // `sometimes`: an old cached bundle posting the pre-Phase-45
+            // payload simply falls back to the defaults-merge, same pattern
+            // as updateLabelSettings()'s Phase 41 keys.
+            'show_logo' => ['sometimes', 'boolean'],
+            'show_frame' => ['sometimes', 'boolean'],
         ]);
 
         Tenancy::shop()->update(['memo_settings' => $data]);

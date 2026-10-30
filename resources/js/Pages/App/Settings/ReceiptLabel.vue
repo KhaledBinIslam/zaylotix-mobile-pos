@@ -33,6 +33,7 @@ const memoForm = useForm({
     show_tendered_change: ms.show_tendered_change, show_vat_inclusive_note: ms.show_vat_inclusive_note,
     show_exchange_policy: ms.show_exchange_policy, exchange_policy_text: ms.exchange_policy_text || '',
     show_shop_qr: ms.show_shop_qr, paper_width: ms.paper_width,
+    show_logo: ms.show_logo ?? true, show_frame: ms.show_frame ?? false,
 });
 function saveMemoSettings() {
     memoForm.patch(route('app.settings.memo'), { preserveScroll: true });
@@ -144,6 +145,8 @@ const bleScan = useBluetoothPrinterScan();
         <div class="grid-2col" style="display:grid;grid-template-columns:1fr;gap:14px">
             <div class="card">
                 <h3 style="margin:0 0 10px">মেমোতে কী দেখাবে</h3>
+                <label class="chk"><input type="checkbox" v-model="memoForm.show_logo"> দোকানের লোগো</label>
+                <label class="chk"><input type="checkbox" v-model="memoForm.show_frame"> পুরো মেমোর চারপাশে ফ্রেম/বর্ডার</label>
                 <label class="chk"><input type="checkbox" v-model="memoForm.show_email"> ইমেইল</label>
                 <label class="chk"><input type="checkbox" v-model="memoForm.show_website"> ওয়েবসাইট/Facebook</label>
                 <label class="chk"><input type="checkbox" v-model="memoForm.show_bin"> BIN (VAT চালু থাকলে)</label>

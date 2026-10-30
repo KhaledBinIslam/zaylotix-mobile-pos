@@ -129,6 +129,43 @@ class ReceiptAndLabelSettingsTest extends TestCase
         $this->assertTrue($shop->memoSettings()['show_bin']); // untouched defaults still present
     }
 
+    public function test_logo_defaults_on_and_frame_defaults_off_preserving_old_memos(): void
+    {
+        [$shop] = $this->createShopWithOwner();
+
+        $this->assertTrue($shop->memoSettings()['show_logo']); // logo already showed automatically once uploaded
+        $this->assertFalse($shop->memoSettings()['show_frame']); // brand new field -- must default off
+    }
+
+    public function test_owner_can_hide_the_logo_and_turn_on_the_frame(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+
+        $payload = array_merge(Shop::MEMO_SETTINGS_DEFAULTS, [
+            'show_logo' => false, 'show_frame' => true,
+        ]);
+
+        $this->actingAs($owner, 'web')->patch('/app/settings/memo', $payload)->assertRedirect();
+
+        $shop->refresh();
+        $this->assertFalse($shop->memoSettings()['show_logo']);
+        $this->assertTrue($shop->memoSettings()['show_frame']);
+    }
+
+    public function test_an_old_cached_bundle_payload_without_the_new_keys_still_saves(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+
+        $payload = Shop::MEMO_SETTINGS_DEFAULTS;
+        unset($payload['show_logo'], $payload['show_frame']);
+
+        $this->actingAs($owner, 'web')->patch('/app/settings/memo', $payload)->assertRedirect();
+
+        $shop->refresh();
+        $this->assertTrue($shop->memoSettings()['show_logo']); // defaults-merge fills them back in
+        $this->assertFalse($shop->memoSettings()['show_frame']);
+    }
+
     public function test_owner_can_enable_the_shop_qr_setting(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();

@@ -79,8 +79,8 @@ watch(() => [props.sale.id, props.sale.invoice_no, settings.value.show_shop_qr, 
 </script>
 
 <template>
-    <div class="receipt-memo" :class="'paper-' + (settings.paper_width || '58mm').replace('mm', '')">
-        <img v-if="shop?.logo_url" :src="shop.logo_url" class="rm-logo">
+    <div class="receipt-memo" :class="['paper-' + (settings.paper_width || '58mm').replace('mm', ''), { 'rm-framed': settings.show_frame }]">
+        <img v-if="shop?.logo_url && settings.show_logo !== false" :src="shop.logo_url" class="rm-logo">
         <h3>{{ shop?.name || 'Zaylotix POS' }}</h3>
         <div class="rc-sub">
             📞 {{ shop?.phone }}<template v-if="shop?.area"> • {{ shop.area }}</template>
@@ -120,7 +120,7 @@ watch(() => [props.sale.id, props.sale.invoice_no, settings.value.show_shop_qr, 
             <span v-if="sale.points_earned">{{ t('pos.pointsEarnedReceipt', { n: sale.points_earned }) }}</span>
         </div>
         <div v-if="dueRemainder > 0" class="rm-due">বাকি বিল — {{ money(dueRemainder) }}</div>
-        <div class="rc-f">{{ shop?.receipt_footer || 'ধন্যবাদ! আবার আসবেন 🙏' }}</div>
+        <div class="rc-f">{{ shop?.receipt_footer || 'ধন্যবাদ! আবার আসবেন' }}</div>
         <div v-if="settings.show_exchange_policy && settings.exchange_policy_text" class="rm-exchange">{{ settings.exchange_policy_text }}</div>
         <template v-if="showBarcodeAndQr">
             <div class="rm-barcode-wrap"><svg :id="barcodeId"></svg></div>
@@ -166,4 +166,11 @@ watch(() => [props.sale.id, props.sale.invoice_no, settings.value.show_shop_qr, 
 /* on-screen (settings preview) sizing — the @media print block in
    Sales/Show.vue takes over width/padding for the real printed page */
 .receipt-memo { width: 280px; margin: 0 auto; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px; }
+
+/* Phase 45 — optional solid frame around the whole memo (Baby Park's
+   "professional framed receipt" ask). A real printed border, so it must
+   survive both the @media print path (which strips the preview border
+   above via `border: none !important`) and the Bluetooth capture — hence
+   its own class with !important of its own, only when the toggle is on. */
+.receipt-memo.rm-framed { border: 2px solid #000 !important; border-radius: 0; padding: 12px 10px !important; }
 </style>
