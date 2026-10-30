@@ -20,16 +20,23 @@ object TsplImageEncoder {
      * Packs a widthPx×heightPx monochrome image into TSPL's row-major
      * 1-bit-per-pixel byte layout. `isBlack(x, y)` returns true for a
      * pixel that should print as a dark dot.
+     *
+     * Bit polarity here is 0 = ink/black, 1 = blank/white — confirmed
+     * against a live XP-365B print: the "obvious" TSPL-spec polarity
+     * (1 = black) printed every label fully inverted (white text on a
+     * solid black label). This clone firmware's BITMAP command reads the
+     * opposite polarity, so the byte array starts all-0xFF (blank) and
+     * black pixels clear their bit.
      */
     fun packBitmap(widthPx: Int, heightPx: Int, isBlack: (x: Int, y: Int) -> Boolean): ByteArray {
         val stride = bytesPerRow(widthPx)
-        val out = ByteArray(stride * heightPx)
+        val out = ByteArray(stride * heightPx) { 0xFF.toByte() }
         for (y in 0 until heightPx) {
             for (x in 0 until widthPx) {
                 if (isBlack(x, y)) {
                     val byteIndex = y * stride + x / 8
                     val bitIndex = 7 - (x % 8)
-                    out[byteIndex] = (out[byteIndex].toInt() or (1 shl bitIndex)).toByte()
+                    out[byteIndex] = (out[byteIndex].toInt() and (1 shl bitIndex).inv()).toByte()
                 }
             }
         }

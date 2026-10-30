@@ -16,29 +16,30 @@ class TsplImageEncoderTest {
     }
 
     @Test
-    fun `packBitmap sets MSB for the leftmost pixel`() {
-        // a single black pixel at x=0,y=0 in an 8x1 image -> byte 0b10000000
+    fun `packBitmap clears the MSB for the leftmost pixel`() {
+        // polarity is inverted (0 = ink): a black pixel at x=0,y=0 in an 8x1
+        // image clears bit 7, everything else stays 1 -> byte 0b01111111
         val out = TsplImageEncoder.packBitmap(8, 1) { x, y -> x == 0 && y == 0 }
-        assertArrayEquals(byteArrayOf(0x80.toByte()), out)
+        assertArrayEquals(byteArrayOf(0x7F), out)
     }
 
     @Test
-    fun `packBitmap sets LSB for the rightmost pixel of a byte`() {
+    fun `packBitmap clears the LSB for the rightmost pixel of a byte`() {
         val out = TsplImageEncoder.packBitmap(8, 1) { x, y -> x == 7 && y == 0 }
-        assertArrayEquals(byteArrayOf(0x01), out)
+        assertArrayEquals(byteArrayOf(0xFE.toByte()), out)
     }
 
     @Test
-    fun `an all-black row packs to all 0xFF bytes`() {
+    fun `an all-black row packs to all-zero bytes`() {
         val out = TsplImageEncoder.packBitmap(16, 1) { _, _ -> true }
-        assertArrayEquals(byteArrayOf(0xFF.toByte(), 0xFF.toByte()), out)
+        assertArrayEquals(byteArrayOf(0x00, 0x00), out)
     }
 
     @Test
-    fun `an all-white image packs to all-zero bytes`() {
+    fun `an all-white image packs to all 0xFF bytes`() {
         val out = TsplImageEncoder.packBitmap(16, 2) { _, _ -> false }
         assertEquals(4, out.size) // 2 bytes/row * 2 rows
-        assertArrayEquals(ByteArray(4), out)
+        assertArrayEquals(byteArrayOf(0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte()), out)
     }
 
     @Test
@@ -46,8 +47,8 @@ class TsplImageEncoderTest {
         // 10px wide -> 2 bytes/row; pixel 9 (last column) must land in byte 1, bit 6
         val out = TsplImageEncoder.packBitmap(10, 1) { x, y -> x == 9 }
         assertEquals(2, out.size)
-        assertEquals(0, out[0].toInt())
-        assertEquals(0b01000000, out[1].toInt() and 0xFF)
+        assertEquals(0xFF, out[0].toInt() and 0xFF)
+        assertEquals(0b10111111.toByte().toInt() and 0xFF, out[1].toInt() and 0xFF)
     }
 
     @Test
