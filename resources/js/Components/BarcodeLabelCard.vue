@@ -200,6 +200,13 @@ watch(() => [props.shop?.resolved_label_header, props.shop?.name, props.settings
    offset harmlessly. */
 .label-card.thermal { line-height: 1; justify-content: flex-start; padding: 2px 6px; }
 .label-card.thermal .label-price-disc { font-size: 10px; }
+/* max boldness on every thermal line: thin 600/700-weight strokes come
+   out of the capture→downscale→1-bit pipeline broken/faint on the
+   thermal head (live print evidence) — the 900-weight shop name was the
+   only line that printed solid. */
+.label-card.thermal .label-name,
+.label-card.thermal .label-variant,
+.label-card.thermal .label-price { font-weight: 900; }
 .label-card.thermal .label-variant { color: #000; }
 .label-card.thermal .label-price-reg { color: #000; }
 .label-card.thermal svg { max-width: none; }

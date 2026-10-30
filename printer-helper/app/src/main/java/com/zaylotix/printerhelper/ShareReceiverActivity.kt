@@ -125,12 +125,17 @@ class ShareReceiverActivity : AppCompatActivity() {
                         widthMm = sizeMm.width, heightMm = sizeMm.height, gapMm = sizeMm.gap,
                         widthPx = bitmap.width, heightPx = bitmap.height,
                         bitmapBytes = TsplImageEncoder.packBitmap(bitmap.width, bitmap.height) { x, y ->
-                            // luminance threshold — matches the plain black/white
-                            // rendering a thermal label already is (no greys)
+                            // Luminance threshold at 170, not the "obvious" 128:
+                            // small text arrives with grey anti-aliased edges
+                            // after the web side's downscale, and a mid-grey
+                            // cutoff dropped those pixels, printing thin fonts
+                            // broken/faint (Khaled's live photo). The source is
+                            // black-on-white only, so anything meaningfully
+                            // darker than paper is ink.
                             val pixel = bitmap.getPixel(x, y)
                             val alpha = Color.alpha(pixel)
                             // transparent background counts as white/not-black
-                            alpha > 32 && (Color.red(pixel) + Color.green(pixel) + Color.blue(pixel)) / 3 < 128
+                            alpha > 32 && (Color.red(pixel) + Color.green(pixel) + Color.blue(pixel)) / 3 < 170
                         },
                     )
                     printer.write(payload)
