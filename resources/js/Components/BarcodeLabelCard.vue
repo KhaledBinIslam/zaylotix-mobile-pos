@@ -28,6 +28,18 @@ const headerText = computed(() => props.shop?.resolved_label_header || props.sho
 const thermal = computed(() => props.settings.print_mode === 'thermal');
 const barcodeWarn = ref(''); // '' | 'onedot' | 'overflow'
 
+// Phase 43 fix — the card previously had no on-screen width/height at
+// all outside @media print, so inside BarcodeLabels/Index.vue's preview
+// grid it sized itself to its grid column (often much taller/narrower
+// than the real label) instead of the true 38×25mm-ish ratio. That was
+// invisible on screen, but the Bluetooth-print capture (html2canvas on
+// the LIVE on-screen DOM, never the @media print layout) then force-
+// squeezed that wrong-aspect-ratio capture into the label's real pixel
+// size, crushing most of the content. Pinning the card to its true mm
+// size on screen too — not just in print — fixes the capture at the
+// source instead of trying to correct a bad aspect ratio after the fact.
+const thermalCardSize = computed(() => thermal.value ? labelSizeMm(props.settings) : null);
+
 /**
  * Shrink-to-fit for the sticker header — mirrors render()'s own two-pass
  * JsBarcode width-measurement pattern below, but for text instead of SVG
@@ -139,7 +151,7 @@ watch(() => [props.shop?.resolved_label_header, props.shop?.name, props.settings
 </script>
 
 <template>
-    <div class="label-card" :class="{ thermal }">
+    <div class="label-card" :class="{ thermal }" :style="thermalCardSize ? { width: thermalCardSize.width + 'mm', height: thermalCardSize.height + 'mm', margin: '0 auto' } : null">
         <div v-if="settings.show_shop_name && headerText" class="label-head">
             <div ref="headerEl" class="label-shop" :style="{ fontSize: headerFontSize + 'px' }">{{ headerText }}</div>
         </div>
