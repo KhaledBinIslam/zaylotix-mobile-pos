@@ -120,7 +120,11 @@ async function render() {
             return;
         }
         try {
-            JsBarcode(el, encoded, { ...opts, margin: 0, height: mmToPx(8), width: mmToPx(fit.moduleMm) });
+            // bars 7mm (was 8) buys back ~1mm of the tight 25mm budget,
+            // spent on a bigger (10px) human-readable line below the bars —
+            // the 8px one printed too small to read cleanly on the thermal
+            // head (Khaled's live feedback).
+            JsBarcode(el, encoded, { ...opts, margin: 0, height: mmToPx(7), fontSize: 10, width: mmToPx(fit.moduleMm) });
         } catch (e) { /* invalid barcode value for CODE128 — leave blank */ }
         return;
     }
@@ -187,7 +191,12 @@ watch(() => [props.shop?.resolved_label_header, props.shop?.name, props.settings
 /* Phase 41 — thermal-roll mode: everything pure black (grey fades on a
    thermal head), tight line-height so all six lines fit the 25mm budget.
    Classic mode's rules above stay untouched for every other shop. */
-.label-card.thermal { line-height: 1; }
+/* flex-start (not center): with the XP-365B's small residual start
+   offset, vertically-centered content put dead space at the TOP and
+   pushed the price line off the bottom of the physical sticker —
+   top-aligning keeps all slack at the bottom where it can absorb the
+   offset harmlessly. */
+.label-card.thermal { line-height: 1; justify-content: flex-start; }
 .label-card.thermal .label-variant { color: #000; }
 .label-card.thermal .label-price-reg { color: #000; }
 .label-card.thermal svg { max-width: none; }
