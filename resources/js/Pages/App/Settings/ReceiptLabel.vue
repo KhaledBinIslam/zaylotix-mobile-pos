@@ -7,6 +7,7 @@ import BarcodeLabelCard from '@/Components/BarcodeLabelCard.vue';
 import { useI18n } from '@/composables/useI18n';
 import { LABEL_SIZE_PRESETS, labelSizeMm } from '@/support/labelSizes';
 import { thermalModuleWidth, mmToPx } from '@/support/barcodeFit';
+import { useBluetoothPrinterScan } from '@/composables/useBluetoothPrinterScan';
 
 const props = defineProps({ longestLabelBarcode: { type: Object, default: null } });
 
@@ -109,6 +110,12 @@ const calibTicks = computed(() => {
     for (let x = 1; x < calibSize.value.width; x++) ticks.push({ x, len: x % 5 === 0 ? 2 : 1 });
     return ticks;
 });
+
+// --- Phase 42: Bluetooth printer scan diagnostic (docs/LABEL_PRINT_PLAN.md) ---
+// Read-only probe — before building a real BLE printing feature, this
+// answers "can this phone's browser even reach the printer over BLE at
+// all." No bytes are sent to the printer here.
+const bleScan = useBluetoothPrinterScan();
 </script>
 
 <template>
@@ -211,6 +218,34 @@ const calibTicks = computed(() => {
                     </div>
                     <div style="font-size:11.5px;color:var(--mut);margin:2px 0 6px">ছাপা একপাশে সরে গেলে Offset দিয়ে ঠিক করুন — নিচের "লেবেল টেস্ট প্রিন্ট" দিয়ে মেপে নিন।</div>
                     <button type="button" class="btn sm ghost" style="margin-bottom:8px" @click="openCalibration">📐 লেবেল টেস্ট প্রিন্ট (ক্যালিব্রেশন)</button>
+
+                    <!-- Phase 42 — diagnostic only, proves whether this
+                         phone's browser can reach the printer over
+                         Bluetooth at all before any real printing feature
+                         gets built on top of it -->
+                    <div class="field" style="margin-top:10px;border-top:1px dashed var(--line);padding-top:10px">
+                        <label>📱 ফোন থেকে সরাসরি Bluetooth প্রিন্ট (পরীক্ষামূলক)</label>
+                        <div style="font-size:11.5px;color:var(--mut);margin-bottom:8px">আগে শুধু যাচাই করা হবে প্রিন্টারটা এভাবে ধরা যায় কিনা — এখনই কিছু প্রিন্ট হবে না।</div>
+                        <button type="button" class="btn sm ghost" :disabled="bleScan.scanning.value" @click="bleScan.scan">
+                            {{ bleScan.scanning.value ? 'খোঁজা হচ্ছে...' : '🔵 Bluetooth প্রিন্টার যাচাই করুন' }}
+                        </button>
+                        <div v-if="bleScan.error.value" style="color:var(--rose);font-size:12.5px;margin-top:8px">⚠️ {{ bleScan.error.value }}</div>
+                        <div v-if="bleScan.result.value" class="card" style="margin-top:10px;font-size:12.5px">
+                            <div style="font-weight:700;margin-bottom:6px">📟 {{ bleScan.result.value.deviceName }}</div>
+                            <template v-if="bleScan.result.value.services.length">
+                                <div v-for="svc in bleScan.result.value.services" :key="svc.uuid" style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--line)">
+                                    <div style="font-weight:600">{{ svc.label || svc.uuid }}</div>
+                                    <div style="font-size:11px;color:var(--mut);word-break:break-all">{{ svc.uuid }}</div>
+                                    <div v-for="c in svc.characteristics" :key="c.uuid" style="margin-top:4px;padding-left:10px">
+                                        <span :style="{ color: c.writable ? 'var(--green)' : 'var(--mut)' }">{{ c.writable ? '✅ লেখা যায়' : '· শুধু পড়া যায়' }}</span>
+                                        <span style="font-size:10.5px;color:var(--dim);word-break:break-all"> {{ c.uuid }}</span>
+                                    </div>
+                                </div>
+                                <div style="color:var(--green);font-weight:700">✅ এই ফলাফল আমাকে (Claude-কে) স্ক্রিনশট দিয়ে পাঠান — পরের ধাপ বানাতে এটাই লাগবে।</div>
+                            </template>
+                            <div v-else style="color:var(--rose)">কোনো পরিচিত সার্ভিস পাওয়া যায়নি — এই প্রিন্টার সম্ভবত শুধু classic Bluetooth চালায় (BLE নয়), এই পথে সরাসরি প্রিন্ট করা যাবে না।</div>
+                        </div>
+                    </div>
                 </template>
 
                 <label class="chk"><input type="checkbox" v-model="labelForm.show_shop_name"> দোকানের নাম</label>
