@@ -101,17 +101,24 @@ class ShareReceiverActivity : AppCompatActivity() {
     private fun printBatch(address: String, uris: List<Uri>, sizeMm: LabelSizeMm) {
         val adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter()
         val device = adapter?.getRemoteDevice(address)
-        val printer = BluetoothPrinter()
         var succeeded = 0
         var lastError: String? = null
 
-        try {
-            if (device == null) throw java.io.IOException("প্রিন্টার ডিভাইস পাওয়া যায়নি।")
-            printer.connect(device)
-
+        if (device == null) {
+            lastError = "প্রিন্টার ডিভাইস পাওয়া যায়নি।"
+        } else {
+            // Live-tested on the XP-365B: printing the whole batch over one
+            // held-open connection drifts out of sync with the physical
+            // label boundaries after the first label (the printer doesn't
+            // seem to honor the GAP command for re-sync mid-connection).
+            // A fresh connect() per label — mirroring MainActivity's single
+            // test print, which landed correctly far more often — gives the
+            // printer a clean slate each time instead of compounding drift.
             for ((index, uri) in uris.withIndex()) {
                 runOnUiThread { progressText.text = "${getString(R.string.printing_in_progress)} (${index + 1}/${uris.size})" }
+                val printer = BluetoothPrinter()
                 try {
+                    printer.connect(device)
                     val bitmap = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
                         ?: throw java.io.IOException("ছবি পড়া যায়নি।")
                     val payload = TsplImageEncoder.buildSingleLabelPayload(
@@ -130,12 +137,11 @@ class ShareReceiverActivity : AppCompatActivity() {
                     succeeded++
                 } catch (e: Exception) {
                     lastError = e.message ?: e.toString()
+                } finally {
+                    printer.disconnect()
                 }
+                Thread.sleep(400) // let the printer finish feeding/cutting before the next connect()
             }
-        } catch (e: Exception) {
-            lastError = e.message ?: e.toString()
-        } finally {
-            printer.disconnect()
         }
 
         runOnUiThread {
