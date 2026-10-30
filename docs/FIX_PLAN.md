@@ -3033,6 +3033,38 @@ never-customized শপ = exact defaults snapshot; টেন্যান্ট-�
 - [x] `docs/ARCHITECTURE_NOTES.md`, `docs/FIX_PLAN.md`, `docs/OFFLINE_TEST_CHECKLIST.md`, CHANGELOG all present
 - [x] Final comprehensive Bengali report for Khaled covering what changed, deploy steps, remaining risks, open questions — sent after Phase 3 feature 10 shipped
 
+## Phase 43 — ফোন থেকে সরাসরি Bluetooth লেবেল প্রিন্ট (docs/BT_PRINT_PLAN.md বিকল্প ক)
+
+Web Bluetooth-এ XP-365B ধরা যায়নি (classic SPP, BLE নয়) — তাই একটা
+**সম্পূর্ণ আলাদা, ছোট Android অ্যাপ** বানানো হলো (`printer-helper/`,
+প্যাকেজ `com.zaylotix.printerhelper`), মূল Zaylotix TWA-তে কোনো স্পর্শ
+ছাড়াই। সহায়ক অ্যাপ: paired ডিভাইস থেকে প্রিন্টার বাছা/মনে রাখা
+(`PrinterPrefs`), classic Bluetooth SPP সংযোগ (`BluetoothPrinter`,
+স্ট্যান্ডার্ড SPP UUID), আর একটা pure/টেস্ট-করা `TsplImageEncoder`
+(bitmap → TSPL SIZE/GAP/CLS/BITMAP/PRINT বাইট — ৯টা JVM ইউনিট টেস্ট,
+Android ছাড়াই চলে)। `ShareReceiverActivity` Android-এর Share target
+(`ACTION_SEND`/`SEND_MULTIPLE`, `image/*`) হিসেবে রেজিস্টার করা — Zaylotix
+ওয়েব পেজ `navigator.share({files, text})` দিয়ে লেবেলের PNG + সাইজ-মেটাডেটা
+পাঠায়।
+
+ওয়েবের দিকে (`BarcodeLabels/Index.vue`): বিদ্যমান প্রিভিউ overlay-তেই নতুন
+"📱 Bluetooth-এ প্রিন্ট" বাটন (শুধু থার্মাল মোডে + `navigator.canShare`
+সমর্থিত থাকলে দেখা যায়) — প্রোডাক্ট/কপি-সংখ্যা বাছাই অপরিবর্তিত।
+`BarcodeLabelCard.vue`-র **একই** রেন্ডার করা DOM `html2canvas` দিয়ে
+স্ন্যাপশট নিয়ে প্রতিটা লেবেলকে ঠিক `widthMm×8` × `heightMm×8` পিক্সেলে
+(203dpi) রিসাইজ করা হয় — ফোনের screen-density যাই হোক, প্রিন্টার raw ডট
+১:১ ছাপায় বলে ভুল সাইজ ছবি পাঠালে লেবেল ভুল মাপে ছাপা হতো, তাই এই শেষ
+ধাপটা ইচ্ছাকৃতভাবে নির্দিষ্ট। `BarcodeLabelCard` এখন `@rendered` ইভেন্ট
+দেয় (barcode/header আঁকা শেষ হলে) — ব্যাচ-ক্যাপচার কোনো আন্দাজি delay না
+দিয়ে এই কাউন্টের উপর অপেক্ষা করে।
+
+Debug APK বিল্ড হয়ে গেছে, PC-তে
+`printer-helper/app/build/outputs/apk/debug/app-debug.apk`। সেটআপ/টেস্ট
+গাইড: `docs/PRINTER_HELPER_SETUP.md`। টেস্ট: `TsplImageEncoderTest.kt`
+(৯টা, JVM), `bluetoothPrintShare.test.js` (৭টা)। ওয়েব-পাশের পূর্ণ suite
+(১৩১২ PHP + ২০২ JS) পুনরায় সবুজ, zero regression — প্রিন্ট মোড classic
+থাকা প্রতিটা শপের আউটপুট অপরিবর্তিত (বাটনই দেখা যায় না)।
+
 ### Genuinely still open
 (সবশেষ হালনাগাদ: 2026-10-29 — আগের তিনটা এন্ট্রিই বাসি হয়ে গিয়েছিল, বাস্তব অবস্থা:)
 - **Phase 4 সম্পূর্ণ** — Wholesale সহ (Phase 30: price tiers/MOQ/wholesale customers/WS- invoice series), এবং তার পরের Online Business module-ও সম্পূর্ণ (Phases 31-38, সব ৮ পার্ট, shared_stock_pool সহ)।

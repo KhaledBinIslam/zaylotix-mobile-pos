@@ -11,6 +11,12 @@ const props = defineProps({
     domId: { type: String, required: true }, // unique id for this card's <svg> — caller guarantees uniqueness across a print run
 });
 
+// Phase 43 (docs/BT_PRINT_PLAN.md) — fired once this card's barcode + header
+// have actually finished drawing, so a caller doing a bulk html2canvas
+// capture (the Bluetooth-print batch) knows precisely when it's safe to
+// snapshot this card instead of guessing with a fixed delay.
+const emit = defineEmits(['rendered']);
+
 const headerFontSize = ref(14);
 const headerEl = ref(null);
 
@@ -119,9 +125,10 @@ async function render() {
 }
 
 onMounted(async () => {
-    render();
+    await render();
     await nextTick();
-    fitHeaderText();
+    await fitHeaderText();
+    emit('rendered');
 });
 
 watch(() => [props.label.barcode, props.settings.show_barcode_number, props.settings.print_mode], render);

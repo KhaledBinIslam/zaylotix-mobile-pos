@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">Zaylotix Printer</string>
+    <string name="share_target_label">Zaylotix Printer-এ প্রিন্ট করুন</string>
+
+    <string name="title_select_printer">Bluetooth প্রিন্টার বাছুন</string>
+    <string name="subtitle_select_printer">যে প্রিন্টারে লেবেল ছাপাবেন সেটা বাছুন — একবার বাছলেই পরের বার থেকে মনে রাখবে।</string>
+    <string name="no_paired_devices">কোনো paired Bluetooth ডিভাইস পাওয়া যায়নি — আগে ফোনের Settings → Bluetooth থেকে প্রিন্টারটি pair করুন।</string>
+    <string name="open_bluetooth_settings">Bluetooth সেটিংস খুলুন</string>
+    <string name="current_printer">বর্তমান প্রিন্টার</string>
+    <string name="none_selected">কোনোটা বাছা নেই</string>
+    <string name="test_print">🧪 টেস্ট প্রিন্ট</string>
+    <string name="permission_needed">Bluetooth ব্যবহারের অনুমতি প্রয়োজন।</string>
+
+    <string name="printing_in_progress">প্রিন্ট হচ্ছে…</string>
+    <string name="print_success">✅ প্রিন্ট সফল হয়েছে</string>
+    <string name="print_failed">❌ প্রিন্ট ব্যর্থ: %1$s</string>
+    <string name="no_printer_selected">আগে একটা প্রিন্টার বাছুন — অ্যাপ খুলে দেখুন।</string>
+    <string name="no_images_received">কোনো লেবেল পাওয়া যায়নি।</string>
+    <string name="close">বন্ধ করুন</string>
+</resources>

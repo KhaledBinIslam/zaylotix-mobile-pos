@@ -1,0 +1,64 @@
+package com.zaylotix.printerhelper
+
+/**
+ * Converts a monochrome pixel grid into a TSPL BITMAP command's binary
+ * payload, and assembles the full SIZE/GAP/CLS/BITMAP/PRINT command
+ * sequence for one label (docs/LABEL_PRINT_PLAN.md's dot-width math,
+ * docs/BT_PRINT_PLAN.md অংশ ২).
+ *
+ * Deliberately pure — takes a plain `(x, y) -> Boolean` pixel predicate,
+ * never an android.graphics.Bitmap directly, so this logic is unit-
+ * testable on the plain JVM (src/test/) without any Android framework
+ * dependency or instrumentation.
+ */
+object TsplImageEncoder {
+
+    /** Bytes needed per row: each byte packs 8 horizontal pixels, MSB = leftmost pixel. */
+    fun bytesPerRow(widthPx: Int): Int = (widthPx + 7) / 8
+
+    /**
+     * Packs a widthPx×heightPx monochrome image into TSPL's row-major
+     * 1-bit-per-pixel byte layout. `isBlack(x, y)` returns true for a
+     * pixel that should print as a dark dot.
+     */
+    fun packBitmap(widthPx: Int, heightPx: Int, isBlack: (x: Int, y: Int) -> Boolean): ByteArray {
+        val stride = bytesPerRow(widthPx)
+        val out = ByteArray(stride * heightPx)
+        for (y in 0 until heightPx) {
+            for (x in 0 until widthPx) {
+                if (isBlack(x, y)) {
+                    val byteIndex = y * stride + x / 8
+                    val bitIndex = 7 - (x % 8)
+                    out[byteIndex] = (out[byteIndex].toInt() or (1 shl bitIndex)).toByte()
+                }
+            }
+        }
+        return out
+    }
+
+    /**
+     * Full TSPL command sequence for ONE label print: one bitmap, one
+     * copy. Multiple physical copies are handled by the caller sending
+     * this same payload again (or the web side including the same PNG
+     * N times in the share) — deliberately no `copies` parameter here,
+     * so this function has exactly one job and can't drift from what a
+     * single `PRINT 1,1` actually does.
+     */
+    fun buildSingleLabelPayload(widthMm: Double, heightMm: Double, gapMm: Double, widthPx: Int, heightPx: Int, bitmapBytes: ByteArray): ByteArray {
+        val stride = bytesPerRow(widthPx)
+        val header = buildString {
+            append("SIZE ").append(fmtMm(widthMm)).append(" mm,").append(fmtMm(heightMm)).append(" mm\r\n")
+            append("GAP ").append(fmtMm(gapMm)).append(" mm,0 mm\r\n")
+            append("DIRECTION 0\r\n")
+            append("CLS\r\n")
+            append("BITMAP 0,0,").append(stride).append(",").append(heightPx).append(",0,")
+        }
+        val headerBytes = header.toByteArray(Charsets.US_ASCII)
+        val footerBytes = "\r\nPRINT 1,1\r\n".toByteArray(Charsets.US_ASCII)
+        return headerBytes + bitmapBytes + footerBytes
+    }
+
+    /** "38" not "38.0", but "38.5" kept as-is — TSPL accepts plain decimal mm values either way; this just keeps whole-number sizes readable in logs. */
+    private fun fmtMm(mm: Double): String =
+        if (mm == Math.floor(mm)) mm.toLong().toString() else mm.toString()
+}

@@ -1,0 +1,62 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Pre-Android-12: legacy Bluetooth permissions, granted at install.
+         Android 12+ (API 31+): BLUETOOTH_CONNECT is a runtime permission,
+         requested in MainActivity before any Bluetooth call.
+         This app only ever talks to ALREADY-PAIRED devices (Android
+         Settings handles pairing/discovery once), so it never needs
+         ACCESS_FINE_LOCATION at all, unlike apps that actively scan for
+         nearby devices. -->
+    <uses-permission android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"
+        tools:targetApi="31" />
+
+    <uses-feature android:name="android.hardware.bluetooth" android:required="true" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@style/AppTheme"
+        android:supportsRtl="true">
+
+        <!-- The printer-picker/settings screen — also the launcher icon. -->
+        <activity android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Phase 43 (docs/BT_PRINT_PLAN.md বিকল্প ক) — registers as an
+             Android Share target for images: Zaylotix's own web page calls
+             navigator.share({ files: [...png...], text: '{"widthMm":...}' })
+             and Android's native share sheet lists THIS app as a
+             destination. One PNG per physical label copy (duplicated, not
+             a copies-count field) keeps both sides simple — see
+             ShareReceiverActivity's own docblock. -->
+        <activity android:name=".ShareReceiverActivity"
+            android:exported="true"
+            android:label="@string/share_target_label"
+            android:theme="@style/AppTheme.Transparent"
+            android:excludeFromRecents="true">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+        </activity>
+
+    </application>
+</manifest>

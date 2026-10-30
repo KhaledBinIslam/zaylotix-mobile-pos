@@ -1,0 +1,24 @@
+// Zaylotix Printer Helper (docs/BT_PRINT_PLAN.md বিকল্প ক) — a small,
+// SEPARATE app whose only job is classic-Bluetooth (SPP) label printing.
+// Deliberately its own Gradle project, not a module inside android/ (the
+// main Zaylotix TWA) — a bug here can never affect the main POS app.
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.9.1'
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}

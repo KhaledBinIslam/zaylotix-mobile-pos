@@ -1,17 +1,24 @@
 <script setup>
 import { Head, Link, router } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { ref, computed, nextTick } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import BarcodeLabelCard from '@/Components/BarcodeLabelCard.vue';
 import { useI18n } from '@/composables/useI18n';
+import { useToast } from '@/composables/useToast';
 import { labelSizeMm } from '@/support/labelSizes';
+import { buildShareMetadata, canShareLabelFiles } from '@/support/bluetoothPrintShare';
 
 const props = defineProps({ products: Array, shop: Object });
 const { t } = useI18n();
+const { toast } = useToast();
 
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 const settings = computed(() => props.shop?.label_settings || {});
 const sizeMm = computed(() => labelSizeMm(settings.value));
+// Phase 43 (docs/BT_PRINT_PLAN.md বিকল্প ক) — only shown in thermal mode,
+// and only when this browser can actually share files (the printer-helper
+// companion app registers as a share target for exactly this)
+const showBluetoothPrint = computed(() => settings.value.print_mode === 'thermal' && canShareLabelFiles());
 
 const q = ref(new URLSearchParams(window.location.search).get('q') || '');
 const selected = ref({}); // { key: copies }
@@ -68,6 +75,79 @@ const totalCopies = computed(() => Object.values(selected.value).reduce((a, b) =
 const labels = ref([]); // flattened list of {name, variantLabel, barcode, price, discount_price}
 const printing = ref(false);
 
+// Phase 43 — each BarcodeLabelCard emits 'rendered' once its barcode/header
+// have actually finished drawing (see the component); the Bluetooth-print
+// capture waits on this count instead of guessing with a fixed delay.
+const renderedCount = ref(0);
+function onLabelRendered() { renderedCount.value++; }
+function waitForAllRendered() {
+    if (renderedCount.value >= labels.value.length) return Promise.resolve();
+    return new Promise((resolve) => {
+        const check = () => (renderedCount.value >= labels.value.length ? resolve() : requestAnimationFrame(check));
+        check();
+    });
+}
+
+const bluetoothPrinting = ref(false);
+const bluetoothProgress = ref('');
+
+/**
+ * Phase 43 (docs/BT_PRINT_PLAN.md বিকল্প ক) — rasterizes each already-
+ * rendered `.label-card` (the exact same DOM the browser/PC print path
+ * shows — never a second rendering path) into a PNG at EXACTLY
+ * widthMm×8 × heightMm×8 pixels (203dpi = 8 dots/mm, matching the
+ * printer's own physical dot density) and hands them to Android's share
+ * sheet. html2canvas's own scale/devicePixelRatio handling can't be
+ * trusted to land on this exact pixel count on every phone, so every
+ * capture is redrawn onto a fixed-size canvas as a final step — the
+ * printer-helper app prints raw dots 1:1 and never rescales, so a wrong
+ * pixel size here would print at the wrong physical size on the label.
+ */
+async function printViaBluetooth() {
+    if (bluetoothPrinting.value || !labels.value.length) return;
+    bluetoothPrinting.value = true;
+    bluetoothProgress.value = t('bc.bluetoothPreparing');
+    try {
+        await waitForAllRendered();
+        await nextTick();
+        const { default: html2canvas } = await import('html2canvas');
+        const cards = document.querySelectorAll('#label-print-overlay .label-card');
+        if (!cards.length) { toast('❌ ' + t('bc.bluetoothNoLabels')); return; }
+
+        const targetW = Math.round(sizeMm.value.width * 8);
+        const targetH = Math.round(sizeMm.value.height * 8);
+
+        const files = [];
+        for (let i = 0; i < cards.length; i++) {
+            bluetoothProgress.value = t('bc.bluetoothRendering', { n: i + 1, total: cards.length });
+            const raw = await html2canvas(cards[i], { backgroundColor: '#ffffff' });
+            const fixed = document.createElement('canvas');
+            fixed.width = targetW;
+            fixed.height = targetH;
+            const ctx = fixed.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, targetW, targetH);
+            ctx.drawImage(raw, 0, 0, targetW, targetH);
+            const blob = await new Promise((resolve) => fixed.toBlob(resolve, 'image/png'));
+            if (blob) files.push(new File([blob], `label-${i + 1}.png`, { type: 'image/png' }));
+        }
+        if (!files.length) { toast('❌ ' + t('bc.bluetoothRenderFailed')); return; }
+
+        if (!navigator.canShare({ files })) {
+            toast('❌ ' + t('bc.bluetoothNotSupported'));
+            return;
+        }
+        await navigator.share({ files, text: buildShareMetadata(settings.value), title: 'Zaylotix লেবেল প্রিন্ট' });
+    } catch (e) {
+        if (e?.name !== 'AbortError') { // user cancelled the native share sheet — not a failure
+            toast('❌ ' + t('bc.bluetoothShareFailed', { msg: e?.message || String(e) }));
+        }
+    } finally {
+        bluetoothPrinting.value = false;
+        bluetoothProgress.value = '';
+    }
+}
+
 /** Builds the selected list and opens the preview overlay — print itself is now a deliberate second tap (doPrint), not automatic, so there's always a real chance to review before paper gets used. */
 function buildAndPreview() {
     const list = [];
@@ -94,6 +174,7 @@ function buildAndPreview() {
         }
     }
     if (!list.length) return;
+    renderedCount.value = 0;
     labels.value = list;
     printing.value = true;
 }
@@ -208,8 +289,14 @@ const printCss = computed(() => {
         <Teleport to="body">
             <div v-if="printing" id="label-print-overlay">
                 <component :is="'style'" v-html="printCss"></component>
-                <div class="no-print" style="padding:12px;display:flex;gap:10px;background:var(--panel);border-bottom:1px solid var(--line)">
+                <div class="no-print" style="padding:12px;display:flex;gap:10px;flex-wrap:wrap;background:var(--panel);border-bottom:1px solid var(--line)">
                     <button class="btn sm" @click="doPrint">🖨️ {{ t('bc.print') }}</button>
+                    <!-- Phase 43 (docs/BT_PRINT_PLAN.md বিকল্প ক) — Zaylotix
+                         Printer Helper (ছোট আলাদা অ্যাপ) ইনস্টল থাকলে এই
+                         বাটনে সরাসরি Bluetooth-এ পাঠানো যাবে, কোনো PC লাগবে না -->
+                    <button v-if="showBluetoothPrint" class="btn sm ghost" :disabled="bluetoothPrinting" @click="printViaBluetooth">
+                        {{ bluetoothPrinting ? bluetoothProgress : '📱 ' + t('bc.bluetoothPrint') }}
+                    </button>
                     <button class="btn sm ghost" @click="closePrint">{{ t('bc.close') }}</button>
                 </div>
                 <!-- Phase 41 — browser print-dialog settings that make the
@@ -221,6 +308,7 @@ const printCss = computed(() => {
                     <BarcodeLabelCard
                         v-for="(p, i) in labels" :key="i"
                         :label="p" :shop="shop" :settings="settings" :dom-id="'barcode-svg-' + i"
+                        @rendered="onLabelRendered"
                     />
                 </div>
             </div>
