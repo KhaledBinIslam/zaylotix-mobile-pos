@@ -22,6 +22,7 @@ import { normalizeSearch } from '@/support/searchNormalize';
 import { bestMatchTier, levenshtein } from '@/support/searchMatch';
 import { usePermissions } from '@/composables/usePermissions';
 import { scanBoxSize } from '@/support/scanBoxSize';
+import { canBluetoothPrintMemo, printMemoViaBluetooth } from '@/support/bluetoothMemoPrint';
 
 const props = defineProps({
     products: Array,
@@ -1154,6 +1155,24 @@ function printMemo() {
     window.print();
 }
 
+// Phase 44 — Bluetooth receipt print via the Zaylotix Printer helper app
+// (same pipeline as barcode labels; continuous paper so no gap handling)
+const showBluetoothMemo = canBluetoothPrintMemo();
+const btMemoPrinting = ref(false);
+async function printMemoBluetooth() {
+    if (btMemoPrinting.value) return;
+    const el = document.querySelector('#printable-memo .receipt-memo');
+    if (!el) return;
+    btMemoPrinting.value = true;
+    try {
+        await printMemoViaBluetooth(el, shop.value?.memo_settings?.paper_width);
+    } catch (e) {
+        if (e?.name !== 'AbortError') toast('❌ ' + (e?.message || String(e)));
+    } finally {
+        btMemoPrinting.value = false;
+    }
+}
+
 // invoice barcode + rating QR are rendered by ReceiptMemo.vue itself now
 
 // Mirrors ReceiptMemo.vue's printed memo field-for-field (same
@@ -2119,6 +2138,7 @@ useKeyboardShortcuts({
             <div class="no-print btnrow" style="margin-top:16px">
                 <button v-if="features.includes('memo_whatsapp')" class="btn wa" style="flex:1" @click="sendMemoWA">📤 WhatsApp</button>
                 <button v-if="features.includes('memo_print')" class="btn ghost" style="flex:1" @click="printMemo">{{ t('pos.print') }}</button>
+                <button v-if="features.includes('memo_print') && showBluetoothMemo" class="btn ghost" style="flex:1" :disabled="btMemoPrinting" @click="printMemoBluetooth">📱 {{ btMemoPrinting ? t('bc.bluetoothPreparing') : t('bc.bluetoothPrint') }}</button>
             </div>
             <button class="no-print btn ghost" style="margin-top:10px" @click="receiptOpen = false">{{ t('pos.newSale') }}</button>
         </Sheet>

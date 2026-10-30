@@ -1,0 +1,1 @@
+const h={"38x25":{width:38,height:25,label:"38 × 25mm"},"50x25":{width:50,height:25,label:"50 × 25mm"},"40x30":{width:40,height:30,label:"40 × 30mm"}};function i(m){return m?.size==="custom"&&m.custom_width_mm&&m.custom_height_mm?{width:m.custom_width_mm,height:m.custom_height_mm}:h[m?.size]||h["38x25"]}export{h as L,i as l};
