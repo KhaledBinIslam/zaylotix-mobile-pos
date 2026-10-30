@@ -6,6 +6,7 @@ import BarcodeLabelCard from '@/Components/BarcodeLabelCard.vue';
 import { useI18n } from '@/composables/useI18n';
 import { useToast } from '@/composables/useToast';
 import { labelSizeMm } from '@/support/labelSizes';
+import { thermalModuleWidth } from '@/support/barcodeFit';
 import { buildShareMetadata, canShareLabelFiles } from '@/support/bluetoothPrintShare';
 
 const props = defineProps({ products: Array, shop: Object });
@@ -110,7 +111,10 @@ async function printViaBluetooth() {
     try {
         await waitForAllRendered();
         await nextTick();
-        const { default: html2canvas } = await import('html2canvas');
+        const [{ default: html2canvas }, { default: JsBarcode }] = await Promise.all([
+            import('html2canvas'),
+            import('jsbarcode'),
+        ]);
         const cards = document.querySelectorAll('#label-print-overlay .label-card');
         if (!cards.length) { toast('❌ ' + t('bc.bluetoothNoLabels')); return; }
 
@@ -133,6 +137,48 @@ async function printViaBluetooth() {
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, targetW, targetH);
             ctx.drawImage(raw, 0, 0, targetW, targetH);
+
+            // CRITICAL for scannability (confirmed live — the captured
+            // barcode would not scan): resizing a rasterized barcode makes
+            // its modules land on fractional printer dots, so bar widths
+            // come out uneven and CODE128 dies — the exact failure mode
+            // Phase 41's whole-dot rule exists to prevent. The capture's
+            // blurry bars are therefore whited out and replaced with a
+            // JsBarcode render done DIRECTLY at this canvas's resolution,
+            // where 1 canvas px == 1 printer dot, every module an exact
+            // whole number of dots.
+            const lbl = labels.value[i];
+            const svgEl = cards[i].querySelector('svg');
+            if (lbl?.barcode && svgEl && svgEl.childNodes.length) {
+                const encoded = lbl.scanCode || lbl.barcode;
+                const fit = thermalModuleWidth(encoded, sizeMm.value.width - 5);
+                if (fit.fits) {
+                    const bc = document.createElement('canvas');
+                    try {
+                        JsBarcode(bc, encoded, {
+                            format: 'CODE128',
+                            width: Math.max(1, Math.round(fit.moduleMm * 8)), // dots per module
+                            height: 48, // 6mm of bars at 8 dots/mm
+                            margin: 0,
+                            displayValue: settings.value.show_barcode_number !== false,
+                            text: lbl.barcode,
+                            fontSize: 16,
+                        });
+                    } catch (e) { /* invalid CODE128 value — keep the captured fallback */ }
+                    if (bc.width > 0 && bc.width <= targetW) {
+                        const cardRect = cards[i].getBoundingClientRect();
+                        const svgRect = svgEl.getBoundingClientRect();
+                        const sy = targetH / cardRect.height;
+                        const destY = Math.max(0, Math.round((svgRect.top - cardRect.top) * sy));
+                        const clearH = Math.max(Math.round(svgRect.height * sy), bc.height) + 4;
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillRect(0, Math.max(0, destY - 2), targetW, clearH);
+                        ctx.imageSmoothingEnabled = false;
+                        ctx.drawImage(bc, Math.round((targetW - bc.width) / 2), destY);
+                    }
+                }
+            }
+
             const blob = await new Promise((resolve) => fixed.toBlob(resolve, 'image/png'));
             if (blob) files.push(new File([blob], `label-${i + 1}.png`, { type: 'image/png' }));
         }
