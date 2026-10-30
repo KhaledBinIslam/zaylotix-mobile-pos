@@ -51,6 +51,7 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
         }
         findViewById<Button>(R.id.testPrintBtn).setOnClickListener { runTestPrint() }
+        findViewById<Button>(R.id.calibrateBtn).setOnClickListener { runCalibration() }
 
         ensurePermissionThenLoad()
     }
@@ -141,6 +142,41 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 val typeNote = "ডিভাইস টাইপ: ${deviceTypeLabel(device.type)}"
                 runOnUiThread { statusText.text = getString(R.string.print_failed, e.message ?: e.toString()) + "\n$typeNote" }
+            } finally {
+                printer.disconnect()
+            }
+        }.start()
+    }
+
+    @Suppress("MissingPermission")
+    private fun runCalibration() {
+        val address = PrinterPrefs.savedAddress(this)
+        if (address == null) {
+            Toast.makeText(this, R.string.no_printer_selected, Toast.LENGTH_LONG).show()
+            return
+        }
+        if (!hasBluetoothPermission()) {
+            Toast.makeText(this, R.string.permission_needed, Toast.LENGTH_LONG).show()
+            return
+        }
+        val device = bluetoothAdapter?.getRemoteDevice(address)
+        if (device == null) {
+            Toast.makeText(this, "ডিভাইস পাওয়া যায়নি।", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        statusText.text = getString(R.string.calibrating)
+        Thread {
+            val printer = BluetoothPrinter()
+            try {
+                printer.connect(device)
+                printer.write(TsplImageEncoder.buildCalibrationPayload(38.0, 25.0, 2.0))
+                // GAPDETECT feeds several labels through the sensor on its
+                // own — give it time to finish before the next connect().
+                Thread.sleep(4000)
+                runOnUiThread { statusText.text = getString(R.string.calibrate_success) }
+            } catch (e: Exception) {
+                runOnUiThread { statusText.text = getString(R.string.print_failed, e.message ?: e.toString()) }
             } finally {
                 printer.disconnect()
             }

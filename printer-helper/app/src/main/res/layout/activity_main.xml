@@ -69,6 +69,14 @@
             android:backgroundTint="@color/brand_green"
             android:text="@string/test_print" />
 
+        <Button
+            android:id="@+id/calibrateBtn"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="@string/calibrate_gap" />
+
         <TextView
             android:id="@+id/statusText"
             android:layout_width="match_parent"

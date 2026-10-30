@@ -65,6 +65,26 @@ object TsplImageEncoder {
         return headerBytes + bitmapBytes + footerBytes
     }
 
+    /**
+     * TSPL's documented GAPDETECT command — feeds paper past the gap
+     * sensor so the printer measures and stores the real physical
+     * label+gap pitch itself, instead of trusting our own SIZE/GAP
+     * numbers. No x,y arguments: per the TSPL2 spec, omitting them makes
+     * the printer self-detect both the label length and the gap length
+     * (same thing the XP-365B's power-on+feed-button calibration is
+     * meant to do, but triggered from software instead of that button
+     * combo — useful when the button procedure isn't working/known for
+     * a given unit).
+     */
+    fun buildCalibrationPayload(widthMm: Double, heightMm: Double, gapMm: Double): ByteArray {
+        val header = buildString {
+            append("SIZE ").append(fmtMm(widthMm)).append(" mm,").append(fmtMm(heightMm)).append(" mm\r\n")
+            append("GAP ").append(fmtMm(gapMm)).append(" mm,0 mm\r\n")
+            append("GAPDETECT\r\n")
+        }
+        return header.toByteArray(Charsets.US_ASCII)
+    }
+
     /** "38" not "38.0", but "38.5" kept as-is — TSPL accepts plain decimal mm values either way; this just keeps whole-number sizes readable in logs. */
     private fun fmtMm(mm: Double): String =
         if (mm == Math.floor(mm)) mm.toLong().toString() else mm.toString()
