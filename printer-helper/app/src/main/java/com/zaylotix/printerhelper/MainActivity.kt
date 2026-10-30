@@ -86,7 +86,7 @@ class MainActivity : AppCompatActivity() {
         pairedDevices = adapter.bondedDevices?.toList() ?: emptyList()
         emptyState.visibility = if (pairedDevices.isEmpty()) android.view.View.VISIBLE else android.view.View.GONE
 
-        val names = pairedDevices.map { "${it.name ?: "(নাম নেই)"}\n${it.address}" }
+        val names = pairedDevices.map { "${it.name ?: "(নাম নেই)"}\n${it.address}\n${deviceTypeLabel(it.type)}" }
         deviceList.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, names)
         deviceList.setOnItemClickListener { _, _, position, _ ->
             val device = pairedDevices[position]
@@ -139,10 +139,18 @@ class MainActivity : AppCompatActivity() {
                 printer.write(payload)
                 runOnUiThread { statusText.text = getString(R.string.print_success) }
             } catch (e: Exception) {
-                runOnUiThread { statusText.text = getString(R.string.print_failed, e.message ?: e.toString()) }
+                val typeNote = "ডিভাইস টাইপ: ${deviceTypeLabel(device.type)}"
+                runOnUiThread { statusText.text = getString(R.string.print_failed, e.message ?: e.toString()) + "\n$typeNote" }
             } finally {
                 printer.disconnect()
             }
         }.start()
+    }
+
+    private fun deviceTypeLabel(type: Int): String = when (type) {
+        BluetoothDevice.DEVICE_TYPE_CLASSIC -> "CLASSIC (SPP কাজ করার কথা)"
+        BluetoothDevice.DEVICE_TYPE_LE -> "LE / BLE-only (classic RFCOMM কাজ করবে না!)"
+        BluetoothDevice.DEVICE_TYPE_DUAL -> "DUAL (classic + LE দুটোই আছে)"
+        else -> "UNKNOWN"
     }
 }
