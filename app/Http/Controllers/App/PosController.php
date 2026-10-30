@@ -1095,7 +1095,17 @@ class PosController extends Controller
             // field that sheet needs (items/customer/payments) was already
             // loaded here
             return $sale->load('items', 'customer', 'payments', 'user');
-        });
+            // attempts=3: two branches of a shared-stock-pool chain selling
+            // the SAME pooled product at the same instant can deadlock (each
+            // checkout holds its own shop's product row, then races to lock
+            // the whole pool inside applyStockDelta). InnoDB kills one as
+            // the deadlock victim; Laravel then re-runs this entire closure
+            // from scratch — the fresh attempt re-reads the now-committed
+            // stock under lock and either completes normally or 422s
+            // "পর্যাপ্ত স্টক নেই", instead of surfacing a raw DB error to
+            // the cashier. Safe to retry: everything in here is rolled back
+            // together, and the client_uuid idempotency check re-runs first.
+        }, 3);
     }
 
     public function barcode(string $barcode)

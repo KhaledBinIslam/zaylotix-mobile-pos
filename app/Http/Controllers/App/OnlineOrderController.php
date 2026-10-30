@@ -469,7 +469,11 @@ class OnlineOrderController extends Controller
             Activity::log('online_order.created', "অনলাইন অর্ডার '{$orderNumber}' তৈরি করা হয়েছে ({$channel->name})।", $onlineOrder, ['total' => $total]);
 
             return $onlineOrder;
-        });
+            // attempts=3 — same shared-stock-pool deadlock-retry reasoning
+            // as PosController::performCheckout: an online order and a
+            // branch POS sale hitting the same pooled product at the same
+            // instant retries cleanly instead of erroring at the operator.
+        }, 3);
     }
 
     /** Simple forward moves — audit-only, no stock/money effect. */
