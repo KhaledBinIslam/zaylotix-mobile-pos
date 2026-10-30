@@ -51,8 +51,12 @@ D:\mobile pos\printer-helper\app\build\outputs\apk\debug\app-debug.apk
   ধাপ ২ করুন।
 - **প্রিন্ট শুরু হয় কিন্তু "❌ প্রিন্ট ব্যর্থ" আসে** — প্রিন্টার অফ/দূরে
   আছে কিনা, ধাপ ২-এর টেস্ট প্রিন্ট এখনো কাজ করে কিনা আবার চেক করুন।
-- এই ডিবাগ বিল্ড শুধু যাচাইয়ের জন্য — ভালোভাবে কাজ করলে একটা সাইন করা
-  release APK বানিয়ে দেব (একবারই লাগবে, কারণটা জানিয়ে)।
+- **ফাইনাল (release) APK**: `printer-helper/app/build/outputs/apk/release/app-release.apk`
+  — Zaylotix-এর মূল কীস্টোর (D:\zaylotix-keystore-backup) দিয়ে সাইন করা,
+  Zaylotix লোগো আইকনসহ। **আগের debug সংস্করণটা ফোন থেকে uninstall করে**
+  তারপর এটা install করতে হবে (সিগনেচার আলাদা বলে উপরে বসবে না), এবং
+  install-এর পর একবার অ্যাপ খুলে প্রিন্টারটা আবার বাছতে হবে।
+  নতুন release বানাতে: `cd printer-helper && ./gradlew assembleRelease`
 
 ## কী পরীক্ষা করলে নিশ্চিত হবেন সব ঠিক আছে
 

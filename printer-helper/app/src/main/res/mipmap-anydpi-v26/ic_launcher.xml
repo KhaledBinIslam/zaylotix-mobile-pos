@@ -1,5 +1,18 @@
-<?xml version="1.0" encoding="utf-8"?>
+<!-- The real Zaylotix logo (same mipmap PNGs as the main TWA app), per
+     Khaled's ask for the release build — the launcher label "Zaylotix
+     Printer" is what tells the two apps apart. Same white-background +
+     padded-maskable structure the TWA uses, so both icons render
+     identically across launcher shapes. -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@drawable/ic_launcher_background" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <background>
+        <layer-list>
+            <item android:drawable="@android:color/white" />
+            <item android:drawable="@mipmap/ic_maskable"
+                android:top="8.5dp"
+                android:right="8.5dp"
+                android:left="8.5dp"
+                android:bottom="8.5dp" />
+        </layer-list>
+    </background>
+    <foreground android:drawable="@android:color/transparent" />
 </adaptive-icon>

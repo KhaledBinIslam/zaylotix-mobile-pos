@@ -3,9 +3,31 @@ plugins {
     id 'org.jetbrains.kotlin.android' version '2.0.21'
 }
 
+// Same external keystore the main TWA app uses (android/app/build.gradle's
+// exact pattern): lives entirely outside the repo at
+// D:\zaylotix-keystore-backup, passwords loaded from its own
+// keystore.properties at build time so nothing secret is ever tracked.
+// One publisher, one keystore, two apps — standard practice.
+def keystorePropsFile = new File("D:/zaylotix-keystore-backup/keystore.properties")
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystoreProps.load(new FileInputStream(keystorePropsFile))
+}
+
 android {
     namespace "com.zaylotix.printerhelper"
     compileSdk 36
+
+    signingConfigs {
+        release {
+            if (keystorePropsFile.exists()) {
+                storeFile new File(keystorePropsFile.parentFile, keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
+    }
 
     defaultConfig {
         applicationId "com.zaylotix.printerhelper"
@@ -17,13 +39,12 @@ android {
         versionName "1.0"
     }
 
-    // Debug-signed only for now (docs/BT_PRINT_PLAN.md step-by-step: prove
-    // the whole pipeline live first). Release signing added once Khaled
-    // confirms the debug build actually prints correctly on the real
-    // XP-365B — see PRINTER_HELPER_SETUP.md.
     buildTypes {
         release {
             minifyEnabled false
+            if (keystorePropsFile.exists()) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 

@@ -183,7 +183,7 @@ async function printMemoBluetooth() {
     if (!el) return;
     btMemoPrinting.value = true;
     try {
-        await printMemoViaBluetooth(el, shop.value?.memo_settings?.paper_width);
+        await printMemoViaBluetooth(el, shop.value?.memo_settings?.paper_width, props.sale?.id ? 'INV-' + props.sale.id : null);
     } catch (e) {
         if (e?.name !== 'AbortError') toast('❌ ' + (e?.message || String(e)));
     } finally {
