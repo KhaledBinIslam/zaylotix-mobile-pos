@@ -120,11 +120,13 @@ async function render() {
             return;
         }
         try {
-            // bars 7mm (was 8) buys back ~1mm of the tight 25mm budget,
-            // spent on a bigger (10px) human-readable line below the bars —
-            // the 8px one printed too small to read cleanly on the thermal
-            // head (Khaled's live feedback).
-            JsBarcode(el, encoded, { ...opts, margin: 0, height: mmToPx(7), fontSize: 10, width: mmToPx(fit.moduleMm) });
+            // 6mm bars + 8px text: Khaled's explicit live priority is that
+            // NOTHING ever gets clipped — a long SKU line at 10px printed
+            // wider than the 38mm label (sides cut off), and the taller
+            // stack pushed the price off the sticker's bottom. Smaller but
+            // complete beats bigger but cut; the scale:3 supersampled
+            // capture keeps 8px legible on the thermal head.
+            JsBarcode(el, encoded, { ...opts, margin: 0, height: mmToPx(6), fontSize: 8, width: mmToPx(fit.moduleMm) });
         } catch (e) { /* invalid barcode value for CODE128 — leave blank */ }
         return;
     }
@@ -196,7 +198,8 @@ watch(() => [props.shop?.resolved_label_header, props.shop?.name, props.settings
    pushed the price line off the bottom of the physical sticker —
    top-aligning keeps all slack at the bottom where it can absorb the
    offset harmlessly. */
-.label-card.thermal { line-height: 1; justify-content: flex-start; }
+.label-card.thermal { line-height: 1; justify-content: flex-start; padding: 2px 6px; }
+.label-card.thermal .label-price-disc { font-size: 10px; }
 .label-card.thermal .label-variant { color: #000; }
 .label-card.thermal .label-price-reg { color: #000; }
 .label-card.thermal svg { max-width: none; }
