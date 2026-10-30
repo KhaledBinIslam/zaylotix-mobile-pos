@@ -116,14 +116,6 @@ async function printViaBluetooth() {
 
         const targetW = Math.round(sizeMm.value.width * 8);
         const targetH = Math.round(sizeMm.value.height * 8);
-        // Khaled's XP-365B unit isn't honoring GAP/GAPDETECT for reliable
-        // label-boundary sync (tried both live) — content printed at the
-        // full declared height occasionally spills onto the next physical
-        // sticker. Leaving a safety margin at the bottom is a pragmatic
-        // hedge against that drift: real content only occupies the top
-        // ~82% of the label, so a few mm of misalignment lands on blank
-        // space instead of the next sticker.
-        const safeH = Math.round(targetH * 0.82);
 
         const files = [];
         for (let i = 0; i < cards.length; i++) {
@@ -140,7 +132,7 @@ async function printViaBluetooth() {
             const ctx = fixed.getContext('2d');
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, targetW, targetH);
-            ctx.drawImage(raw, 0, 0, targetW, safeH);
+            ctx.drawImage(raw, 0, 0, targetW, targetH);
             const blob = await new Promise((resolve) => fixed.toBlob(resolve, 'image/png'));
             if (blob) files.push(new File([blob], `label-${i + 1}.png`, { type: 'image/png' }));
         }

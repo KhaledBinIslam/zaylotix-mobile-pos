@@ -56,6 +56,15 @@ object TsplImageEncoder {
         val header = buildString {
             append("SIZE ").append(fmtMm(widthMm)).append(" mm,").append(fmtMm(heightMm)).append(" mm\r\n")
             append("GAP ").append(fmtMm(gapMm)).append(" mm,0 mm\r\n")
+            // SET TEAR ON — the tear bar sits ~14mm past the print head on
+            // these printers; tear mode makes the printer BACKFEED to the
+            // label's true start before printing and present the finished
+            // label at the tear bar after. Without it (this clone firmware
+            // doesn't default it on), printing starts wherever the head
+            // happens to sit — mid-label — which is exactly the
+            // "starts from half the sticker" behavior seen live on the
+            // XP-365B.
+            append("SET TEAR ON\r\n")
             append("DIRECTION 0\r\n")
             append("CLS\r\n")
             append("BITMAP 0,0,").append(stride).append(",").append(heightPx).append(",0,")

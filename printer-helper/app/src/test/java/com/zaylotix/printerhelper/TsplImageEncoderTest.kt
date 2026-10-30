@@ -71,7 +71,7 @@ class TsplImageEncoderTest {
             widthPx = 8, heightPx = 1, bitmapBytes = bitmap,
         )
 
-        val expectedHeader = "SIZE 38 mm,25 mm\r\nGAP 2 mm,0 mm\r\nDIRECTION 0\r\nCLS\r\nBITMAP 0,0,1,1,0,".toByteArray(Charsets.US_ASCII)
+        val expectedHeader = "SIZE 38 mm,25 mm\r\nGAP 2 mm,0 mm\r\nSET TEAR ON\r\nDIRECTION 0\r\nCLS\r\nBITMAP 0,0,1,1,0,".toByteArray(Charsets.US_ASCII)
         val expectedFooter = "\r\nPRINT 1,1\r\n".toByteArray(Charsets.US_ASCII)
         val expected = expectedHeader + bitmap + expectedFooter
 
