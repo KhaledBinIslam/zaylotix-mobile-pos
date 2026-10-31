@@ -51,10 +51,16 @@ class BarcodeLabelController extends Controller
                     // one, for a shop that hasn't turned barcode_include_size on
                     'colorBarcodes',
                 ])
-                ->get(['id', 'name', 'name_en', 'emoji', 'barcode', 'price', 'discount_price'])
+                // stock is listed so the picker can show how many are
+                // actually in hand next to each row — Khaled prints a
+                // sticker per pair and was choosing counts blind. It is
+                // not cost/margin data, so a cashier with only
+                // `barcode_labels` seeing it is fine.
+                ->get(['id', 'name', 'name_en', 'emoji', 'barcode', 'price', 'discount_price', 'stock'])
                 ->map(fn ($p) => [
                     'id' => $p->id, 'name' => $p->name, 'name_en' => $p->name_en, 'emoji' => $p->emoji,
                     'barcode' => $p->barcode, 'price' => $p->price, 'discount_price' => $p->discount_price,
+                    'stock' => $p->stock,
                     // docs/ARTICLE_SERIES_PLAN.md §10 — scan_code is what the
                     // printed label's bars actually ENCODE (short, scannable
                     // by a phone camera); barcode stays the full descriptive

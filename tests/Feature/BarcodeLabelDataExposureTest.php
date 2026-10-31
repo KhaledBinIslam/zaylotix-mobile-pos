@@ -31,6 +31,39 @@ class BarcodeLabelDataExposureTest extends TestCase
         );
     }
 
+    /**
+     * Stock rides along with every row so the picker can show what is
+     * actually in hand — Khaled prints a sticker per pair and was setting
+     * counts blind ("jate dekhe print dite pare"). Cost stays out, as the
+     * test above pins; stock is not margin data.
+     */
+    public function test_barcode_label_rows_carry_the_stock_on_hand(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'barcode_printing');
+        $this->grantFeature($shop, 'product_variants');
+
+        Product::create(['shop_id' => $shop->id, 'name' => 'Soap', 'cost' => 55, 'price' => 90, 'stock' => 7, 'barcode' => '1234567890']);
+        $shoe = Product::create(['shop_id' => $shop->id, 'name' => 'B-20009', 'cost' => 1300, 'price' => 1990, 'stock' => 5]);
+        ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $shoe->id, 'size' => '18', 'color' => 'RED', 'stock' => 2, 'barcode' => 'V18RED']);
+        ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $shoe->id, 'size' => '25', 'color' => 'RED', 'stock' => 3, 'barcode' => 'V25RED']);
+
+        $this->actingAs($owner, 'web')->get('/app/barcode-labels')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('products.0.name', 'B-20009')
+                // closures, not literals: stock is a decimal column, so
+                // whether it serializes as 5 or 5.0 is not the point here
+                ->where('products.0.stock', fn ($s) => (float) $s === 5.0)
+                ->where('products.0.variants.0.stock', fn ($s) => (float) $s === 2.0)
+                ->where('products.0.variants.1.stock', fn ($s) => (float) $s === 3.0)
+                ->where('products.1.name', 'Soap')
+                ->where('products.1.stock', fn ($s) => (float) $s === 7.0)
+                // still no cost, whatever else was added
+                ->missing('products.0.cost')
+            );
+    }
+
     /** A variant product with no barcode of its own (the normal case — see DemoShopSeeder's clothingDemo()) must still show up here once it has variants, not just when its own barcode column happens to be set. */
     public function test_a_variant_product_appears_even_without_its_own_barcode(): void
     {

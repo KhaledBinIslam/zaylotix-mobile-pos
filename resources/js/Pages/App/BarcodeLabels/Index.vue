@@ -29,32 +29,61 @@ function variantLabel(v) {
     return [v.size, v.color].filter(Boolean).join(', ');
 }
 
+/**
+ * Selected = the key is PRESENT, not that its value is truthy.
+ *
+ * The copies box was rendered with v-if="selected[key]", so clearing it to
+ * type a new number made the value falsy and unmounted the input
+ * mid-keystroke — the row appeared to deselect itself and the field
+ * vanished ("1 thake eta remove korle screen cole jacche"). An empty box
+ * is a row still selected, with its count not yet typed.
+ */
+function isSelected(key) {
+    return key in selected.value;
+}
+
+/** An empty or nonsense count becomes 1 when the box loses focus, so nothing silently drops out of the batch. */
+function normalizeCopies(key) {
+    const n = Math.floor(Number(selected.value[key]));
+    selected.value[key] = Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+function bumpCopies(key, by) {
+    const n = Math.floor(Number(selected.value[key]));
+    selected.value[key] = Math.max(1, (Number.isFinite(n) ? n : 0) + by);
+}
+
 function toggleProduct(p) {
     if (!p.barcode) return;
     const key = 'p:' + p.id;
-    if (selected.value[key]) delete selected.value[key];
+    if (isSelected(key)) delete selected.value[key];
     else selected.value[key] = 1;
 }
 function toggleVariant(v) {
     if (!v.barcode) return;
     const key = 'v:' + v.id;
-    if (selected.value[key]) delete selected.value[key];
+    if (isSelected(key)) delete selected.value[key];
     else selected.value[key] = 1;
 }
 /** docs/ARTICLE_SERIES_PLAN.md §9 — one label per color (every size shares it) instead of one per size — copies default to that color's TOTAL stock across sizes, editable same as any other row. */
 function toggleColorBarcode(cb) {
     const key = 'c:' + cb.id;
-    if (selected.value[key]) delete selected.value[key];
+    if (isSelected(key)) delete selected.value[key];
     else selected.value[key] = Math.max(1, cb.stock);
 }
 function selectAllVariants(p) {
-    const allSelected = p.variants.every((v) => !v.barcode || selected.value['v:' + v.id]);
+    const allSelected = p.variants.every((v) => !v.barcode || isSelected('v:' + v.id));
     p.variants.forEach((v) => {
         const key = 'v:' + v.id;
         if (!v.barcode) return;
         if (allSelected) delete selected.value[key];
         else selected.value[key] = 1;
     });
+}
+
+/** Stock across every size of a product, for the header row of a variant product. */
+function totalStock(p) {
+    return (p.variants || []).reduce((sum, v) => sum + Number(v.stock || 0), 0);
 }
 
 function generateBarcode(v) {
@@ -397,16 +426,21 @@ const printCss = computed(() => {
         <input v-model="q" :placeholder="t('bc.searchPlaceholder')" style="margin-bottom:12px">
 
         <div v-for="p in filtered" :key="p.id" class="card" style="padding:0;margin-bottom:8px;overflow:hidden">
-            <div v-if="!p.variants?.length" class="row" @click="toggleProduct(p)" :class="{ incart: selected['p:' + p.id] }" :style="selected['p:' + p.id] ? 'border:none;background:var(--goldSoft)' : 'border:none'">
+            <div v-if="!p.variants?.length" class="row" @click="toggleProduct(p)" :class="{ incart: isSelected('p:' + p.id) }" :style="isSelected('p:' + p.id) ? 'border:none;background:var(--goldSoft)' : 'border:none'">
                 <div class="ava">{{ p.emoji }}</div>
                 <div class="mid">
                     <b>{{ p.name }}</b>
                     <span v-if="p.barcode">{{ p.barcode }} • {{ money(p.price) }}<span v-if="p.discount_price"> → {{ money(p.discount_price) }}</span></span>
                     <span v-else style="color:var(--rose)">{{ t('bc.noBarcode') }}</span>
+                    <span :style="'color:' + (Number(p.stock) > 0 ? 'var(--mut)' : 'var(--rose)')">{{ t('bc.inStock', { n: p.stock ?? 0 }) }}</span>
                 </div>
                 <div class="end" @click.stop>
                     <button v-if="!p.barcode" class="btn sm ghost" style="width:auto;padding:6px 10px" @click="generateProductBarcode(p)">{{ t('bc.generateBarcode') }}</button>
-                    <input v-else-if="selected['p:' + p.id]" v-model.number="selected['p:' + p.id]" type="number" min="1" style="width:60px;padding:6px;text-align:center">
+                    <div v-else-if="isSelected('p:' + p.id)" class="copies">
+                        <button type="button" class="copies-step" @click="bumpCopies('p:' + p.id, -1)">−</button>
+                        <input v-model.number="selected['p:' + p.id]" type="number" min="1" inputmode="numeric" @blur="normalizeCopies('p:' + p.id)">
+                        <button type="button" class="copies-step" @click="bumpCopies('p:' + p.id, 1)">+</button>
+                    </div>
                 </div>
             </div>
 
@@ -415,7 +449,7 @@ const printCss = computed(() => {
                     <div class="ava">{{ p.emoji }}</div>
                     <div class="mid">
                         <b>{{ p.name }}</b>
-                        <span>{{ t('bc.variantCount', { n: p.variants.length }) }}</span>
+                        <span>{{ t('bc.variantCount', { n: p.variants.length }) }} • {{ t('bc.totalStock', { n: totalStock(p) }) }}</span>
                     </div>
                     <div class="end" @click.stop>
                         <button class="btn sm ghost" style="width:auto;padding:6px 10px" @click="selectAllVariants(p)">{{ t('bc.selectAllVariants') }}</button>
@@ -423,26 +457,39 @@ const printCss = computed(() => {
                 </div>
                 <!-- docs/ARTICLE_SERIES_PLAN.md §9 — one label per color (every size shares it), an alternative to picking each size below when the shop hasn't turned "include size in barcode" on -->
                 <div v-if="p.color_barcodes?.length" style="padding:8px 12px 2px 20px;font-size:11px;color:var(--mut)">{{ t('bc.colorLabelsHint') }}</div>
-                <div v-for="cb in p.color_barcodes" :key="'c' + cb.id" class="row" style="border-top:1px solid var(--line);padding-left:20px" :class="{ incart: selected['c:' + cb.id] }" :style="selected['c:' + cb.id] ? 'background:var(--goldSoft)' : ''" @click="toggleColorBarcode(cb)">
+                <div v-for="cb in p.color_barcodes" :key="'c' + cb.id" class="row" style="border-top:1px solid var(--line);padding-left:20px" :class="{ incart: isSelected('c:' + cb.id) }" :style="isSelected('c:' + cb.id) ? 'background:var(--goldSoft)' : ''" @click="toggleColorBarcode(cb)">
                     <div class="ava" style="font-size:16px">🎨</div>
                     <div class="mid">
                         <b>{{ cb.color }}</b>
                         <span>{{ cb.barcode }} • {{ money(p.price) }}</span>
+                        <span :style="'color:' + (Number(cb.stock) > 0 ? 'var(--mut)' : 'var(--rose)')">{{ t('bc.inStock', { n: cb.stock ?? 0 }) }}</span>
                     </div>
                     <div class="end" @click.stop>
-                        <input v-if="selected['c:' + cb.id]" v-model.number="selected['c:' + cb.id]" type="number" min="1" style="width:60px;padding:6px;text-align:center">
+                        <div v-if="isSelected('c:' + cb.id)" class="copies">
+                            <button type="button" class="copies-step" @click="bumpCopies('c:' + cb.id, -1)">−</button>
+                            <input v-model.number="selected['c:' + cb.id]" type="number" min="1" inputmode="numeric" @blur="normalizeCopies('c:' + cb.id)">
+                            <button type="button" class="copies-step" @click="bumpCopies('c:' + cb.id, 1)">+</button>
+                        </div>
                     </div>
                 </div>
-                <div v-for="v in p.variants" :key="v.id" class="row" style="border-top:1px solid var(--line);padding-left:20px" :class="{ incart: selected['v:' + v.id] }" :style="selected['v:' + v.id] ? 'background:var(--goldSoft)' : ''" @click="toggleVariant(v)">
+                <div v-for="v in p.variants" :key="v.id" class="row" style="border-top:1px solid var(--line);padding-left:20px" :class="{ incart: isSelected('v:' + v.id) }" :style="isSelected('v:' + v.id) ? 'background:var(--goldSoft)' : ''" @click="toggleVariant(v)">
                     <div class="ava" style="font-size:16px">🏷️</div>
                     <div class="mid">
                         <b>{{ variantLabel(v) }}</b>
                         <span v-if="v.barcode">{{ v.barcode }} • {{ money(v.price ?? p.price) }}</span>
                         <span v-else style="color:var(--rose)">{{ t('bc.noBarcode') }}</span>
+                        <!-- printing a sticker per pair means the count he
+                             wants is almost always this number, so it goes
+                             on every row rather than only in Stock -->
+                        <span :style="'color:' + (Number(v.stock) > 0 ? 'var(--mut)' : 'var(--rose)')">{{ t('bc.inStock', { n: v.stock ?? 0 }) }}</span>
                     </div>
                     <div class="end" @click.stop>
                         <button v-if="!v.barcode" class="btn sm ghost" style="width:auto;padding:6px 10px" @click="generateBarcode(v)">{{ t('bc.generateBarcode') }}</button>
-                        <input v-else-if="selected['v:' + v.id]" v-model.number="selected['v:' + v.id]" type="number" min="1" style="width:60px;padding:6px;text-align:center">
+                        <div v-else-if="isSelected('v:' + v.id)" class="copies">
+                            <button type="button" class="copies-step" @click="bumpCopies('v:' + v.id, -1)">−</button>
+                            <input v-model.number="selected['v:' + v.id]" type="number" min="1" inputmode="numeric" @blur="normalizeCopies('v:' + v.id)">
+                            <button type="button" class="copies-step" @click="bumpCopies('v:' + v.id, 1)">+</button>
+                        </div>
                     </div>
                 </div>
             </template>
@@ -490,6 +537,25 @@ const printCss = computed(() => {
 <style>
 #label-print-overlay { position: fixed; inset: 0; background: #fff; z-index: 200; overflow-y: auto; }
 .label-grid { display: grid; gap: 8px; padding: 12px; }
+
+/* How many of this label to print. The − / + buttons are here because the
+   count is nearly always nudged by one or two, and on a phone that beat
+   clearing the box and retyping — which is also what used to break: an
+   empty box is still a selected row (see isSelected). */
+.copies { display: flex; align-items: center; gap: 2px; }
+.copies input {
+    width: 54px; padding: 7px 4px; text-align: center; margin: 0;
+    -moz-appearance: textfield; appearance: textfield;
+}
+.copies input::-webkit-outer-spin-button,
+.copies input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.copies-step {
+    width: 32px; height: 34px; flex: 0 0 auto;
+    border: 1px solid var(--line); border-radius: 8px;
+    background: var(--card); color: var(--ink);
+    font-size: 17px; line-height: 1; cursor: pointer;
+}
+.copies-step:active { background: var(--line); }
 
 @media print {
     #app { display: none !important; }

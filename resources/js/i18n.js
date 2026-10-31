@@ -1069,6 +1069,8 @@ export const translations = {
     'bc.bluetoothPrint': { bn: 'Bluetooth-এ প্রিন্ট', en: 'Print via Bluetooth' },
     'bc.bluetoothPreparing': { bn: 'প্রস্তুত হচ্ছে...', en: 'Preparing...' },
     'bc.bluetoothRendering': { bn: 'লেবেল তৈরি হচ্ছে ({n}/{total})', en: 'Rendering label ({n}/{total})' },
+    'bc.inStock': { bn: 'স্টক {n}', en: 'Stock {n}' },
+    'bc.totalStock': { bn: 'মোট স্টক {n}', en: 'Total stock {n}' },
     'bc.bluetoothNoLabels': { bn: 'কোনো লেবেল পাওয়া যায়নি।', en: 'No labels found.' },
     'bc.bluetoothSlowRender': { bn: 'সব লেবেল আঁকা শেষ হয়নি — যেগুলো তৈরি হয়েছে সেগুলোই পাঠানো হচ্ছে।', en: 'Not every label finished drawing — sending the ones that did.' },
     'bc.bluetoothRenderFailed': { bn: 'লেবেল তৈরি করা যায়নি।', en: 'Could not render the labels.' },
