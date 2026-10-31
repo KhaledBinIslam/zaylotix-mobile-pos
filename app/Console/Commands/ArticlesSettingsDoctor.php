@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\ProductCategory;
 use App\Models\Shop;
+use App\Support\ArticleSerial;
 use Illuminate\Console\Command;
 
 /**
@@ -69,6 +70,29 @@ class ArticlesSettingsDoctor extends Command
                     $on = $codes !== [] ? in_array($code, $codes, true) : false;
                     $mark = $on ? '<fg=green>GROUP PRICES</>' : '<fg=yellow>one price</>';
                     $this->line("    - {$c->name} (code: ".($code ?: '—').") → {$mark}");
+                }
+            }
+
+            // "B-20007 er article er juta 20009 kn hoi geche" — which
+            // numbers a category has handed out, which a deleted article
+            // gave back, and what the form will therefore prefill. All
+            // three in one place, so a wrong prefill can be read off
+            // instead of guessed at.
+            if ($categories->isNotEmpty()) {
+                $this->line('  serials:');
+                foreach ($categories as $c) {
+                    $code = strtoupper(trim((string) $c->code));
+                    if ($code === '') {
+                        continue;
+                    }
+                    $used = ArticleSerial::serialsUsed($shop, $code);
+                    if ($used['everLowest'] === null && ArticleSerial::peekNext($shop, $code) === 10001) {
+                        continue; // never used — nothing to report
+                    }
+                    $this->line("    - {$code}: counter next ".ArticleSerial::peekNext($shop, $code));
+                    $this->line('        live:  '.($used['live'] ? implode(', ', $used['live']) : '—'));
+                    $this->line('        freed: '.($used['freed'] ? '<fg=green>'.implode(', ', $used['freed']).'</>' : '—'));
+                    $this->line('        form will prefill: <fg=cyan>'.$code.'-'.ArticleSerial::nextFree($shop, $code).'</>');
                 }
             }
 

@@ -6,7 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\Damage;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Models\Shop;
 use App\Support\Activity;
+use App\Support\ArticleVariant;
+use App\Support\ColorBarcodeResolver;
+use App\Support\SizeGroupPricing;
 use App\Support\Tenancy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -62,6 +66,17 @@ class ProductVariantController extends Controller
             return back()->withErrors(['size' => 'এই সাইজ/রং-এর ভ্যারিয়েন্ট ইতিমধ্যে আছে।']);
         }
 
+        // A size added to an article AFTER it was created used to go in
+        // with no barcode at all, so it could not be scanned or
+        // stickered. Only ever filled in when the box was left empty — a
+        // hand-typed barcode still wins.
+        $shop = Tenancy::shop();
+        if ($shop && empty($data['barcode'])) {
+            $data['barcode'] = ArticleVariant::freeBarcodeFor(
+                $shop, $product, $data['color'] ?? null, $data['size'] ?? null, $data['cost'] ?? null
+            );
+        }
+
         DB::transaction(function () use ($product, $data) {
             $lockedProduct = Product::whereKey($product->id)->lockForUpdate()->first();
             $isFirstVariant = ! ProductVariant::where('product_id', $lockedProduct->id)->exists();
@@ -86,6 +101,8 @@ class ProductVariantController extends Controller
             Activity::log('product.variant.create', "'{$product->name}'-এ নতুন ভ্যারিয়েন্ট ({$variant->label()}) যোগ করা হয়েছে।", $variant);
         });
 
+        $this->mintColorBarcodes($shop, $product, [$data['color'] ?? null]);
+
         return back()->with('success', 'ভ্যারিয়েন্ট যোগ হয়েছে।');
     }
 
@@ -107,6 +124,18 @@ class ProductVariantController extends Controller
             'variants.*.color' => ['nullable', 'string', 'max:50'],
             'variants.*.stock' => ['required', 'integer', 'min:0'],
             'write_off_rest' => ['nullable', 'boolean'],
+            // Khaled: "oi serial e gia product add korle purchase r sell
+            // price input diar option nai". One pair for a plain article,
+            // one pair per size group for an article priced by group —
+            // the same two ways the article form itself offers. Left
+            // blank, a variant inherits the article's own price and cost
+            // exactly as it did before.
+            'price' => ['nullable', 'numeric', 'min:0'],
+            'cost' => ['nullable', 'numeric', 'min:0'],
+            'group_prices' => ['nullable', 'array'],
+            'group_prices.*' => ['nullable', 'numeric', 'min:0'],
+            'group_costs' => ['nullable', 'array'],
+            'group_costs.*' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         if ($product->sold_by_weight) {
@@ -133,17 +162,55 @@ class ProductVariantController extends Controller
             return back()->withErrors(['size' => 'নতুন কোনো ভ্যারিয়েন্ট পাওয়া যায়নি — সবগুলো খালি অথবা আগে থেকেই আছে।']);
         }
 
-        $created = DB::transaction(function () use ($product, $toCreate, $data) {
+        $shop = Tenancy::shop();
+        $groupPrices = array_filter($data['group_prices'] ?? []);
+        $groupCosts = array_filter($data['group_costs'] ?? []);
+
+        // Same refusal as the article form: a size that falls in no
+        // group would quietly inherit the article's headline price, and
+        // a wrong number printed on a sticker is money. Refusing beats
+        // guessing — nothing downstream can tell a guess from a decision.
+        if ($shop && ($groupPrices || $groupCosts)) {
+            $ungrouped = [];
+            foreach ($toCreate as $row) {
+                $size = (string) ($row['size'] ?? '');
+                if ($size !== '' && SizeGroupPricing::groupForSize($shop, $size) === null) {
+                    $ungrouped[$size] = true;
+                }
+            }
+            if ($ungrouped) {
+                $sizes = implode(', ', array_keys($ungrouped));
+
+                return back()->withErrors(['size' => "সাইজ {$sizes} কোনো গ্রুপের রেঞ্জে পড়ছে না — সাইজ-গ্রুপ সেটিংসে রেঞ্জ ঠিক করুন, নয়তো দামের ঘরগুলো খালি রাখুন।"]);
+            }
+        }
+
+        $created = DB::transaction(function () use ($shop, $product, $toCreate, $data, $groupPrices, $groupCosts) {
             $lockedProduct = Product::whereKey($product->id)->lockForUpdate()->first();
             $isFirstVariant = ! ProductVariant::where('product_id', $lockedProduct->id)->exists();
 
             $totalStock = 0;
             foreach ($toCreate as $row) {
+                $size = (string) ($row['size'] ?? '');
+                $rowPrice = $groupPrices && $shop
+                    ? SizeGroupPricing::priceForSize($shop, $size, $groupPrices)
+                    : ($data['price'] ?? null);
+                $rowCost = $groupCosts && $shop
+                    ? SizeGroupPricing::priceForSize($shop, $size, $groupCosts)
+                    : ($data['cost'] ?? null);
+
                 ProductVariant::create([
                     'product_id' => $product->id,
                     'size' => $row['size'] ?? null,
                     'color' => $row['color'] ?? null,
+                    // this size's own cost is what gets hidden in it, so
+                    // the sticker on a 16 reads back what a 16 cost
+                    'barcode' => $shop
+                        ? ArticleVariant::freeBarcodeFor($shop, $product, $row['color'] ?? null, $row['size'] ?? null, $rowCost)
+                        : null,
                     'stock' => $row['stock'],
+                    'price' => $rowPrice,
+                    'cost' => $rowCost,
                 ]);
                 $totalStock += (int) $row['stock'];
             }
@@ -159,7 +226,28 @@ class ProductVariantController extends Controller
             return count($toCreate);
         });
 
+        $this->mintColorBarcodes($shop, $product, array_column($toCreate, 'color'));
+
         return back()->with('success', "{$created}টা ভ্যারিয়েন্ট যোগ হয়েছে।");
+    }
+
+    /**
+     * docs/ARTICLE_SERIES_PLAN.md §9 — the colour-level "tier 2" sticker
+     * barcode, which ArticleController::store() mints for every colour an
+     * article is created with. A colour introduced later had none, so its
+     * label printed nothing scannable. Idempotent: ColorBarcodeResolver
+     * aliases rather than overwrites, which is what lets
+     * articles:regenerate-barcodes be re-run at any time.
+     */
+    private function mintColorBarcodes(?Shop $shop, Product $product, array $colors): void
+    {
+        if (! $shop || ! ArticleVariant::isArticle($product)) {
+            return;
+        }
+
+        foreach (array_unique(array_filter($colors)) as $color) {
+            ColorBarcodeResolver::resolve($shop, $product, $color, $product->barcode);
+        }
     }
 
     /**

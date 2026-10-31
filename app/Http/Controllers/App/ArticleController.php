@@ -35,7 +35,7 @@ use Inertia\Inertia;
 class ArticleController extends Controller
 {
     /** Category names (English/Bengali) that trigger the 3-price-box kids'-shoe flow — exactly the names config/business_types.php seeds, same synonym source ProductsImportArticles::CATEGORY_SYNONYMS already uses for 'KIDS'. */
-    private const KIDS_CATEGORY_NAMES = ["Kids' Shoes", 'বাচ্চাদের জুতা'];
+    private const KIDS_CATEGORY_NAMES = SizeGroupPricing::KIDS_CATEGORY_NAMES;
 
     public function create()
     {
@@ -81,61 +81,7 @@ class ArticleController extends Controller
             return response()->json(['serial' => null]);
         }
 
-        return response()->json(['serial' => $this->nextFreeSerial($shop, $categoryCode)]);
-    }
-
-    /**
-     * What to prefill the form's serial with: the lowest number this
-     * category has NOT got a live article for.
-     *
-     * The counter alone only ever moves forward, so deleting B-20007 and
-     * B-20008 left the next article starting at 20009 with two numbers
-     * stranded. Khaled asked for those to come back. A gap only exists
-     * where an article was deleted, and the serial field is editable
-     * anyway, so this is a suggestion rather than a rule — store()'s own
-     * check is what guarantees two live articles never share one.
-     *
-     * The walk starts at the lowest serial this category has EVER used,
-     * deleted articles included — not at ArticleSerial::START, since
-     * imported categories began at 20001 and starting from 10001 would
-     * suggest a number from a range this shop has never used.
-     *
-     * It used to start at the lowest LIVE one, which made a gap below it
-     * invisible: Khaled deleted B-20007 and B-20008, the lowest live
-     * article became B-20009, and the walk could then only ever look
-     * upwards from there. The two numbers he was told would come back
-     * never did ("B-20007 er article er juta 20009 kn hoi geche").
-     */
-    private function nextFreeSerial(Shop $shop, string $categoryCode): int
-    {
-        $counterNext = ArticleSerial::peekNext($shop, $categoryCode);
-        $shopIds = Tenancy::businessShopIds($shop->id);
-
-        $serialsOf = fn ($query) => $query
-            ->whereIn('shop_id', $shopIds)
-            ->where('name', 'like', $categoryCode.'-%')
-            ->pluck('name')
-            ->map(fn ($name) => (int) substr((string) $name, strlen($categoryCode) + 1))
-            ->filter(fn ($serial) => $serial > 0);
-
-        // only a LIVE article blocks a number; a deleted one is exactly
-        // what frees it (see store()'s own check, which agrees)
-        $taken = array_flip($serialsOf(Product::withoutGlobalScopes()->whereNull('deleted_at'))->all());
-
-        // deleted rows included, so the floor does not rise as the
-        // earliest articles are removed
-        $floor = $serialsOf(Product::withoutGlobalScopes())->min();
-        if ($floor === null) {
-            return $counterNext;
-        }
-
-        for ($candidate = $floor; $candidate < $counterNext; $candidate++) {
-            if (! isset($taken[$candidate])) {
-                return $candidate;
-            }
-        }
-
-        return $counterNext;
+        return response()->json(['serial' => ArticleSerial::nextFree($shop, $categoryCode)]);
     }
 
     public function store(Request $request)
@@ -624,12 +570,8 @@ class ArticleController extends Controller
      */
     private function isKidsCategory(ProductCategory $category): bool
     {
-        $codes = Tenancy::shop()->sizeGroupCategoryCodes();
-        if ($codes !== []) {
-            return in_array(strtoupper(trim((string) $category->code)), $codes, true);
-        }
-
-        return in_array(trim((string) $category->name_en), self::KIDS_CATEGORY_NAMES, true)
-            || in_array(trim((string) $category->name), self::KIDS_CATEGORY_NAMES, true);
+        // the verdict itself lives on SizeGroupPricing, so the stock
+        // screen's grid reaches the same one when it adds a size later
+        return SizeGroupPricing::appliesTo(Tenancy::shop(), $category);
     }
 }

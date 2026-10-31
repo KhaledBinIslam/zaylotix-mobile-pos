@@ -126,6 +126,11 @@ class ProductController extends Controller
             // gets an empty list and the dropdown quietly doesn't show
             'companies' => Product::whereNotNull('company')->distinct()->orderBy('company')->pluck('company'),
             'genericNames' => Product::whereNotNull('generic_name')->distinct()->orderBy('generic_name')->pluck('generic_name'),
+            // adding a size to an article from here has to offer the same
+            // price boxes the article form offered when it was created —
+            // one pair, or one pair per size group
+            'sizeGroupCategoryCodes' => Tenancy::shop()?->sizeGroupCategoryCodes() ?? [],
+            'kidsShoeSizeGroups' => Tenancy::shop()?->kidsShoeSizeGroups() ?? [],
         ]);
     }
 

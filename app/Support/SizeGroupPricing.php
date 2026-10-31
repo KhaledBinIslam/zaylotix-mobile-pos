@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\ProductCategory;
 use App\Models\Shop;
 
 /**
@@ -19,6 +20,37 @@ use App\Models\Shop;
  */
 class SizeGroupPricing
 {
+    /** Category names (English/Bengali) that trigger group pricing when the shop has picked no categories of its own — exactly the names config/business_types.php seeds, same synonym source ProductsImportArticles::CATEGORY_SYNONYMS already uses for 'KIDS'. */
+    public const KIDS_CATEGORY_NAMES = ["Kids' Shoes", 'বাচ্চাদের জুতা'];
+
+    /**
+     * Does this category price by size group?
+     *
+     * The shop's own picks win where it has made any (matched by category
+     * CODE — a branch gets its own ProductCategory rows with fresh ids, so
+     * ids are not a cross-branch key; see CatalogSync). The seeded names
+     * are only a fallback for a shop that has never opened the settings.
+     *
+     * Shared so that every screen which can create a variant reaches the
+     * SAME verdict as the article form — the stock grid used to reach no
+     * verdict at all and priced a size-16 pair at the article's headline
+     * price.
+     */
+    public static function appliesTo(Shop $shop, ?ProductCategory $category): bool
+    {
+        if ($category === null) {
+            return false;
+        }
+
+        $codes = $shop->sizeGroupCategoryCodes();
+        if ($codes !== []) {
+            return in_array(strtoupper(trim((string) $category->code)), $codes, true);
+        }
+
+        return in_array(trim((string) $category->name_en), self::KIDS_CATEGORY_NAMES, true)
+            || in_array(trim((string) $category->name), self::KIDS_CATEGORY_NAMES, true);
+    }
+
     /** The configured group whose [min_size, max_size] contains this size, or null if the size has no numeric part or falls in a gap between groups. */
     public static function groupForSize(Shop $shop, string $size): ?array
     {

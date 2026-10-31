@@ -16,6 +16,11 @@ const props = defineProps({
     products: Object, categories: Array, units: Array, stats: Object, q: String, categoryId: [Number, String],
     company: String, genericName: String, companies: { type: Array, default: () => [] }, genericNames: { type: Array, default: () => [] },
     stockStatus: String,
+    // which categories price by size group, and the groups themselves —
+    // so adding a size to an article later offers the SAME price boxes
+    // the article form offered when it was created
+    sizeGroupCategoryCodes: { type: Array, default: () => [] },
+    kidsShoeSizeGroups: { type: Array, default: () => [] },
 });
 
 const page = usePage();
@@ -389,6 +394,19 @@ const gridProcessing = ref(false);
 const gridError = ref('');
 const gridWriteOffRest = ref(false);
 const gridTotal = computed(() => Object.values(gridStock.value).reduce((sum, v) => sum + (Number(v) || 0), 0));
+// one selling + buying price for the whole grid, or one pair per size
+// group when the article is priced that way — left blank, each variant
+// inherits the article's own, exactly as before
+const gridPrice = ref('');
+const gridCost = ref('');
+const gridGroupPrices = ref({});
+const gridGroupCosts = ref({});
+
+const editingCategory = computed(() => (props.categories || []).find((c) => c.id === editing.value?.category_id) || null);
+const editingUsesSizeGroups = computed(() => {
+    const code = String(editingCategory.value?.code ?? '').trim().toUpperCase();
+    return code !== '' && (props.sizeGroupCategoryCodes || []).includes(code);
+});
 
 function gridCellKey(color, size) {
     return `${color}|${size}`;
@@ -398,6 +416,10 @@ function openGrid() {
     gridStock.value = {};
     gridError.value = '';
     gridWriteOffRest.value = false;
+    gridPrice.value = '';
+    gridCost.value = '';
+    gridGroupPrices.value = {};
+    gridGroupCosts.value = {};
     // Pre-fill from the shop's saved defaults (Accounts page) only when the
     // owner hasn't already typed something this session — never overwrite
     // an in-progress edit.
@@ -425,8 +447,19 @@ function submitGrid() {
         return;
     }
 
+    // only the shape that applies is sent; the other stays empty so the
+    // server never has to guess which one the owner meant
+    const payload = { variants, write_off_rest: gridWriteOffRest.value };
+    if (editingUsesSizeGroups.value) {
+        payload.group_prices = { ...gridGroupPrices.value };
+        payload.group_costs = { ...gridGroupCosts.value };
+    } else {
+        payload.price = gridPrice.value === '' ? null : Number(gridPrice.value);
+        payload.cost = gridCost.value === '' ? null : Number(gridCost.value);
+    }
+
     gridProcessing.value = true;
-    router.post(route('app.productVariants.bulkStore', editing.value.id), { variants, write_off_rest: gridWriteOffRest.value }, {
+    router.post(route('app.productVariants.bulkStore', editing.value.id), payload, {
         preserveScroll: true,
         onSuccess: () => {
             gridOpen.value = false;
@@ -434,6 +467,10 @@ function submitGrid() {
             gridSizesInput.value = '';
             gridStock.value = {};
             gridWriteOffRest.value = false;
+            gridPrice.value = '';
+            gridCost.value = '';
+            gridGroupPrices.value = {};
+            gridGroupCosts.value = {};
         },
         onError: (errors) => { gridError.value = errors.size || errors.stock || ''; },
         onFinish: () => { gridProcessing.value = false; },
@@ -971,6 +1008,28 @@ useKeyboardShortcuts({
                         </table>
                     </div>
 
+                    <!-- Khaled: a size added later had nowhere to put its
+                         buying and selling price, so it silently inherited
+                         the article's headline one. Blank still inherits —
+                         that is the old behaviour, now a choice. -->
+                    <div style="margin-top:10px">
+                        <div style="font-size:12px;color:var(--mut);margin-bottom:6px">{{ t('stock.gridPriceHint') }}</div>
+                        <template v-if="editingUsesSizeGroups">
+                            <div v-for="g in kidsShoeSizeGroups" :key="g.label" style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+                                <div style="flex:0 0 96px;font-size:12px">
+                                    <b>{{ g.label }}</b>
+                                    <div style="color:var(--dim);font-size:11px">{{ g.min_size }}–{{ g.max_size }}</div>
+                                </div>
+                                <input v-model="gridGroupCosts[g.label]" type="number" min="0" :placeholder="t('stock.variantCostOptional')" style="flex:1;margin:0">
+                                <input v-model="gridGroupPrices[g.label]" type="number" min="0" :placeholder="t('stock.variantPriceOptional')" style="flex:1;margin:0">
+                            </div>
+                        </template>
+                        <div v-else class="f2">
+                            <input v-model="gridCost" type="number" min="0" :placeholder="t('stock.variantCostOptional')">
+                            <input v-model="gridPrice" type="number" min="0" :placeholder="t('stock.variantPriceOptional')">
+                        </div>
+                    </div>
+
                     <template v-if="preExistingUnallocatedStock > 0">
                         <div style="font-size:12px;margin-top:8px" :style="{ color: gridTotal === preExistingUnallocatedStock ? 'var(--green)' : 'var(--mut)' }">
                             {{ t('stock.allocatedOf', { allocated: gridTotal, total: preExistingUnallocatedStock }) }}
@@ -995,11 +1054,14 @@ useKeyboardShortcuts({
                 </div>
                 <div class="f2" style="margin-top:8px">
                     <input v-model="variantForm.stock" type="number" :placeholder="t('stock.startingStock')">
-                    <input v-model="variantForm.price" type="number" :placeholder="t('stock.variantPriceOptional')">
+                    <input v-model="variantForm.cost" type="number" min="0" :placeholder="t('stock.variantCostOptional')">
                 </div>
                 <div class="f2" style="margin-top:8px">
-                    <input v-model="variantForm.barcode" :placeholder="t('stock.variantBarcodeOptional')">
+                    <input v-model="variantForm.price" type="number" :placeholder="t('stock.variantPriceOptional')">
                     <input v-model="variantForm.reorder_point" type="number" min="0" :placeholder="t('stock.variantReorderOptional')">
+                </div>
+                <div class="f2" style="margin-top:8px">
+                    <input v-model="variantForm.barcode" :placeholder="t('stock.variantBarcodeAutoHint')">
                 </div>
                 <label v-if="preExistingUnallocatedStock > 0" style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:13px">
                     <input v-model="variantForm.write_off_rest" type="checkbox">
