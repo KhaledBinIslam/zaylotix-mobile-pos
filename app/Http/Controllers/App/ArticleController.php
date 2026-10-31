@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\ProductVariant;
+use App\Models\Shop;
 use App\Models\Supplier;
 use App\Models\Unit;
 use App\Support\Activity;
@@ -74,7 +75,52 @@ class ArticleController extends Controller
             return response()->json(['serial' => null]);
         }
 
-        return response()->json(['serial' => ArticleSerial::peekNext($shop, $categoryCode)]);
+        return response()->json(['serial' => $this->nextFreeSerial($shop, $categoryCode)]);
+    }
+
+    /**
+     * What to prefill the form's serial with: the lowest number this
+     * category has NOT got a live article for.
+     *
+     * The counter alone only ever moves forward, so deleting B-20007 and
+     * B-20008 left the next article starting at 20009 with two numbers
+     * stranded. Khaled asked for those to come back. A gap only exists
+     * where an article was deleted, and the serial field is editable
+     * anyway, so this is a suggestion rather than a rule — store()'s own
+     * check is what guarantees two live articles never share one.
+     *
+     * The walk starts at this category's lowest existing serial, not at
+     * ArticleSerial::START: imported categories began at 20001, and
+     * starting from 10001 would suggest a number from a range this shop
+     * has never used.
+     */
+    private function nextFreeSerial(Shop $shop, string $categoryCode): int
+    {
+        $counterNext = ArticleSerial::peekNext($shop, $categoryCode);
+
+        $used = Product::withoutGlobalScopes()
+            ->whereNull('deleted_at')
+            ->whereIn('shop_id', Tenancy::businessShopIds($shop->id))
+            ->where('name', 'like', $categoryCode.'-%')
+            ->pluck('name')
+            ->map(fn ($name) => (int) substr((string) $name, strlen($categoryCode) + 1))
+            ->filter(fn ($serial) => $serial > 0)
+            ->unique()->sort()->values();
+
+        if ($used->isEmpty()) {
+            return $counterNext;
+        }
+
+        $candidate = $used->first();
+        foreach ($used as $serial) {
+            if ($serial === $candidate) {
+                $candidate++;
+            } elseif ($serial > $candidate) {
+                break;
+            }
+        }
+
+        return $candidate;
     }
 
     public function store(Request $request)
@@ -104,6 +150,10 @@ class ArticleController extends Controller
             // the picker falls back to a plain color swatch without one
             'photos' => ['nullable', 'array'],
             'photos.*' => ['nullable', 'image', 'max:3072'],
+            // Khaled: a serial freed by deleting an article should be usable
+            // again, and a wrong one should be fixable. Absent = take the
+            // next one from the counter, exactly as before.
+            'serial' => ['nullable', 'integer', 'min:1'],
         ]);
 
         // idempotent resubmit (double-tap, flaky connection retry): the
@@ -150,8 +200,32 @@ class ArticleController extends Controller
             return back()->withErrors(['variants' => 'অন্তত একটা রং/সাইজে স্টক দিতে হবে।']);
         }
 
+        // A typed serial may reuse one a deleted article left behind, but
+        // never one a LIVE article still answers to — two articles sharing a
+        // serial means two different shoes behind one barcode. Business-wide
+        // because the counter itself is shared by a shop and its branches.
+        if (isset($data['serial'])) {
+            $taken = Product::withoutGlobalScopes()
+                ->whereNull('deleted_at')
+                ->whereIn('shop_id', Tenancy::businessShopIds($shop->id))
+                ->where('name', "{$category->code}-{$data['serial']}")
+                ->exists();
+            if ($taken) {
+                return back()->withErrors(['serial' => "{$category->code}-{$data['serial']} নামে একটা আর্টিকেল এখনো আছে — অন্য একটা নম্বর দিন, নয়তো আগেরটা আগে মুছুন।"]);
+            }
+        }
+
         $product = DB::transaction(function () use ($shop, $category, $supplier, $unitId, $data, $costCode, $isKids, $kidsPrices, $basePrice, $variantRows, $request) {
-            $serial = ArticleSerial::next($shop, $category->code);
+            // A typed serial is used as-is; the counter is then pushed past
+            // it so the next automatic one can't land on it. Without one,
+            // the counter issues the next as it always did.
+            $serial = isset($data['serial'])
+                ? (int) $data['serial']
+                : ArticleSerial::next($shop, $category->code);
+            if (isset($data['serial'])) {
+                ArticleSerial::bumpFloor($shop, $category->code, $serial + 1);
+            }
+
             $articleBarcode = ArticleBarcode::buildArticleBarcode($shop, strtoupper($data['manufacturer_code']), $category->code, $serial, $costCode);
             $name = "{$category->code}-{$serial}";
 

@@ -91,10 +91,25 @@ class Product extends Model
                 return;
             }
 
+            // Barcodes are released, not just hidden. A soft-deleted row
+            // still occupies the unique (shop_id, barcode) index, which
+            // made re-entering a deleted article impossible — and Khaled
+            // explicitly wants a deleted article's serial to be usable
+            // again. They're derived data: products:regenerate-barcodes
+            // rebuilds them from the article and its colours.
+            $product->variants()->update(['barcode' => null]);
             $product->variants()->delete();
+
+            ProductColorBarcode::where('product_id', $product->id)->delete();
+            ProductColorBarcodeAlias::where('product_id', $product->id)->delete();
+
+            static::withTrashed()->whereKey($product->id)->update(['barcode' => null]);
         });
 
         static::restored(function (Product $product) {
+            // the variants come back; their barcodes don't, since the
+            // serial may well have been reissued in the meantime — run
+            // products:regenerate-barcodes to mint fresh ones
             $product->variants()->withTrashed()->restore();
         });
     }

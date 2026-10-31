@@ -323,6 +323,102 @@ class ArticleControllerTest extends TestCase
         $this->assertSame([], $shop->fresh()->size_group_category_ids);
     }
 
+    /**
+     * The counter only moves forward, so deleting the last two articles
+     * stranded their numbers and the next one started past them. Khaled
+     * asked for a freed number to come back — the form is prefilled with
+     * the lowest one no live article is using.
+     */
+    public function test_a_deleted_articles_serial_is_offered_again(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        $category = \App\Models\ProductCategory::create(['shop_id' => $shop->id, 'name' => 'BABY', 'name_en' => 'BABY', 'code' => 'B']);
+        \App\Support\ArticleSerial::bumpFloor($shop, 'B', 20001);
+
+        foreach ([1, 2, 3] as $i) {
+            $this->actingAs($owner, 'web')->post('/app/articles', $this->articlePayload($category, ['price' => 1990]))
+                ->assertSessionHasNoErrors();
+        }
+        $this->assertSame(20004, $this->peekSerial($owner));
+
+        // drop the last two — 20002 and 20003 are now free
+        Product::where('shop_id', $shop->id)->whereIn('name', ['B-20002', 'B-20003'])->get()
+            ->each(fn (Product $p) => $p->delete());
+
+        $this->assertSame(20002, $this->peekSerial($owner));
+
+        $this->actingAs($owner, 'web')->post('/app/articles', $this->articlePayload($category, ['price' => 1990, 'serial' => 20002]))
+            ->assertSessionHasNoErrors();
+        $this->assertTrue(Product::where('shop_id', $shop->id)->where('name', 'B-20002')->exists());
+
+        // and the one after that is the other freed number, not 20005
+        $this->assertSame(20003, $this->peekSerial($owner));
+    }
+
+    public function test_a_serial_a_live_article_still_uses_is_refused(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        $category = \App\Models\ProductCategory::create(['shop_id' => $shop->id, 'name' => 'BABY', 'name_en' => 'BABY', 'code' => 'B']);
+
+        $this->actingAs($owner, 'web')->post('/app/articles', $this->articlePayload($category, ['price' => 1990]))
+            ->assertSessionHasNoErrors();
+        $existing = Product::where('shop_id', $shop->id)->firstOrFail();
+        $serial = (int) substr($existing->name, 2);
+
+        // two live articles behind one barcode is the thing this must never allow
+        $this->actingAs($owner, 'web')->post('/app/articles', $this->articlePayload($category, ['price' => 1990, 'serial' => $serial]))
+            ->assertSessionHasErrors('serial');
+
+        $this->assertSame(1, Product::where('shop_id', $shop->id)->count());
+    }
+
+    public function test_a_typed_serial_pushes_the_counter_past_itself(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        $category = \App\Models\ProductCategory::create(['shop_id' => $shop->id, 'name' => 'BABY', 'name_en' => 'BABY', 'code' => 'B']);
+
+        $this->actingAs($owner, 'web')->post('/app/articles', $this->articlePayload($category, ['price' => 1990, 'serial' => 55555]))
+            ->assertSessionHasNoErrors();
+
+        // the automatic one must never land back on a number already issued
+        $this->assertSame(55556, \App\Support\ArticleSerial::peekNext($shop->fresh(), 'B'));
+    }
+
+    public function test_deleting_an_article_frees_its_barcodes_so_the_serial_can_be_reused(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        $category = \App\Models\ProductCategory::create(['shop_id' => $shop->id, 'name' => 'BABY', 'name_en' => 'BABY', 'code' => 'B']);
+
+        $this->actingAs($owner, 'web')->post('/app/articles', $this->articlePayload($category, ['price' => 1990]))
+            ->assertSessionHasNoErrors();
+        $product = Product::where('shop_id', $shop->id)->firstOrFail();
+        $serial = (int) substr($product->name, 2);
+        $this->assertNotNull($product->barcode);
+
+        $product->delete();
+
+        // a soft-deleted row keeps occupying the unique (shop_id, barcode)
+        // index, so the barcodes are released rather than merely hidden
+        $this->assertNull(Product::withTrashed()->whereKey($product->id)->value('barcode'));
+        $this->assertSame(0, \App\Models\ProductVariant::withTrashed()->where('product_id', $product->id)->whereNotNull('barcode')->count());
+        $this->assertSame(0, \App\Models\ProductColorBarcode::where('product_id', $product->id)->count());
+
+        // which is what lets the very same article be entered again
+        $this->actingAs($owner, 'web')->post('/app/articles', $this->articlePayload($category, ['price' => 1990, 'serial' => $serial]))
+            ->assertSessionHasNoErrors();
+        $this->assertSame(1, Product::where('shop_id', $shop->id)->count());
+    }
+
+    private function peekSerial(\App\Models\User $owner): int
+    {
+        return (int) $this->actingAs($owner, 'web')
+            ->getJson('/app/articles/peek-serial?category_code=B')->json('serial');
+    }
+
     /** The article form's own payload shape, with sizes spanning two groups. */
     private function articlePayload(\App\Models\ProductCategory $category, array $overrides = []): array
     {

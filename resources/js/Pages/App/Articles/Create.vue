@@ -30,6 +30,7 @@ const form = useForm({
     colorsText: '', sizesText: '',
     variants: [], // [{color, size, qty}]
     photos: {}, // { COLOR: File } — optional, per SkyBuy-style picker (docs/ARTICLE_SERIES_PLAN.md §4)
+    serial: null, // prefilled from the lowest free number, editable
 });
 
 try {
@@ -62,8 +63,9 @@ const isKids = computed(() => {
 
 // ---- live "next serial" preview (debounced, read-only — never reserves it) ----
 const previewSerial = ref(null);
+const serialEdited = ref(false);
 let serialTimer = null;
-watch([() => form.category_id, () => form.category_code], () => {
+function refreshSerial() {
     clearTimeout(serialTimer);
     const categoryCode = (selectedCategory.value?.code || form.category_code || '').trim();
     if (!categoryCode) { previewSerial.value = null; return; }
@@ -72,9 +74,13 @@ watch([() => form.category_id, () => form.category_code], () => {
             const params = new URLSearchParams(form.category_id ? { category_id: form.category_id } : { category_code: categoryCode });
             const res = await fetch(route('app.articles.peekSerial') + '?' + params, { headers: { Accept: 'application/json' } });
             previewSerial.value = (await res.json()).serial;
+            // follow the suggestion until the owner types their own number,
+            // then leave theirs alone
+            if (!serialEdited.value) form.serial = previewSerial.value;
         } catch (e) { previewSerial.value = null; }
     }, 300);
-}, { immediate: true });
+}
+watch([() => form.category_id, () => form.category_code], refreshSerial, { immediate: true });
 
 // The cost's letter code, live. Null while the cost is empty OR while any
 // of its digits still has no letter in this shop's map — in both cases the
@@ -85,9 +91,10 @@ const previewCostCode = computed(() => encodeCost(props.costCodeDigitMap, form.c
 const previewBarcode = computed(() => {
     const catCode = (selectedCategory.value?.code || form.category_code || '').trim();
     const mfr = form.manufacturer_code.trim().toUpperCase();
-    if (!catCode || !mfr || !previewSerial.value) return null;
+    const serial = form.serial || previewSerial.value;
+    if (!catCode || !mfr || !serial) return null;
 
-    return `${mfr}-${catCode}-${previewSerial.value}-${previewCostCode.value || '?'}`;
+    return `${mfr}-${catCode}-${serial}-${previewCostCode.value || '?'}`;
 });
 
 // docs/ARTICLE_SERIES_PLAN.md §9 — the color's own short code (shop setting,
@@ -164,6 +171,10 @@ function save() {
             form.kids_prices = { Small: '', Medium: '', Large: '' };
             photoPreviewUrls.value = {};
             form.client_uuid = uuidv4();
+            // the number just used is gone — ask for the next free one, and
+            // stop honouring a hand-typed serial from the article before
+            serialEdited.value = false;
+            refreshSerial();
             buildGrid(); // re-apply the same color/size shape with qty back to 0
         },
     });
@@ -220,8 +231,17 @@ function save() {
                 <div v-if="form.errors.category_code" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.category_code }}</div>
             </div>
 
+            <div class="field" v-if="previewSerial">
+                <label>আর্টিকেল নম্বর</label>
+                <input v-model.number="form.serial" type="number" min="1" @input="serialEdited = true">
+                <div style="font-size:12px;color:var(--mut);margin-top:6px">
+                    খালি নম্বরগুলোর মধ্যে সবচেয়ে ছোটটা বসানো আছে — মুছে ফেলা আর্টিকেলের নম্বরও এর মধ্যে পড়ে। দরকার হলে বদলে নিন।
+                </div>
+                <div v-if="form.errors.serial" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.serial }}</div>
+            </div>
+
             <div class="field" v-if="previewBarcode">
-                <label>বারকোড প্রিভিউ (cost দিলে পূর্ণ হবে)</label>
+                <label>বারকোড প্রিভিউ</label>
                 <div style="font-family:monospace;font-size:15px;font-weight:700">{{ previewBarcode }}</div>
             </div>
         </div>
