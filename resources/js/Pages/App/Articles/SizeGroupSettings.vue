@@ -2,7 +2,7 @@
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
-const props = defineProps({ groups: Array, isCustomized: Boolean, categories: Array, selectedCategoryIds: Array });
+const props = defineProps({ groups: Array, isCustomized: Boolean, categories: Array, selectedCategoryIds: Array, savedCategoryCodes: Array });
 
 const form = useForm({
     groups: props.groups.map((g) => ({ ...g })),
@@ -38,6 +38,22 @@ function save() {
             এখনো ডিফল্ট রেঞ্জ ব্যবহার হচ্ছে। নিচে বদলে "সংরক্ষণ করুন" চাপলে আপনার দোকানের নিজস্ব রেঞ্জ সেট হয়ে যাবে।
         </div>
 
+        <!--
+            The checkboxes below are FORM state, which survives a refused
+            save — so a tick on screen never proved a tick in the database.
+            This line is the server's own answer, re-read on every page
+            load, so the two visibly disagree when a save did not go
+            through instead of looking identical.
+        -->
+        <div class="card" style="margin-bottom:14px;border-left:3px solid var(--brand)">
+            <div v-if="savedCategoryCodes && savedCategoryCodes.length" style="font-size:13px">
+                এখন <b>সংরক্ষিত</b> আছে: <b style="color:var(--brand)">{{ savedCategoryCodes.join(', ') }}</b> — এই কোডের ক্যাটাগরিগুলোতে গ্রুপ-দাম চলছে।
+            </div>
+            <div v-else style="font-size:13px;color:var(--rose)">
+                এখনো <b>কোনো ক্যাটাগরিতেই</b> গ্রুপ-দাম সংরক্ষিত নেই। নিচে টিক দিয়ে <b>সংরক্ষণ করুন</b> চাপতে হবে — শুধু টিক দিলে হবে না, আর সাইজ রেঞ্জে ভুল থাকলে সেভ আটকে যায় (এরর নিচে দেখাবে)।
+            </div>
+        </div>
+
         <div class="card" style="margin-bottom:14px">
             <div style="font-weight:700;margin-bottom:4px">কোন ক্যাটাগরিতে এই গ্রুপ-দাম চলবে?</div>
             <div style="font-size:12px;color:var(--mut);margin-bottom:10px">
@@ -67,6 +83,12 @@ function save() {
             </div>
             <button type="button" class="btn ghost sm" @click="addGroup">+ নতুন গ্রুপ</button>
             <div v-if="form.errors.groups" style="color:var(--rose);font-size:12px;margin-top:10px">{{ form.errors.groups }}</div>
+        </div>
+
+        <!-- a refused save used to show only inside the ranges card, far
+             below where the button is, so it was easy to miss entirely -->
+        <div v-if="Object.keys(form.errors).length" class="card" style="margin-bottom:12px;border-left:3px solid var(--rose);color:var(--rose);font-size:13px">
+            <b>সংরক্ষণ হয়নি</b> — {{ Object.values(form.errors)[0] }}
         </div>
 
         <button type="button" class="btn primary" style="width:100%" :disabled="form.processing" @click="save">সংরক্ষণ করুন</button>

@@ -486,6 +486,46 @@ class ArticleControllerTest extends TestCase
         $this->assertSame(0, Product::where('shop_id', $shop->id)->count());
     }
 
+    /**
+     * Codes are what carry the setting across branches, so a category
+     * without one contributes nothing — the save would have "succeeded"
+     * with the tick visibly on and the group boxes never appearing.
+     */
+    public function test_picking_a_category_that_has_no_code_is_refused_with_a_reason(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        $codeless = \App\Models\ProductCategory::create(['shop_id' => $shop->id, 'name' => 'BABY', 'name_en' => 'BABY', 'code' => null]);
+
+        $this->actingAs($owner, 'web')->patch('/app/articles/size-group-settings', [
+            'groups' => [['label' => 'Small', 'min_size' => 16, 'max_size' => 30]],
+            'category_ids' => [$codeless->id],
+        ])->assertSessionHasErrors('category_ids');
+
+        $this->assertNull($shop->fresh()->size_group_category_codes);
+    }
+
+    /** The settings page reports what is SAVED, not just what the checkboxes show — a refused save leaves the ticks on screen untouched. */
+    public function test_the_settings_page_reports_the_saved_categories_separately(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        $category = \App\Models\ProductCategory::create(['shop_id' => $shop->id, 'name' => 'BABY', 'name_en' => 'BABY', 'code' => 'B']);
+
+        $this->actingAs($owner, 'web')->get('/app/articles/size-group-settings')
+            ->assertInertia(fn ($page) => $page->where('savedCategoryCodes', []));
+
+        $this->actingAs($owner, 'web')->patch('/app/articles/size-group-settings', [
+            'groups' => [['label' => 'Small', 'min_size' => 16, 'max_size' => 30]],
+            'category_ids' => [$category->id],
+        ])->assertSessionHasNoErrors();
+
+        $this->actingAs($owner, 'web')->get('/app/articles/size-group-settings')
+            ->assertInertia(fn ($page) => $page
+                ->where('savedCategoryCodes', ['B'])
+                ->where('selectedCategoryIds', [$category->id]));
+    }
+
     /** The cost-code map decides what a barcode's price segment means, so it cannot differ between two branches of one business. */
     public function test_the_cost_code_map_is_business_level_not_per_branch(): void
     {

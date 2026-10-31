@@ -329,6 +329,12 @@ class ArticleController extends Controller
             // the business's picks translated into THIS shop's own category
             // ids, so a branch opening this page sees its own boxes ticked
             'selectedCategoryIds' => $this->localCategoryIdsFor($shop->sizeGroupCategoryCodes()),
+            // What is SAVED, separate from what the checkboxes show. A
+            // refused patch (overlapping ranges) leaves the ticks on screen
+            // untouched, so the page looked saved when nothing was — which
+            // is exactly how "baby te already tik dia ache" and "group wise
+            // price ekhono aseni" were both true at once.
+            'savedCategoryCodes' => $shop->sizeGroupCategoryCodes(),
         ]);
     }
 
@@ -353,8 +359,20 @@ class ArticleController extends Controller
 
         // Only this shop's own categories — an id from another tenant would
         // silently turn the feature on for a category this shop can't see.
-        $codes = ProductCategory::whereIn('id', $data['category_ids'] ?? [])
-            ->pluck('code')
+        $picked = ProductCategory::whereIn('id', $data['category_ids'] ?? [])->get(['id', 'name', 'code']);
+
+        // A picked category with no code contributes nothing (codes are
+        // what carry across branches), so the save would succeed while the
+        // feature stayed off — the tick visibly on, the group boxes never
+        // appearing, and no way to tell why. Name the category instead.
+        $codeless = $picked->filter(fn ($c) => trim((string) $c->code) === '')->pluck('name');
+        if ($codeless->isNotEmpty()) {
+            $names = $codeless->implode(', ');
+
+            return back()->withErrors(['category_ids' => "\"{$names}\" ক্যাটাগরির কোনো কোড নেই, তাই গ্রুপ-দাম চালু করা যাচ্ছে না। স্টক → ক্যাটাগরিতে গিয়ে ওটার একটা ছোট কোড (যেমন B) বসিয়ে আসুন, তারপর আবার চেষ্টা করুন।"]);
+        }
+
+        $codes = $picked->pluck('code')
             ->map(fn ($code) => strtoupper(trim((string) $code)))
             ->filter()->unique()->values()->all();
 
