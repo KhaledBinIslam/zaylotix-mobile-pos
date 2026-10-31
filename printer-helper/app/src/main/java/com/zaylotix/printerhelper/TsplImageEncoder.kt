@@ -51,7 +51,7 @@ object TsplImageEncoder {
      * so this function has exactly one job and can't drift from what a
      * single `PRINT 1,1` actually does.
      */
-    fun buildSingleLabelPayload(widthMm: Double, heightMm: Double, gapMm: Double, widthPx: Int, heightPx: Int, bitmapBytes: ByteArray): ByteArray {
+    fun buildSingleLabelPayload(widthMm: Double, heightMm: Double, gapMm: Double, widthPx: Int, heightPx: Int, bitmapBytes: ByteArray, copies: Int = 1): ByteArray {
         val stride = bytesPerRow(widthPx)
         val header = buildString {
             append("SIZE ").append(fmtMm(widthMm)).append(" mm,").append(fmtMm(heightMm)).append(" mm\r\n")
@@ -82,7 +82,10 @@ object TsplImageEncoder {
             append("BITMAP 0,0,").append(stride).append(",").append(heightPx).append(",0,")
         }
         val headerBytes = header.toByteArray(Charsets.US_ASCII)
-        val footerBytes = "\r\nPRINT 1,1\r\n".toByteArray(Charsets.US_ASCII)
+        // PRINT <sets>,1 — TSPL's own repeat count, so N copies of the same
+        // label are one job the printer repeats (with its own backfeed
+        // between each) instead of N separate Bluetooth round trips.
+        val footerBytes = "\r\nPRINT ${copies.coerceAtLeast(1)},1\r\n".toByteArray(Charsets.US_ASCII)
         return headerBytes + bitmapBytes + footerBytes
     }
 

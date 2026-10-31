@@ -72,10 +72,32 @@ class TsplImageEncoderTest {
         )
 
         val expectedHeader = "SIZE 38 mm,25 mm\r\nGAP 2 mm,0 mm\r\nSET TEAR ON\r\nDENSITY 15\r\nSPEED 2\r\nDIRECTION 0\r\nCLS\r\nBITMAP 0,0,1,1,0,".toByteArray(Charsets.US_ASCII)
-        val expectedFooter = "\r\nPRINT 1,1\r\n".toByteArray(Charsets.US_ASCII)
+        val expectedFooter = "\r\nPRINT 1,1\r\n".toByteArray(Charsets.US_ASCII) // default: one copy
         val expected = expectedHeader + bitmap + expectedFooter
 
         assertArrayEquals(expected, payload)
+    }
+
+    @Test
+    fun `a copies count becomes TSPLs own PRINT repeat so N identical labels are one job`() {
+        val payload = TsplImageEncoder.buildSingleLabelPayload(
+            widthMm = 38.0, heightMm = 25.0, gapMm = 2.0,
+            widthPx = 8, heightPx = 1, bitmapBytes = ByteArray(1), copies = 25,
+        )
+
+        val tail = String(payload.copyOfRange(payload.size - 14, payload.size), Charsets.US_ASCII)
+        org.junit.Assert.assertTrue("got: $tail", tail.contains("PRINT 25,1"))
+    }
+
+    @Test
+    fun `a zero copies count still prints one label never none`() {
+        val payload = TsplImageEncoder.buildSingleLabelPayload(
+            widthMm = 38.0, heightMm = 25.0, gapMm = 2.0,
+            widthPx = 8, heightPx = 1, bitmapBytes = ByteArray(1), copies = 0,
+        )
+
+        val text = String(payload, Charsets.US_ASCII)
+        org.junit.Assert.assertTrue("got tail: ${text.takeLast(20)}", text.endsWith("PRINT 1,1\r\n"))
     }
 
     @Test

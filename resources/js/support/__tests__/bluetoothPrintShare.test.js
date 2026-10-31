@@ -16,6 +16,22 @@ describe('buildShareMetadata', () => {
         const json = buildShareMetadata({ size: '40x30' });
         expect(JSON.parse(json).gapMm).toBe(2);
     });
+
+    it('a sheet adds labelHeightPx and whole positive copies', () => {
+        const json = buildShareMetadata({ size: '38x25', label_gap_mm: 2 }, { labelHeightPx: 200, copies: [25, 1, 3.4, 0] });
+        expect(JSON.parse(json)).toEqual({ widthMm: 38, heightMm: 25, gapMm: 2, labelHeightPx: 200, copies: [25, 1, 3, 1] });
+    });
+
+    it('without a sheet the metadata keeps the original one-image-one-label shape', () => {
+        const meta = JSON.parse(buildShareMetadata({ size: '38x25', label_gap_mm: 2 }));
+        expect(meta.labelHeightPx).toBeUndefined();
+        expect(meta.copies).toBeUndefined();
+    });
+
+    it('an empty copies list never produces a sheet', () => {
+        const meta = JSON.parse(buildShareMetadata({ size: '38x25', label_gap_mm: 2 }, { labelHeightPx: 200, copies: [] }));
+        expect(meta.labelHeightPx).toBeUndefined();
+    });
 });
 
 describe('canShareLabelFiles', () => {

@@ -121,9 +121,24 @@ async function printViaBluetooth() {
         const targetW = Math.round(sizeMm.value.width * 8);
         const targetH = Math.round(sizeMm.value.height * 8);
 
-        const files = [];
+        // Live-caught at the client: 22 separate PNGs never opened the
+        // Android share sheet at all (one PNG per copy). Two changes make
+        // the count irrelevant: identical labels collapse to ONE image
+        // plus a copies count (the printer repeats it via TSPL's own
+        // PRINT n), and the distinct images are stacked into a SINGLE
+        // tall PNG the helper app slices back apart — so a 50-label run
+        // always shares exactly one file.
+        const distinct = []; // [{ key, canvas, copies }]
+        const indexByKey = new Map();
         for (let i = 0; i < cards.length; i++) {
-            bluetoothProgress.value = t('bc.bluetoothRendering', { n: i + 1, total: cards.length });
+            const key = JSON.stringify(labels.value[i] ?? i);
+            const seen = indexByKey.get(key);
+            if (seen !== undefined) {
+                distinct[seen].copies++;
+                continue;
+            }
+
+            bluetoothProgress.value = t('bc.bluetoothRendering', { n: distinct.length + 1, total: cards.length });
             // scale: 3 — supersample well above the label's own ~8px/mm
             // print density so the final downscale (next step) anti-
             // aliases text/barcode edges cleanly instead of relying on
@@ -179,16 +194,33 @@ async function printViaBluetooth() {
                 }
             }
 
-            const blob = await new Promise((resolve) => fixed.toBlob(resolve, 'image/png'));
-            if (blob) files.push(new File([blob], `label-${i + 1}.png`, { type: 'image/png' }));
+            indexByKey.set(key, distinct.length);
+            distinct.push({ key, canvas: fixed, copies: 1 });
         }
-        if (!files.length) { toast('❌ ' + t('bc.bluetoothRenderFailed')); return; }
+        if (!distinct.length) { toast('❌ ' + t('bc.bluetoothRenderFailed')); return; }
+
+        // one tall sheet: label k occupies rows k*targetH .. (k+1)*targetH-1
+        const sheet = document.createElement('canvas');
+        sheet.width = targetW;
+        sheet.height = targetH * distinct.length;
+        const sheetCtx = sheet.getContext('2d');
+        sheetCtx.fillStyle = '#ffffff';
+        sheetCtx.fillRect(0, 0, sheet.width, sheet.height);
+        distinct.forEach((d, k) => sheetCtx.drawImage(d.canvas, 0, k * targetH));
+
+        const blob = await new Promise((resolve) => sheet.toBlob(resolve, 'image/png'));
+        if (!blob) { toast('❌ ' + t('bc.bluetoothRenderFailed')); return; }
+        const files = [new File([blob], 'labels.png', { type: 'image/png' })];
 
         if (!navigator.canShare({ files })) {
             toast('❌ ' + t('bc.bluetoothNotSupported'));
             return;
         }
-        await navigator.share({ files, text: buildShareMetadata(settings.value), title: 'Zaylotix লেবেল প্রিন্ট' });
+        await navigator.share({
+            files,
+            text: buildShareMetadata(settings.value, { labelHeightPx: targetH, copies: distinct.map((d) => d.copies) }),
+            title: 'Zaylotix লেবেল প্রিন্ট',
+        });
     } catch (e) {
         if (e?.name !== 'AbortError') { // user cancelled the native share sheet — not a failure
             toast('❌ ' + t('bc.bluetoothShareFailed', { msg: e?.message || String(e) }));

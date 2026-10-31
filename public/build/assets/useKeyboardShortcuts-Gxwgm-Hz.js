@@ -1,0 +1,1 @@
+import{J as r,I as d}from"./app-CPW5C44K.js";function a(t){function n(e){const o=t[e.key];o&&(e.preventDefault(),o(e))}r(()=>document.addEventListener("keydown",n)),d(()=>document.removeEventListener("keydown",n))}export{a as u};

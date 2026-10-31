@@ -81,20 +81,52 @@ class ShareReceiverActivity : AppCompatActivity() {
         else -> emptyList()
     }
 
-    data class LabelSizeMm(val width: Double, val height: Double, val gap: Double)
+    /**
+     * `labelHeightPx`/`copies` describe a SHEET: one tall PNG holding
+     * copies.size labels stacked, each exactly labelHeightPx rows tall,
+     * label k to be printed copies[k] times. Both absent (the memo path,
+     * and any older web build) means the whole image is one single label
+     * — the original contract, unchanged.
+     */
+    data class LabelSizeMm(
+        val width: Double,
+        val height: Double,
+        val gap: Double,
+        val labelHeightPx: Int = 0,
+        val copies: List<Int> = emptyList(),
+    )
 
     private fun parseSizeMm(text: String?): LabelSizeMm {
         if (text.isNullOrBlank()) return LabelSizeMm(38.0, 25.0, 2.0)
         return try {
             val json = JSONObject(text)
+            val copiesArray = json.optJSONArray("copies")
+            val copies = buildList {
+                for (i in 0 until (copiesArray?.length() ?: 0)) {
+                    add(copiesArray!!.optInt(i, 1).coerceAtLeast(1))
+                }
+            }
             LabelSizeMm(
                 width = json.optDouble("widthMm", 38.0),
                 height = json.optDouble("heightMm", 25.0),
                 gap = json.optDouble("gapMm", 2.0),
+                labelHeightPx = json.optInt("labelHeightPx", 0),
+                copies = copies,
             )
         } catch (e: Exception) {
             LabelSizeMm(38.0, 25.0, 2.0)
         }
+    }
+
+    /**
+     * How many labels a received bitmap holds, and how tall each is —
+     * a sheet is sliced by labelHeightPx, anything else is one label.
+     */
+    private fun sliceCount(bitmap: android.graphics.Bitmap, sizeMm: LabelSizeMm): Int {
+        if (sizeMm.labelHeightPx <= 0 || sizeMm.copies.isEmpty()) return 1
+        val fits = bitmap.height / sizeMm.labelHeightPx
+
+        return minOf(fits, sizeMm.copies.size).coerceAtLeast(1)
     }
 
     @Suppress("MissingPermission") // MainActivity already confirmed BLUETOOTH_CONNECT before a printer could ever be saved
@@ -102,6 +134,7 @@ class ShareReceiverActivity : AppCompatActivity() {
         val adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter()
         val device = adapter?.getRemoteDevice(address)
         var succeeded = 0
+        var attempted = 0
         var lastError: String? = null
 
         if (device == null) {
@@ -114,48 +147,67 @@ class ShareReceiverActivity : AppCompatActivity() {
             // A fresh connect() per label — mirroring MainActivity's single
             // test print, which landed correctly far more often — gives the
             // printer a clean slate each time instead of compounding drift.
-            for ((index, uri) in uris.withIndex()) {
-                runOnUiThread { progressText.text = "${getString(R.string.printing_in_progress)} (${index + 1}/${uris.size})" }
-                val printer = BluetoothPrinter()
-                try {
-                    printer.connect(device)
-                    val bitmap = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
-                        ?: throw java.io.IOException("ছবি পড়া যায়নি।")
-                    val payload = TsplImageEncoder.buildSingleLabelPayload(
-                        widthMm = sizeMm.width, heightMm = sizeMm.height, gapMm = sizeMm.gap,
-                        widthPx = bitmap.width, heightPx = bitmap.height,
-                        bitmapBytes = TsplImageEncoder.packBitmap(bitmap.width, bitmap.height) { x, y ->
-                            // Luminance threshold at 170, not the "obvious" 128:
-                            // small text arrives with grey anti-aliased edges
-                            // after the web side's downscale, and a mid-grey
-                            // cutoff dropped those pixels, printing thin fonts
-                            // broken/faint (Khaled's live photo). The source is
-                            // black-on-white only, so anything meaningfully
-                            // darker than paper is ink.
-                            val pixel = bitmap.getPixel(x, y)
-                            val alpha = Color.alpha(pixel)
-                            // transparent background counts as white/not-black
-                            alpha > 32 && (Color.red(pixel) + Color.green(pixel) + Color.blue(pixel)) / 3 < 170
-                        },
-                    )
-                    printer.write(payload)
-                    succeeded++
+            for (uri in uris) {
+                val bitmap = try {
+                    contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
                 } catch (e: Exception) {
                     lastError = e.message ?: e.toString()
-                } finally {
-                    printer.disconnect()
+                    null
                 }
-                Thread.sleep(400) // let the printer finish feeding/cutting before the next connect()
+                if (bitmap == null) {
+                    lastError = lastError ?: "ছবি পড়া যায়নি।"
+                    continue
+                }
+
+                val slices = sliceCount(bitmap, sizeMm)
+                val sliceH = if (slices > 1) sizeMm.labelHeightPx else bitmap.height
+
+                for (k in 0 until slices) {
+                    attempted++
+                    val copies = sizeMm.copies.getOrElse(k) { 1 }
+                    runOnUiThread { progressText.text = "${getString(R.string.printing_in_progress)} (${k + 1}/$slices)" }
+                    val printer = BluetoothPrinter()
+                    try {
+                        printer.connect(device)
+                        val top = k * sliceH
+                        val payload = TsplImageEncoder.buildSingleLabelPayload(
+                            widthMm = sizeMm.width, heightMm = sizeMm.height, gapMm = sizeMm.gap,
+                            widthPx = bitmap.width, heightPx = sliceH,
+                            bitmapBytes = TsplImageEncoder.packBitmap(bitmap.width, sliceH) { x, y ->
+                                // Luminance threshold at 170, not the "obvious" 128:
+                                // small text arrives with grey anti-aliased edges
+                                // after the web side's downscale, and a mid-grey
+                                // cutoff dropped those pixels, printing thin fonts
+                                // broken/faint (Khaled's live photo). The source is
+                                // black-on-white only, so anything meaningfully
+                                // darker than paper is ink.
+                                val pixel = bitmap.getPixel(x, top + y)
+                                val alpha = Color.alpha(pixel)
+                                // transparent background counts as white/not-black
+                                alpha > 32 && (Color.red(pixel) + Color.green(pixel) + Color.blue(pixel)) / 3 < 170
+                            },
+                            copies = copies,
+                        )
+                        printer.write(payload)
+                        succeeded++
+                    } catch (e: Exception) {
+                        lastError = e.message ?: e.toString()
+                    } finally {
+                        printer.disconnect()
+                    }
+                    Thread.sleep(400) // let the printer finish feeding/cutting before the next connect()
+                }
             }
         }
 
         runOnUiThread {
             progressSpinner.visibility = android.view.View.GONE
             closeBtn.visibility = android.view.View.VISIBLE
-            progressText.text = if (succeeded == uris.size) {
-                getString(R.string.print_success) + " ($succeeded/${uris.size})"
+            val total = attempted.coerceAtLeast(uris.size)
+            progressText.text = if (succeeded == total) {
+                getString(R.string.print_success) + " ($succeeded/$total)"
             } else {
-                getString(R.string.print_failed, "$succeeded/${uris.size} — ${lastError ?: ""}")
+                getString(R.string.print_failed, "$succeeded/$total — ${lastError ?: ""}")
             }
         }
     }

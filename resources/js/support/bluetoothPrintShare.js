@@ -8,14 +8,29 @@ import { labelSizeMm } from '@/support/labelSizes';
 // printer-helper app's ShareReceiverActivity reads (see its own docblock)
 // and the feature-detection check, both plain logic.
 
-/** The exact JSON the printer-helper app expects in the share's `text` field — its own LabelSizeMm parser mirrors this shape. */
-export function buildShareMetadata(settings) {
+/**
+ * The exact JSON the printer-helper app expects in the share's `text`
+ * field — its own LabelSizeMm parser mirrors this shape.
+ *
+ * `sheet` (optional) describes a multi-label sheet: a single tall PNG
+ * holding `copies.length` labels stacked, each exactly `labelHeightPx`
+ * rows tall, where label k is to be printed `copies[k]` times. Omitting
+ * it keeps the original one-image-is-one-label contract, which is still
+ * what the memo path and any older app build do.
+ */
+export function buildShareMetadata(settings, sheet = null) {
     const size = labelSizeMm(settings);
-    return JSON.stringify({
+    const meta = {
         widthMm: size.width,
         heightMm: size.height,
         gapMm: Number(settings?.label_gap_mm ?? 2),
-    });
+    };
+    if (sheet && sheet.labelHeightPx > 0 && Array.isArray(sheet.copies) && sheet.copies.length) {
+        meta.labelHeightPx = Math.round(sheet.labelHeightPx);
+        meta.copies = sheet.copies.map((n) => Math.max(1, Math.round(n)));
+    }
+
+    return JSON.stringify(meta);
 }
 
 /**
