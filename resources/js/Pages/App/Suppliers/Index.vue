@@ -10,9 +10,30 @@ const { t } = useI18n();
 
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 
-const withPayable = computed(() => props.suppliers.filter((s) => s.payable > 0).sort((a, b) => b.payable - a.payable));
-const cleared = computed(() => props.suppliers.filter((s) => s.payable <= 0));
+// Phase 47 — name/phone search + optional sold-revenue ordering over the
+// backend's derived per-supplier stats (intake/sold, zero manual entry)
+const q = ref('');
+const sortBySold = ref(false);
+const matches = (s) => !q.value
+    || s.name.toLowerCase().includes(q.value.toLowerCase())
+    || (s.phone || '').includes(q.value);
+
+const withPayable = computed(() => props.suppliers.filter((s) => s.payable > 0 && matches(s)).sort((a, b) => b.payable - a.payable));
+const cleared = computed(() => {
+    const list = props.suppliers.filter((s) => s.payable <= 0 && matches(s));
+    return sortBySold.value ? [...list].sort((a, b) => (b.stats?.sold_revenue || 0) - (a.stats?.sold_revenue || 0)) : list;
+});
 const totalPayable = computed(() => props.suppliers.reduce((s, x) => s + Number(x.payable), 0));
+
+function statsLine(s) {
+    if (!s.stats || !s.stats.products) return null;
+    return t('supplier.statsLine', {
+        products: s.stats.products,
+        intake: money(s.stats.intake_value),
+        revenue: money(s.stats.sold_revenue),
+        units: Math.round(s.stats.sold_units),
+    });
+}
 
 const addSheet = ref(false);
 const addForm = useForm({ name: '', phone: '', address: '' });
@@ -49,12 +70,19 @@ function pay() {
 
         <button class="btn ghost" style="margin-bottom:16px" @click="addSheet = true">{{ t('supplier.add') }}</button>
 
+        <input v-model="q" :placeholder="t('supplier.searchPlaceholder')" style="margin-bottom:10px">
+        <label class="chk" style="margin-bottom:12px"><input type="checkbox" v-model="sortBySold"> {{ t('supplier.sortBySold') }}</label>
+
         <template v-if="withPayable.length">
             <div class="sechead"><h2>{{ t('supplier.owePending') }}</h2></div>
             <div v-for="s in withPayable" :key="s.id">
                 <div class="row">
                     <div class="ava">{{ s.name[0] }}</div>
-                    <Link :href="route('app.suppliers.show', s.id)" class="mid" style="text-decoration:none;color:inherit"><b>{{ s.name }}</b><span>📞 {{ s.phone || t('due.noNumber') }}</span></Link>
+                    <Link :href="route('app.suppliers.show', s.id)" class="mid" style="text-decoration:none;color:inherit">
+                        <b>{{ s.name }}</b>
+                        <span>📞 {{ s.phone || t('due.noNumber') }}</span>
+                        <span v-if="statsLine(s)" style="color:var(--gold2);font-size:11.5px">{{ statsLine(s) }}</span>
+                    </Link>
                     <div class="end"><b class="pill rose">{{ money(s.payable) }}</b></div>
                 </div>
                 <div class="btnrow" style="margin:-4px 0 12px 0;padding-left:54px">
@@ -68,7 +96,11 @@ function pay() {
             <div class="sechead"><h2>{{ t('supplier.allSuppliers') }}</h2></div>
             <Link v-for="s in cleared" :key="s.id" :href="route('app.suppliers.show', s.id)" class="row" style="text-decoration:none;color:inherit">
                 <div class="ava">{{ s.name[0] }}</div>
-                <div class="mid"><b>{{ s.name }}</b><span>📞 {{ s.phone || t('due.noNumber') }}</span></div>
+                <div class="mid">
+                    <b>{{ s.name }}</b>
+                    <span>📞 {{ s.phone || t('due.noNumber') }}</span>
+                    <span v-if="statsLine(s)" style="color:var(--gold2);font-size:11.5px">{{ statsLine(s) }}</span>
+                </div>
                 <div class="end"><span class="pill mint">{{ t('supplier.settled') }}</span></div>
             </Link>
         </template>

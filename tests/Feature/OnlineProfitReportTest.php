@@ -200,12 +200,17 @@ class OnlineProfitReportTest extends TestCase
         $order = $this->deliverOrder($owner, $a, $product);
 
         // placed "last month" but delivered "this month" — query-builder
-        // update bypasses mass-assignment guarding (created_at isn't fillable)
+        // update bypasses mass-assignment guarding (created_at isn't fillable).
+        // startOfMonth() BEFORE subMonth(): bare now()->subMonth() on the
+        // 31st overflows (Oct 31 → "Sep 31" → Oct 1), silently turning the
+        // "last month" window into the current month — this test failed on
+        // exactly 2026-10-31 for that reason and on no other day.
+        $lastMonth = now()->startOfMonth()->subMonth();
         OnlineOrder::withoutGlobalScopes()->whereKey($order->id)
-            ->update(['created_at' => now()->subMonth()->startOfMonth()->addDay()]);
+            ->update(['created_at' => $lastMonth->copy()->addDay()]);
 
-        $lastMonthFrom = now()->subMonth()->startOfMonth()->toDateString();
-        $lastMonthTo = now()->subMonth()->endOfMonth()->toDateString();
+        $lastMonthFrom = $lastMonth->toDateString();
+        $lastMonthTo = $lastMonth->copy()->endOfMonth()->toDateString();
         $thisMonthFrom = now()->startOfMonth()->toDateString();
         $thisMonthTo = now()->toDateString();
 

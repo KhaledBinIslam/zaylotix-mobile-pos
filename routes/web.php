@@ -661,6 +661,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::post('suppliers', [SupplierController::class, 'store'])->name('suppliers.store');
         Route::get('suppliers/{supplier}', [SupplierController::class, 'show'])->name('suppliers.show');
         Route::post('suppliers/{supplier}/payments', [SupplierPaymentController::class, 'store'])->name('suppliers.payments.store');
+        Route::post('suppliers/{supplier}/due', [SupplierController::class, 'addDue'])->name('suppliers.due');
         Route::post('supplier-returns', [SupplierReturnController::class, 'store'])->name('supplierReturns.store');
     });
 });
