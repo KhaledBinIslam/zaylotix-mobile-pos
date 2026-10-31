@@ -56,7 +56,25 @@ watch(() => form.category_id, (id) => {
     form.category_code = cat?.code || '';
 });
 
+/**
+ * One price box, or one per size group? Mirrors
+ * ArticleController::isKidsCategory(), which decides the same thing again
+ * on submit — the two disagreeing means either boxes that cannot be
+ * saved, or a flat price box for an article the server wants groups for.
+ *
+ * The owner's picked categories win, matched on CODE (a branch's category
+ * rows are its own, so only the code means the same thing everywhere),
+ * and the names stay as the fallback for shops that never picked any.
+ * Matching names alone is why Baby Park, whose category is "BABY", saw no
+ * group boxes however the settings were set.
+ */
 const isKids = computed(() => {
+    const codes = props.sizeGroupCategoryCodes || [];
+    if (codes.length) {
+        const code = (categoryMode.value === 'existing' ? selectedCategory.value?.code : form.category_code) || '';
+        return codes.includes(code.trim().toUpperCase());
+    }
+
     const name = categoryMode.value === 'existing' ? (selectedCategory.value?.name_en || selectedCategory.value?.name) : form.new_category_name;
     return props.kidsCategoryNames.includes((name || '').trim());
 });

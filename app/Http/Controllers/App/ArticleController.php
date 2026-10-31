@@ -52,6 +52,12 @@ class ArticleController extends Controller
             // only, the saved barcode is still built here on submit)
             'costCodeDigitMap' => $shop->costCodeDigitMap(),
             'kidsShoeSizeGroups' => $shop->kidsShoeSizeGroups(),
+            // The form decides whether to draw one price box or one per
+            // size group, and it has to reach the SAME verdict as
+            // isKidsCategory() does on submit. It used to be sent only the
+            // names, so Baby Park — whose category is called "BABY" — never
+            // got the group boxes no matter what was picked in settings.
+            'sizeGroupCategoryCodes' => $shop->sizeGroupCategoryCodes(),
             'kidsCategoryNames' => self::KIDS_CATEGORY_NAMES,
         ]);
     }

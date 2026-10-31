@@ -401,6 +401,34 @@ class ArticleControllerTest extends TestCase
         $this->assertNotNull($mainCategory->id);
     }
 
+    /**
+     * The form draws one price box or one per size group, and it has to
+     * reach the same verdict the server does on submit. It was sent only
+     * the category NAMES, so Baby Park's "BABY" never got the group boxes
+     * however the settings were saved — "article e group wise price set
+     * eta ekhono aseni", after the server side was already right.
+     */
+    public function test_the_create_form_is_told_which_category_codes_price_by_size_group(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        $category = \App\Models\ProductCategory::create(['shop_id' => $shop->id, 'name' => 'BABY', 'name_en' => 'BABY', 'code' => 'B']);
+
+        $this->actingAs($owner, 'web')->get('/app/articles/create')
+            ->assertInertia(fn ($page) => $page->where('sizeGroupCategoryCodes', []));
+
+        $this->actingAs($owner, 'web')->patch('/app/articles/size-group-settings', [
+            'groups' => [['label' => 'Small', 'min_size' => 16, 'max_size' => 30]],
+            'category_ids' => [$category->id],
+        ])->assertSessionHasNoErrors();
+
+        $this->actingAs($owner, 'web')->get('/app/articles/create')
+            ->assertInertia(fn ($page) => $page
+                ->where('sizeGroupCategoryCodes', ['B'])
+                // the category's own code is what the form matches on
+                ->where('categories.0.code', 'B'));
+    }
+
     /** The cost-code map decides what a barcode's price segment means, so it cannot differ between two branches of one business. */
     public function test_the_cost_code_map_is_business_level_not_per_branch(): void
     {
