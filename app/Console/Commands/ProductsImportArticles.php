@@ -109,17 +109,33 @@ class ProductsImportArticles extends Command
             'articles' => 0, 'variants' => 0, 'skipped_example_rows' => 0, 'skipped_blank_rows' => 0,
             'stock_mismatches' => [], 'cost_mismatches' => [], 'cost_filled_from_barcode' => [],
             'undecodable_cost_codes' => [], 'unparseable_grid_cells' => [], 'new_categories' => [],
-            'new_suppliers' => [], 'already_exists' => [], 'errors' => [],
+            'new_suppliers' => [], 'already_exists' => [], 'empty_grids' => [], 'errors' => [],
         ];
 
         $categoryCodeCache = []; // name|en name -> ProductCategory
         $supplierCache = []; // short_code -> Supplier
         $unitCache = []; // sheet's own unit text -> Unit
 
+        // the previous article row's context — a continuation row (blank
+        // mfr+name, own barcode: the real sheet's kids articles carry a
+        // second size-group this way, with its own cost/price/barcode)
+        // attaches its variants to this product instead of being dropped
+        $lastArticle = null;
+
         foreach ($rows as $rowNum => $row) {
             $mfr = trim((string) ($row['mfr'] ?? ''));
             $nameEn = trim((string) ($row['name_en'] ?? ''));
+            $rowBarcode = trim((string) ($row['barcode'] ?? ''));
 
+            if ($mfr === '' && $nameEn === '' && $rowBarcode !== '') {
+                try {
+                    $this->processContinuationRow($shop, $row, $rowNum, $report, $lastArticle, $isDryRun);
+                } catch (\Throwable $e) {
+                    $report['errors'][] = "সারি {$rowNum}: ".$e->getMessage();
+                }
+
+                continue;
+            }
             if ($mfr === '' && $nameEn === '') {
                 $report['skipped_blank_rows']++;
 
@@ -136,8 +152,9 @@ class ProductsImportArticles extends Command
                 continue;
             }
 
+            $lastArticle = null; // a new article row resets the continuation anchor even if it errors below
             try {
-                $this->processRow($shop, $row, $rowNum, $report, $categoryCodeCache, $supplierCache, $unitCache, $isDryRun);
+                $this->processRow($shop, $row, $rowNum, $report, $categoryCodeCache, $supplierCache, $unitCache, $isDryRun, $lastArticle);
             } catch (\Throwable $e) {
                 $report['errors'][] = "সারি {$rowNum}: ".$e->getMessage();
             }
@@ -166,7 +183,7 @@ class ProductsImportArticles extends Command
         return self::SUCCESS;
     }
 
-    private function processRow($shop, array $row, int $rowNum, array &$report, array &$categoryCodeCache, array &$supplierCache, array &$unitCache, bool $isDryRun): void
+    private function processRow($shop, array $row, int $rowNum, array &$report, array &$categoryCodeCache, array &$supplierCache, array &$unitCache, bool $isDryRun, ?array &$lastArticle = null): void
     {
         $mfr = strtoupper(trim((string) $row['mfr']));
         $categoryLabel = strtoupper(trim((string) ($row['category'] ?? '')));
@@ -259,6 +276,8 @@ class ProductsImportArticles extends Command
                 ->where('shop_id', $shop->id)->where('barcode', $barcode)->first();
             if ($existing) {
                 $report['already_exists'][] = "সারি {$rowNum} ({$canonicalName}): এই বারকোডের আর্টিকেল আগে থেকেই আছে — বাদ (লাইভ স্টক অপরিবর্তিত)।";
+                // its continuation rows (if any) must skip along with it
+                $lastArticle = ['product' => null, 'barcode' => $barcode, 'name' => $canonicalName, 'skip' => true];
 
                 return;
             }
@@ -268,46 +287,30 @@ class ProductsImportArticles extends Command
         $sizes = $this->parseSizeRange($sizeRange);
 
         // --- color x size grid ---
-        $variantSpecs = []; // [['color' => ..., 'size' => ..., 'stock' => int], ...]
-        $gridTotal = 0;
-        foreach (self::COLOR_COLUMNS as $colHeader) {
-            $cell = trim((string) ($row[$colHeader] ?? ''));
-            if ($cell === '' || strpos($cell, '#') !== false) {
-                continue; // this article doesn't come in this color
-            }
-            $colorName = self::COLOR_LABEL_FIX[$colHeader] ?? $colHeader;
-            preg_match_all('/(\d+)\D*?\(([^)]*)\)/u', $cell, $matches, PREG_SET_ORDER);
-            if (! $matches) {
-                $report['unparseable_grid_cells'][] = "সারি {$rowNum} ({$row['name_en']}), রং {$colorName}: গ্রিড টেক্সট পার্স করা গেলো না: \"{$cell}\"";
-
-                continue;
-            }
-            foreach ($matches as $pair) {
-                $size = $pair[1];
-                $qtyText = strtoupper(trim($pair[2]));
-                $qty = $this->parseQty($qtyText);
-                if ($qty === null) {
-                    $report['unparseable_grid_cells'][] = "সারি {$rowNum} ({$row['name_en']}), রং {$colorName}, সাইজ {$size}: পরিমাণ বোঝা গেলো না: \"{$pair[2]}\"";
-
-                    continue;
-                }
-                $variantSpecs[] = ['color' => $colorName, 'size' => $size, 'stock' => $qty];
-                $gridTotal += $qty;
-            }
-        }
+        [$variantSpecs, $gridTotal] = $this->parseColorGrid($row, $rowNum, (string) $row['name_en'], $report);
 
         if ($statedStock !== null && $statedStock !== '' && (int) $statedStock !== $gridTotal) {
             $report['stock_mismatches'][] = "সারি {$rowNum} ({$row['name_en']}): stock কলামে {$statedStock}, কিন্তু রং/সাইজ গ্রিড যোগ করলে {$gridTotal} — গ্রিডের যোগফলই ব্যবহার হবে।";
+        }
+
+        // real-file-caught (S-30001): an article row whose every color cell
+        // is '#####' imports with 0 stock and no variants — legal, but
+        // almost certainly a forgotten grid, so it gets its own loud list
+        if (! $variantSpecs) {
+            $report['empty_grids'][] = "সারি {$rowNum} ({$canonicalName}): রং/সাইজ গ্রিড পুরো ফাঁকা — ০ স্টক, কোনো ভ্যারিয়েন্ট ছাড়া ঢুকবে। ইচ্ছাকৃত না হলে গ্রিড পূরণ করে আবার চালান।";
         }
 
         $report['articles']++;
         $report['variants'] += count($variantSpecs);
 
         if ($isDryRun) {
+            $lastArticle = ['product' => null, 'barcode' => $barcode, 'name' => $canonicalName, 'skip' => false];
+
             return;
         }
 
-        DB::transaction(function () use ($shop, $category, $supplier, $unitObj, $canonicalName, $barcode, $cost, $price, $discountPrice, $reorderPoint, $variantSpecs, $gridTotal) {
+        $product = null;
+        DB::transaction(function () use ($shop, $category, $supplier, $unitObj, $canonicalName, $barcode, $cost, $price, $discountPrice, $reorderPoint, $variantSpecs, $gridTotal, &$product) {
             $product = Product::create([
                 'shop_id' => $shop->id,
                 'category_id' => $category->id,
@@ -318,7 +321,10 @@ class ProductsImportArticles extends Command
                 'barcode' => $barcode ?: null,
                 'cost' => $cost ?? 0,
                 'price' => $price,
-                'discount_price' => $discountPrice !== null && $discountPrice !== '' ? (float) $discountPrice : null,
+                // is_numeric, not just non-empty: the real kids rows carry
+                // the size-GROUP label (SMALL/MEDIUM/LARGE) in this column,
+                // which must never become a 0-taka "discount"
+                'discount_price' => is_numeric($discountPrice) ? (float) $discountPrice : null,
                 'reorder_point' => $reorderPoint !== null && $reorderPoint !== '' ? (int) $reorderPoint : null,
                 'stock' => 0, // a variant product's own stock is a live-maintained sum, same convention as ProductImportController
             ]);
@@ -344,6 +350,122 @@ class ProductsImportArticles extends Command
                 ColorBarcodeResolver::resolve($shop, $product, $color, $barcode);
             }
         });
+
+        $lastArticle = ['product' => $product, 'barcode' => $barcode, 'name' => $canonicalName, 'skip' => false];
+    }
+
+    /**
+     * A kids-style continuation row — blank mfr+name, its own barcode,
+     * cost, price, size range and color grid: the SAME article's second
+     * size-group (the real sheet's B-20001 Medium/Large shape). Variants
+     * attach to the previous row's product with their OWN price/cost
+     * (checkout already honors ProductVariant::effectivePrice()/
+     * effectiveCost()) and their barcodes derive from THIS row's barcode,
+     * so a printed label's cost-code stays correct for its group.
+     */
+    private function processContinuationRow($shop, array $row, int $rowNum, array &$report, ?array &$lastArticle, bool $isDryRun): void
+    {
+        $barcode = trim((string) ($row['barcode'] ?? ''));
+
+        if ($lastArticle === null) {
+            $report['errors'][] = "সারি {$rowNum} ({$barcode}): এর উপরে কোনো আর্টিকেল সারি নেই — কোন আর্টিকেলের অংশ বোঝা গেলো না, বাদ।";
+
+            return;
+        }
+        if ($lastArticle['skip']) {
+            $report['already_exists'][] = "সারি {$rowNum} ({$barcode}): {$lastArticle['name']}-এর অংশ, যা আগে থেকেই আছে — বাদ (লাইভ স্টক অপরিবর্তিত)।";
+
+            return;
+        }
+
+        $label = $lastArticle['name'];
+
+        // row's own cost: column first, else decoded from the row's barcode cost-code
+        $rawCost = $row['cost'] ?? null;
+        $cost = $rawCost !== null && $rawCost !== '' ? (int) round((float) $rawCost) : null;
+        if ($cost === null && preg_match('/-([A-Z]+)$/', $barcode, $m)) {
+            $decoded = ArticleBarcode::decodeCost($shop, $m[1]);
+            if ($decoded !== null) {
+                $cost = $decoded;
+                $report['cost_filled_from_barcode'][] = "সারি {$rowNum} ({$label}): cost খালি ছিল, বারকোড থেকে {$decoded} বসানো হলো।";
+            }
+        }
+        $price = (float) ($row['price'] ?? 0);
+        $statedStock = $row['stock'] ?? null;
+
+        [$variantSpecs, $gridTotal] = $this->parseColorGrid($row, $rowNum, $label, $report);
+
+        if ($statedStock !== null && $statedStock !== '' && (int) $statedStock !== $gridTotal) {
+            $report['stock_mismatches'][] = "সারি {$rowNum} ({$label}): stock কলামে {$statedStock}, কিন্তু রং/সাইজ গ্রিড যোগ করলে {$gridTotal} — গ্রিডের যোগফলই ব্যবহার হবে।";
+        }
+        if (! $variantSpecs) {
+            $report['empty_grids'][] = "সারি {$rowNum} ({$label}): continuation সারির রং/সাইজ গ্রিড ফাঁকা — কিছু যোগ হবে না।";
+
+            return;
+        }
+
+        $report['variants'] += count($variantSpecs);
+
+        if ($isDryRun) {
+            return;
+        }
+
+        $product = $lastArticle['product'];
+        DB::transaction(function () use ($shop, $product, $barcode, $cost, $price, $variantSpecs, $gridTotal) {
+            foreach ($variantSpecs as $spec) {
+                ProductVariant::create([
+                    'shop_id' => $shop->id,
+                    'product_id' => $product->id,
+                    'size' => $spec['size'],
+                    'color' => $spec['color'],
+                    'barcode' => ArticleBarcode::buildVariantBarcode($shop, $barcode, $spec['color'], $spec['size']),
+                    'stock' => $spec['stock'],
+                    'price' => $price > 0 ? $price : null,
+                    'cost' => $cost,
+                ]);
+            }
+
+            $product->stock = (float) $product->stock + $gridTotal;
+            $product->saveQuietly();
+
+            foreach (array_unique(array_filter(array_column($variantSpecs, 'color'))) as $color) {
+                ColorBarcodeResolver::resolve($shop, $product, $color, $barcode);
+            }
+        });
+    }
+
+    /** The shared color×size grid parser — identical behavior for an article row and its continuation rows. Returns [$variantSpecs, $gridTotal]. */
+    private function parseColorGrid(array $row, int $rowNum, string $label, array &$report): array
+    {
+        $variantSpecs = []; // [['color' => ..., 'size' => ..., 'stock' => int], ...]
+        $gridTotal = 0;
+        foreach (self::COLOR_COLUMNS as $colHeader) {
+            $cell = trim((string) ($row[$colHeader] ?? ''));
+            if ($cell === '' || strpos($cell, '#') !== false) {
+                continue; // this article doesn't come in this color
+            }
+            $colorName = self::COLOR_LABEL_FIX[$colHeader] ?? $colHeader;
+            preg_match_all('/(\d+)\D*?\(([^)]*)\)/u', $cell, $matches, PREG_SET_ORDER);
+            if (! $matches) {
+                $report['unparseable_grid_cells'][] = "সারি {$rowNum} ({$label}), রং {$colorName}: গ্রিড টেক্সট পার্স করা গেলো না: \"{$cell}\"";
+
+                continue;
+            }
+            foreach ($matches as $pair) {
+                $size = $pair[1];
+                $qtyText = strtoupper(trim($pair[2]));
+                $qty = $this->parseQty($qtyText);
+                if ($qty === null) {
+                    $report['unparseable_grid_cells'][] = "সারি {$rowNum} ({$label}), রং {$colorName}, সাইজ {$size}: পরিমাণ বোঝা গেলো না: \"{$pair[2]}\"";
+
+                    continue;
+                }
+                $variantSpecs[] = ['color' => $colorName, 'size' => $size, 'stock' => $qty];
+                $gridTotal += $qty;
+            }
+        }
+
+        return [$variantSpecs, $gridTotal];
     }
 
     private function resolveCategory($shop, string $label, array &$cache, array &$report): ProductCategory
@@ -389,6 +511,11 @@ class ProductsImportArticles extends Command
         if (preg_match('/^(\d+)\s*&\s*SOLD$/i', $qtyText, $m)) {
             return (int) $m[1];
         }
+        // "SOLD & 1" — the new sheet writes the same thing reversed; same
+        // semantics (some sold, the number is what's in stock right now)
+        if (preg_match('/^SOLD\s*&\s*(\d+)$/i', $qtyText, $m)) {
+            return (int) $m[1];
+        }
         if (ctype_digit($qtyText)) {
             return (int) $qtyText;
         }
@@ -432,7 +559,12 @@ class ProductsImportArticles extends Command
             foreach ($headerMap as $col => $key) {
                 $row[$key] = $sheet->getCell("{$col}{$r}")->getValue();
             }
-            if (trim((string) ($row['mfr'] ?? '')) === '' && trim((string) ($row['name_en'] ?? '')) === '') {
+            // a kids-style continuation row (second size-group of the SAME
+            // article) has mfr+name blank but its own barcode — it must
+            // neither end the sheet nor be dropped as blank
+            if (trim((string) ($row['mfr'] ?? '')) === ''
+                && trim((string) ($row['name_en'] ?? '')) === ''
+                && trim((string) ($row['barcode'] ?? '')) === '') {
                 $blankStreak++;
 
                 continue;
@@ -459,6 +591,7 @@ class ProductsImportArticles extends Command
         $this->printList('cost বারকোড থেকে বসানো হয়েছে', $report['cost_filled_from_barcode']);
         $this->printList('cost-code এখনো পুরোপুরি ডিকোড করা যায়নি', $report['undecodable_cost_codes']);
         $this->printList('গ্রিড সেল পার্স করা যায়নি', $report['unparseable_grid_cells']);
+        $this->printList('⚠️ রং/সাইজ গ্রিড পুরো ফাঁকা', $report['empty_grids']);
         $this->printList('ত্রুটি (বাদ দেওয়া সারি)', $report['errors']);
 
         if ($isDryRun) {

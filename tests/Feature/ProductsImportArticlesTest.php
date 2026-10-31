@@ -85,6 +85,84 @@ class ProductsImportArticlesTest extends TestCase
         $this->assertSame(0, Supplier::withoutGlobalScopes()->where('shop_id', $shop->id)->count());
     }
 
+    /** The real sheet's kids shape: a second size-group row with blank mfr/name, its own barcode/cost/price. */
+    private function kidsArticleRows(): array
+    {
+        return [
+            ['SMS', 'B20001', 'SMS-B-20001-NSXXZ', 'KIDS', 'PAIR', 1300, 1590, 'MEDIUM', 2, 3, '27-28',
+                null, '27-(1)----28-(SOLD & 1)', null, null, null, null, null, null, null],
+            ['', '', 'SMS-B-20001-NSORZ', 'KIDS', 'PAIR', 1375, 1690, 'LARGE', 2, 3, '32-33',
+                null, '32--(1)--33--(1)--', null, null, null, null, null, null, null],
+        ];
+    }
+
+    public function test_a_continuation_row_attaches_its_size_group_to_the_same_article(): void
+    {
+        [$shop] = $this->createShopWithOwner();
+        $path = $this->buildXlsx($this->kidsArticleRows());
+
+        $this->runImport($path, $shop->id)->assertSuccessful();
+
+        // ONE product, not two — the continuation row is the same article's Large group
+        $products = Product::withoutGlobalScopes()->where('shop_id', $shop->id)->get();
+        $this->assertCount(1, $products);
+        $product = $products->first();
+        $this->assertSame('B-20001', $product->name_en);
+        $this->assertSame('SMS-B-20001-NSXXZ', $product->barcode);
+        // the size-GROUP label in the discount_price column must never become a discount
+        $this->assertNull($product->discount_price);
+
+        $variants = ProductVariant::withoutGlobalScopes()->where('product_id', $product->id)->get();
+        $this->assertCount(4, $variants);
+
+        // "SOLD & 1" (reversed order) -> current stock 1
+        $this->assertEquals(1, $variants->firstWhere('size', '28')->stock);
+
+        // the Large group's variants carry their OWN price/cost and derive
+        // their barcodes from the continuation row's own barcode, so a
+        // printed label's cost-code stays correct for its group
+        $large = $variants->firstWhere('size', '32');
+        $this->assertEquals(1690, $large->price);
+        $this->assertEquals(1375, $large->cost);
+        $this->assertSame('SMS-B-20001-NSORZ-WHITE-32', $large->barcode);
+        // the Medium group inherits the article's price (null = product price)
+        $this->assertNull($variants->firstWhere('size', '27')->price);
+
+        // product stock = both groups' grids combined (1+1 + 1+1)
+        $this->assertEquals(4, $product->fresh()->stock);
+    }
+
+    public function test_a_continuation_row_of_an_already_imported_article_is_skipped_with_it(): void
+    {
+        [$shop] = $this->createShopWithOwner();
+        $path = $this->buildXlsx($this->kidsArticleRows());
+
+        $this->runImport($path, $shop->id)->assertSuccessful();
+        $this->runImport($path, $shop->id)
+            ->expectsOutputToContain('আগে থেকেই আছে')
+            ->assertSuccessful();
+
+        $product = Product::withoutGlobalScopes()->where('shop_id', $shop->id)->first();
+        $this->assertSame(4, ProductVariant::withoutGlobalScopes()->where('product_id', $product->id)->count()); // not re-added
+        $this->assertSame(1, Product::withoutGlobalScopes()->where('shop_id', $shop->id)->count());
+    }
+
+    public function test_an_article_row_with_a_fully_empty_grid_is_loudly_flagged(): void
+    {
+        [$shop] = $this->createShopWithOwner();
+        $row = $this->rowOne();
+        $row[15] = '#####'; // SILVER — the only filled color cell, now struck out
+
+        $this->runImport($this->buildXlsx([$row]), $shop->id)
+            ->expectsOutputToContain('গ্রিড পুরো ফাঁকা')
+            ->assertSuccessful();
+
+        $product = Product::withoutGlobalScopes()->where('shop_id', $shop->id)->first();
+        $this->assertNotNull($product); // still imports (stock can be set later in the app)
+        $this->assertEquals(0, $product->stock);
+        $this->assertSame(0, ProductVariant::withoutGlobalScopes()->where('product_id', $product->id)->count());
+    }
+
     public function test_a_rerun_skips_an_already_imported_barcode_and_leaves_live_stock_alone(): void
     {
         [$shop] = $this->createShopWithOwner();
