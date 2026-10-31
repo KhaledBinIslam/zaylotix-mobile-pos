@@ -429,6 +429,63 @@ class ArticleControllerTest extends TestCase
                 ->where('categories.0.code', 'B'));
     }
 
+    /**
+     * Baby Park enter sizes 16-19 while the default groups start at 21. A
+     * size in no group resolved to null and the variant silently fell back
+     * to the article's base price — the Medium box — so a whole article
+     * would have been stickered and sold at a price nobody chose.
+     */
+    public function test_a_size_outside_every_group_is_refused_not_priced_at_the_base(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        $category = \App\Models\ProductCategory::create(['shop_id' => $shop->id, 'name' => 'BABY', 'name_en' => 'BABY', 'code' => 'B']);
+
+        $this->actingAs($owner, 'web')->patch('/app/articles/size-group-settings', [
+            'groups' => [['label' => 'Small', 'min_size' => 21, 'max_size' => 30]],
+            'category_ids' => [$category->id],
+        ])->assertSessionHasNoErrors();
+
+        // 18 falls in no group; 25 does
+        $this->actingAs($owner, 'web')->post('/app/articles', $this->articlePayload($category, [
+            'kids_prices' => ['Small' => 500],
+        ]))->assertSessionHasErrors('kids_prices');
+        $this->assertSame(0, Product::where('shop_id', $shop->id)->count());
+
+        // widen the range to cover it and the very same entry goes through
+        $this->actingAs($owner, 'web')->patch('/app/articles/size-group-settings', [
+            'groups' => [['label' => 'Small', 'min_size' => 16, 'max_size' => 30]],
+            'category_ids' => [$category->id],
+        ])->assertSessionHasNoErrors();
+
+        $this->actingAs($owner, 'web')->post('/app/articles', $this->articlePayload($category, [
+            'kids_prices' => ['Small' => 500],
+        ]))->assertSessionHasNoErrors();
+        $this->assertEquals(500, \App\Models\ProductVariant::where('shop_id', $shop->id)->firstWhere('size', '18')->price);
+    }
+
+    /** A group with a range that fits but no price typed is the same silent fallback, and refused the same way. */
+    public function test_a_group_with_no_price_typed_is_refused_too(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        $category = \App\Models\ProductCategory::create(['shop_id' => $shop->id, 'name' => 'BABY', 'name_en' => 'BABY', 'code' => 'B']);
+
+        $this->actingAs($owner, 'web')->patch('/app/articles/size-group-settings', [
+            'groups' => [
+                ['label' => 'Small', 'min_size' => 16, 'max_size' => 20],
+                ['label' => 'Medium', 'min_size' => 21, 'max_size' => 30],
+            ],
+            'category_ids' => [$category->id],
+        ])->assertSessionHasNoErrors();
+
+        // the payload's sizes are 18 (Small) and 25 (Medium) — Medium left blank
+        $this->actingAs($owner, 'web')->post('/app/articles', $this->articlePayload($category, [
+            'kids_prices' => ['Small' => 500, 'Medium' => ''],
+        ]))->assertSessionHasErrors('kids_prices');
+        $this->assertSame(0, Product::where('shop_id', $shop->id)->count());
+    }
+
     /** The cost-code map decides what a barcode's price segment means, so it cannot differ between two branches of one business. */
     public function test_the_cost_code_map_is_business_level_not_per_branch(): void
     {

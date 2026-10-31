@@ -68,11 +68,17 @@ watch(() => form.category_id, (id) => {
  * Matching names alone is why Baby Park, whose category is "BABY", saw no
  * group boxes however the settings were set.
  */
+/** The code of whichever category is chosen right now — what isKids matches on, and what the hint under the price box names. */
+const selectedCategoryCode = computed(() => {
+    const code = (categoryMode.value === 'existing' ? selectedCategory.value?.code : form.category_code) || '';
+
+    return code.trim().toUpperCase();
+});
+
 const isKids = computed(() => {
     const codes = props.sizeGroupCategoryCodes || [];
     if (codes.length) {
-        const code = (categoryMode.value === 'existing' ? selectedCategory.value?.code : form.category_code) || '';
-        return codes.includes(code.trim().toUpperCase());
+        return codes.includes(selectedCategoryCode.value);
     }
 
     const name = categoryMode.value === 'existing' ? (selectedCategory.value?.name_en || selectedCategory.value?.name) : form.new_category_name;
@@ -300,6 +306,19 @@ function save() {
                     <label>বিক্রয় মূল্য</label>
                     <input v-model.number="form.price" type="number" min="0" placeholder="1990">
                     <div v-if="form.errors.price" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.price }}</div>
+                    <!--
+                        One price box for a category the owner expected group
+                        boxes on used to say nothing at all, so the only way
+                        to find out WHY was to ask. It is always the same
+                        reason — the category is not ticked in settings — so
+                        the form now says so, next to the box that looks
+                        wrong, with the link to go fix it.
+                    -->
+                    <div v-if="selectedCategoryCode" style="font-size:12px;color:var(--mut);margin-top:6px;line-height:1.5">
+                        এই ক্যাটাগরিতে ({{ selectedCategoryCode }}) একটাই দাম চলছে। সাইজ অনুযায়ী আলাদা দাম দিতে চাইলে
+                        <Link :href="route('app.articles.sizeGroupSettings.edit')" style="color:var(--brand)">সাইজ-গ্রুপ সেটিংসে</Link>
+                        গিয়ে ক্যাটাগরিটা টিক দিয়ে সংরক্ষণ করুন।
+                    </div>
                 </div>
             </template>
         </div>

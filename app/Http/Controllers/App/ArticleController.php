@@ -206,6 +206,26 @@ class ArticleController extends Controller
             return back()->withErrors(['variants' => 'অন্তত একটা রং/সাইজে স্টক দিতে হবে।']);
         }
 
+        // A size outside every configured group priced itself at the
+        // article's base price — the Medium box — without a word. Baby Park
+        // enter sizes 16-19 while the default groups start at 21, so a
+        // whole article would have been stickered at the wrong price and
+        // sold at it. Refusing beats guessing: a wrong number printed on a
+        // sticker is money, and nothing downstream can tell it was a guess.
+        if ($isKids) {
+            $ungrouped = [];
+            foreach ($variantRows as $row) {
+                if (SizeGroupPricing::priceForSize($shop, $row['size'], $kidsPrices) === null) {
+                    $ungrouped[(string) $row['size']] = true;
+                }
+            }
+            if ($ungrouped) {
+                $sizes = implode(', ', array_keys($ungrouped));
+
+                return back()->withErrors(['kids_prices' => "সাইজ {$sizes} কোনো গ্রুপের রেঞ্জে পড়ছে না, বা ওই গ্রুপের দাম দেওয়া হয়নি — তাই এই সাইজগুলোর দাম ঠিক করা যাচ্ছে না। সাইজ-গ্রুপ সেটিংসে রেঞ্জ ঠিক করুন, অথবা উপরে ওই গ্রুপের দাম বসান।"]);
+            }
+        }
+
         // A typed serial may reuse one a deleted article left behind, but
         // never one a LIVE article still answers to — two articles sharing a
         // serial means two different shoes behind one barcode. Business-wide
