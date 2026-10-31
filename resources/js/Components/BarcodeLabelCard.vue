@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, watch, ref, computed, nextTick } from 'vue';
 import { labelSizeMm } from '@/support/labelSizes';
-import { thermalModuleWidth, mmToPx } from '@/support/barcodeFit';
+import { thermalModuleWidth, thermalBarHeightMm, thermalLinesHidden, mmToPx } from '@/support/barcodeFit';
 
 /** One printable barcode label card — shared by BarcodeLabels/Index.vue's real print run and Settings/ReceiptLabel.vue's live preview, so they can never visually drift apart. */
 const props = defineProps({
@@ -39,6 +39,11 @@ const barcodeWarn = ref(''); // '' | 'onedot' | 'overflow'
 // size on screen too — not just in print — fixes the capture at the
 // source instead of trying to correct a bad aspect ratio after the fact.
 const thermalCardSize = computed(() => thermal.value ? labelSizeMm(props.settings) : null);
+
+// Both of the two text lines between the shop name and the barcode are
+// hidden — the label gets taller bars and roomier spacing instead of a
+// blank bottom third. See thermalLinesHidden.
+const compact = computed(() => thermal.value && thermalLinesHidden(props.settings, props.label));
 
 /**
  * Shrink-to-fit for the sticker header — mirrors render()'s own two-pass
@@ -120,13 +125,15 @@ async function render() {
             return;
         }
         try {
-            // 6mm bars + 8px text: Khaled's explicit live priority is that
+            // 6mm bars (9mm when the two middle text lines are hidden and
+            // that height is free anyway — thermalBarHeightMm) + 8px text:
+            // Khaled's explicit live priority is that
             // NOTHING ever gets clipped — a long SKU line at 10px printed
             // wider than the 38mm label (sides cut off), and the taller
             // stack pushed the price off the sticker's bottom. Smaller but
             // complete beats bigger but cut; the scale:3 supersampled
             // capture keeps 8px legible on the thermal head.
-            JsBarcode(el, encoded, { ...opts, margin: 0, height: mmToPx(6), fontSize: 8, width: mmToPx(fit.moduleMm) });
+            JsBarcode(el, encoded, { ...opts, margin: 0, height: mmToPx(thermalBarHeightMm(props.settings, props.label)), fontSize: 8, width: mmToPx(fit.moduleMm) });
         } catch (e) { /* invalid barcode value for CODE128 — leave blank */ }
         return;
     }
@@ -149,7 +156,11 @@ onMounted(async () => {
     emit('rendered');
 });
 
-watch(() => [props.label.barcode, props.settings.show_barcode_number, props.settings.print_mode], render);
+// show_product_name/show_variant are in here too: they don't change the
+// bars themselves, but they decide the bar HEIGHT (thermalBarHeightMm), so
+// the settings page's live preview has to redraw when either is toggled.
+watch(() => [props.label.barcode, props.settings.show_barcode_number, props.settings.print_mode,
+    props.settings.show_product_name, props.settings.show_variant], render);
 watch(() => [props.shop?.resolved_label_header, props.shop?.name, props.settings.show_shop_name], async () => {
     await nextTick();
     fitHeaderText();
@@ -157,7 +168,7 @@ watch(() => [props.shop?.resolved_label_header, props.shop?.name, props.settings
 </script>
 
 <template>
-    <div class="label-card" :class="{ thermal }" :style="thermalCardSize ? { width: thermalCardSize.width + 'mm', height: thermalCardSize.height + 'mm', margin: '0 auto' } : null">
+    <div class="label-card" :class="{ thermal, compact }" :style="thermalCardSize ? { width: thermalCardSize.width + 'mm', height: thermalCardSize.height + 'mm', margin: '0 auto' } : null">
         <div v-if="settings.show_shop_name && headerText" class="label-head">
             <div ref="headerEl" class="label-shop" :style="{ fontSize: headerFontSize + 'px' }">{{ headerText }}</div>
         </div>
@@ -210,5 +221,16 @@ watch(() => [props.shop?.resolved_label_header, props.shop?.name, props.settings
 .label-card.thermal .label-variant { color: #000; }
 .label-card.thermal .label-price-reg { color: #000; }
 .label-card.thermal svg { max-width: none; }
+
+/* Only when BOTH middle text lines are off (thermalLinesHidden): the
+   taller bars take most of the freed height, and these fixed margins
+   spend the rest so the three remaining blocks look deliberate instead
+   of crammed against the top edge. Deliberately fixed margins rather
+   than auto/space-between — every line's distance from the TOP of the
+   label stays predictable, which is what this printer's residual start
+   offset needs (see the flex-start note above), and the price never gets
+   pushed onto the sticker's bottom edge where an offset would clip it. */
+.label-card.thermal.compact .label-head { margin-bottom: 3px; }
+.label-card.thermal.compact svg { margin: 0 auto 3px; }
 .label-warn { font-size: 8px; font-weight: 700; color: #c0392b; }
 </style>

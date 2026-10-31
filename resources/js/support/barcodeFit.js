@@ -37,3 +37,32 @@ export function thermalModuleWidth(value, usableMm) {
     if (modules * 0.125 <= usableMm) return { moduleMm: 0.125, fits: true, modules, twoDot: false };
     return { moduleMm: 0.125, fits: false, modules, twoDot: false };
 }
+
+/**
+ * True when a thermal label renders NOTHING between the shop name and the
+ * barcode — i.e. both the product-name and the size/color lines are off
+ * (Baby Park: the article barcode's own printed text already spells out
+ * supplier, colour and size, so repeating them above the bars just ate
+ * two lines of a 25mm sticker).
+ *
+ * Those two lines are ~2 of the label's 6 lines, so with them gone the
+ * remaining three blocks would sit crammed against the top with the
+ * bottom third of the sticker blank. thermalBarHeightMm spends that
+ * freed height on taller bars instead, which also scan more reliably.
+ */
+export function thermalLinesHidden(settings, label = null) {
+    const nameShown = settings?.show_product_name !== false;
+    const variantShown = settings?.show_variant !== false && !!label?.variantLabel;
+
+    return !nameShown && !variantShown;
+}
+
+/**
+ * Bar height in mm for a thermal label: the tuned 6mm when all six lines
+ * are present (docs/LABEL_PRINT_PLAN.md's 25mm budget — Khaled's live
+ * priority is that nothing is ever clipped), 9mm when the two middle
+ * text lines are hidden and that height is going spare anyway.
+ */
+export function thermalBarHeightMm(settings, label = null) {
+    return thermalLinesHidden(settings, label) ? 9 : 6;
+}

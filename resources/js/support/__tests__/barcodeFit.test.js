@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { estimateCode128Modules, thermalModuleWidth, mmToPx } from '../barcodeFit';
+import { estimateCode128Modules, thermalModuleWidth, thermalBarHeightMm, thermalLinesHidden, mmToPx } from '../barcodeFit';
 
 // Phase 41 — the width math behind docs/LABEL_PRINT_PLAN.md's table.
 // Usable width on a 38×25 label = 38 − 2×2.5mm quiet zone = 33mm.
@@ -49,5 +49,40 @@ describe('thermalModuleWidth', () => {
     it('mm to css px uses the 96dpi definition', () => {
         expect(mmToPx(25.4)).toBeCloseTo(96, 5);
         expect(mmToPx(0.25)).toBeCloseTo(0.94488, 4);
+    });
+});
+
+// Baby Park turned the product-name and size/colour lines off (the article
+// barcode's own printed text already spells both out). The two lines they
+// freed are spent on taller bars rather than left as a blank bottom third.
+describe('thermalLinesHidden / thermalBarHeightMm', () => {
+    const variant = { variantLabel: 'SILVER, 37' };
+
+    it('both lines off means hidden, and the bars grow to 9mm', () => {
+        const settings = { show_product_name: false, show_variant: false };
+        expect(thermalLinesHidden(settings, variant)).toBe(true);
+        expect(thermalBarHeightMm(settings, variant)).toBe(9);
+    });
+
+    it('the tuned 6mm height is kept whenever either line still shows', () => {
+        expect(thermalBarHeightMm({ show_product_name: true, show_variant: false }, variant)).toBe(6);
+        expect(thermalBarHeightMm({ show_product_name: false, show_variant: true }, variant)).toBe(6);
+        expect(thermalBarHeightMm({ show_product_name: true, show_variant: true }, variant)).toBe(6);
+    });
+
+    it('a shop that never saved these settings keeps the 6mm default', () => {
+        // LABEL_SETTINGS_DEFAULTS has both true — an absent key must read as
+        // shown, never as hidden, or every existing shop's label would change
+        expect(thermalLinesHidden({}, variant)).toBe(false);
+        expect(thermalBarHeightMm({}, variant)).toBe(6);
+        expect(thermalBarHeightMm(undefined, variant)).toBe(6);
+    });
+
+    it('a product-level label with no variant text counts that line as hidden', () => {
+        // show_variant is on, but there IS no size/colour to print — the row
+        // doesn't render, so the height is genuinely free
+        const settings = { show_product_name: false, show_variant: true };
+        expect(thermalLinesHidden(settings, { variantLabel: '' })).toBe(true);
+        expect(thermalBarHeightMm(settings, null)).toBe(9);
     });
 });
