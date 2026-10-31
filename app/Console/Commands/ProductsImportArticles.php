@@ -109,7 +109,7 @@ class ProductsImportArticles extends Command
             'articles' => 0, 'variants' => 0, 'skipped_example_rows' => 0, 'skipped_blank_rows' => 0,
             'stock_mismatches' => [], 'cost_mismatches' => [], 'cost_filled_from_barcode' => [],
             'undecodable_cost_codes' => [], 'unparseable_grid_cells' => [], 'new_categories' => [],
-            'new_suppliers' => [], 'errors' => [],
+            'new_suppliers' => [], 'already_exists' => [], 'errors' => [],
         ];
 
         $categoryCodeCache = []; // name|en name -> ProductCategory
@@ -246,6 +246,24 @@ class ProductsImportArticles extends Command
             $report[$maxKey][$catCode] = max($report[$maxKey][$catCode] ?? 0, $serial);
         }
 
+        // --- idempotency: an article whose barcode already exists in this
+        // shop is SKIPPED, never recreated — the entry sheet is a living
+        // master list, so a re-run naturally contains rows imported earlier
+        // (live-caught: L-10001/L-10002 were already selling on shop #80
+        // when the updated sheet arrived; a bare create would have made
+        // duplicate barcodes). Stock is deliberately NOT touched either:
+        // the live number has moved with real sales since the sheet was
+        // written, and the sheet's stale count must never clobber it. ---
+        if ($barcode !== '') {
+            $existing = Product::withoutGlobalScopes()
+                ->where('shop_id', $shop->id)->where('barcode', $barcode)->first();
+            if ($existing) {
+                $report['already_exists'][] = "সারি {$rowNum} ({$canonicalName}): এই বারকোডের আর্টিকেল আগে থেকেই আছে — বাদ (লাইভ স্টক অপরিবর্তিত)।";
+
+                return;
+            }
+        }
+
         // --- size range -> list ---
         $sizes = $this->parseSizeRange($sizeRange);
 
@@ -334,7 +352,12 @@ class ProductsImportArticles extends Command
             return $cache[$label];
         }
 
-        $synonyms = self::CATEGORY_SYNONYMS[$label] ?? [$label];
+        // $label itself is always in the lookup list: when no synonym
+        // category exists, the fallback below CREATES one named $label —
+        // without $label here, a re-run couldn't find that very category
+        // and would try to create it again, colliding on the unique
+        // (shop_id, code) index (caught by the re-run idempotency test).
+        $synonyms = array_merge([$label], self::CATEGORY_SYNONYMS[$label] ?? []);
         $category = ProductCategory::withoutGlobalScopes()->where('shop_id', $shop->id)
             ->where(function ($q) use ($synonyms) {
                 foreach ($synonyms as $s) {
@@ -428,6 +451,7 @@ class ProductsImportArticles extends Command
         $this->line("আর্টিকেল: {$report['articles']}, ভ্যারিয়েন্ট: {$report['variants']}");
         $this->line("বাদ দেওয়া ফাঁকা সারি: {$report['skipped_blank_rows']}, উদাহরণ সারি বাদ: {$report['skipped_example_rows']}");
 
+        $this->printList('আগে থেকেই আছে — বাদ (স্টক অপরিবর্তিত)', $report['already_exists']);
         $this->printList('নতুন ক্যাটাগরি তৈরি হবে', array_unique($report['new_categories']));
         $this->printList('নতুন ম্যানুফ্যাকচার তৈরি হবে', array_unique($report['new_suppliers']));
         $this->printList('stock কলাম বনাম গ্রিড যোগফল মিসম্যাচ', $report['stock_mismatches']);

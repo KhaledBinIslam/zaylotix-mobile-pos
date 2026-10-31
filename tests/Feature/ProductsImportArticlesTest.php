@@ -85,6 +85,26 @@ class ProductsImportArticlesTest extends TestCase
         $this->assertSame(0, Supplier::withoutGlobalScopes()->where('shop_id', $shop->id)->count());
     }
 
+    public function test_a_rerun_skips_an_already_imported_barcode_and_leaves_live_stock_alone(): void
+    {
+        [$shop] = $this->createShopWithOwner();
+        $path = $this->buildXlsx([$this->rowOne()]);
+
+        // first import creates it; a sale then moves the live stock
+        $this->runImport($path, $shop->id)->assertSuccessful();
+        $product = Product::withoutGlobalScopes()->where('shop_id', $shop->id)->where('barcode', 'SMS-L-10001-NSXXZ')->first();
+        Product::withoutGlobalScopes()->whereKey($product->id)->update(['stock' => 99]); // stands in for real sales since the sheet was written
+
+        // the master sheet is re-imported later with this row still in it
+        $this->runImport($path, $shop->id)
+            ->expectsOutputToContain('আগে থেকেই আছে')
+            ->assertSuccessful();
+
+        $this->assertSame(1, Product::withoutGlobalScopes()->where('shop_id', $shop->id)->where('barcode', 'SMS-L-10001-NSXXZ')->count()); // no duplicate
+        $this->assertEquals(99, Product::withoutGlobalScopes()->whereKey($product->id)->first()->stock); // live stock untouched
+        $this->assertSame(2, ProductVariant::withoutGlobalScopes()->where('product_id', $product->id)->count()); // variants not duplicated either
+    }
+
     public function test_real_run_creates_article_variants_and_normalizes_the_name(): void
     {
         [$shop] = $this->createShopWithOwner();
