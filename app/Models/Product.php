@@ -90,6 +90,7 @@ class Product extends Model
             }
 
             $product->releaseBarcodes();
+            $product->deleteBranchCopies();
         });
 
         static::restored(function (Product $product) {
@@ -97,6 +98,10 @@ class Product extends Model
             // serial may well have been reissued in the meantime — run
             // articles:regenerate-barcodes to mint fresh ones
             $product->variants()->withTrashed()->restore();
+
+            foreach (static::withoutGlobalScopes()->onlyTrashed()->where('master_product_id', $product->id)->get() as $copy) {
+                $copy->restore();
+            }
         });
     }
 
@@ -135,6 +140,37 @@ class Product extends Model
         ProductColorBarcodeAlias::withoutGlobalScopes()->where('product_id', $this->id)->delete();
 
         static::withoutGlobalScopes()->whereKey($this->id)->update(['barcode' => null]);
+    }
+
+    /**
+     * Take the branch's copies of this article down with it.
+     *
+     * A shop with `shared_catalog` gets a copy of every article in each of
+     * its branches, linked back by `master_product_id` (CatalogSync). The
+     * delete only ever reached the main shop's own row, so the branch kept
+     * the article on its shelves and on its POS screen after the owner had
+     * removed it — and, because a serial counts as used anywhere in the
+     * business, the number never came free either. That is what Khaled was
+     * seeing: "delete kore dileo 7 8 ekhono aseni", with the doctor
+     * reporting all ten serials live and none freed.
+     *
+     * Each copy is deleted through the model, not a mass update, so it
+     * runs this same hook for itself: its variants are hidden and its
+     * barcodes handed back exactly like the main shop's. A copy has no
+     * copies of its own, so it stops there. Mirrored by restored().
+     *
+     * withoutGlobalScopes() because the copies belong to the BRANCH's
+     * shop_id — a tenant-scoped query from the main shop sees none of them.
+     */
+    public function deleteBranchCopies(): void
+    {
+        if ($this->master_product_id !== null) {
+            return; // already a branch copy — nothing hangs off it
+        }
+
+        foreach (static::withoutGlobalScopes()->where('master_product_id', $this->id)->get() as $copy) {
+            $copy->delete();
+        }
     }
 
     /** Every field a cashier might type to find this product, normalized once and stored — see SearchNormalizer::normalize(). */

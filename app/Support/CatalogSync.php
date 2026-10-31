@@ -128,7 +128,10 @@ class CatalogSync
         $byName = $branchProducts->keyBy('name');
 
         $map = [];
-        foreach (Product::withoutGlobalScopes()->where('shop_id', $mainShop->id)->get() as $p) {
+        // whereNull('deleted_at') because withoutGlobalScopes() drops the
+        // soft-delete scope too: without it, a re-sync would hand every
+        // branch a fresh, LIVE copy of an article the owner had deleted
+        foreach (Product::withoutGlobalScopes()->whereNull('deleted_at')->where('shop_id', $mainShop->id)->get() as $p) {
             $existing = $byMasterId->get($p->id)
                 ?? (filled($p->barcode) ? $byBarcode->get($p->barcode) : null)
                 ?? $byName->get($p->name);
