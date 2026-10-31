@@ -666,6 +666,57 @@ class ArticleControllerTest extends TestCase
         $this->assertSame(0, Product::where('shop_id', $shop->id)->count());
     }
 
+    /**
+     * Deleting the EARLIEST articles left a gap the search could not see:
+     * it started at the lowest live serial, so once B-20007 and B-20008
+     * went and B-20009 became the lowest, it could only look upwards.
+     * Khaled was promised those numbers back and kept being handed 20009.
+     */
+    public function test_a_gap_below_the_lowest_living_article_is_still_offered(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        $category = \App\Models\ProductCategory::create(['shop_id' => $shop->id, 'name' => 'BABY', 'name_en' => 'BABY', 'code' => 'B']);
+
+        // three articles in a row, then the first two deleted — Baby Park's
+        // own shape, with the counter already past all three
+        foreach ([20007, 20008, 20009] as $serial) {
+            $this->actingAs($owner, 'web')->post('/app/articles', $this->articlePayload($category, ['price' => 1990, 'serial' => $serial]))
+                ->assertSessionHasNoErrors();
+        }
+        foreach ([20007, 20008] as $serial) {
+            Product::where('shop_id', $shop->id)->where('name', "B-{$serial}")->firstOrFail()->delete();
+        }
+
+        $this->assertSame(20007, (int) $this->actingAs($owner, 'web')
+            ->getJson('/app/articles/peek-serial?category_code=B')->json('serial'));
+
+        // and it is genuinely usable, not merely suggested
+        $this->actingAs($owner, 'web')->post('/app/articles', $this->articlePayload($category, ['price' => 1990, 'serial' => 20007]))
+            ->assertSessionHasNoErrors();
+        $this->assertSame(1, Product::where('shop_id', $shop->id)->where('name', 'B-20007')->count());
+
+        // the next free one after that is the other gap, not the counter
+        $this->assertSame(20008, (int) $this->actingAs($owner, 'web')
+            ->getJson('/app/articles/peek-serial?category_code=B')->json('serial'));
+    }
+
+    /** With no gaps at all, the counter's next number is what comes back — unchanged. */
+    public function test_with_no_gaps_the_counter_still_decides(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        $category = \App\Models\ProductCategory::create(['shop_id' => $shop->id, 'name' => 'BABY', 'name_en' => 'BABY', 'code' => 'B']);
+
+        foreach ([20007, 20008] as $serial) {
+            $this->actingAs($owner, 'web')->post('/app/articles', $this->articlePayload($category, ['price' => 1990, 'serial' => $serial]))
+                ->assertSessionHasNoErrors();
+        }
+
+        $this->assertSame(20009, (int) $this->actingAs($owner, 'web')
+            ->getJson('/app/articles/peek-serial?category_code=B')->json('serial'));
+    }
+
     /** The cost-code map decides what a barcode's price segment means, so it cannot differ between two branches of one business. */
     public function test_the_cost_code_map_is_business_level_not_per_branch(): void
     {

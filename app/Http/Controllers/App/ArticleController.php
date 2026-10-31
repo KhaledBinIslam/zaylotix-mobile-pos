@@ -95,38 +95,47 @@ class ArticleController extends Controller
      * anyway, so this is a suggestion rather than a rule — store()'s own
      * check is what guarantees two live articles never share one.
      *
-     * The walk starts at this category's lowest existing serial, not at
-     * ArticleSerial::START: imported categories began at 20001, and
-     * starting from 10001 would suggest a number from a range this shop
-     * has never used.
+     * The walk starts at the lowest serial this category has EVER used,
+     * deleted articles included — not at ArticleSerial::START, since
+     * imported categories began at 20001 and starting from 10001 would
+     * suggest a number from a range this shop has never used.
+     *
+     * It used to start at the lowest LIVE one, which made a gap below it
+     * invisible: Khaled deleted B-20007 and B-20008, the lowest live
+     * article became B-20009, and the walk could then only ever look
+     * upwards from there. The two numbers he was told would come back
+     * never did ("B-20007 er article er juta 20009 kn hoi geche").
      */
     private function nextFreeSerial(Shop $shop, string $categoryCode): int
     {
         $counterNext = ArticleSerial::peekNext($shop, $categoryCode);
+        $shopIds = Tenancy::businessShopIds($shop->id);
 
-        $used = Product::withoutGlobalScopes()
-            ->whereNull('deleted_at')
-            ->whereIn('shop_id', Tenancy::businessShopIds($shop->id))
+        $serialsOf = fn ($query) => $query
+            ->whereIn('shop_id', $shopIds)
             ->where('name', 'like', $categoryCode.'-%')
             ->pluck('name')
             ->map(fn ($name) => (int) substr((string) $name, strlen($categoryCode) + 1))
-            ->filter(fn ($serial) => $serial > 0)
-            ->unique()->sort()->values();
+            ->filter(fn ($serial) => $serial > 0);
 
-        if ($used->isEmpty()) {
+        // only a LIVE article blocks a number; a deleted one is exactly
+        // what frees it (see store()'s own check, which agrees)
+        $taken = array_flip($serialsOf(Product::withoutGlobalScopes()->whereNull('deleted_at'))->all());
+
+        // deleted rows included, so the floor does not rise as the
+        // earliest articles are removed
+        $floor = $serialsOf(Product::withoutGlobalScopes())->min();
+        if ($floor === null) {
             return $counterNext;
         }
 
-        $candidate = $used->first();
-        foreach ($used as $serial) {
-            if ($serial === $candidate) {
-                $candidate++;
-            } elseif ($serial > $candidate) {
-                break;
+        for ($candidate = $floor; $candidate < $counterNext; $candidate++) {
+            if (! isset($taken[$candidate])) {
+                return $candidate;
             }
         }
 
-        return $candidate;
+        return $counterNext;
     }
 
     public function store(Request $request)
