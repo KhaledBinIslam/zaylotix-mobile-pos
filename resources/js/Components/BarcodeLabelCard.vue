@@ -231,7 +231,13 @@ watch(() => [props.shop?.resolved_label_header, props.shop?.name, props.settings
    their real size, which is what made the barcode's white background
    paint over the lines above it on a live print. */
 .label-card.thermal > * { flex-shrink: 0; }
-.label-card.thermal .label-head { margin-bottom: 3px; }
+.label-card.thermal .label-head { margin-bottom: 5px; }
 .label-card.thermal svg { margin: 0 auto 3px; }
+/* 1.25, not the 1.1 above: at 1.1 a descender ("y" in "Liberty") hangs
+   BELOW its own line box, so the barcode — which is positioned from that
+   box's bottom edge — printed straight through the tail of the shop
+   name. Containing the glyphs in the box is what actually fixes it; the
+   margin above is then real, visible breathing room. */
+.label-card.thermal .label-shop { line-height: 1.25; }
 .label-warn { font-size: 8px; font-weight: 700; color: #c0392b; }
 </style>

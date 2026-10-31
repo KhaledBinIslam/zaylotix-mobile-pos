@@ -196,10 +196,13 @@ async function printViaBluetooth() {
                         // through the middle. Clamping to the previous
                         // element's bottom makes that structurally
                         // impossible however the measurements drift.
+                        // +4 dots (0.5mm), not flush: a glyph can still sit a
+                        // hair below its own line box, and this gap is also
+                        // what keeps the bars from crowding the name.
                         const prev = svgEl.previousElementSibling;
                         if (prev) {
                             const prevBottom = Math.round((prev.getBoundingClientRect().bottom - cardRect.top) * sy);
-                            destY = Math.max(destY, prevBottom + 1);
+                            destY = Math.max(destY, prevBottom + 4);
                         }
 
                         // clear exactly the barcode's own slot, from that
