@@ -13,12 +13,12 @@ const form = useForm({
 
 const missing = computed(() => digits.filter((d) => !form.map[d]));
 
-/** Live echo of what a cost would turn into, so the owner can check their own letters against a sticker they already have. */
+/** Live echo of what a cost would turn into, so the owner can check their own letters against a sticker they already have. Every code ends in Z, same as the barcodes already on the shelves. */
 const sample = computed(() => {
     const cost = '1190';
     const letters = cost.split('').map((d) => form.map[d] || '?');
 
-    return { cost, code: letters.join('') };
+    return { cost, code: letters.join('') + 'Z' };
 });
 
 function save() {
@@ -55,7 +55,7 @@ function save() {
         <button type="button" class="btn primary" style="width:100%" :disabled="form.processing" @click="save">সংরক্ষণ করুন</button>
 
         <div class="card" style="margin-top:20px;font-size:13px;color:var(--mut);line-height:1.6">
-            দুটো অঙ্কের অক্ষর এক হতে পারবে না — হলে বারকোড থেকে দাম ফিরে পড়ার সময় ভুল সংখ্যা আসবে। আপনার দোকানে আগে থেকে কোনো অক্ষর-পদ্ধতি চালু থাকলে সেটাই এখানে বসান, তাহলে পুরোনো স্টিকারগুলোও ঠিকভাবে পড়া যাবে। কোনো ঘর খালি রাখলে সেই অঙ্ক আছে এমন দাম বারকোডে বসানো যাবে না, তবে বাকি সব কাজ আগের মতোই চলবে।
+            প্রতিটা কস্ট-কোডের শেষে <b>Z</b> বসে — এটা দামের অংশ নয়, শুধু শেষ বোঝায়। তাই কোনো অঙ্কের জন্য Z দেওয়া যাবে না। দুটো অঙ্কের অক্ষরও এক হতে পারবে না — হলে বারকোড থেকে দাম ফিরে পড়ার সময় ভুল সংখ্যা আসবে। আপনার দোকানে আগে থেকে কোনো অক্ষর-পদ্ধতি চালু থাকলে সেটাই এখানে বসান, তাহলে পুরোনো স্টিকারগুলোও ঠিকভাবে পড়া যাবে। কোনো ঘর খালি রাখলে সেই অঙ্ক আছে এমন দাম বারকোডে বসানো যাবে না, তবে বাকি সব কাজ আগের মতোই চলবে।
         </div>
     </AppLayout>
 </template>

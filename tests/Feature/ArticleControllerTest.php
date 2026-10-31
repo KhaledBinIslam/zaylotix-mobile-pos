@@ -27,7 +27,7 @@ class ArticleControllerTest extends TestCase
         'manufacturer_code' => 'SMS',
         'new_category_name' => "Women's Shoes",
         'category_code' => 'L',
-        'cost' => 1300, // encodes to NSXX
+        'cost' => 1300, // encodes to NSXXZ
         'price' => 1990,
         'colorsText' => 'SILVER, KHAKI',
         'sizesText' => '36-37',
@@ -62,7 +62,7 @@ class ArticleControllerTest extends TestCase
 
         $product = Product::where('shop_id', $shop->id)->first();
         $this->assertNotNull($product);
-        $this->assertSame('SMS-L-10001-NSXX', $product->barcode);
+        $this->assertSame('SMS-L-10001-NSXXZ', $product->barcode);
         $this->assertSame('L-10001', $product->name_en);
         $this->assertEquals(1300, $product->cost);
         $this->assertEquals(1990, $product->price);
@@ -77,7 +77,7 @@ class ArticleControllerTest extends TestCase
         $variants = ProductVariant::where('product_id', $product->id)->get();
         $this->assertCount(2, $variants); // the zero-qty KHAKI/36 cell was skipped
         $this->assertEquals(3, $product->fresh()->stock);
-        $this->assertSame('SMS-L-10001-NSXX-SILVER-36', $variants->firstWhere('size', '36')->barcode);
+        $this->assertSame('SMS-L-10001-NSXXZ-SILVER-36', $variants->firstWhere('size', '36')->barcode);
     }
 
     public function test_reuses_an_existing_category_and_its_code_instead_of_duplicating(): void
@@ -173,7 +173,7 @@ class ArticleControllerTest extends TestCase
         $this->actingAs($branchOwner, 'web')->post('/app/articles', $this->payload())->assertSessionHasNoErrors();
 
         $product = Product::where('shop_id', $branch->id)->first();
-        $this->assertSame('SMS-L-10002-NSXX', $product->barcode);
+        $this->assertSame('SMS-L-10002-NSXXZ', $product->barcode);
     }
 
     public function test_an_uploaded_color_photo_is_applied_to_every_variant_of_that_color(): void
@@ -203,7 +203,7 @@ class ArticleControllerTest extends TestCase
 
         $product = Product::where('shop_id', $shop->id)->first();
         $colorBarcodes = ProductColorBarcode::withoutGlobalScopes()->where('product_id', $product->id)->pluck('barcode', 'color');
-        $this->assertSame('SMS-L-10001-NSXX-SILVER', $colorBarcodes['SILVER']);
+        $this->assertSame('SMS-L-10001-NSXXZ-SILVER', $colorBarcodes['SILVER']);
         // KHAKI's only cell in the payload was zero-qty, so no variant (and no color barcode) exists for it
         $this->assertArrayNotHasKey('KHAKI', $colorBarcodes->toArray());
     }
@@ -272,9 +272,9 @@ class ArticleControllerTest extends TestCase
             'map' => ['0' => 'X', '1' => 'N', '2' => 'A', '3' => 'S', '4' => 'I', '5' => 'R', '6' => 'J', '7' => 'T', '8' => 'E', '9' => 'P'],
         ])->assertSessionHasNoErrors();
 
-        $this->assertSame('PXX', \App\Support\ArticleBarcode::encodeCost($shop->fresh(), 900));
+        $this->assertSame('PXXZ', \App\Support\ArticleBarcode::encodeCost($shop->fresh(), 900));
         // and it round-trips, which is the whole point of the map
-        $this->assertSame(900, \App\Support\ArticleBarcode::decodeCost($shop->fresh(), 'PXX'));
+        $this->assertSame(900, \App\Support\ArticleBarcode::decodeCost($shop->fresh(), 'PXXZ'));
     }
 
     public function test_cost_code_map_refuses_to_give_two_digits_the_same_letter(): void
@@ -285,6 +285,18 @@ class ArticleControllerTest extends TestCase
         // X for both 0 and 9 would decode every cost ambiguously
         $this->actingAs($owner, 'web')->patch('/app/articles/cost-code-settings', [
             'map' => ['0' => 'X', '9' => 'X'],
+        ])->assertSessionHasErrors('map');
+
+        $this->assertNull($shop->fresh()->cost_code_digit_map);
+    }
+
+    public function test_no_digit_may_be_mapped_to_z_because_z_terminates_every_cost_code(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+
+        $this->actingAs($owner, 'web')->patch('/app/articles/cost-code-settings', [
+            'map' => ['0' => 'X', '9' => 'Z'],
         ])->assertSessionHasErrors('map');
 
         $this->assertNull($shop->fresh()->cost_code_digit_map);
@@ -301,7 +313,7 @@ class ArticleControllerTest extends TestCase
 
         $saved = $shop->fresh()->cost_code_digit_map;
         $this->assertArrayNotHasKey('9', $saved);
-        $this->assertSame('NX', \App\Support\ArticleBarcode::encodeCost($shop->fresh(), 10));
+        $this->assertSame('NXZ', \App\Support\ArticleBarcode::encodeCost($shop->fresh(), 10));
     }
 
     public function test_the_cost_code_settings_page_loads_with_the_shops_current_map(): void

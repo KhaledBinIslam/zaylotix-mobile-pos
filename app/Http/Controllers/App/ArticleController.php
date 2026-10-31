@@ -313,6 +313,11 @@ class ArticleController extends Controller
             if ($letter === '') {
                 continue; // still unmapped — allowed, that digit just can't be encoded yet
             }
+            // Z terminates every cost code (ArticleBarcode::COST_SUFFIX), so
+            // a digit encoded as Z would make the end of a code ambiguous.
+            if ($letter === 'Z') {
+                return back()->withErrors(['map' => 'Z অক্ষরটা প্রতিটা কস্ট-কোডের শেষে বসে, তাই কোনো অঙ্কের জন্য Z দেওয়া যাবে না — অন্য একটা অক্ষর বাছুন।']);
+            }
             // A letter shared by two digits would decode a cost back to the
             // wrong number, silently — the whole point of this map is that
             // encode and decode are exact inverses.

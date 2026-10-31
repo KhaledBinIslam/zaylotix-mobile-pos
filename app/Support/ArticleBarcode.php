@@ -14,16 +14,24 @@ use App\Models\Shop;
 class ArticleBarcode
 {
     /**
-     * A trailing "Z" is a separate, optional, meaningless-to-cost suffix
-     * — confirmed against Khaled's real import data
-     * (docs/ARTICLE_SERIES_PLAN.md): the SAME cost (e.g. 1350) appears in
-     * the file as both "NSRXZ" and "NSRX". Stripped before decoding,
-     * carried through unchanged when re-encoding an existing barcode
-     * (never invented on a fresh encode).
+     * The terminator every cost code ends with. Khaled's import data had
+     * it on some rows and not others (the same cost 1350 appeared as both
+     * "NSRXZ" and "NSRX"), so it was originally treated as an optional,
+     * meaningless suffix and never added to a fresh encode. He has since
+     * confirmed it is compulsory — every cost code carries it — so it is
+     * now always appended on encode, which also makes newly entered
+     * articles match the stickers already on his shelves.
+     *
+     * Decoding still strips it leniently rather than requiring it, so the
+     * rows that were saved without one keep decoding correctly.
+     *
+     * This is why no digit may be mapped to "Z" (see
+     * ArticleController::costCodeSettingsUpdate): a code ending in a
+     * digit-Z would be indistinguishable from the terminator.
      */
-    private const OPTIONAL_SUFFIX = 'Z';
+    private const COST_SUFFIX = 'Z';
 
-    /** Encodes a non-negative integer cost into its digit-letter code, or null if any digit isn't mapped yet in this shop's settings (never a wrong guess). */
+    /** Encodes a non-negative integer cost into its digit-letter code (always terminated by COST_SUFFIX), or null if any digit isn't mapped yet in this shop's settings (never a wrong guess). */
     public static function encodeCost(Shop $shop, int $cost): ?string
     {
         $map = $shop->costCodeDigitMap();
@@ -35,14 +43,14 @@ class ArticleBarcode
             $code .= $map[$digit];
         }
 
-        return $code;
+        return $code.self::COST_SUFFIX;
     }
 
-    /** Decodes a cost code (with an optional trailing Z) back into an integer cost, or null if any letter doesn't map to a known digit. */
+    /** Decodes a cost code back into an integer cost, or null if any letter doesn't map to a known digit. The trailing Z is stripped when present — encode always writes one, but rows saved before it was compulsory don't have it. */
     public static function decodeCost(Shop $shop, string $code): ?int
     {
         $code = rtrim($code);
-        if (str_ends_with($code, self::OPTIONAL_SUFFIX)) {
+        if (str_ends_with($code, self::COST_SUFFIX)) {
             $code = substr($code, 0, -1);
         }
         if ($code === '') {

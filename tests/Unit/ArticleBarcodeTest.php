@@ -19,11 +19,11 @@ class ArticleBarcodeTest extends TestCase
     {
         $shop = new Shop();
 
-        $this->assertSame('NSXX', ArticleBarcode::encodeCost($shop, 1300));
-        $this->assertSame('NSRX', ArticleBarcode::encodeCost($shop, 1350));
-        $this->assertSame('NIRX', ArticleBarcode::encodeCost($shop, 1450));
-        $this->assertSame('NJRX', ArticleBarcode::encodeCost($shop, 1650));
-        $this->assertSame('NRXX', ArticleBarcode::encodeCost($shop, 1500));
+        $this->assertSame('NSXXZ', ArticleBarcode::encodeCost($shop, 1300));
+        $this->assertSame('NSRXZ', ArticleBarcode::encodeCost($shop, 1350));
+        $this->assertSame('NIRXZ', ArticleBarcode::encodeCost($shop, 1450));
+        $this->assertSame('NJRXZ', ArticleBarcode::encodeCost($shop, 1650));
+        $this->assertSame('NRXXZ', ArticleBarcode::encodeCost($shop, 1500));
     }
 
     public function test_encode_cost_returns_null_for_an_unmapped_digit(): void
@@ -47,6 +47,32 @@ class ArticleBarcodeTest extends TestCase
         $this->assertSame(1450, ArticleBarcode::decodeCost($shop, 'NIRX'));
     }
 
+    /**
+     * Khaled confirmed the trailing Z is compulsory, not the optional
+     * decoration the import file made it look like — every cost code on
+     * his shelves carries one, so every code this encodes must too.
+     */
+    public function test_every_encoded_cost_ends_with_the_z_terminator(): void
+    {
+        $shop = new Shop();
+
+        foreach ([0, 1, 5, 60, 1300, 100000] as $cost) {
+            $code = ArticleBarcode::encodeCost($shop, $cost);
+            $this->assertNotNull($code, "cost {$cost} should encode with the default map");
+            $this->assertStringEndsWith('Z', $code);
+            // the Z is a terminator, not a digit — it must survive the round trip
+            $this->assertSame($cost, ArticleBarcode::decodeCost($shop, $code));
+        }
+    }
+
+    public function test_an_unencodable_cost_gets_no_bare_z_instead_of_a_code(): void
+    {
+        $shop = new Shop();
+
+        // 2 is unmapped by default — the answer is "can't encode", never "Z"
+        $this->assertNull(ArticleBarcode::encodeCost($shop, 2));
+    }
+
     public function test_decode_cost_returns_null_for_an_unrecognized_letter(): void
     {
         $shop = new Shop();
@@ -58,7 +84,7 @@ class ArticleBarcodeTest extends TestCase
     {
         $shop = new Shop(['cost_code_digit_map' => ['2' => 'K', '7' => 'T', '8' => 'U', '9' => 'V']]);
 
-        $this->assertSame('NKXX', ArticleBarcode::encodeCost($shop, 1200));
+        $this->assertSame('NKXXZ', ArticleBarcode::encodeCost($shop, 1200));
         $this->assertSame(1200, ArticleBarcode::decodeCost($shop, 'NKXX'));
     }
 
