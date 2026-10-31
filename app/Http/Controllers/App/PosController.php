@@ -1144,8 +1144,14 @@ class PosController extends Controller
 
         // a variant's own barcode (e.g. printed for "নীল শার্ট M" specifically)
         // takes priority — it's more specific than the product's own barcode
+        // `$variant->product` can be null: Product soft-deletes now cascade
+        // to their variants, but a product removed BEFORE that cascade
+        // existed left its variants live, and a sticker printed for one of
+        // those still scans. Treating it as not-found (falling through to
+        // the branches below) is what a deleted product should do anyway —
+        // reading ->variants() off null was a 500 on a shop-floor scan.
         $variant = ProductVariant::with('product.productUnits.unit')->where('barcode', $barcode)->first();
-        if ($variant) {
+        if ($variant && $variant->product) {
             $product = $variant->product;
             $product->setRelation('variants', $product->variants()->get());
 

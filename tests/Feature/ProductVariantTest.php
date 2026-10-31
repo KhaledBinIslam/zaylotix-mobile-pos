@@ -480,4 +480,61 @@ class ProductVariantTest extends TestCase
         $this->assertEquals(12, $v42->fresh()->stock);
         $this->assertEquals(40, $product->fresh()->stock); // unchanged throughout
     }
+
+    /**
+     * Deleting a mis-entered article (Khaled, live: an 8-variant article
+     * entered by mistake) used to leave its variants behind as live rows,
+     * so a sticker printed for one of them still scanned — to a product
+     * that no longer existed.
+     */
+    public function test_deleting_a_product_also_removes_its_variants(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'product_variants');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'B-20007', 'cost' => 200, 'price' => 400, 'stock' => 0]);
+        $variant = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => '37', 'color' => 'BROWN', 'stock' => 3, 'barcode' => 'SMS-B-20007-BRN-37']);
+
+        $this->actingAs($owner, 'web')->delete("/app/products/{$product->id}")->assertRedirect();
+
+        $this->assertSoftDeleted('product_variants', ['id' => $variant->id]);
+        $this->assertSame(0, ProductVariant::count()); // gone from every normal query
+
+        // and its sticker no longer resolves to anything
+        $this->actingAs($owner, 'web')->getJson('/app/pos/barcode/SMS-B-20007-BRN-37')
+            ->assertStatus(404)->assertJson(['found' => false]);
+    }
+
+    public function test_restoring_a_product_brings_its_variants_back(): void
+    {
+        [$shop] = $this->createShopWithOwner();
+        \App\Support\Tenancy::set($shop->id);
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 200, 'price' => 400, 'stock' => 0]);
+        $variant = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => 'M', 'color' => 'Red', 'stock' => 4]);
+
+        $product->delete();
+        $this->assertSame(0, ProductVariant::count());
+
+        $product->restore();
+
+        $this->assertSame(1, ProductVariant::count());
+        $this->assertEquals(4, $variant->fresh()->stock);
+    }
+
+    public function test_scanning_a_variant_left_orphaned_by_an_older_delete_does_not_blow_up(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'product_variants');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Old', 'cost' => 200, 'price' => 400, 'stock' => 0]);
+        $variant = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => 'M', 'color' => 'Red', 'stock' => 4, 'barcode' => 'ORPHAN-1']);
+
+        // exactly the state a pre-cascade delete left behind: product gone,
+        // variant still live — a printed sticker for it still gets scanned.
+        // Was a 500 (->variants() read off a null product), not a 404.
+        $product->delete();
+        ProductVariant::withTrashed()->whereKey($variant->id)->restore();
+
+        $this->actingAs($owner, 'web')->getJson('/app/pos/barcode/ORPHAN-1')
+            ->assertStatus(404)
+            ->assertJson(['found' => false]);
+    }
 }

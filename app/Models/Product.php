@@ -71,6 +71,32 @@ class Product extends Model
         static::saving(function (Product $product) {
             $product->search_text = $product->buildSearchText();
         });
+
+        // Soft-deleting a product used to leave its variants behind as live
+        // rows, which bites the moment an owner removes a mis-entered
+        // article: a sticker printed for one of those variants still
+        // resolved on a barcode scan, to a product that no longer exists
+        // (PosController's variant branch then worked with a null product).
+        // Their barcodes stay reserved either way — a soft-deleted row
+        // still occupies the unique (shop_id, barcode) index — but a
+        // re-entered article draws a fresh serial, so it never asks for the
+        // old one back.
+        //
+        // Soft, like the parent, and mirrored by restored() below, so
+        // undeleting a product brings its sizes/colours back with it.
+        // Skipped on a force delete — the admin hard-delete path, where the
+        // foreign key's own cascade removes the rows outright.
+        static::deleted(function (Product $product) {
+            if ($product->isForceDeleting()) {
+                return;
+            }
+
+            $product->variants()->delete();
+        });
+
+        static::restored(function (Product $product) {
+            $product->variants()->withTrashed()->restore();
+        });
     }
 
     /** Every field a cashier might type to find this product, normalized once and stored — see SearchNormalizer::normalize(). */
