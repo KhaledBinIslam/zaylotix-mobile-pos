@@ -20,7 +20,7 @@ class Shop extends Model
         'vat_mode', 'vat_rate', 'turnover_rate', 'invoice_counter', 'service_charge_rate',
         'loyalty_earn_rate', 'loyalty_point_value', 'referral_bonus_points', 'return_window_days', 'void_time_limit_days', 'overhead_allocation_rule', 'dead_stock_days', 'catalog_slug', 'default_credit_limit', 'onboarded_at',
         'default_variant_sizes', 'default_variant_colors',
-        'article_barcode_template', 'cost_code_digit_map', 'color_code_map', 'kids_shoe_size_groups', 'size_group_category_ids',
+        'article_barcode_template', 'cost_code_digit_map', 'color_code_map', 'kids_shoe_size_groups', 'size_group_category_ids', 'size_group_category_codes',
         'sticker_barcode_template', 'barcode_include_size',
     ];
 
@@ -172,34 +172,23 @@ class Shop extends Model
     /**
      * Which category CODES price by size group, business-wide.
      *
-     * The picks are stored as category ids but read back as codes on
-     * purpose: every branch has its OWN product_categories rows with
-     * their own ids (CatalogSync matches them by name), so an id from the
-     * main shop means nothing in a branch. The code is the one key
-     * CatalogSync guarantees is identical in both — which makes it the
-     * only safe way to say "this category, in whichever branch you are".
+     * Codes, not ids, because every branch has its OWN product_categories
+     * rows with their own ids (CatalogSync matches them by name and keeps
+     * the code identical on purpose, "or the two shops' barcodes would
+     * silently diverge for the same category"). A code therefore means the
+     * same category in every branch and needs no translation; an id only
+     * means something in the shop that stored it.
      *
-     * Empty either because nothing was picked or because the picked
-     * categories have no code; isKidsCategory() then falls back to
-     * matching names, exactly as it did before any of this existed.
+     * Empty when nothing is picked, and isKidsCategory() then falls back
+     * to matching names, exactly as it did before any of this existed.
      */
     public function sizeGroupCategoryCodes(): array
     {
-        $settingsShop = $this->articleSettingsShop();
-        $ids = array_map('intval', $settingsShop->size_group_category_ids ?? []);
-        if ($ids === []) {
-            return [];
-        }
+        $codes = $this->articleSettingsShop()->size_group_category_codes ?? [];
 
-        return ProductCategory::withoutGlobalScopes()
-            ->where('shop_id', $settingsShop->id)
-            ->whereIn('id', $ids)
-            ->pluck('code')
-            ->map(fn ($code) => strtoupper(trim((string) $code)))
-            ->filter()
-            ->unique()
-            ->values()
-            ->all();
+        return array_values(array_unique(array_filter(
+            array_map(fn ($code) => strtoupper(trim((string) $code)), $codes)
+        )));
     }
 
     /**
@@ -234,7 +223,11 @@ class Shop extends Model
             'cost_code_digit_map' => 'array',
             'color_code_map' => 'array',
             'kids_shoe_size_groups' => 'array',
+            // _ids is the superseded column, kept only as a record of what
+            // was picked before codes replaced it — see the
+            // store_size_group_categories_by_code migration
             'size_group_category_ids' => 'array',
+            'size_group_category_codes' => 'array',
             'barcode_include_size' => 'boolean',
             'subscription_start' => 'date:Y-m-d',
             'subscription_expiry' => 'date:Y-m-d',

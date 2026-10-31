@@ -15,6 +15,9 @@
     <string name="permission_needed">Bluetooth ব্যবহারের অনুমতি প্রয়োজন।</string>
 
     <string name="printing_in_progress">প্রিন্ট হচ্ছে…</string>
+    <string name="version_line">Zaylotix Printer %1$s (বিল্ড %2$d)</string>
+    <!-- %2$d takes a Long from PackageInfo.longVersionCode -->
+
     <string name="print_success">✅ প্রিন্ট সফল হয়েছে</string>
     <string name="print_failed">❌ প্রিন্ট ব্যর্থ: %1$s</string>
     <string name="no_printer_selected">আগে একটা প্রিন্টার বাছুন — অ্যাপ খুলে দেখুন।</string>

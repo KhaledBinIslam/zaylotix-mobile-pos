@@ -335,12 +335,11 @@ class ArticleController extends Controller
         // Saved on the business's settings shop, whichever branch is
         // saving, so both Baby Park branches price by the same groups —
         // Khaled set these up once and the other branch's user saw
-        // nothing. The ids stored are that shop's OWN, translated through
-        // the codes, since ids never carry across branches.
-        $settingsShop = Tenancy::shop()->articleSettingsShop();
-        $settingsShop->update([
+        // nothing. Stored as codes, which mean the same category in every
+        // branch (see Shop::sizeGroupCategoryCodes()).
+        Tenancy::shop()->articleSettingsShop()->update([
             'kids_shoe_size_groups' => $groups,
-            'size_group_category_ids' => $this->categoryIdsForShop($settingsShop, $codes),
+            'size_group_category_codes' => $codes,
         ]);
 
         return back()->with('success', 'সাইজ-গ্রুপ সেটিংস সংরক্ষণ করা হয়েছে।');
@@ -354,18 +353,6 @@ class ArticleController extends Controller
         }
 
         return ProductCategory::get(['id', 'code'])
-            ->filter(fn ($c) => in_array(strtoupper(trim((string) $c->code)), $codes, true))
-            ->pluck('id')->map('intval')->values()->all();
-    }
-
-    /** Same translation as localCategoryIdsFor(), for a shop that is not the current tenant. */
-    private function categoryIdsForShop(Shop $shop, array $codes): array
-    {
-        if ($codes === []) {
-            return [];
-        }
-
-        return ProductCategory::withoutGlobalScopes()->where('shop_id', $shop->id)->get(['id', 'code'])
             ->filter(fn ($c) => in_array(strtoupper(trim((string) $c->code)), $codes, true))
             ->pluck('id')->map('intval')->values()->all();
     }

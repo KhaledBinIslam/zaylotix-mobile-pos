@@ -118,16 +118,17 @@ class ShareReceiverActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * How many labels a received bitmap holds, and how tall each is —
-     * a sheet is sliced by labelHeightPx, anything else is one label.
-     */
-    private fun sliceCount(bitmap: android.graphics.Bitmap, sizeMm: LabelSizeMm): Int {
-        if (sizeMm.labelHeightPx <= 0 || sizeMm.copies.isEmpty()) return 1
-        val fits = bitmap.height / sizeMm.labelHeightPx
-
-        return minOf(fits, sizeMm.copies.size).coerceAtLeast(1)
-    }
+    /** How many labels a received bitmap holds and how tall each is — the arithmetic lives in LabelSheet, where it is unit tested. */
+    private fun slicesOf(bitmap: android.graphics.Bitmap, sizeMm: LabelSizeMm): LabelSheet.Slices =
+        LabelSheet.of(
+            bitmapWidth = bitmap.width,
+            bitmapHeight = bitmap.height,
+            labelHeightPx = sizeMm.labelHeightPx,
+            copiesCount = sizeMm.copies.size,
+            widthMm = sizeMm.width,
+            heightMm = sizeMm.height,
+            gapMm = sizeMm.gap,
+        )
 
     @Suppress("MissingPermission") // MainActivity already confirmed BLUETOOTH_CONNECT before a printer could ever be saved
     private fun printBatch(address: String, uris: List<Uri>, sizeMm: LabelSizeMm) {
@@ -159,13 +160,13 @@ class ShareReceiverActivity : AppCompatActivity() {
                     continue
                 }
 
-                val slices = sliceCount(bitmap, sizeMm)
-                val sliceH = if (slices > 1) sizeMm.labelHeightPx else bitmap.height
+                val slices = slicesOf(bitmap, sizeMm)
+                val sliceH = slices.height
 
-                for (k in 0 until slices) {
+                for (k in 0 until slices.count) {
                     attempted++
                     val copies = sizeMm.copies.getOrElse(k) { 1 }
-                    runOnUiThread { progressText.text = "${getString(R.string.printing_in_progress)} (${k + 1}/$slices)" }
+                    runOnUiThread { progressText.text = "${getString(R.string.printing_in_progress)} (${k + 1}/${slices.count})" }
                     val printer = BluetoothPrinter()
                     try {
                         printer.connect(device)

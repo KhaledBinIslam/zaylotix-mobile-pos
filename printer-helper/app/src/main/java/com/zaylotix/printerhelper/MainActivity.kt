@@ -53,6 +53,20 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.testPrintBtn).setOnClickListener { runTestPrint() }
         findViewById<Button>(R.id.calibrateBtn).setOnClickListener { runCalibration() }
 
+        // on screen so a support question never has to guess which build
+        // is installed — see the layout comment on versionText. Read from
+        // the package manager rather than BuildConfig, which this Gradle
+        // setup does not generate.
+        findViewById<android.widget.TextView>(R.id.versionText).text = try {
+            val info = packageManager.getPackageInfo(packageName, 0)
+            val code = if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else {
+                @Suppress("DEPRECATION") info.versionCode.toLong()
+            }
+            getString(R.string.version_line, info.versionName ?: "?", code)
+        } catch (e: Exception) {
+            ""
+        }
+
         ensurePermissionThenLoad()
     }
 

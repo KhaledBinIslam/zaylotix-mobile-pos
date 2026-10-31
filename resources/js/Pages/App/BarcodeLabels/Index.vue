@@ -8,6 +8,7 @@ import { useToast } from '@/composables/useToast';
 import { labelSizeMm } from '@/support/labelSizes';
 import { thermalModuleWidth, THERMAL_BAR_HEIGHT_MM } from '@/support/barcodeFit';
 import { buildShareMetadata, canShareLabelFiles } from '@/support/bluetoothPrintShare';
+import { printedLabelKey } from '@/support/labelPrintKey';
 
 const props = defineProps({ products: Array, shop: Object });
 const { t } = useI18n();
@@ -131,7 +132,7 @@ async function printViaBluetooth() {
         const distinct = []; // [{ key, canvas, copies }]
         const indexByKey = new Map();
         for (let i = 0; i < cards.length; i++) {
-            const key = JSON.stringify(labels.value[i] ?? i);
+            const key = printedLabelKey(labels.value[i] ?? {}, settings.value, thermal.value);
             const seen = indexByKey.get(key);
             if (seen !== undefined) {
                 distinct[seen].copies++;

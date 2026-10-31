@@ -85,5 +85,19 @@
             android:textSize="13sp"
             android:textColor="#666666" />
 
+        <!--
+            Which build is on this phone was unanswerable: versionCode sat
+            at 1 across every release and nothing showed it. That cost a
+            whole debugging round — a batch print failed and neither of us
+            could tell whether the installed APK even had the batch code.
+        -->
+        <TextView
+            android:id="@+id/versionText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:textSize="12sp"
+            android:textColor="#999999" />
+
     </LinearLayout>
 </ScrollView>

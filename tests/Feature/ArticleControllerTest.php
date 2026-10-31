@@ -348,14 +348,57 @@ class ArticleControllerTest extends TestCase
             'category_ids' => [$branchCategory->id],
         ])->assertSessionHasNoErrors();
 
-        // stored on the main shop, as ITS own category id
-        $this->assertSame([$mainCategory->id], $mainShop->fresh()->size_group_category_ids);
-        $this->assertNull($branch->fresh()->size_group_category_ids);
+        // stored on the main shop, as the category CODE — which is what
+        // makes it mean the same thing in the branch that saved it
+        $this->assertSame(['B'], $mainShop->fresh()->size_group_category_codes);
+        $this->assertNull($branch->fresh()->size_group_category_codes);
         $this->assertSame(['B'], $mainShop->fresh()->sizeGroupCategoryCodes());
 
         // which the main shop's own form then reflects
         $this->actingAs($owner, 'web')->get('/app/articles/size-group-settings')
             ->assertInertia(fn ($page) => $page->where('selectedCategoryIds', [$mainCategory->id]));
+    }
+
+    /**
+     * Khaled's live data: he saved the size groups on his own shop before
+     * they became business-level, so they sat where nothing reads them any
+     * more — the other branch's user still saw no group prices after the
+     * deploy. The migration lifts them to the main shop and converts the
+     * picked ids to codes, so neither of us has to re-save by hand.
+     */
+    public function test_the_migration_lifts_settings_a_branch_saved_up_to_the_business(): void
+    {
+        [$mainShop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($mainShop, 'article_series');
+        $mainCategory = \App\Models\ProductCategory::create(['shop_id' => $mainShop->id, 'name' => 'BABY', 'name_en' => 'BABY', 'code' => 'B']);
+
+        [$branch, $branchOwner] = $this->createBranchOf($mainShop);
+        $branchCategory = \App\Models\ProductCategory::create(['shop_id' => $branch->id, 'name' => 'BABY', 'name_en' => 'BABY', 'code' => 'B']);
+
+        // the pre-f771ae05 shape: picked ids, on the branch, parent blank
+        $branch->update([
+            'kids_shoe_size_groups' => [['label' => 'Small', 'min_size' => 16, 'max_size' => 20]],
+            'size_group_category_ids' => [$branchCategory->id],
+            'cost_code_digit_map' => ['2' => 'A'],
+        ]);
+        $this->assertSame([], $mainShop->fresh()->sizeGroupCategoryCodes(), 'nothing reads the branch copy any more');
+
+        (require base_path('database/migrations/2026_10_31_000003_store_size_group_categories_by_code.php'))->up();
+
+        $this->assertSame(['B'], $mainShop->fresh()->size_group_category_codes);
+        $this->assertSame(16, $mainShop->fresh()->kidsShoeSizeGroups()[0]['min_size']);
+        $this->assertSame('A', $mainShop->fresh()->costCodeDigitMap()['2']);
+
+        // which is the whole point: the OTHER branch now prices by them too
+        $this->assertSame(['B'], $branch->fresh()->sizeGroupCategoryCodes());
+        $this->actingAs($branchOwner, 'web')->post('/app/articles', $this->articlePayload($branchCategory, [
+            'kids_prices' => ['Small' => 500],
+            'variants' => [['color' => 'RED', 'size' => '18', 'qty' => 2]],
+        ]))->assertSessionHasNoErrors();
+        $this->assertEquals(500, \App\Models\ProductVariant::where('shop_id', $branch->id)->first()->price);
+
+        // and a main shop that was configured itself is never overwritten
+        $this->assertNotNull($mainCategory->id);
     }
 
     /** The cost-code map decides what a barcode's price segment means, so it cannot differ between two branches of one business. */
@@ -424,7 +467,7 @@ class ArticleControllerTest extends TestCase
             'category_ids' => [$foreign->id],
         ])->assertSessionHasNoErrors();
 
-        $this->assertSame([], $shop->fresh()->size_group_category_ids);
+        $this->assertSame([], $shop->fresh()->size_group_category_codes);
     }
 
     /**
