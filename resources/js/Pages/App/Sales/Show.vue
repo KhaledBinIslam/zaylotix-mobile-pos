@@ -10,7 +10,7 @@ import { usePermissions } from '@/composables/usePermissions';
 import { buildVoidPreview } from '@/support/saleVoidPreview';
 import { canBluetoothPrintMemo, printMemoViaBluetooth } from '@/support/bluetoothMemoPrint';
 
-const props = defineProps({ sale: Object, collectedTotal: Number, hasReturn: Boolean });
+const props = defineProps({ sale: Object, collectedTotal: Number, hasReturn: Boolean, returned: Object });
 const { toast } = useToast();
 const { hasPerm } = usePermissions();
 
@@ -39,7 +39,7 @@ const voidSheet = ref(false);
 const voidReasonChoice = ref('');
 const voidReasonText = ref('');
 const voidSubmitting = ref(false);
-const voidPreview = computed(() => buildVoidPreview(props.sale, props.collectedTotal || 0));
+const voidPreview = computed(() => buildVoidPreview(props.sale, props.collectedTotal || 0, props.returned || {}));
 const voidReasonOptions = computed(() => [
     t('sales.voidReasonWrongEntry'),
     t('sales.voidReasonCustomerCancelled'),
@@ -330,6 +330,9 @@ const justBilled = ref(false);
 
             <div v-if="hasReturn" style="font-size:12.5px;color:var(--rose);font-weight:600;margin-bottom:10px">
                 ⚠️ {{ t('sales.voidBlockedReturn') }}
+            </div>
+            <div v-else-if="voidPreview.returnedRefund > 0" style="font-size:12.5px;color:var(--mut);font-weight:600;margin-bottom:10px">
+                ℹ️ {{ t('sales.voidPartialReturnNote').replace('{amount}', money(voidPreview.returnedRefund)) }}
             </div>
             <button class="btn" style="background:var(--rose)" :disabled="hasReturn || !voidReasonValid || voidSubmitting" @click="submitVoid">
                 {{ voidSubmitting ? '...' : t('sales.voidConfirmButton') }}

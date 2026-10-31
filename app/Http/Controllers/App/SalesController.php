@@ -58,11 +58,29 @@ class SalesController extends Controller
             // "এই টাকা কাস্টমারের অগ্রিম হয়ে যাবে" (see SaleReversal's
             // collected→advance handling)
             'collectedTotal' => (float) \App\Models\Payment::where('sale_id', $saleModel->id)->sum('amount'),
-            // destroy() refuses to void a sale that already has a
-            // return/exchange — the void sheet uses this to say so UP FRONT
-            // (disabled button + note) instead of letting the user fill in a
-            // reason and only then get refused
-            'hasReturn' => \App\Models\SalesReturn::where('sale_id', $saleModel->id)->exists(),
+            // The two return shapes destroy() still refuses to void (an
+            // exchange's separate live sale, or a sibling branch's return)
+            // — the void sheet uses this to say so UP FRONT (disabled
+            // button + note) instead of letting the user fill in a reason
+            // and only then get refused. A plain same-branch refund is NOT
+            // included: that one voids fine now, netted by SaleReversal.
+            'hasReturn' => \App\Models\SalesReturn::withoutGlobalScopes()
+                ->where('sale_id', $saleModel->id)
+                ->where(fn ($q) => $q->whereNotNull('exchange_sale_id')
+                    ->orWhere('shop_id', '!=', $saleModel->shop_id))
+                ->exists(),
+            // What a return already gave back, so the void sheet's preview
+            // shows the REMAINDER the void will actually move (see
+            // saleVoidPreview.js) rather than the full invoice amount.
+            'returned' => [
+                'refund' => (float) \App\Models\SalesReturn::withoutGlobalScopes()
+                    ->where('sale_id', $saleModel->id)->sum('refund'),
+                'qtyByItem' => \App\Models\SalesReturn::withoutGlobalScopes()
+                    ->where('sale_id', $saleModel->id)
+                    ->groupBy('sale_item_id')
+                    ->selectRaw('sale_item_id, SUM(qty) as qty')
+                    ->pluck('qty', 'sale_item_id'),
+            ],
         ]);
     }
 
@@ -105,13 +123,30 @@ class SalesController extends Controller
                 return ['blocked' => 'এই বিলটি ইতিমধ্যে বাতিল করা হয়েছে — নতুন করে কিছু বদলানো হয়নি।'];
             }
 
-            // A sale that already has a return/exchange against it can't be
-            // voided — SaleReversal would re-credit stock/cash for the FULL
-            // original sale on top of what the return already gave back,
-            // double-crediting both. Void the return first isn't possible
-            // either (no undo for a return yet), so this is simply blocked.
-            if (\App\Models\SalesReturn::where('sale_id', $saleModel->id)->exists()) {
-                return ['blocked' => 'এই বিলে ইতিমধ্যে রিটার্ন/এক্সচেঞ্জ করা হয়েছে — এটা আর বাতিল করা যাবে না।'];
+            // A plain refund-return against this bill no longer blocks the
+            // void: SaleReversal now credits back only what the return
+            // hasn't already given (see its priorReturns), so the two can't
+            // double-credit each other. Two shapes of return still can't be
+            // netted honestly, and stay blocked:
+            $returns = \App\Models\SalesReturn::withoutGlobalScopes()
+                ->where('sale_id', $saleModel->id)->get();
+
+            // An exchange handed the customer replacement goods through a
+            // whole separate live Sale. Voiding this bill while that one
+            // still stands would leave the replacement stock sold against
+            // nothing — that sale has to be dealt with first.
+            if ($returns->contains(fn ($r) => $r->exchange_sale_id !== null)) {
+                return ['blocked' => 'এই বিলে এক্সচেঞ্জ হয়েছে — এক্সচেঞ্জে দেওয়া নতুন বিলটি আগে বাতিল করুন, তারপর এটি বাতিল করা যাবে।'];
+            }
+
+            // A cross-branch return settled its stock and its refund
+            // against the RECEIVING branch's books (ReturnController's
+            // $lockedShop), not this sale's own shop. Netting it here would
+            // credit this branch for money another branch paid out, putting
+            // both branches' books wrong — exactly the kind of silent
+            // mismatch a 2-branch shop can't afford.
+            if ($returns->contains(fn ($r) => (int) $r->shop_id !== (int) $saleModel->shop_id)) {
+                return ['blocked' => 'এই বিলের ফেরত অন্য শাখা থেকে নেওয়া হয়েছে — দুই শাখার হিসাব গুলিয়ে যাবে, তাই এখান থেকে বাতিল করা যাবে না। যে শাখা ফেরত নিয়েছে, সেখান থেকে করুন।'];
             }
 
             // Optional owner-set age limit (shops.void_time_limit_days, null

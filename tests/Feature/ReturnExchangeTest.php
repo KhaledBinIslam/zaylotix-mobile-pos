@@ -383,7 +383,128 @@ class ReturnExchangeTest extends TestCase
         $this->assertEquals(6, $product->fresh()->stock);
     }
 
-    public function test_voiding_a_sale_with_an_existing_return_is_blocked(): void
+    /**
+     * A plain same-branch refund used to block the void outright, because
+     * SaleReversal would have re-credited the WHOLE sale on top of what the
+     * return already gave back. It now nets the two instead, so the void is
+     * allowed and moves only the remainder — this test pins that remainder,
+     * which is the whole reason the block could be lifted.
+     */
+    public function test_voiding_a_sale_after_a_partial_refund_credits_back_only_the_remainder(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
+        $this->grantFeature($shop, 'returns');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 50, 'price' => 100, 'stock' => 3]);
+        $sale = $this->makeSale($shop->id); // 2 × ৳100 = ৳200, paid cash
+        $item = $this->makeItem($sale, $product, ['qty' => 2]);
+
+        // 1 of the 2 comes back: ৳100 refunded, stock 3 → 4, cash 1000 → 900
+        $this->actingAs($owner, 'web')->postJson('/app/returns/process', [
+            'sale_id' => $sale->id,
+            'action' => 'refund',
+            'lines' => [['sale_item_id' => $item->id, 'qty' => 1, 'condition' => 'resalable']],
+        ])->assertOk();
+        $this->assertEquals(4, $product->fresh()->stock);
+        $this->assertEquals(900, (float) $shop->fresh()->cash_balance);
+
+        $this->actingAs($owner, 'web')->delete("/app/sales/{$sale->id}", ['reason' => 'customer cancelled the whole bill'])
+            ->assertRedirect();
+
+        $this->assertNotNull($sale->fresh()->voided_at);
+        // only the 1 unit never returned goes back — NOT both again
+        $this->assertEquals(5, $product->fresh()->stock);
+        // only the ৳100 never refunded leaves the drawer — NOT the full ৳200
+        $this->assertEquals(800, (float) $shop->fresh()->cash_balance);
+    }
+
+    public function test_voiding_a_fully_returned_sale_moves_no_stock_or_cash_at_all(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
+        $this->grantFeature($shop, 'returns');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 50, 'price' => 100, 'stock' => 3]);
+        $sale = $this->makeSale($shop->id);
+        $item = $this->makeItem($sale, $product, ['qty' => 2]);
+
+        // the entire bill comes back first: ৳200 refunded, stock 3 → 5
+        $this->actingAs($owner, 'web')->postJson('/app/returns/process', [
+            'sale_id' => $sale->id,
+            'action' => 'refund',
+            'lines' => [['sale_item_id' => $item->id, 'qty' => 2, 'condition' => 'resalable']],
+        ])->assertOk();
+        $this->assertEquals(5, $product->fresh()->stock);
+        $this->assertEquals(800, (float) $shop->fresh()->cash_balance);
+
+        $this->actingAs($owner, 'web')->delete("/app/sales/{$sale->id}", ['reason' => 'tidying up a fully returned bill'])
+            ->assertRedirect();
+
+        // the return settled everything — voiding on top must be a pure
+        // bookkeeping flag flip, moving nothing
+        $this->assertNotNull($sale->fresh()->voided_at);
+        $this->assertEquals(5, $product->fresh()->stock);
+        $this->assertEquals(800, (float) $shop->fresh()->cash_balance);
+    }
+
+    public function test_voiding_a_sale_that_was_exchanged_is_still_blocked(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
+        $this->grantFeature($shop, 'returns');
+        $oldProduct = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt L', 'cost' => 60, 'price' => 150, 'stock' => 3]);
+        $newProduct = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt M', 'cost' => 50, 'price' => 100, 'stock' => 3]);
+        $sale = $this->makeSale($shop->id, ['subtotal' => 150, 'total' => 150]);
+        $item = $this->makeItem($sale, $oldProduct, ['qty' => 1, 'price' => 150, 'cost' => 60]);
+
+        $this->actingAs($owner, 'web')->postJson('/app/returns/process', [
+            'sale_id' => $sale->id,
+            'action' => 'exchange',
+            'lines' => [['sale_item_id' => $item->id, 'qty' => 1, 'condition' => 'resalable']],
+            'new_items' => [['product_id' => $newProduct->id, 'qty' => 1]],
+        ])->assertOk();
+
+        $response = $this->actingAs($owner, 'web')->delete("/app/sales/{$sale->id}", ['reason' => 'trying to void an exchanged bill']);
+
+        // refused with a flash error (not abort(422) — Inertia would bury
+        // the Bengali message behind its generic error modal)
+        $response->assertRedirect();
+        $response->assertSessionHas('error');
+        $this->assertNull($sale->fresh()->voided_at);
+
+        // and the show page tells the void sheet about the conflict up
+        // front, so the button is disabled before anyone types a reason
+        $this->actingAs($owner, 'web')->get("/app/sales/{$sale->id}")
+            ->assertInertia(fn ($page) => $page->where('hasReturn', true)->etc());
+    }
+
+    public function test_voiding_a_sale_whose_return_a_sibling_branch_took_is_blocked(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
+        $this->grantFeature($shop, 'returns');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 50, 'price' => 100, 'stock' => 3]);
+        $sale = $this->makeSale($shop->id);
+        $item = $this->makeItem($sale, $product, ['qty' => 2]);
+
+        // the return row belongs to ANOTHER branch — that branch's cash paid
+        // the refund and its shelf took the stock, so this branch has
+        // nothing to net against
+        [$sibling] = $this->createShopWithOwner();
+        SalesReturn::create([
+            'shop_id' => $sibling->id, 'product_id' => $product->id, 'sale_id' => $sale->id,
+            'sale_item_id' => $item->id, 'qty' => 1, 'refund' => 100, 'cost' => 50,
+            'condition' => 'resalable', 'type' => 'return', 'date' => now()->toDateString(),
+        ]);
+
+        $response = $this->actingAs($owner, 'web')->delete("/app/sales/{$sale->id}", ['reason' => 'trying to void a cross-branch return']);
+
+        $response->assertRedirect();
+        $response->assertSessionHas('error');
+        $this->assertNull($sale->fresh()->voided_at);
+        $this->assertEquals(3, $product->fresh()->stock); // untouched
+        $this->assertEquals(1000, (float) $shop->fresh()->cash_balance); // untouched
+
+        $this->actingAs($owner, 'web')->get("/app/sales/{$sale->id}")
+            ->assertInertia(fn ($page) => $page->where('hasReturn', true)->etc());
+    }
+
+    public function test_a_plain_same_branch_refund_leaves_the_void_button_enabled(): void
     {
         [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
         $this->grantFeature($shop, 'returns');
@@ -397,18 +518,13 @@ class ReturnExchangeTest extends TestCase
             'lines' => [['sale_item_id' => $item->id, 'qty' => 1, 'condition' => 'resalable']],
         ])->assertOk();
 
-        $response = $this->actingAs($owner, 'web')->delete("/app/sales/{$sale->id}", ['reason' => 'trying to void after a return']);
-
-        // refused with a flash error (not abort(422) — Inertia would bury
-        // the Bengali message behind its generic error modal)
-        $response->assertRedirect();
-        $response->assertSessionHas('error');
-        $this->assertNull($sale->fresh()->voided_at);
-
-        // and the show page tells the void sheet about the conflict up
-        // front, so the button is disabled before anyone types a reason
+        // hasReturn is now specifically "the void is BLOCKED", which a plain
+        // refund no longer is — and the sheet is told what was already
+        // refunded so it can say only the rest will come back
         $this->actingAs($owner, 'web')->get("/app/sales/{$sale->id}")
-            ->assertInertia(fn ($page) => $page->where('hasReturn', true)->etc());
+            ->assertInertia(fn ($page) => $page->where('hasReturn', false)
+                ->where('returned.refund', fn ($refund) => (float) $refund === 100.0)
+                ->etc());
     }
 
     public function test_loyalty_points_are_deducted_proportionally_to_the_refund(): void

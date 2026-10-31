@@ -67,3 +67,64 @@ describe('buildVoidPreview', () => {
         expect(preview.advanceCredit).toBe(0);
     });
 });
+
+// A bill that was partly refunded can now be voided (SaleReversal nets the
+// two instead of double-crediting) — so the preview has to show the
+// REMAINDER the void will move, not the full invoice.
+describe('buildVoidPreview with a return already processed', () => {
+    const items = [
+        { id: 11, product_name: 'Rice', variant_label: null, unit_label: null, qty: 2 },
+        { id: 12, product_name: 'Shoe', variant_label: '36, KHAKI', unit_label: null, qty: 1 },
+    ];
+    const sale = { items, total: 300, payments: [{ method: 'cash', amount: 300 }] };
+
+    it('lists only the units not already returned', () => {
+        const preview = buildVoidPreview(sale, 0, { refund: 100, qtyByItem: { 11: 1 } });
+        expect(preview.items).toEqual([
+            { name: 'Rice', variantLabel: null, qty: 1 },
+            { name: 'Shoe', variantLabel: '36, KHAKI', qty: 1 },
+        ]);
+    });
+
+    it('drops a line that came back in full instead of showing qty 0', () => {
+        const preview = buildVoidPreview(sale, 0, { refund: 100, qtyByItem: { 12: 1 } });
+        expect(preview.items.map((l) => l.name)).toEqual(['Rice']);
+    });
+
+    it('cash back is the tender minus the refund already paid out', () => {
+        const preview = buildVoidPreview(sale, 0, { refund: 100, qtyByItem: { 11: 1 } });
+        expect(preview.cashBack).toBe(200); // not the full 300
+        expect(preview.returnedRefund).toBe(100);
+    });
+
+    it('a fully refunded bill moves no cash and lists no stock', () => {
+        const preview = buildVoidPreview(sale, 0, { refund: 300, qtyByItem: { 11: 2, 12: 1 } });
+        expect(preview.cashBack).toBe(0);
+        expect(preview.items).toEqual([]);
+    });
+
+    it('a refund against a credit sale eats the due instead of the drawer', () => {
+        // nothing tendered, so the whole 300 was due; a 100 refund wrote off
+        // 100 of it, leaving 200 for the void to clear
+        const preview = buildVoidPreview(
+            { items, total: 300, payments: [], payment_mode: 'credit' },
+            0,
+            { refund: 100, qtyByItem: { 11: 1 } },
+        );
+        expect(preview.dueReduction).toBe(200);
+        expect(preview.cashBack).toBe(0);
+    });
+
+    it('never promises more back than was taken, even on a bad refund figure', () => {
+        const preview = buildVoidPreview(sale, 0, { refund: 9999, qtyByItem: {} });
+        expect(preview.cashBack).toBe(0); // clamped, never negative
+    });
+
+    it('no return at all leaves every number exactly as before', () => {
+        const withEmpty = buildVoidPreview(sale, 0, {});
+        const without = buildVoidPreview(sale, 0);
+        expect(withEmpty).toEqual(without);
+        expect(without.cashBack).toBe(300);
+        expect(without.items).toHaveLength(2);
+    });
+});

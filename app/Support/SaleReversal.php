@@ -10,6 +10,7 @@ use App\Models\ProductVariant;
 use App\Models\Promotion;
 use App\Models\Quotation;
 use App\Models\Sale;
+use App\Models\SalesReturn;
 use App\Models\Shop;
 
 /**
@@ -23,6 +24,14 @@ use App\Models\Shop;
  * locked by the caller (Shop::whereKey($id)->lockForUpdate()->first()) —
  * this mirrors PosController::checkout's own locking discipline so a
  * reversal can't race a live sale on the same product/customer/shop row.
+ *
+ * NET of any return/exchange already processed against the sale (see
+ * priorReturns): a return has itself already given stock and money back,
+ * so crediting the FULL original sale on top of that would double-credit
+ * both. Every branch below is identical to its pre-netting behavior when
+ * the sale has no returns at all — which is every sale the three callers
+ * (shop void, admin hard-delete, online-order cancel) have ever reversed
+ * until now, since void simply refused a returned bill outright.
  */
 class SaleReversal
 {
@@ -30,23 +39,49 @@ class SaleReversal
     {
         $sale->loadMissing(['items', 'payments']);
 
+        $prior = self::priorReturns($sale);
+
         foreach ($sale->items as $item) {
             if ($item->product_id) {
+                // Only the units NOT already returned are still owed back to
+                // this shop's stock. A returned unit was accounted for once
+                // already — either put back on the shelf (resalable) or
+                // written off as Damage (damaged/lost) — so crediting it
+                // again here would invent stock that doesn't exist.
+                $returnedQty = (float) ($prior['qtyByItem'][$item->id] ?? 0);
+                $remainingQty = (float) $item->qty - $returnedQty;
+                if ($remainingQty <= 0.0001) {
+                    continue; // fully returned already — nothing left to give back
+                }
+
                 $product = Product::whereKey($item->product_id)->lockForUpdate()->first();
-                $product?->applyStockDelta($item->qty * $item->unit_factor);
+                $product?->applyStockDelta($remainingQty * $item->unit_factor);
 
                 if ($item->product_variant_id) {
                     // paired with the paired decrement in PosController::checkout
                     // — keeps products.stock === sum(variants.stock) intact
                     $variant = ProductVariant::whereKey($item->product_variant_id)->lockForUpdate()->first();
-                    $variant?->applyStockDelta($item->qty);
+                    $variant?->applyStockDelta($remainingQty);
                 } else {
                     // puts each unit back into the exact batch checkout took
                     // it from (see PosController::checkout + BatchStock::deduct)
                     // — a no-op when the sale predates batch tracking, wasn't
                     // batch-covered, or was a variant line (batches aren't
                     // variant-aware)
-                    BatchStock::restore($item->batch_allocations);
+                    if ($returnedQty > 0.0001) {
+                        // A prior return already restored its own resalable
+                        // share of these same allocations (via
+                        // BatchStock::restorePartial in ReturnController) —
+                        // skip past that share and restore only what's left,
+                        // or those batch rows get credited twice.
+                        BatchStock::restorePartial(
+                            $item->batch_allocations,
+                            (float) ($prior['resalableQtyByItem'][$item->id] ?? 0) * (float) $item->unit_factor,
+                            $remainingQty * (float) $item->unit_factor,
+                        );
+                    } else {
+                        BatchStock::restore($item->batch_allocations);
+                    }
 
                     // flips the specific IMEI back to in_stock so it can be
                     // resold and no longer shows as "sold" in warranty lookup
@@ -54,6 +89,11 @@ class SaleReversal
                 }
             }
         }
+
+        // What a return has already paid back out of the shop's own money.
+        // Each money branch below reverses the sale MINUS this, so the
+        // customer ends up owed exactly the part they never got back.
+        $refunded = $prior['refund'];
 
         $customer = $sale->customer_id ? Customer::whereKey($sale->customer_id)->lockForUpdate()->first() : null;
 
@@ -76,7 +116,25 @@ class SaleReversal
 
             $tendered = (float) $sale->payments->sum('amount');
             $dueRemainder = (float) $sale->total - $tendered;
-            if ($customer && $dueRemainder > 0) {
+
+            // Split the refund already paid out the same proportional way
+            // ReturnController::process itself did, so the two halves land
+            // on the same two buckets the refund came out of.
+            [$refundDue, $refundCash] = self::splitRefund($refunded, $dueRemainder, (float) $sale->total);
+
+            if ($refundCash > 0) {
+                // A refund leaves the drawer as cash (ReturnController only
+                // ever touches cash_balance for one). The tender loop above
+                // has already taken the FULL sale back out of cash/bank, so
+                // without putting the refund back the shop would be debited
+                // twice over the same money.
+                $lockedShop->cash_balance = (float) $lockedShop->cash_balance + $refundCash;
+            }
+
+            // only the slice of the original due that a refund hasn't
+            // already written off is still the customer's to clear
+            $dueOutstanding = max(0, $dueRemainder - $refundDue);
+            if ($customer && $dueOutstanding > 0) {
                 // Phase 39: part of this bill's due may ALREADY have been
                 // collected (Payment rows tagged with this sale_id). That
                 // money is real and stays with the shop — per Khaled's
@@ -89,9 +147,9 @@ class SaleReversal
                 // — same reasoning as PaymentController::invoices().
                 $collected = min(
                     (float) Payment::withoutGlobalScopes()->where('sale_id', $sale->id)->sum('amount'),
-                    $dueRemainder
+                    $dueOutstanding
                 );
-                $customer->due = max(0, $customer->due - ($dueRemainder - $collected));
+                $customer->due = max(0, $customer->due - ($dueOutstanding - $collected));
                 if ($collected > 0) {
                     $customer->advance_balance = (float) $customer->advance_balance + $collected;
                 }
@@ -101,18 +159,24 @@ class SaleReversal
             // never gets a sale_payments row since due isn't a tender) —
             // reverse via the single payment_mode exactly as before.
             if ($sale->payment_mode === 'cash') {
-                $lockedShop->cash_balance = max(0, $lockedShop->cash_balance - $sale->total);
+                $lockedShop->cash_balance = max(0, $lockedShop->cash_balance - ((float) $sale->total - $refunded));
             } elseif (in_array($sale->payment_mode, ['bkash', 'nagad'], true)) {
                 $lockedShop->bank_balance = max(0, $lockedShop->bank_balance - $sale->total);
+                if ($refunded > 0) {
+                    // money came IN by bKash/Nagad but its refund went OUT
+                    // as cash — reversing the bill reverses both legs
+                    $lockedShop->cash_balance = (float) $lockedShop->cash_balance + $refunded;
+                }
             } elseif ($sale->payment_mode === 'credit' && $customer) {
                 // same collected-due → advance handling as the split-payment
                 // branch above — a pure-credit sale is exactly the case where
                 // a later collection is most likely
+                $netTotal = max(0, (float) $sale->total - $refunded);
                 $collected = min(
                     (float) Payment::withoutGlobalScopes()->where('sale_id', $sale->id)->sum('amount'),
-                    (float) $sale->total
+                    $netTotal
                 );
-                $customer->due = max(0, $customer->due - ((float) $sale->total - $collected));
+                $customer->due = max(0, $customer->due - ($netTotal - $collected));
                 if ($collected > 0) {
                     $customer->advance_balance = (float) $customer->advance_balance + $collected;
                 }
@@ -127,7 +191,10 @@ class SaleReversal
             // exactly undoing what checkout did to this customer's balance.
             // Clamped at 0: the customer may have already spent the earned
             // points elsewhere; a void must never push a balance negative.
-            $pointsDelta = (int) ($sale->points_redeemed ?? 0) - (int) ($sale->points_earned ?? 0);
+            // A return has already clawed back its own share of the points
+            // this sale earned (returns.loyalty_points_deducted), so only
+            // the remainder is still this reversal's to take.
+            $pointsDelta = (int) ($sale->points_redeemed ?? 0) - (int) ($sale->points_earned ?? 0) + $prior['points'];
             if ($pointsDelta !== 0) {
                 $customer->loyalty_points = max(0, (int) $customer->loyalty_points + $pointsDelta);
             }
@@ -156,6 +223,56 @@ class SaleReversal
             ->update(['status' => 'open', 'sale_id' => null]);
 
         $lockedShop->save();
+    }
+
+    /**
+     * Everything a return/exchange against this sale has ALREADY given
+     * back, keyed the way reverse() needs it. A sale with no returns (the
+     * normal case) returns all zeros, which collapses every branch above
+     * to its original pre-netting form.
+     *
+     * withoutGlobalScopes: a cross-branch return row belongs to the
+     * RECEIVING branch rather than the sale's own shop, and the admin
+     * hard-delete path runs with no tenant set at all.
+     */
+    private static function priorReturns(Sale $sale): array
+    {
+        $rows = SalesReturn::withoutGlobalScopes()->where('sale_id', $sale->id)->get();
+
+        if ($rows->isEmpty()) {
+            return ['qtyByItem' => [], 'resalableQtyByItem' => [], 'refund' => 0.0, 'points' => 0];
+        }
+
+        return [
+            'qtyByItem' => $rows->groupBy('sale_item_id')->map(fn ($g) => (float) $g->sum('qty'))->all(),
+            'resalableQtyByItem' => $rows->where('condition', 'resalable')
+                ->groupBy('sale_item_id')->map(fn ($g) => (float) $g->sum('qty'))->all(),
+            'refund' => (float) $rows->sum('refund'),
+            // loyalty_points_deducted is an EVENT-level number that
+            // ReturnController copies onto every row of the same return —
+            // summing the column would multiply it by the line count, so
+            // take one value per event (one return = one created_at).
+            'points' => (int) $rows->groupBy(fn ($r) => (string) $r->created_at)
+                ->sum(fn ($g) => (int) ($g->first()->loyalty_points_deducted ?? 0)),
+        ];
+    }
+
+    /**
+     * How an already-paid refund splits between "money the shop actually
+     * handed over" and "due it simply wrote off" — mirroring
+     * ReturnController::process's own proportional refundDuePortion math,
+     * so reversing a refunded bill credits back the same two buckets the
+     * refund was taken from.
+     */
+    private static function splitRefund(float $refunded, float $dueRemainder, float $total): array
+    {
+        if ($refunded <= 0 || $total <= 0) {
+            return [0.0, 0.0];
+        }
+
+        $due = $dueRemainder > 0 ? min($dueRemainder, round($refunded * $dueRemainder / $total, 2)) : 0.0;
+
+        return [$due, round($refunded - $due, 2)];
     }
 
     /**
