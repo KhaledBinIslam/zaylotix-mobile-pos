@@ -289,6 +289,110 @@ class ArticleControllerTest extends TestCase
         $this->assertEquals(600, $variants->firstWhere('size', '25')->price); // Medium range
     }
 
+    /**
+     * Khaled set the size groups up on one Baby Park shop and the second
+     * branch's user saw no group prices at all. These settings describe how
+     * one business encodes and prices, so a branch reads them from its
+     * parent — and matching is by category CODE, because the branch's own
+     * "BABY" row has a different id entirely.
+     */
+    public function test_a_branch_inherits_the_businesss_size_group_picks_despite_its_own_category_ids(): void
+    {
+        [$mainShop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($mainShop, 'article_series');
+        $mainCategory = \App\Models\ProductCategory::create(['shop_id' => $mainShop->id, 'name' => 'BABY', 'name_en' => 'BABY', 'code' => 'B']);
+
+        [$branch, $branchOwner] = $this->createBranchOf($mainShop);
+        // the branch's own BABY row — a different id, the same code, which
+        // is exactly what CatalogSync guarantees
+        $branchCategory = \App\Models\ProductCategory::create(['shop_id' => $branch->id, 'name' => 'BABY', 'name_en' => 'BABY', 'code' => 'B']);
+        $this->assertNotSame($mainCategory->id, $branchCategory->id);
+
+        $this->actingAs($owner, 'web')->patch('/app/articles/size-group-settings', [
+            'groups' => [
+                ['label' => 'Small', 'min_size' => 16, 'max_size' => 20],
+                ['label' => 'Medium', 'min_size' => 21, 'max_size' => 30],
+            ],
+            'category_ids' => [$mainCategory->id],
+        ])->assertSessionHasNoErrors();
+
+        // the branch's own page shows its own box ticked, and its own ranges
+        $this->actingAs($branchOwner, 'web')->get('/app/articles/size-group-settings')
+            ->assertInertia(fn ($page) => $page
+                ->where('selectedCategoryIds', [$branchCategory->id])
+                ->where('groups.0.min_size', 16)
+                ->where('isCustomized', true));
+
+        // and the three price boxes actually apply in the branch
+        $this->actingAs($branchOwner, 'web')->post('/app/articles', $this->articlePayload($branchCategory, [
+            'kids_prices' => ['Small' => 500, 'Medium' => 600],
+        ]))->assertSessionHasNoErrors();
+
+        $variants = \App\Models\ProductVariant::where('shop_id', $branch->id)->get();
+        $this->assertEquals(500, $variants->firstWhere('size', '18')->price);
+        $this->assertEquals(600, $variants->firstWhere('size', '25')->price);
+    }
+
+    /** A branch saving these settings sets them for the whole business, so the other branch is never left behind again. */
+    public function test_a_branch_saving_size_group_settings_sets_them_for_the_business(): void
+    {
+        [$mainShop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($mainShop, 'article_series');
+        $mainCategory = \App\Models\ProductCategory::create(['shop_id' => $mainShop->id, 'name' => 'BABY', 'name_en' => 'BABY', 'code' => 'B']);
+
+        [$branch, $branchOwner] = $this->createBranchOf($mainShop);
+        $branchCategory = \App\Models\ProductCategory::create(['shop_id' => $branch->id, 'name' => 'BABY', 'name_en' => 'BABY', 'code' => 'B']);
+
+        $this->actingAs($branchOwner, 'web')->patch('/app/articles/size-group-settings', [
+            'groups' => [['label' => 'Small', 'min_size' => 16, 'max_size' => 30]],
+            'category_ids' => [$branchCategory->id],
+        ])->assertSessionHasNoErrors();
+
+        // stored on the main shop, as ITS own category id
+        $this->assertSame([$mainCategory->id], $mainShop->fresh()->size_group_category_ids);
+        $this->assertNull($branch->fresh()->size_group_category_ids);
+        $this->assertSame(['B'], $mainShop->fresh()->sizeGroupCategoryCodes());
+
+        // which the main shop's own form then reflects
+        $this->actingAs($owner, 'web')->get('/app/articles/size-group-settings')
+            ->assertInertia(fn ($page) => $page->where('selectedCategoryIds', [$mainCategory->id]));
+    }
+
+    /** The cost-code map decides what a barcode's price segment means, so it cannot differ between two branches of one business. */
+    public function test_the_cost_code_map_is_business_level_not_per_branch(): void
+    {
+        [$mainShop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($mainShop, 'article_series');
+        [$branch, $branchOwner] = $this->createBranchOf($mainShop);
+
+        $this->actingAs($branchOwner, 'web')->patch('/app/articles/cost-code-settings', [
+            'map' => ['0' => 'X', '1' => 'N', '2' => 'A', '3' => 'S', '4' => 'I', '5' => 'R', '6' => 'J', '7' => 'B', '8' => 'C', '9' => 'D'],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame('A', $mainShop->fresh()->costCodeDigitMap()['2']);
+        $this->assertSame('A', $branch->fresh()->costCodeDigitMap()['2'], 'the branch reads the business map');
+        $this->assertNull($branch->fresh()->cost_code_digit_map, 'and does not keep its own copy');
+    }
+
+    /** @return array{0: Shop, 1: \App\Models\User} */
+    private function createBranchOf(Shop $mainShop): array
+    {
+        $branch = Shop::create([
+            'name' => 'Baby Park 2', 'phone' => 'PENDING-'.uniqid(), 'parent_shop_id' => $mainShop->id,
+            'sales_mode' => 'both', 'lang' => 'bn', 'plan' => 'trial', 'status' => 'active',
+            'subscription_start' => now()->toDateString(), 'subscription_expiry' => now()->addMonth()->toDateString(),
+            'cash_balance' => 0, 'bank_balance' => 0, 'capital' => 0, 'vat_mode' => 'none', 'invoice_counter' => 1000,
+            'onboarded_at' => now(),
+        ]);
+        $this->grantFeature($branch, 'article_series');
+        $branchOwner = \App\Models\User::create([
+            'shop_id' => $branch->id, 'name' => 'Branch Owner', 'phone' => $branch->phone,
+            'password' => 'password', 'role' => 'owner', 'lang' => 'bn',
+        ]);
+
+        return [$branch, $branchOwner];
+    }
+
     public function test_picking_no_category_keeps_the_old_name_matching(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();
@@ -411,6 +515,94 @@ class ArticleControllerTest extends TestCase
         $this->actingAs($owner, 'web')->post('/app/articles', $this->articlePayload($category, ['price' => 1990, 'serial' => $serial]))
             ->assertSessionHasNoErrors();
         $this->assertSame(1, Product::where('shop_id', $shop->id)->count());
+    }
+
+    /**
+     * Khaled deleted B-20007 before releaseBarcodes() existed, so his rows
+     * are hidden while still holding their barcodes — and product_variants'
+     * unique (shop_id, barcode) index does not care that a row is
+     * soft-deleted. Re-entering that serial, the entire point of the
+     * feature, would have died on a constraint violation. The
+     * release_barcodes_from_already_deleted_products migration runs exactly
+     * what this test runs.
+     *
+     * The setup leaves one variant trashed and one live on purpose: the
+     * cascade (d7e396ea) shipped before the release did, so articles
+     * deleted on either side of it are in different shapes and both have to
+     * come out clean.
+     */
+    public function test_an_article_deleted_before_barcodes_were_released_can_still_be_re_entered(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        $category = \App\Models\ProductCategory::create(['shop_id' => $shop->id, 'name' => 'BABY', 'name_en' => 'BABY', 'code' => 'B']);
+
+        $this->actingAs($owner, 'web')->post('/app/articles', $this->articlePayload($category, ['price' => 1990]))
+            ->assertSessionHasNoErrors();
+        $product = Product::where('shop_id', $shop->id)->firstOrFail();
+        $serial = (int) substr($product->name, 2);
+        $wasBarcoded = \App\Models\ProductVariant::where('product_id', $product->id)->pluck('barcode')->filter()->values();
+        $this->assertCount(2, $wasBarcoded);
+
+        $cascadedId = \App\Models\ProductVariant::where('product_id', $product->id)->orderBy('id')->value('id');
+        Product::withoutEvents(function () use ($product, $cascadedId) {
+            \App\Models\ProductVariant::withoutGlobalScopes()->whereKey($cascadedId)->update(['deleted_at' => now()]);
+            $product->delete();
+        });
+        $this->assertSame(2, \App\Models\ProductVariant::withoutGlobalScopes()
+            ->where('product_id', $product->id)->whereNotNull('barcode')->count(), 'every barcode is still reserved');
+
+        // the migration itself, not just the method it calls — its job is
+        // to FIND these rows, and that query is the part only this covers
+        $this->runBarcodeReleaseMigration();
+
+        $this->assertNull(Product::withTrashed()->whereKey($product->id)->value('barcode'));
+        $this->assertSame(0, \App\Models\ProductVariant::withoutGlobalScopes()
+            ->where('product_id', $product->id)->whereNotNull('barcode')->count());
+        $this->assertSame(0, \App\Models\ProductVariant::where('product_id', $product->id)->count(), 'the variant left live is hidden too');
+        $this->assertSame(0, \App\Models\ProductColorBarcode::where('product_id', $product->id)->count());
+
+        // the serial is now genuinely usable again with the same colours and
+        // sizes — which is precisely where the old barcodes collided, since
+        // a variant barcode is a pure function of article, colour and size
+        $this->actingAs($owner, 'web')->post('/app/articles', $this->articlePayload($category, ['price' => 1990, 'serial' => $serial]))
+            ->assertSessionHasNoErrors();
+        $reentered = Product::where('shop_id', $shop->id)->firstOrFail();
+        $this->assertSame("B-{$serial}", $reentered->name);
+        $this->assertEqualsCanonicalizing(
+            $wasBarcoded->all(),
+            \App\Models\ProductVariant::where('product_id', $reentered->id)->pluck('barcode')->values()->all(),
+            'the re-entered article rebuilds the very same barcodes'
+        );
+    }
+
+    /** Releasing twice must be a no-op, because the migration is re-runnable and the cascade may have run first. */
+    public function test_releasing_barcodes_is_idempotent(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        $category = \App\Models\ProductCategory::create(['shop_id' => $shop->id, 'name' => 'BABY', 'name_en' => 'BABY', 'code' => 'B']);
+
+        $this->actingAs($owner, 'web')->post('/app/articles', $this->articlePayload($category, ['price' => 1990]))
+            ->assertSessionHasNoErrors();
+        $product = Product::where('shop_id', $shop->id)->firstOrFail();
+
+        $product->delete(); // the cascade already releases
+        $deletedAt = \App\Models\ProductVariant::withoutGlobalScopes()->where('product_id', $product->id)->value('deleted_at');
+
+        $this->runBarcodeReleaseMigration();
+        $this->runBarcodeReleaseMigration();
+
+        $this->assertEquals($deletedAt, \App\Models\ProductVariant::withoutGlobalScopes()
+            ->where('product_id', $product->id)->value('deleted_at'), 'an earlier deletion keeps its own timestamp');
+        $this->assertSame(0, \App\Models\ProductVariant::withoutGlobalScopes()
+            ->where('product_id', $product->id)->whereNotNull('barcode')->count());
+    }
+
+    /** Runs the one-off migration that frees barcodes left behind by articles deleted before the cascade released them. */
+    private function runBarcodeReleaseMigration(): void
+    {
+        (require base_path('database/migrations/2026_10_31_000002_release_barcodes_from_already_deleted_products.php'))->up();
     }
 
     private function peekSerial(\App\Models\User $owner): int

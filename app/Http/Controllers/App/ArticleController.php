@@ -296,11 +296,13 @@ class ArticleController extends Controller
 
         return Inertia::render('App/Articles/SizeGroupSettings', [
             'groups' => $shop->kidsShoeSizeGroups(),
-            'isCustomized' => $shop->kids_shoe_size_groups !== null,
+            'isCustomized' => $shop->articleSettingsShop()->kids_shoe_size_groups !== null,
             // which categories use these groups — the ranges mean nothing
             // until a category is pointed at them (see isKidsCategory)
             'categories' => ProductCategory::orderBy('name')->get(['id', 'name', 'name_en']),
-            'selectedCategoryIds' => array_map('intval', $shop->size_group_category_ids ?? []),
+            // the business's picks translated into THIS shop's own category
+            // ids, so a branch opening this page sees its own boxes ticked
+            'selectedCategoryIds' => $this->localCategoryIdsFor($shop->sizeGroupCategoryCodes()),
         ]);
     }
 
@@ -325,14 +327,47 @@ class ArticleController extends Controller
 
         // Only this shop's own categories — an id from another tenant would
         // silently turn the feature on for a category this shop can't see.
-        $categoryIds = ProductCategory::whereIn('id', $data['category_ids'] ?? [])->pluck('id')->all();
+        $codes = ProductCategory::whereIn('id', $data['category_ids'] ?? [])
+            ->pluck('code')
+            ->map(fn ($code) => strtoupper(trim((string) $code)))
+            ->filter()->unique()->values()->all();
 
-        Tenancy::shop()->update([
+        // Saved on the business's settings shop, whichever branch is
+        // saving, so both Baby Park branches price by the same groups —
+        // Khaled set these up once and the other branch's user saw
+        // nothing. The ids stored are that shop's OWN, translated through
+        // the codes, since ids never carry across branches.
+        $settingsShop = Tenancy::shop()->articleSettingsShop();
+        $settingsShop->update([
             'kids_shoe_size_groups' => $groups,
-            'size_group_category_ids' => $categoryIds,
+            'size_group_category_ids' => $this->categoryIdsForShop($settingsShop, $codes),
         ]);
 
         return back()->with('success', 'সাইজ-গ্রুপ সেটিংস সংরক্ষণ করা হয়েছে।');
+    }
+
+    /** The current shop's own category ids for a set of business-wide category codes — the inverse of Shop::sizeGroupCategoryCodes(). */
+    private function localCategoryIdsFor(array $codes): array
+    {
+        if ($codes === []) {
+            return [];
+        }
+
+        return ProductCategory::get(['id', 'code'])
+            ->filter(fn ($c) => in_array(strtoupper(trim((string) $c->code)), $codes, true))
+            ->pluck('id')->map('intval')->values()->all();
+    }
+
+    /** Same translation as localCategoryIdsFor(), for a shop that is not the current tenant. */
+    private function categoryIdsForShop(Shop $shop, array $codes): array
+    {
+        if ($codes === []) {
+            return [];
+        }
+
+        return ProductCategory::withoutGlobalScopes()->where('shop_id', $shop->id)->get(['id', 'code'])
+            ->filter(fn ($c) => in_array(strtoupper(trim((string) $c->code)), $codes, true))
+            ->pluck('id')->map('intval')->values()->all();
     }
 
     /** docs/ARTICLE_SERIES_PLAN.md §9 — editable রং-কোড list, suggestion-prefilled client-side (see resources/js/support/colorCodeSuggestions.js, the same table as ArticleBarcode::COLOR_CODE_SUGGESTIONS). */
@@ -367,7 +402,10 @@ class ArticleController extends Controller
             $map[$color] = $code;
         }
 
-        Tenancy::shop()->update(['color_code_map' => $map, 'barcode_include_size' => $data['barcode_include_size']]);
+        // business-level, like the size groups above: a branch encoding a
+        // colour its own way would print a different barcode for the very
+        // article CatalogSync handed it
+        Tenancy::shop()->articleSettingsShop()->update(['color_code_map' => $map, 'barcode_include_size' => $data['barcode_include_size']]);
 
         return back()->with('success', 'রং-কোড সেটিংস সংরক্ষণ করা হয়েছে।');
     }
@@ -420,7 +458,7 @@ class ArticleController extends Controller
             $map[(string) $digit] = $letter;
         }
 
-        Tenancy::shop()->update(['cost_code_digit_map' => $map]);
+        Tenancy::shop()->articleSettingsShop()->update(['cost_code_digit_map' => $map]);
 
         return back()->with('success', 'কস্ট-কোড সেটিংস সংরক্ষণ করা হয়েছে।');
     }
@@ -479,17 +517,21 @@ class ArticleController extends Controller
      * Does this category price by size group (3 boxes) rather than one
      * flat price?
      *
-     * The shop's own picked list wins. It was name-matching alone before,
+     * The business's picked list wins. It was name-matching alone before,
      * against "Kids' Shoes"/"বাচ্চাদের জুতা" — and Baby Park, the shop
      * this was built for, calls their category "BABY", so the three price
      * boxes never appeared for them. The names stay as a fallback so every
      * shop that relied on them keeps working untouched.
+     *
+     * Matched on the category's CODE, not its id: a branch's categories
+     * are its own rows with their own ids, so an id only ever means
+     * something in the shop that stored it (see sizeGroupCategoryCodes()).
      */
     private function isKidsCategory(ProductCategory $category): bool
     {
-        $picked = Tenancy::shop()->size_group_category_ids;
-        if (is_array($picked) && $picked !== []) {
-            return in_array((int) $category->id, array_map('intval', $picked), true);
+        $codes = Tenancy::shop()->sizeGroupCategoryCodes();
+        if ($codes !== []) {
+            return in_array(strtoupper(trim((string) $category->code)), $codes, true);
         }
 
         return in_array(trim((string) $category->name_en), self::KIDS_CATEGORY_NAMES, true)

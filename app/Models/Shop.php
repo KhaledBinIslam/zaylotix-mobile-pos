@@ -93,12 +93,34 @@ class Shop extends Model
         return $this->mobile_nav_items ?? self::MOBILE_NAV_DEFAULT;
     }
 
+    /**
+     * The shop that owns this business's article settings — a branch
+     * resolves through its parent, a main shop answers for itself.
+     *
+     * Barcode encoding and size-group pricing have to mean the same thing
+     * in every branch of one business. CatalogSync copies a main shop's
+     * articles into each branch and deliberately keeps the category codes
+     * identical, "or the two shops' barcodes would silently diverge for
+     * the same category" — a branch encoding a cost or a colour its own
+     * way would then print a different barcode for the very shoe it was
+     * handed. Khaled hit the visible half of this: he set the size groups
+     * up on one shop and the second branch's user saw no group prices at
+     * all.
+     *
+     * Same resolution as labelHeader(), so a shop with no parent is
+     * completely unaffected.
+     */
+    public function articleSettingsShop(): self
+    {
+        return $this->parent_shop_id ? ($this->parentShop ?? $this) : $this;
+    }
+
     /** docs/ARTICLE_SERIES_PLAN.md §3 — {MFR}-{CAT}-{SERIAL}-{COSTCODE}, e.g. "SMS-L-10001-NSXXZ". */
     public const ARTICLE_BARCODE_TEMPLATE_DEFAULT = '{MFR}-{CAT}-{SERIAL}-{COSTCODE}';
 
     public function articleBarcodeTemplate(): string
     {
-        return $this->article_barcode_template ?: self::ARTICLE_BARCODE_TEMPLATE_DEFAULT;
+        return $this->articleSettingsShop()->article_barcode_template ?: self::ARTICLE_BARCODE_TEMPLATE_DEFAULT;
     }
 
     /**
@@ -120,13 +142,13 @@ class Shop extends Model
         // array_merge() renumbers integer keys sequentially (0,1,2,...)
         // instead of preserving them, which would corrupt the whole digit
         // map. array_replace() preserves keys, int or string, always.
-        return array_replace(self::COST_CODE_DIGIT_MAP_DEFAULTS, $this->cost_code_digit_map ?? []);
+        return array_replace(self::COST_CODE_DIGIT_MAP_DEFAULTS, $this->articleSettingsShop()->cost_code_digit_map ?? []);
     }
 
     /** Color name -> short code (e.g. "সিলভার" -> "SIL") for the variant barcode's color segment. A color with no entry here falls back to its own name, uppercased. */
     public function colorCodeMap(): array
     {
-        return $this->color_code_map ?? [];
+        return $this->articleSettingsShop()->color_code_map ?? [];
     }
 
     /**
@@ -144,7 +166,40 @@ class Shop extends Model
 
     public function kidsShoeSizeGroups(): array
     {
-        return $this->kids_shoe_size_groups ?? self::KIDS_SHOE_SIZE_GROUPS_DEFAULT;
+        return $this->articleSettingsShop()->kids_shoe_size_groups ?? self::KIDS_SHOE_SIZE_GROUPS_DEFAULT;
+    }
+
+    /**
+     * Which category CODES price by size group, business-wide.
+     *
+     * The picks are stored as category ids but read back as codes on
+     * purpose: every branch has its OWN product_categories rows with
+     * their own ids (CatalogSync matches them by name), so an id from the
+     * main shop means nothing in a branch. The code is the one key
+     * CatalogSync guarantees is identical in both — which makes it the
+     * only safe way to say "this category, in whichever branch you are".
+     *
+     * Empty either because nothing was picked or because the picked
+     * categories have no code; isKidsCategory() then falls back to
+     * matching names, exactly as it did before any of this existed.
+     */
+    public function sizeGroupCategoryCodes(): array
+    {
+        $settingsShop = $this->articleSettingsShop();
+        $ids = array_map('intval', $settingsShop->size_group_category_ids ?? []);
+        if ($ids === []) {
+            return [];
+        }
+
+        return ProductCategory::withoutGlobalScopes()
+            ->where('shop_id', $settingsShop->id)
+            ->whereIn('id', $ids)
+            ->pluck('code')
+            ->map(fn ($code) => strtoupper(trim((string) $code)))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
     }
 
     /**
@@ -159,13 +214,13 @@ class Shop extends Model
 
     public function stickerBarcodeTemplate(): string
     {
-        return $this->sticker_barcode_template ?: self::STICKER_BARCODE_TEMPLATE_DEFAULT;
+        return $this->articleSettingsShop()->sticker_barcode_template ?: self::STICKER_BARCODE_TEMPLATE_DEFAULT;
     }
 
     /** Off by default — {SIZE} resolves to empty (then cleaned up) until this is turned on, matching Khaled's "ডিফল্ট বন্ধ" instruction. */
     public function barcodeIncludeSize(): bool
     {
-        return (bool) $this->barcode_include_size;
+        return (bool) $this->articleSettingsShop()->barcode_include_size;
     }
 
     protected function casts(): array

@@ -620,10 +620,29 @@ onMounted(() => {
             <div class="ava">💰</div><div class="mid"><b>{{ t('nav.payroll') }}</b><span>{{ t('pay.subtitle') }}</span></div><div class="end">›</div>
         </Link>
 
-        <template v-if="(hasPerm('stock_count') && features.includes('stock_count')) || (hasPerm('purchases') && features.includes('purchases')) || (hasPerm('purchases') && features.includes('suppliers')) || (hasPerm('stock') && features.includes('serial_tracking')) || (hasPerm('damages') && features.includes('damages')) || (hasPerm('returns') && features.includes('returns')) || (hasPerm('stock') && features.includes('ingredient_tracking'))">
+        <template v-if="(hasPerm('stock_count') && features.includes('stock_count')) || (hasPerm('purchases') && features.includes('purchases')) || (hasPerm('purchases') && features.includes('suppliers')) || (hasPerm('stock') && features.includes('serial_tracking')) || (hasPerm('damages') && features.includes('damages')) || (hasPerm('returns') && features.includes('returns')) || (hasPerm('stock') && features.includes('ingredient_tracking')) || (hasPerm('stock') && features.includes('article_series'))">
             <div class="sechead"><h2>{{ t('more.sectionStock') }}</h2></div>
             <Link v-if="hasPerm('stock')" :href="route('app.units.index')" class="row">
                 <div class="ava">📏</div><div class="mid"><b>{{ t('unit.title') }}</b><span>{{ t('unit.subtitle') }}</span></div><div class="end">›</div>
+            </Link>
+            <!--
+                The article screens used to hang off the Stock page alone:
+                Stock → নতুন আর্টিকেল → ⚙️ সেটিংস, three taps deep with no
+                entry here at all. Khaled went looking in More three
+                separate times ("more eo gia kono option paini") before we
+                worked out it was never there, so each one gets its own row.
+            -->
+            <Link v-if="hasPerm('stock') && features.includes('article_series')" :href="route('app.articles.create')" class="row">
+                <div class="ava">👟</div><div class="mid"><b>{{ t('more.articleCreateTitle') }}</b><span>{{ t('more.articleCreateSub') }}</span></div><div class="end">›</div>
+            </Link>
+            <Link v-if="hasPerm('stock') && features.includes('article_series')" :href="route('app.articles.sizeGroupSettings.edit')" class="row">
+                <div class="ava">📐</div><div class="mid"><b>{{ t('more.sizeGroupSettingsTitle') }}</b><span>{{ t('more.sizeGroupSettingsSub') }}</span></div><div class="end">›</div>
+            </Link>
+            <Link v-if="hasPerm('stock') && features.includes('article_series')" :href="route('app.articles.colorCodeSettings.edit')" class="row">
+                <div class="ava">🎨</div><div class="mid"><b>{{ t('more.colorCodeSettingsTitle') }}</b><span>{{ t('more.colorCodeSettingsSub') }}</span></div><div class="end">›</div>
+            </Link>
+            <Link v-if="hasPerm('stock') && features.includes('article_series')" :href="route('app.articles.costCodeSettings.edit')" class="row">
+                <div class="ava">🔐</div><div class="mid"><b>{{ t('more.costCodeSettingsTitle') }}</b><span>{{ t('more.costCodeSettingsSub') }}</span></div><div class="end">›</div>
             </Link>
             <button v-if="hasPerm('stock_count') && features.includes('stock_count')" class="row" style="width:100%;text-align:left" @click="countSheet = true">
                 <div class="ava">🔢</div><div class="mid"><b>{{ t('more.stockCountTitle') }}</b><span>{{ t('more.stockCountSub') }}</span></div><div class="end">›</div>

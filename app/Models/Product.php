@@ -77,10 +77,8 @@ class Product extends Model
         // article: a sticker printed for one of those variants still
         // resolved on a barcode scan, to a product that no longer exists
         // (PosController's variant branch then worked with a null product).
-        // Their barcodes stay reserved either way — a soft-deleted row
-        // still occupies the unique (shop_id, barcode) index — but a
-        // re-entered article draws a fresh serial, so it never asks for the
-        // old one back.
+        // Hiding them is only half of it, so the cascade also hands their
+        // barcodes back — see releaseBarcodes() for why that is safe.
         //
         // Soft, like the parent, and mirrored by restored() below, so
         // undeleting a product brings its sizes/colours back with it.
@@ -91,27 +89,52 @@ class Product extends Model
                 return;
             }
 
-            // Barcodes are released, not just hidden. A soft-deleted row
-            // still occupies the unique (shop_id, barcode) index, which
-            // made re-entering a deleted article impossible — and Khaled
-            // explicitly wants a deleted article's serial to be usable
-            // again. They're derived data: products:regenerate-barcodes
-            // rebuilds them from the article and its colours.
-            $product->variants()->update(['barcode' => null]);
-            $product->variants()->delete();
-
-            ProductColorBarcode::where('product_id', $product->id)->delete();
-            ProductColorBarcodeAlias::where('product_id', $product->id)->delete();
-
-            static::withTrashed()->whereKey($product->id)->update(['barcode' => null]);
+            $product->releaseBarcodes();
         });
 
         static::restored(function (Product $product) {
             // the variants come back; their barcodes don't, since the
             // serial may well have been reissued in the meantime — run
-            // products:regenerate-barcodes to mint fresh ones
+            // articles:regenerate-barcodes to mint fresh ones
             $product->variants()->withTrashed()->restore();
         });
+    }
+
+    /**
+     * Give back every barcode this article and its variants hold.
+     *
+     * A soft-deleted row still occupies the unique (shop_id, barcode)
+     * index, so hiding an article was not enough to let its serial be
+     * entered again — which is what Khaled asked for. Nothing is lost:
+     * barcodes are derived data (articles:regenerate-barcodes rebuilds
+     * them from the article and its colours), sale history snapshots the
+     * product name and price rather than a barcode, and there is no
+     * restore-a-deleted-product screen for them to come back to.
+     *
+     * Every query goes through withoutGlobalScopes() and filters on
+     * product_id alone. That already pins a single shop's rows, and it
+     * keeps this correct from a console command or a migration, where
+     * TenantScope resolves to shop_id = 0 and would match nothing.
+     * Trashed variants are included on purpose: the cascade shipped
+     * before this release did (d7e396ea), so it hid variants while
+     * leaving their barcodes reserved — those are exactly the rows a
+     * reused serial collides with.
+     */
+    public function releaseBarcodes(): void
+    {
+        // soft-delete the ones still live, keeping an earlier cascade's own
+        // timestamp wherever it already set one
+        ProductVariant::withoutGlobalScopes()->where('product_id', $this->id)
+            ->whereNull('deleted_at')
+            ->update(['deleted_at' => $this->deleted_at ?? now()]);
+
+        ProductVariant::withoutGlobalScopes()->where('product_id', $this->id)
+            ->update(['barcode' => null]);
+
+        ProductColorBarcode::withoutGlobalScopes()->where('product_id', $this->id)->delete();
+        ProductColorBarcodeAlias::withoutGlobalScopes()->where('product_id', $this->id)->delete();
+
+        static::withoutGlobalScopes()->whereKey($this->id)->update(['barcode' => null]);
     }
 
     /** Every field a cashier might type to find this product, normalized once and stored — see SearchNormalizer::normalize(). */
