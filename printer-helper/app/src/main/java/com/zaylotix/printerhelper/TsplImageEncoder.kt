@@ -65,18 +65,19 @@ object TsplImageEncoder {
             // "starts from half the sticker" behavior seen live on the
             // XP-365B.
             append("SET TEAR ON\r\n")
-            // DENSITY/SPEED were never sent before, so the printer used
-            // whatever was last stored in its own memory — and a blank
-            // print (live: even the self-contained test pattern came out
-            // empty, with paper and app code both unchanged) is exactly
-            // what a density of 0 looks like, which the repeated
-            // power-cycle/feed-button calibration attempts can leave
-            // behind. Stating both every time makes the output
-            // independent of the printer's remembered state. 8 of 0-15 is
-            // this class of printer's normal default; 4 ips is the safe
-            // speed for a 2-inch head.
-            append("DENSITY 15\r\n")
-            append("SPEED 2\r\n")
+            // NO DENSITY/SPEED here, deliberately. They were added during
+            // the faint-print emergency on the theory that the printer had
+            // a density of 0 stored in its own memory — the real cause was
+            // the label roll loaded upside down. Stating them made things
+            // strictly worse: live on the XP-365B, a payload carrying
+            // DENSITY 15 + SPEED 2 printed NOTHING AT ALL (the in-app test
+            // print included, which goes through this same function), while
+            // the identical payload without those two lines printed
+            // correctly on the same printer, same roll, same minute. This
+            // clone firmware evidently rejects the whole job rather than
+            // just the line it doesn't like, so the proven-working header
+            // is the one that says nothing about heat or speed and lets the
+            // printer use its own panel settings.
             append("DIRECTION 0\r\n")
             append("CLS\r\n")
             append("BITMAP 0,0,").append(stride).append(",").append(heightPx).append(",0,")
