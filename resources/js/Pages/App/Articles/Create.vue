@@ -39,6 +39,7 @@ const form = useForm({
     // names — Baby Park renamed theirs to Little/Small/Medium/Large, and a
     // box whose key was missing here submitted nothing for that group
     kids_prices: emptyKidsPrices(),
+    kids_costs: emptyKidsPrices(),
     colorsText: '', sizesText: '',
     variants: [], // [{color, size, qty}]
     photos: {}, // { COLOR: File } — optional, per SkyBuy-style picker (docs/ARTICLE_SERIES_PLAN.md §4)
@@ -122,7 +123,24 @@ watch([() => form.category_id, () => form.category_code], refreshSerial, { immed
 // of its digits still has no letter in this shop's map — in both cases the
 // preview shows "?" rather than a half-built code, and the cost field's own
 // error already explains the second case.
-const previewCostCode = computed(() => encodeCost(props.costCodeDigitMap, form.cost));
+/**
+ * The cost the ARTICLE's own barcode hides — one number, because the
+ * article barcode is one string. Mirrors ArticleController::store(): the
+ * middle tier where the shop has one, else the first group priced. Each
+ * SIZE's own barcode carries its own group's cost instead; this is what a
+ * per-colour sticker, shared by every size, has to settle for.
+ */
+const barcodeCostGroup = computed(() => {
+    if (!isKids.value) return null;
+    const filled = (props.kidsShoeSizeGroups || []).filter((g) => form.kids_costs[g.label] !== '' && form.kids_costs[g.label] != null);
+    if (!filled.length) return null;
+
+    return filled.find((g) => g.label === 'Medium') || filled[0];
+});
+const barcodeCostLabel = computed(() => barcodeCostGroup.value?.label || '—');
+const barcodeCost = computed(() => (isKids.value ? (barcodeCostGroup.value ? form.kids_costs[barcodeCostGroup.value.label] : '') : form.cost));
+
+const previewCostCode = computed(() => encodeCost(props.costCodeDigitMap, barcodeCost.value));
 
 const previewBarcode = computed(() => {
     const catCode = (selectedCategory.value?.code || form.category_code || '').trim();
@@ -197,7 +215,9 @@ function save() {
         ...data,
         category_id: data.category_id || null,
         price: isKids.value ? null : data.price,
+        cost: isKids.value ? null : data.cost,
         kids_prices: isKids.value ? data.kids_prices : null,
+        kids_costs: isKids.value ? data.kids_costs : null,
     })).post(route('app.articles.store'), {
         forceFormData: true,
         onSuccess: () => {
@@ -205,6 +225,7 @@ function save() {
             // carries manufacturer + category + colors/sizes into the next entry; clears everything per-article
             form.reset('cost', 'price', 'variants', 'photos');
             form.kids_prices = emptyKidsPrices();
+            form.kids_costs = emptyKidsPrices();
             photoPreviewUrls.value = {};
             form.client_uuid = uuidv4();
             // the number just used is gone — ask for the next free one, and
@@ -297,21 +318,39 @@ function save() {
                 </div>
             </div>
 
-            <div class="field">
+            <!-- a size-group article gives its cost per group below instead -->
+            <div class="field" v-if="!isKids">
                 <label>কস্ট (ক্রয় মূল্য)</label>
                 <input v-model.number="form.cost" type="number" min="0" placeholder="1300">
                 <div v-if="form.errors.cost" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.cost }}</div>
             </div>
 
             <template v-if="isKids">
-                <div class="field"><label>বাচ্চাদের জুতা — সাইজ অনুযায়ী ৩টা দাম</label></div>
-                <div class="f2" style="grid-template-columns:1fr 1fr 1fr">
-                    <div class="field" v-for="g in kidsShoeSizeGroups" :key="g.label">
-                        <label>{{ g.label }} ({{ g.min_size }}–{{ g.max_size }})</label>
-                        <input v-model.number="form.kids_prices[g.label]" type="number" min="0" placeholder="0">
+                <div class="field" style="margin-bottom:4px">
+                    <label>সাইজ-গ্রুপ অনুযায়ী ক্রয় ও বিক্রয় মূল্য</label>
+                </div>
+                <!-- one row per group: its own buying price and selling
+                     price side by side, since a 16-20 pair is neither bought
+                     nor sold at what a 31-36 pair is -->
+                <div v-for="g in kidsShoeSizeGroups" :key="g.label" class="card" style="padding:10px;margin-bottom:8px">
+                    <div style="font-weight:700;font-size:13px;margin-bottom:6px">{{ g.label }} <span style="color:var(--mut);font-weight:400">(সাইজ {{ g.min_size }}–{{ g.max_size }})</span></div>
+                    <div class="f2">
+                        <div class="field" style="margin:0">
+                            <label>ক্রয় মূল্য</label>
+                            <input v-model.number="form.kids_costs[g.label]" type="number" min="0" placeholder="0">
+                        </div>
+                        <div class="field" style="margin:0">
+                            <label>বিক্রয় মূল্য</label>
+                            <input v-model.number="form.kids_prices[g.label]" type="number" min="0" placeholder="0">
+                        </div>
                     </div>
                 </div>
                 <div v-if="form.errors.kids_prices" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.kids_prices }}</div>
+                <div v-if="form.errors.kids_costs" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.kids_costs }}</div>
+                <div style="font-size:12px;color:var(--mut);margin:4px 0 10px;line-height:1.6">
+                    প্রতিটা সাইজের স্টিকারে <b>ওই গ্রুপের নিজের ক্রয়মূল্যই</b> লুকানো থাকবে। তবে এক রঙে এক স্টিকার ছাপলে সেটা সব সাইজের জন্য একই, তাই তাতে উপরের
+                    <b>{{ barcodeCostLabel }}</b> গ্রুপের ক্রয়মূল্য বসবে।
+                </div>
             </template>
             <template v-else>
                 <div class="field">

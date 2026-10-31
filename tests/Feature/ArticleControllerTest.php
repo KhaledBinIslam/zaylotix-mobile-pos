@@ -583,6 +583,89 @@ class ArticleControllerTest extends TestCase
         ]))->assertSessionHasErrors('kids_prices.Little');
     }
 
+    /**
+     * Khaled: group-wise selling price was in, buying price was not — and a
+     * 16-20 pair is not bought for what a 31-36 pair is. Each variant now
+     * carries its group's cost (which every profit figure runs through,
+     * ProductVariant::effectiveCost) and its SIZE's barcode hides that same
+     * cost, so the number read off that sticker is this pair's real one.
+     */
+    public function test_each_size_group_carries_its_own_cost_into_the_variant_and_its_barcode(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        $category = \App\Models\ProductCategory::create(['shop_id' => $shop->id, 'name' => 'BABY', 'name_en' => 'BABY', 'code' => 'B']);
+
+        $this->actingAs($owner, 'web')->patch('/app/articles/size-group-settings', [
+            'groups' => [
+                ['label' => 'Little', 'min_size' => 16, 'max_size' => 20],
+                ['label' => 'Medium', 'min_size' => 21, 'max_size' => 30],
+            ],
+            'category_ids' => [$category->id],
+        ])->assertSessionHasNoErrors();
+
+        $this->actingAs($owner, 'web')->post('/app/articles', $this->articlePayload($category, [
+            'cost' => null, // given per group instead
+            'kids_costs' => ['Little' => 1300, 'Medium' => 1500],
+            'kids_prices' => ['Little' => 1900, 'Medium' => 2100],
+        ]))->assertSessionHasNoErrors();
+
+        $product = Product::where('shop_id', $shop->id)->firstOrFail();
+        $little = \App\Models\ProductVariant::where('product_id', $product->id)->firstWhere('size', '18');
+        $medium = \App\Models\ProductVariant::where('product_id', $product->id)->firstWhere('size', '25');
+
+        $this->assertEquals(1300, $little->cost);
+        $this->assertEquals(1500, $medium->cost);
+        $this->assertEquals(1300, $little->effectiveCost(), 'profit runs through this');
+        $this->assertEquals(1500, $medium->effectiveCost());
+
+        // each size's barcode hides its OWN group's cost
+        $this->assertStringContainsString(\App\Support\ArticleBarcode::encodeCost($shop, 1300), $little->barcode);
+        $this->assertStringContainsString(\App\Support\ArticleBarcode::encodeCost($shop, 1500), $medium->barcode);
+        $this->assertNotSame($little->barcode, $medium->barcode);
+
+        // the article itself keeps one cost, the middle tier, because its
+        // own barcode is a single string
+        $this->assertEquals(1500, $product->cost);
+        $this->assertStringContainsString(\App\Support\ArticleBarcode::encodeCost($shop, 1500), $product->barcode);
+    }
+
+    /** A plain article is untouched by any of that: one cost field, one cost code, variant cost left to inherit. */
+    public function test_a_non_group_article_still_takes_one_cost_and_leaves_variant_cost_inherited(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+
+        $this->actingAs($owner, 'web')->post('/app/articles', $this->payload())->assertSessionHasNoErrors();
+
+        $product = Product::where('shop_id', $shop->id)->firstOrFail();
+        $this->assertEquals(1300, $product->cost);
+        foreach (\App\Models\ProductVariant::where('product_id', $product->id)->get() as $variant) {
+            $this->assertNull($variant->cost, 'inherits the article cost, exactly as before');
+            $this->assertEquals(1300, $variant->effectiveCost());
+        }
+    }
+
+    /** No cost at all is still refused — it is what the barcode hides. */
+    public function test_a_size_group_article_with_no_cost_anywhere_is_refused(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        $category = \App\Models\ProductCategory::create(['shop_id' => $shop->id, 'name' => 'BABY', 'name_en' => 'BABY', 'code' => 'B']);
+
+        $this->actingAs($owner, 'web')->patch('/app/articles/size-group-settings', [
+            'groups' => [['label' => 'Little', 'min_size' => 16, 'max_size' => 30]],
+            'category_ids' => [$category->id],
+        ])->assertSessionHasNoErrors();
+
+        $this->actingAs($owner, 'web')->post('/app/articles', $this->articlePayload($category, [
+            'cost' => null,
+            'kids_costs' => [],
+            'kids_prices' => ['Little' => 1900],
+        ]))->assertSessionHasErrors('kids_costs');
+        $this->assertSame(0, Product::where('shop_id', $shop->id)->count());
+    }
+
     /** The cost-code map decides what a barcode's price segment means, so it cannot differ between two branches of one business. */
     public function test_the_cost_code_map_is_business_level_not_per_branch(): void
     {

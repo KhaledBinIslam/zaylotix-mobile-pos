@@ -141,8 +141,13 @@ class ArticleController extends Controller
             'manufacturer_code' => ['required', 'string', 'max:20'],
             'unit_id' => ['nullable', 'integer'],
             'new_unit_name' => ['nullable', 'string', 'max:50'],
-            'cost' => ['required', 'integer', 'min:0'],
+            // nullable here, required below — a size-group article gives
+            // its cost per group instead, exactly as it already does for
+            // the selling price
+            'cost' => ['nullable', 'integer', 'min:0'],
             'price' => ['nullable', 'numeric', 'min:0'],
+            'kids_costs' => ['nullable', 'array'],
+            'kids_costs.*' => ['nullable', 'numeric', 'min:0'],
             'kids_prices' => ['nullable', 'array'],
             // keyed by the shop's OWN group labels, which it renames freely
             // — Baby Park run Little/Small/Medium/Large. Naming the three
@@ -183,13 +188,33 @@ class ArticleController extends Controller
         $supplier = $this->resolveSupplier($data['manufacturer_code']);
         $unitId = $this->resolveUnit($data);
 
-        $costCode = ArticleBarcode::encodeCost($shop, (int) $data['cost']);
-        if ($costCode === null) {
-            return back()->withErrors(['cost' => 'এই দামের কিছু অঙ্কের জন্য এখনো অক্ষর ঠিক করা নেই — উপরের "⚙️ কস্ট-কোড সেটিংস" বোতামে গিয়ে বাকি অঙ্কগুলোর অক্ষর বসিয়ে আসুন, তারপর আবার চেষ্টা করুন।']);
-        }
-
         $isKids = $this->isKidsCategory($category);
         $kidsPrices = array_filter($data['kids_prices'] ?? []);
+        $kidsCosts = array_filter($data['kids_costs'] ?? []);
+
+        // A size-group article buys each group at its own price — a 16-20
+        // pair does not cost what a 31-36 pair does — and that cost is what
+        // every profit figure is worked out from (ProductVariant::
+        // effectiveCost, which POS, online orders, returns and damages all
+        // go through). The article's OWN cost is still a single number
+        // because the barcode hides exactly one: same rule as the base
+        // price, the middle tier where there is one.
+        // Group costs win where they are given; the single cost field is
+        // still honoured otherwise, so an article entered the old way — one
+        // cost for the lot — keeps working exactly as it did.
+        $articleCost = $data['cost'] ?? null;
+        if ($isKids && $kidsCosts) {
+            $articleCost = $kidsCosts['Medium'] ?? reset($kidsCosts);
+        }
+
+        if ($articleCost === null || $articleCost === '') {
+            return back()->withErrors([$isKids ? 'kids_costs' : 'cost' => 'ক্রয় মূল্য দিতে হবে।']);
+        }
+
+        $costCode = ArticleBarcode::encodeCost($shop, (int) $articleCost);
+        if ($costCode === null) {
+            return back()->withErrors([$isKids ? 'kids_costs' : 'cost' => 'এই দামের কিছু অঙ্কের জন্য এখনো অক্ষর ঠিক করা নেই — "⚙️ কস্ট-কোড সেটিংস"-এ গিয়ে বাকি অঙ্কগুলোর অক্ষর বসিয়ে আসুন, তারপর আবার চেষ্টা করুন।']);
+        }
 
         if ($isKids) {
             if (! $kidsPrices) {
@@ -250,7 +275,7 @@ class ArticleController extends Controller
             }
         }
 
-        $product = DB::transaction(function () use ($shop, $category, $supplier, $unitId, $data, $costCode, $isKids, $kidsPrices, $basePrice, $variantRows, $request) {
+        $product = DB::transaction(function () use ($shop, $category, $supplier, $unitId, $data, $costCode, $isKids, $kidsPrices, $kidsCosts, $articleCost, $basePrice, $variantRows, $request) {
             // A typed serial is used as-is; the counter is then pushed past
             // it so the next automatic one can't land on it. Without one,
             // the counter issues the next as it always did.
@@ -272,7 +297,7 @@ class ArticleController extends Controller
                 'name_en' => $name,
                 'barcode' => $articleBarcode,
                 'emoji' => '👟',
-                'cost' => $data['cost'],
+                'cost' => $articleCost,
                 'price' => $basePrice,
                 'stock' => 0, // live-maintained sum of variants, same convention as ProductsImportArticles
             ]);
@@ -280,13 +305,34 @@ class ArticleController extends Controller
             $gridTotal = 0;
             foreach ($variantRows as $row) {
                 $variantPrice = $isKids ? SizeGroupPricing::priceForSize($shop, $row['size'], $kidsPrices) : null;
+                $variantCost = $isKids ? SizeGroupPricing::priceForSize($shop, $row['size'], $kidsCosts) : null;
+
+                // Khaled: "sticker barcode eo jate group wise purchase price
+                // wise barcode set hoi". A size-level barcode can carry its
+                // own group's cost, so it does — the hidden cost read off
+                // that sticker is then this pair's real buying price, not
+                // the article's one headline figure. Null (no cost for that
+                // group, or a cost this shop's digit map cannot encode yet)
+                // falls back to the article's own code rather than printing
+                // a wrong number.
+                $rowBarcode = $articleBarcode;
+                if ($variantCost !== null) {
+                    $rowCode = ArticleBarcode::encodeCost($shop, (int) $variantCost);
+                    if ($rowCode !== null) {
+                        $rowBarcode = ArticleBarcode::buildArticleBarcode(
+                            $shop, strtoupper($data['manufacturer_code']), $category->code, $serial, $rowCode
+                        );
+                    }
+                }
+
                 ProductVariant::create([
                     'product_id' => $product->id,
                     'size' => $row['size'],
                     'color' => $row['color'] ?? null,
-                    'barcode' => ArticleBarcode::buildVariantBarcode($shop, $articleBarcode, $row['color'] ?? null, $row['size']),
+                    'barcode' => ArticleBarcode::buildVariantBarcode($shop, $rowBarcode, $row['color'] ?? null, $row['size']),
                     'stock' => $row['qty'],
                     'price' => $variantPrice,
+                    'cost' => $variantCost,
                 ]);
                 $gridTotal += (int) $row['qty'];
             }
