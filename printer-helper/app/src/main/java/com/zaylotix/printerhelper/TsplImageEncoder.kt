@@ -75,8 +75,8 @@ object TsplImageEncoder {
             // independent of the printer's remembered state. 8 of 0-15 is
             // this class of printer's normal default; 4 ips is the safe
             // speed for a 2-inch head.
-            append("DENSITY 8\r\n")
-            append("SPEED 4\r\n")
+            append("DENSITY 15\r\n")
+            append("SPEED 2\r\n")
             append("DIRECTION 0\r\n")
             append("CLS\r\n")
             append("BITMAP 0,0,").append(stride).append(",").append(heightPx).append(",0,")
