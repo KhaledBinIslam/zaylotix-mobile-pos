@@ -20,7 +20,7 @@ class Shop extends Model
         'vat_mode', 'vat_rate', 'turnover_rate', 'invoice_counter', 'service_charge_rate',
         'loyalty_earn_rate', 'loyalty_point_value', 'referral_bonus_points', 'return_window_days', 'void_time_limit_days', 'overhead_allocation_rule', 'dead_stock_days', 'catalog_slug', 'default_credit_limit', 'onboarded_at',
         'default_variant_sizes', 'default_variant_colors',
-        'article_barcode_template', 'cost_code_digit_map', 'color_code_map', 'kids_shoe_size_groups',
+        'article_barcode_template', 'cost_code_digit_map', 'color_code_map', 'kids_shoe_size_groups', 'size_group_category_ids',
         'sticker_barcode_template', 'barcode_include_size',
     ];
 
@@ -179,6 +179,7 @@ class Shop extends Model
             'cost_code_digit_map' => 'array',
             'color_code_map' => 'array',
             'kids_shoe_size_groups' => 'array',
+            'size_group_category_ids' => 'array',
             'barcode_include_size' => 'boolean',
             'subscription_start' => 'date:Y-m-d',
             'subscription_expiry' => 'date:Y-m-d',

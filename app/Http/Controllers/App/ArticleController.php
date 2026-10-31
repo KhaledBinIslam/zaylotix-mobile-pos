@@ -223,6 +223,10 @@ class ArticleController extends Controller
         return Inertia::render('App/Articles/SizeGroupSettings', [
             'groups' => $shop->kidsShoeSizeGroups(),
             'isCustomized' => $shop->kids_shoe_size_groups !== null,
+            // which categories use these groups — the ranges mean nothing
+            // until a category is pointed at them (see isKidsCategory)
+            'categories' => ProductCategory::orderBy('name')->get(['id', 'name', 'name_en']),
+            'selectedCategoryIds' => array_map('intval', $shop->size_group_category_ids ?? []),
         ]);
     }
 
@@ -233,6 +237,8 @@ class ArticleController extends Controller
             'groups.*.label' => ['required', 'string', 'max:50'],
             'groups.*.min_size' => ['required', 'integer', 'min:0'],
             'groups.*.max_size' => ['required', 'integer', 'gte:groups.*.min_size'],
+            'category_ids' => ['nullable', 'array'],
+            'category_ids.*' => ['integer'],
         ]);
 
         $groups = $data['groups'];
@@ -243,7 +249,14 @@ class ArticleController extends Controller
             }
         }
 
-        Tenancy::shop()->update(['kids_shoe_size_groups' => $groups]);
+        // Only this shop's own categories — an id from another tenant would
+        // silently turn the feature on for a category this shop can't see.
+        $categoryIds = ProductCategory::whereIn('id', $data['category_ids'] ?? [])->pluck('id')->all();
+
+        Tenancy::shop()->update([
+            'kids_shoe_size_groups' => $groups,
+            'size_group_category_ids' => $categoryIds,
+        ]);
 
         return back()->with('success', 'সাইজ-গ্রুপ সেটিংস সংরক্ষণ করা হয়েছে।');
     }
@@ -388,8 +401,23 @@ class ArticleController extends Controller
         return null;
     }
 
+    /**
+     * Does this category price by size group (3 boxes) rather than one
+     * flat price?
+     *
+     * The shop's own picked list wins. It was name-matching alone before,
+     * against "Kids' Shoes"/"বাচ্চাদের জুতা" — and Baby Park, the shop
+     * this was built for, calls their category "BABY", so the three price
+     * boxes never appeared for them. The names stay as a fallback so every
+     * shop that relied on them keeps working untouched.
+     */
     private function isKidsCategory(ProductCategory $category): bool
     {
+        $picked = Tenancy::shop()->size_group_category_ids;
+        if (is_array($picked) && $picked !== []) {
+            return in_array((int) $category->id, array_map('intval', $picked), true);
+        }
+
         return in_array(trim((string) $category->name_en), self::KIDS_CATEGORY_NAMES, true)
             || in_array(trim((string) $category->name), self::KIDS_CATEGORY_NAMES, true);
     }

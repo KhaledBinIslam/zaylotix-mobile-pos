@@ -255,6 +255,90 @@ class ArticleControllerTest extends TestCase
     }
 
     /**
+     * Size-group pricing used to switch on by matching the category NAME
+     * against "Kids' Shoes"/"বাচ্চাদের জুতা". Baby Park — the shop it was
+     * built for — calls theirs "BABY", so they never saw the three price
+     * boxes. The owner now picks the categories outright.
+     */
+    public function test_a_picked_category_gets_size_group_prices_whatever_it_is_called(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        $category = \App\Models\ProductCategory::create(['shop_id' => $shop->id, 'name' => 'BABY', 'name_en' => 'BABY', 'code' => 'B']);
+
+        // not picked yet: the name doesn't match, so one flat price applies
+        // and the 3-price payload is rejected for want of a price
+        $this->actingAs($owner, 'web')->post('/app/articles', $this->articlePayload($category, [
+            'kids_prices' => ['Small' => 500, 'Medium' => 600, 'Large' => 700],
+        ]))->assertSessionHasErrors('price');
+
+        $this->actingAs($owner, 'web')->patch('/app/articles/size-group-settings', [
+            'groups' => [
+                ['label' => 'Small', 'min_size' => 16, 'max_size' => 20],
+                ['label' => 'Medium', 'min_size' => 21, 'max_size' => 30],
+            ],
+            'category_ids' => [$category->id],
+        ])->assertSessionHasNoErrors();
+
+        $this->actingAs($owner, 'web')->post('/app/articles', $this->articlePayload($category, [
+            'kids_prices' => ['Small' => 500, 'Medium' => 600],
+        ]))->assertSessionHasNoErrors();
+
+        $variants = \App\Models\ProductVariant::where('shop_id', $shop->id)->get();
+        $this->assertEquals(500, $variants->firstWhere('size', '18')->price); // Small range
+        $this->assertEquals(600, $variants->firstWhere('size', '25')->price); // Medium range
+    }
+
+    public function test_picking_no_category_keeps_the_old_name_matching(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        $kids = \App\Models\ProductCategory::create(['shop_id' => $shop->id, 'name' => 'বাচ্চাদের জুতা', 'name_en' => "Kids' Shoes", 'code' => 'K']);
+
+        $this->actingAs($owner, 'web')->patch('/app/articles/size-group-settings', [
+            'groups' => [['label' => 'Small', 'min_size' => 16, 'max_size' => 30]],
+            'category_ids' => [],
+        ])->assertSessionHasNoErrors();
+
+        // nothing picked — the name still decides, exactly as before
+        $this->actingAs($owner, 'web')->post('/app/articles', $this->articlePayload($kids, [
+            'kids_prices' => ['Small' => 500],
+        ]))->assertSessionHasNoErrors();
+
+        $this->assertEquals(500, \App\Models\ProductVariant::where('shop_id', $shop->id)->first()->price);
+    }
+
+    public function test_a_category_from_another_shop_cannot_be_picked(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        [$other] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        $foreign = \App\Models\ProductCategory::create(['shop_id' => $other->id, 'name' => 'BABY', 'name_en' => 'BABY', 'code' => 'B']);
+
+        $this->actingAs($owner, 'web')->patch('/app/articles/size-group-settings', [
+            'groups' => [['label' => 'Small', 'min_size' => 16, 'max_size' => 30]],
+            'category_ids' => [$foreign->id],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame([], $shop->fresh()->size_group_category_ids);
+    }
+
+    /** The article form's own payload shape, with sizes spanning two groups. */
+    private function articlePayload(\App\Models\ProductCategory $category, array $overrides = []): array
+    {
+        return array_merge([
+            'manufacturer_code' => 'SMS',
+            'category_id' => $category->id,
+            'cost' => 1300,
+            'variants' => [
+                ['color' => 'RED', 'size' => '18', 'qty' => 2],
+                ['color' => 'RED', 'size' => '25', 'qty' => 3],
+            ],
+            'client_uuid' => (string) \Illuminate\Support\Str::uuid(),
+        ], $overrides);
+    }
+
+    /**
      * The defaults only map the digits Khaled's own import data proved
      * (0,1,3,4,5,6) — a cost containing any other digit could not be
      * encoded, and the error told him to fix it in a Settings screen that
