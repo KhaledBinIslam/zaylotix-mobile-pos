@@ -144,9 +144,11 @@ class ArticleController extends Controller
             'cost' => ['required', 'integer', 'min:0'],
             'price' => ['nullable', 'numeric', 'min:0'],
             'kids_prices' => ['nullable', 'array'],
-            'kids_prices.Small' => ['nullable', 'numeric', 'min:0'],
-            'kids_prices.Medium' => ['nullable', 'numeric', 'min:0'],
-            'kids_prices.Large' => ['nullable', 'numeric', 'min:0'],
+            // keyed by the shop's OWN group labels, which it renames freely
+            // — Baby Park run Little/Small/Medium/Large. Naming the three
+            // defaults here meant a renamed group's price was never
+            // validated as a number at all.
+            'kids_prices.*' => ['nullable', 'numeric', 'min:0'],
             'variants' => ['required', 'array', 'min:1'],
             'variants.*.color' => ['nullable', 'string', 'max:50'],
             'variants.*.size' => ['required', 'string', 'max:50'],
@@ -191,9 +193,16 @@ class ArticleController extends Controller
 
         if ($isKids) {
             if (! $kidsPrices) {
-                return back()->withErrors(['kids_prices' => 'বাচ্চাদের জুতার জন্য অন্তত একটা সাইজ-গ্রুপের (Small/Medium/Large) দাম দিতে হবে।']);
+                return back()->withErrors(['kids_prices' => 'অন্তত একটা সাইজ-গ্রুপের দাম দিতে হবে।']);
             }
-            $basePrice = $kidsPrices['Medium'] ?? $kidsPrices['Small'] ?? $kidsPrices['Large'];
+            // The article's own price column, which a variant with no group
+            // price of its own falls back to. The middle tier is still
+            // preferred where it exists — deliberate, and pinned by its own
+            // test — but a shop that renamed its groups (Baby Park run
+            // Little/Small/Medium/Large) used to find none of the three
+            // names and die on an undefined key, so anything priced will do
+            // rather than nothing.
+            $basePrice = $kidsPrices['Medium'] ?? reset($kidsPrices);
         } else {
             if (empty($data['price'])) {
                 return back()->withErrors(['price' => 'দাম দিতে হবে।']);

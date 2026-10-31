@@ -526,6 +526,63 @@ class ArticleControllerTest extends TestCase
                 ->where('selectedCategoryIds', [$category->id]));
     }
 
+    /**
+     * Baby Park renamed their groups to Little/Small/Medium/Large. Every
+     * part of this path named the three defaults instead: validation only
+     * covered Small/Medium/Large, and the article's base price was read as
+     * $kidsPrices['Medium'] ?? ['Small'] ?? ['Large'], which a shop using
+     * none of those names would have died on.
+     */
+    public function test_renamed_size_groups_are_priced_and_validated_like_any_other(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        $category = \App\Models\ProductCategory::create(['shop_id' => $shop->id, 'name' => 'BABY', 'name_en' => 'BABY', 'code' => 'B']);
+
+        // Baby Park's real configuration, read off production
+        $this->actingAs($owner, 'web')->patch('/app/articles/size-group-settings', [
+            'groups' => [
+                ['label' => 'Little', 'min_size' => 16, 'max_size' => 20],
+                ['label' => 'Small', 'min_size' => 21, 'max_size' => 25],
+                ['label' => 'Medium', 'min_size' => 26, 'max_size' => 30],
+                ['label' => 'Large', 'min_size' => 31, 'max_size' => 36],
+            ],
+            'category_ids' => [$category->id],
+        ])->assertSessionHasNoErrors();
+
+        // only the renamed group is priced, and only its sizes are entered
+        $this->actingAs($owner, 'web')->post('/app/articles', $this->articlePayload($category, [
+            'kids_prices' => ['Little' => 1190],
+            'variants' => [
+                ['color' => 'PINK', 'size' => '16', 'qty' => 2],
+                ['color' => 'PINK', 'size' => '19', 'qty' => 1],
+            ],
+        ]))->assertSessionHasNoErrors();
+
+        $product = Product::where('shop_id', $shop->id)->firstOrFail();
+        $this->assertEquals(1190, $product->price, 'the base price comes from the only group priced');
+        foreach (['16', '19'] as $size) {
+            $this->assertEquals(1190, \App\Models\ProductVariant::where('product_id', $product->id)->firstWhere('size', $size)->price);
+        }
+    }
+
+    /** A renamed group's price must still be rejected when it is not a number — the old rules only named Small/Medium/Large, so anything else went unchecked. */
+    public function test_a_renamed_groups_price_is_still_validated_as_a_number(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        $category = \App\Models\ProductCategory::create(['shop_id' => $shop->id, 'name' => 'BABY', 'name_en' => 'BABY', 'code' => 'B']);
+
+        $this->actingAs($owner, 'web')->patch('/app/articles/size-group-settings', [
+            'groups' => [['label' => 'Little', 'min_size' => 16, 'max_size' => 30]],
+            'category_ids' => [$category->id],
+        ])->assertSessionHasNoErrors();
+
+        $this->actingAs($owner, 'web')->post('/app/articles', $this->articlePayload($category, [
+            'kids_prices' => ['Little' => 'দুইশ'],
+        ]))->assertSessionHasErrors('kids_prices.Little');
+    }
+
     /** The cost-code map decides what a barcode's price segment means, so it cannot differ between two branches of one business. */
     public function test_the_cost_code_map_is_business_level_not_per_branch(): void
     {

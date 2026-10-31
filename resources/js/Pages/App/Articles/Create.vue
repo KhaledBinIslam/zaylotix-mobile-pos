@@ -7,8 +7,17 @@ import { encodeCost } from '@/support/costCode';
 const props = defineProps({
     suppliers: Array, categories: Array, units: Array,
     colorCodeMap: Object, costCodeDigitMap: Object, kidsShoeSizeGroups: Array, kidsCategoryNames: Array,
+    // Declared, or Vue hands back undefined no matter what the controller
+    // sent — which is exactly what happened: the server had BABY switched
+    // on, the form could not see it, and every device showed one price box.
+    sizeGroupCategoryCodes: Array,
 });
 const page = usePage();
+
+/** A blank price box per group the shop has configured, keyed by ITS labels. */
+function emptyKidsPrices() {
+    return Object.fromEntries((props.kidsShoeSizeGroups || []).map((g) => [g.label, '']));
+}
 
 // ---- draft autosave (localStorage, per-shop — a single in-progress form, not data worth a DB round-trip) ----
 const draftKey = computed(() => `article-draft-${page.props.shop?.id ?? 'x'}`);
@@ -26,7 +35,10 @@ const form = useForm({
     manufacturer_code: '',
     unit_id: '', new_unit_name: '',
     cost: '', price: '',
-    kids_prices: { Small: '', Medium: '', Large: '' },
+    // one entry per group the SHOP has configured, not the three default
+    // names — Baby Park renamed theirs to Little/Small/Medium/Large, and a
+    // box whose key was missing here submitted nothing for that group
+    kids_prices: emptyKidsPrices(),
     colorsText: '', sizesText: '',
     variants: [], // [{color, size, qty}]
     photos: {}, // { COLOR: File } — optional, per SkyBuy-style picker (docs/ARTICLE_SERIES_PLAN.md §4)
@@ -192,7 +204,7 @@ function save() {
             justSaved.value = { barcode: page.props.flash?.productBarcode };
             // carries manufacturer + category + colors/sizes into the next entry; clears everything per-article
             form.reset('cost', 'price', 'variants', 'photos');
-            form.kids_prices = { Small: '', Medium: '', Large: '' };
+            form.kids_prices = emptyKidsPrices();
             photoPreviewUrls.value = {};
             form.client_uuid = uuidv4();
             // the number just used is gone — ask for the next free one, and
