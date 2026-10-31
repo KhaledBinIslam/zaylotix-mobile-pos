@@ -6,7 +6,7 @@ import BarcodeLabelCard from '@/Components/BarcodeLabelCard.vue';
 import { useI18n } from '@/composables/useI18n';
 import { useToast } from '@/composables/useToast';
 import { labelSizeMm } from '@/support/labelSizes';
-import { thermalModuleWidth } from '@/support/barcodeFit';
+import { thermalModuleWidth, THERMAL_BAR_HEIGHT_MM } from '@/support/barcodeFit';
 import { buildShareMetadata, canShareLabelFiles } from '@/support/bluetoothPrintShare';
 
 const props = defineProps({ products: Array, shop: Object });
@@ -173,7 +173,7 @@ async function printViaBluetooth() {
                         JsBarcode(bc, encoded, {
                             format: 'CODE128',
                             width: Math.max(1, Math.round(fit.moduleMm * 8)), // dots per module
-                            height: 48, // 6mm of bars at 8 dots/mm
+                            height: THERMAL_BAR_HEIGHT_MM * 8, // bars at 8 dots/mm, same height the card itself draws
                             margin: 0,
                             displayValue: settings.value.show_barcode_number !== false,
                             text: lbl.barcode,
@@ -184,10 +184,30 @@ async function printViaBluetooth() {
                         const cardRect = cards[i].getBoundingClientRect();
                         const svgRect = svgEl.getBoundingClientRect();
                         const sy = targetH / cardRect.height;
-                        const destY = Math.max(0, Math.round((svgRect.top - cardRect.top) * sy));
-                        const clearH = Math.max(Math.round(svgRect.height * sy), bc.height) + 4;
+                        let destY = Math.max(0, Math.round((svgRect.top - cardRect.top) * sy));
+
+                        // The white-out below must never reach above what's
+                        // printed directly over the bars. html2canvas lays
+                        // text out a little differently from the browser, so
+                        // a band anchored only on the svg's own measured top
+                        // could sit a few dots high and wipe the lower half
+                        // of the shop name — exactly what Khaled's printed
+                        // label showed, with "Baby Park & Liberty" sliced
+                        // through the middle. Clamping to the previous
+                        // element's bottom makes that structurally
+                        // impossible however the measurements drift.
+                        const prev = svgEl.previousElementSibling;
+                        if (prev) {
+                            const prevBottom = Math.round((prev.getBoundingClientRect().bottom - cardRect.top) * sy);
+                            destY = Math.max(destY, prevBottom + 1);
+                        }
+
+                        // clear exactly the barcode's own slot, from that
+                        // clamped top down to where the captured svg ended
+                        const svgBottom = Math.round((svgRect.bottom - cardRect.top) * sy);
+                        const clearH = Math.min(targetH - destY, Math.max(svgBottom - destY, bc.height));
                         ctx.fillStyle = '#ffffff';
-                        ctx.fillRect(0, Math.max(0, destY - 2), targetW, clearH);
+                        ctx.fillRect(0, destY, targetW, clearH);
                         ctx.imageSmoothingEnabled = false;
                         ctx.drawImage(bc, Math.round((targetW - bc.width) / 2), destY);
                     }
