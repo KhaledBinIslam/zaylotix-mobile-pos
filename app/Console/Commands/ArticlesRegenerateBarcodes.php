@@ -24,7 +24,7 @@ use Illuminate\Console\Command;
  */
 class ArticlesRegenerateBarcodes extends Command
 {
-    protected $signature = 'articles:regenerate-barcodes {--shop=} {--name= : shops whose name contains this, instead of an id} {--dry-run}';
+    protected $signature = 'articles:regenerate-barcodes {--shop=} {--name= : shops whose name contains this, instead of an id} {--variants-only : only fill in missing variant barcodes, never touch a colour barcode} {--dry-run}';
 
     protected $description = 'Backfills/refreshes colour barcodes, and fills in any variant that has none, for a shop\'s articles. --dry-run previews only.';
 
@@ -85,7 +85,12 @@ class ArticlesRegenerateBarcodes extends Command
             // scan at the counter, and a blank label. Only ever FILLS a
             // missing one; a barcode already on a variant is never
             // touched, because it may be printed and stuck on stock.
-            foreach (ProductVariant::withoutGlobalScopes()->where('product_id', $product->id)->whereNull('barcode')->get() as $variant) {
+            // whereNull('deleted_at') because withoutGlobalScopes() drops
+            // the soft-delete scope too: a removed size would otherwise be
+            // handed the barcode back and immediately block the live row
+            // that replaced it, which is the very collision this fixes
+            foreach (ProductVariant::withoutGlobalScopes()->where('product_id', $product->id)
+                ->whereNull('deleted_at')->whereNull('barcode')->get() as $variant) {
                 $computed = ArticleVariant::freeBarcodeFor($shop, $product, $variant->color, $variant->size, $variant->cost);
                 if ($computed === null) {
                     $variantsStuck++;
@@ -98,6 +103,15 @@ class ArticlesRegenerateBarcodes extends Command
                     $variant->forceFill(['barcode' => $computed])->saveQuietly();
                 }
                 $variantsFilled++;
+            }
+
+            // --variants-only: filling in a missing variant barcode adds
+            // something that was never printed, but REBUILDING a colour
+            // barcode changes what the next label prints for a colour
+            // whose old stickers are already on the shelves. Khaled needed
+            // the first without committing to the second.
+            if ($this->option('variants-only')) {
+                continue;
             }
 
             $colors = ProductVariant::withoutGlobalScopes()->where('product_id', $product->id)
@@ -124,7 +138,11 @@ class ArticlesRegenerateBarcodes extends Command
             }
         }
 
-        $this->info(($isDryRun ? 'প্রিভিউ: ' : '')."রঙের বারকোড: {$new}টা নতুন, {$changed}টা বদলানো, {$unchanged}টা অপরিবর্তিত।");
+        if ($this->option('variants-only')) {
+            $this->info('রঙের বারকোড: ছোঁয়া হয়নি (--variants-only)।');
+        } else {
+            $this->info(($isDryRun ? 'প্রিভিউ: ' : '')."রঙের বারকোড: {$new}টা নতুন, {$changed}টা বদলানো, {$unchanged}টা অপরিবর্তিত।");
+        }
         $this->info(($isDryRun ? 'প্রিভিউ: ' : '')."ভ্যারিয়েন্টের বারকোড: {$variantsFilled}টা বসানো".($variantsStuck ? ", {$variantsStuck}টা পারা যায়নি (ওই বারকোড আগেই কারো দখলে)" : '').'।');
     }
 }

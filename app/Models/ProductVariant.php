@@ -25,6 +25,39 @@ class ProductVariant extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        /*
+         * Hand the barcode back when a size is removed.
+         *
+         * product_variants has a unique (shop_id, barcode) index that a
+         * SOFT-deleted row keeps occupying, and a variant barcode is a
+         * pure function of the article, the colour and the size — so
+         * re-adding the same size reproduces the same string exactly.
+         * Removing 22/PINK and adding it back could therefore never get
+         * its barcode again: the deleted row still held it, silently, for
+         * good. Khaled's shop had eight sizes stuck like that, which
+         * articles:regenerate-barcodes reported as "আগেই কারো দখলে".
+         *
+         * Nothing is lost — the same reasoning as Product::
+         * releaseBarcodes(), which already does this for a whole article:
+         * barcodes are derived data, rebuilt by
+         * articles:regenerate-barcodes, and sale history snapshots the
+         * product name and price rather than a barcode.
+         *
+         * A force delete removes the row outright, so there is no index
+         * entry left to free.
+         */
+        static::deleted(function (ProductVariant $variant) {
+            if ($variant->isForceDeleting() || $variant->barcode === null) {
+                return;
+            }
+
+            static::withoutGlobalScopes()->whereKey($variant->id)->update(['barcode' => null]);
+            $variant->barcode = null;
+        });
+    }
+
     /** Same convention as Product::photoUrl() — a color's "representative" photo, when one's been uploaded for it. */
     protected function photoUrl(): Attribute
     {

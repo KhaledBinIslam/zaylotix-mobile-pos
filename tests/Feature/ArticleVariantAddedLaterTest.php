@@ -160,6 +160,70 @@ class ArticleVariantAddedLaterTest extends TestCase
         );
     }
 
+    public function test_removing_a_size_hands_its_barcode_back_so_it_can_be_re_added(): void
+    {
+        [$shop, $owner, $product] = $this->anArticle();
+        $variant = ProductVariant::where('product_id', $product->id)->where('size', '36')->firstOrFail();
+        $this->assertSame('SMS-L-10001-NSXXZ-SILVER-36', $variant->barcode);
+
+        $this->actingAs($owner, 'web')->delete("/app/product-variants/{$variant->id}")->assertRedirect();
+
+        // a soft-deleted row keeps occupying the unique (shop_id, barcode)
+        // index, and the same size rebuilds the exact same string — so
+        // holding onto it meant 36 could never get its barcode again
+        $this->assertNull(ProductVariant::withoutGlobalScopes()->whereKey($variant->id)->value('barcode'));
+
+        $this->actingAs($owner, 'web')->post("/app/products/{$product->id}/variants", [
+            'color' => 'SILVER', 'size' => '36', 'stock' => 2,
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(
+            'SMS-L-10001-NSXXZ-SILVER-36',
+            ProductVariant::where('product_id', $product->id)->where('size', '36')->value('barcode')
+        );
+    }
+
+    public function test_the_migration_frees_barcodes_held_by_sizes_removed_earlier(): void
+    {
+        [$shop, $owner, $product] = $this->anArticle();
+        $variant = ProductVariant::where('product_id', $product->id)->where('size', '36')->firstOrFail();
+
+        // the old behaviour: soft-deleted with its barcode still on it
+        ProductVariant::withoutGlobalScopes()->whereKey($variant->id)->update(['deleted_at' => now()]);
+        $this->assertNotNull(ProductVariant::withoutGlobalScopes()->whereKey($variant->id)->value('barcode'));
+
+        (require base_path('database/migrations/2026_10_31_000005_release_barcodes_from_already_deleted_variants.php'))->up();
+
+        $this->assertNull(ProductVariant::withoutGlobalScopes()->whereKey($variant->id)->value('barcode'));
+
+        // which is what lets the backfill give the re-added size one
+        ProductVariant::create([
+            'shop_id' => $shop->id, 'product_id' => $product->id,
+            'size' => '36', 'color' => 'SILVER', 'stock' => 2,
+        ]);
+        $this->artisan('articles:regenerate-barcodes', ['--shop' => $shop->id, '--variants-only' => true])->assertSuccessful();
+
+        $this->assertSame(
+            'SMS-L-10001-NSXXZ-SILVER-36',
+            ProductVariant::where('product_id', $product->id)->where('size', '36')->value('barcode')
+        );
+    }
+
+    public function test_variants_only_never_touches_a_colour_barcode(): void
+    {
+        [$shop, $owner, $product] = $this->anArticle();
+        // what a cost correction after the stickers were printed leaves
+        // behind: the colour barcode still carries the OLD article code
+        ProductColorBarcode::where('product_id', $product->id)->update(['barcode' => 'SMS-L-10001-OLDZ-SILVER']);
+
+        $this->artisan('articles:regenerate-barcodes', ['--shop' => $shop->id, '--variants-only' => true])->assertSuccessful();
+        $this->assertSame('SMS-L-10001-OLDZ-SILVER', ProductColorBarcode::where('product_id', $product->id)->value('barcode'));
+
+        // without the flag it is rebuilt, as it always was
+        $this->artisan('articles:regenerate-barcodes', ['--shop' => $shop->id])->assertSuccessful();
+        $this->assertSame('SMS-L-10001-NSXXZ-SILVER', ProductColorBarcode::where('product_id', $product->id)->value('barcode'));
+    }
+
     public function test_a_plain_product_still_gets_variants_with_no_barcode(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();
