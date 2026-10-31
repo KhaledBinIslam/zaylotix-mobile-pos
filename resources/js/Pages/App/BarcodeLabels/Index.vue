@@ -1,6 +1,6 @@
 <script setup>
 import { Head, Link, router } from '@inertiajs/vue3';
-import { ref, computed, nextTick } from 'vue';
+import { ref, computed, nextTick, watch } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import BarcodeLabelCard from '@/Components/BarcodeLabelCard.vue';
 import { useI18n } from '@/composables/useI18n';
@@ -82,10 +82,28 @@ const printing = ref(false);
 // capture waits on this count instead of guessing with a fixed delay.
 const renderedCount = ref(0);
 function onLabelRendered() { renderedCount.value++; }
-function waitForAllRendered() {
-    if (renderedCount.value >= labels.value.length) return Promise.resolve();
+/**
+ * Waits for every label card to report it has drawn — then gives up.
+ *
+ * This used to spin on requestAnimationFrame with no way out, so one card
+ * that never reported (a throw while drawing, or a component Vue patched
+ * in place instead of remounting, which fires no onMounted) hung the
+ * print for good: no share sheet, no error, nothing. Both of those causes
+ * are fixed at the source, but a wait with no exit is the thing that
+ * turned either of them into a silent dead end, so it gets a deadline.
+ *
+ * Timing out is not failure: the cards are already in the DOM, and the
+ * caller rasterizes whatever is there. Resolves false so it can say so.
+ */
+function waitForAllRendered(timeoutMs = 10000) {
+    if (renderedCount.value >= labels.value.length) return Promise.resolve(true);
     return new Promise((resolve) => {
-        const check = () => (renderedCount.value >= labels.value.length ? resolve() : requestAnimationFrame(check));
+        const deadline = Date.now() + timeoutMs;
+        const check = () => {
+            if (renderedCount.value >= labels.value.length) return resolve(true);
+            if (Date.now() > deadline) return resolve(false);
+            requestAnimationFrame(check);
+        };
         check();
     });
 }
@@ -104,13 +122,23 @@ const bluetoothProgress = ref('');
  * capture is redrawn onto a fixed-size canvas as a final step — the
  * printer-helper app prints raw dots 1:1 and never rescales, so a wrong
  * pixel size here would print at the wrong physical size on the label.
+ *
+ * Returns the finished file rather than sharing it, and is started as
+ * soon as the preview is on screen. navigator.share() needs a live user
+ * gesture and Chrome lets that lapse after a few seconds; rasterizing
+ * three or more labels with html2canvas takes longer than that, so doing
+ * this work after the tap got the share refused outright on any real
+ * batch — two labels went through, three did nothing at all. By the time
+ * the button is tapped this has already finished, so the tap shares
+ * straight away.
  */
-async function printViaBluetooth() {
-    if (bluetoothPrinting.value || !labels.value.length) return;
-    bluetoothPrinting.value = true;
-    bluetoothProgress.value = t('bc.bluetoothPreparing');
+async function buildLabelSheet() {
+    if (!labels.value.length) return null;
     try {
-        await waitForAllRendered();
+        if (!await waitForAllRendered()) {
+            // say so rather than printing a half-drawn batch silently
+            toast('⚠️ ' + t('bc.bluetoothSlowRender'));
+        }
         await nextTick();
         const [{ default: html2canvas }, { default: JsBarcode }] = await Promise.all([
             import('html2canvas'),
@@ -234,17 +262,49 @@ async function printViaBluetooth() {
 
         const blob = await new Promise((resolve) => sheet.toBlob(resolve, 'image/png'));
         if (!blob) { toast('❌ ' + t('bc.bluetoothRenderFailed')); return; }
-        const files = [new File([blob], 'labels.png', { type: 'image/png' })];
+        return {
+            files: [new File([blob], 'labels.png', { type: 'image/png' })],
+            text: buildShareMetadata(settings.value, { labelHeightPx: targetH, copies: distinct.map((d) => d.copies) }),
+        };
+    } catch (e) {
+        // this runs ahead of the tap, so a failure here has no share sheet
+        // to report through — say it now rather than leaving the button to
+        // look broken later
+        toast('❌ ' + t('bc.bluetoothShareFailed', { msg: e?.message || String(e) }));
 
-        if (!navigator.canShare({ files })) {
+        return null;
+    }
+}
+
+// The sheet for the labels currently on screen, rendered ahead of the tap
+// (see buildLabelSheet). Thrown away whenever the preview closes or its
+// contents change, so a stale sheet can never be the thing that prints.
+let preparedSheet = null;
+
+function prepareSheetAhead() {
+    preparedSheet = buildLabelSheet().catch(() => null);
+}
+
+watch([printing, labels], () => {
+    preparedSheet = null;
+    if (printing.value && labels.value.length) prepareSheetAhead();
+});
+
+async function printViaBluetooth() {
+    if (bluetoothPrinting.value || !labels.value.length) return;
+    bluetoothPrinting.value = true;
+    bluetoothProgress.value = t('bc.bluetoothPreparing');
+    try {
+        // already resolved in the normal case, so the user gesture that
+        // opened this is still live when share() is called below
+        const sheet = await (preparedSheet ?? buildLabelSheet());
+        if (!sheet) return; // buildLabelSheet already said why
+
+        if (!navigator.canShare({ files: sheet.files })) {
             toast('❌ ' + t('bc.bluetoothNotSupported'));
             return;
         }
-        await navigator.share({
-            files,
-            text: buildShareMetadata(settings.value, { labelHeightPx: targetH, copies: distinct.map((d) => d.copies) }),
-            title: 'Zaylotix লেবেল প্রিন্ট',
-        });
+        await navigator.share({ ...sheet, title: 'Zaylotix লেবেল প্রিন্ট' });
     } catch (e) {
         if (e?.name !== 'AbortError') { // user cancelled the native share sheet — not a failure
             toast('❌ ' + t('bc.bluetoothShareFailed', { msg: e?.message || String(e) }));
@@ -252,6 +312,10 @@ async function printViaBluetooth() {
     } finally {
         bluetoothPrinting.value = false;
         bluetoothProgress.value = '';
+        // a shared sheet is spent: re-render for the next tap so a second
+        // print can never send a file built from labels since replaced
+        preparedSheet = null;
+        if (printing.value && labels.value.length) prepareSheetAhead();
     }
 }
 
@@ -413,7 +477,7 @@ const printCss = computed(() => {
                 </div>
                 <div class="label-grid">
                     <BarcodeLabelCard
-                        v-for="(p, i) in labels" :key="i"
+                        v-for="(p, i) in labels" :key="i + ':' + (p.scanCode || p.barcode || '')"
                         :label="p" :shop="shop" :settings="settings" :dom-id="'barcode-svg-' + i"
                         @rendered="onLabelRendered"
                     />

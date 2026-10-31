@@ -1070,6 +1070,7 @@ export const translations = {
     'bc.bluetoothPreparing': { bn: 'প্রস্তুত হচ্ছে...', en: 'Preparing...' },
     'bc.bluetoothRendering': { bn: 'লেবেল তৈরি হচ্ছে ({n}/{total})', en: 'Rendering label ({n}/{total})' },
     'bc.bluetoothNoLabels': { bn: 'কোনো লেবেল পাওয়া যায়নি।', en: 'No labels found.' },
+    'bc.bluetoothSlowRender': { bn: 'সব লেবেল আঁকা শেষ হয়নি — যেগুলো তৈরি হয়েছে সেগুলোই পাঠানো হচ্ছে।', en: 'Not every label finished drawing — sending the ones that did.' },
     'bc.bluetoothRenderFailed': { bn: 'লেবেল তৈরি করা যায়নি।', en: 'Could not render the labels.' },
     'bc.bluetoothNotSupported': { bn: 'এই ফোনে Bluetooth প্রিন্ট শেয়ার সমর্থিত নয় — Zaylotix Printer Helper অ্যাপ ইনস্টল আছে কিনা দেখুন।', en: 'Bluetooth print sharing isn\'t supported on this device — check that the Zaylotix Printer Helper app is installed.' },
     'bc.bluetoothShareFailed': { bn: 'Bluetooth প্রিন্ট শুরু করা যায়নি: {msg}', en: 'Could not start Bluetooth print: {msg}' },

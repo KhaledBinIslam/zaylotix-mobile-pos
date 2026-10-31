@@ -150,10 +150,21 @@ async function render() {
 }
 
 onMounted(async () => {
-    await render();
-    await nextTick();
-    await fitHeaderText();
-    emit('rendered');
+    // 'rendered' MUST fire even if drawing this one card fails. The print
+    // path waits for one per label before it rasterizes anything, so a
+    // single throw in render() or fitHeaderText() used to strand that
+    // count below the total and the whole batch then hung with no error
+    // at all — the "print dile kaj korche na" Khaled reported. A card
+    // that failed to draw is still a card the batch can get on without.
+    try {
+        await render();
+        await nextTick();
+        await fitHeaderText();
+    } catch (e) {
+        /* leave this card as it is — never block the rest of the batch */
+    } finally {
+        emit('rendered');
+    }
 });
 
 watch(() => [props.label.barcode, props.settings.show_barcode_number, props.settings.print_mode], render);
