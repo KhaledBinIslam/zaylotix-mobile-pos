@@ -45,6 +45,11 @@ class ArticleController extends Controller
             'categories' => ProductCategory::orderBy('name')->get(['id', 'name', 'name_en', 'code']),
             'units' => Unit::orderBy('name')->get(['id', 'name', 'name_en']),
             'colorCodeMap' => $shop->colorCodeMap(),
+            // lets the form show the cost-code segment of the barcode as
+            // soon as a cost is typed, instead of a placeholder that only
+            // resolved after saving (see support/costCode.js — display
+            // only, the saved barcode is still built here on submit)
+            'costCodeDigitMap' => $shop->costCodeDigitMap(),
             'kidsShoeSizeGroups' => $shop->kidsShoeSizeGroups(),
             'kidsCategoryNames' => self::KIDS_CATEGORY_NAMES,
         ]);

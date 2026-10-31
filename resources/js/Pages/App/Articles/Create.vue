@@ -2,10 +2,11 @@
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { computed, onMounted, ref, watch } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import { encodeCost } from '@/support/costCode';
 
 const props = defineProps({
     suppliers: Array, categories: Array, units: Array,
-    colorCodeMap: Object, kidsShoeSizeGroups: Array, kidsCategoryNames: Array,
+    colorCodeMap: Object, costCodeDigitMap: Object, kidsShoeSizeGroups: Array, kidsCategoryNames: Array,
 });
 const page = usePage();
 
@@ -75,11 +76,18 @@ watch([() => form.category_id, () => form.category_code], () => {
     }, 300);
 }, { immediate: true });
 
+// The cost's letter code, live. Null while the cost is empty OR while any
+// of its digits still has no letter in this shop's map — in both cases the
+// preview shows "?" rather than a half-built code, and the cost field's own
+// error already explains the second case.
+const previewCostCode = computed(() => encodeCost(props.costCodeDigitMap, form.cost));
+
 const previewBarcode = computed(() => {
     const catCode = (selectedCategory.value?.code || form.category_code || '').trim();
     const mfr = form.manufacturer_code.trim().toUpperCase();
     if (!catCode || !mfr || !previewSerial.value) return null;
-    return `${mfr}-${catCode}-${previewSerial.value}-?`; // cost-code segment resolves only after cost is typed and validated server-side
+
+    return `${mfr}-${catCode}-${previewSerial.value}-${previewCostCode.value || '?'}`;
 });
 
 // docs/ARTICLE_SERIES_PLAN.md §9 — the color's own short code (shop setting,
