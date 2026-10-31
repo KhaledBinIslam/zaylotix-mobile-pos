@@ -253,4 +253,66 @@ class ArticleControllerTest extends TestCase
         $ok->assertSessionHasNoErrors();
         $this->assertSame(20, $shop->fresh()->kids_shoe_size_groups[0]['min_size']);
     }
+
+    /**
+     * The defaults only map the digits Khaled's own import data proved
+     * (0,1,3,4,5,6) — a cost containing any other digit could not be
+     * encoded, and the error told him to fix it in a Settings screen that
+     * did not exist. Live block: cost 900 on a new article.
+     */
+    public function test_cost_code_digit_map_can_be_filled_in_and_unblocks_a_cost_it_could_not_encode(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+
+        // 9 is unmapped out of the box, so 900 has no code at all
+        $this->assertNull(\App\Support\ArticleBarcode::encodeCost($shop, 900));
+
+        $this->actingAs($owner, 'web')->patch('/app/articles/cost-code-settings', [
+            'map' => ['0' => 'X', '1' => 'N', '2' => 'A', '3' => 'S', '4' => 'I', '5' => 'R', '6' => 'J', '7' => 'T', '8' => 'E', '9' => 'P'],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame('PXX', \App\Support\ArticleBarcode::encodeCost($shop->fresh(), 900));
+        // and it round-trips, which is the whole point of the map
+        $this->assertSame(900, \App\Support\ArticleBarcode::decodeCost($shop->fresh(), 'PXX'));
+    }
+
+    public function test_cost_code_map_refuses_to_give_two_digits_the_same_letter(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+
+        // X for both 0 and 9 would decode every cost ambiguously
+        $this->actingAs($owner, 'web')->patch('/app/articles/cost-code-settings', [
+            'map' => ['0' => 'X', '9' => 'X'],
+        ])->assertSessionHasErrors('map');
+
+        $this->assertNull($shop->fresh()->cost_code_digit_map);
+    }
+
+    public function test_a_digit_left_blank_stays_unmapped_without_blocking_the_rest(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+
+        $this->actingAs($owner, 'web')->patch('/app/articles/cost-code-settings', [
+            'map' => ['0' => 'X', '1' => 'N', '9' => ''],
+        ])->assertSessionHasNoErrors();
+
+        $saved = $shop->fresh()->cost_code_digit_map;
+        $this->assertArrayNotHasKey('9', $saved);
+        $this->assertSame('NX', \App\Support\ArticleBarcode::encodeCost($shop->fresh(), 10));
+    }
+
+    public function test_the_cost_code_settings_page_loads_with_the_shops_current_map(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+
+        $this->actingAs($owner, 'web')->get('/app/articles/cost-code-settings')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->component('App/Articles/CostCodeSettings')
+                ->where('costCodeDigitMap.1', 'N')
+                ->etc());
+    }
 }

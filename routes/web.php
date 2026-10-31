@@ -312,6 +312,8 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
             // docs/ARTICLE_SERIES_PLAN.md §9
             Route::get('articles/color-code-settings', [ArticleController::class, 'colorCodeSettingsEdit'])->name('articles.colorCodeSettings.edit');
             Route::patch('articles/color-code-settings', [ArticleController::class, 'colorCodeSettingsUpdate'])->name('articles.colorCodeSettings.update');
+            Route::get('articles/cost-code-settings', [ArticleController::class, 'costCodeSettingsEdit'])->name('articles.costCodeSettings.edit');
+            Route::patch('articles/cost-code-settings', [ArticleController::class, 'costCodeSettingsUpdate'])->name('articles.costCodeSettings.update');
         });
     });
 

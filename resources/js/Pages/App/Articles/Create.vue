@@ -173,6 +173,7 @@ function save() {
             <div style="display:flex;gap:8px">
                 <Link :href="route('app.articles.colorCodeSettings.edit')" class="btn ghost sm" style="text-decoration:none">⚙️ রং-কোড সেটিংস</Link>
                 <Link :href="route('app.articles.sizeGroupSettings.edit')" class="btn ghost sm" style="text-decoration:none">⚙️ সাইজ-গ্রুপ সেটিংস</Link>
+                <Link :href="route('app.articles.costCodeSettings.edit')" class="btn ghost sm" style="text-decoration:none">⚙️ কস্ট-কোড সেটিংস</Link>
             </div>
         </div>
 

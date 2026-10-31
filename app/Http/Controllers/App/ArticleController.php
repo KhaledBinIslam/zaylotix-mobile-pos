@@ -122,7 +122,7 @@ class ArticleController extends Controller
 
         $costCode = ArticleBarcode::encodeCost($shop, (int) $data['cost']);
         if ($costCode === null) {
-            return back()->withErrors(['cost' => 'এই cost-এর কিছু অংক এখনো বারকোড সেটিংসে ম্যাপ করা নেই — Settings থেকে cost-code digit map ঠিক করুন।']);
+            return back()->withErrors(['cost' => 'এই দামের কিছু অঙ্কের জন্য এখনো অক্ষর ঠিক করা নেই — উপরের "⚙️ কস্ট-কোড সেটিংস" বোতামে গিয়ে বাকি অঙ্কগুলোর অক্ষর বসিয়ে আসুন, তারপর আবার চেষ্টা করুন।']);
         }
 
         $isKids = $this->isKidsCategory($category);
@@ -278,6 +278,54 @@ class ArticleController extends Controller
         Tenancy::shop()->update(['color_code_map' => $map, 'barcode_include_size' => $data['barcode_include_size']]);
 
         return back()->with('success', 'রং-কোড সেটিংস সংরক্ষণ করা হয়েছে।');
+    }
+
+    /**
+     * The cost-code digit map (digit -> letter) that hides a purchase
+     * price inside the barcode. COST_CODE_DIGIT_MAP_DEFAULTS only covers
+     * the digits Khaled's own import data proved (0,1,3,4,5,6) — the rest
+     * are deliberately unset rather than guessed, so a cost containing one
+     * of them simply can't be encoded. That was reported as a dead end
+     * live ("Fix cost-code digit map from Settings" pointing at a screen
+     * that didn't exist); this is that screen.
+     */
+    public function costCodeSettingsEdit()
+    {
+        $shop = Tenancy::shop();
+
+        return Inertia::render('App/Articles/CostCodeSettings', [
+            'costCodeDigitMap' => $shop->costCodeDigitMap(),
+        ]);
+    }
+
+    public function costCodeSettingsUpdate(Request $request)
+    {
+        $data = $request->validate([
+            // one entry per digit 0-9, each a single letter
+            'map' => ['required', 'array'],
+            'map.*' => ['nullable', 'string', 'max:1', 'regex:/^[A-Za-z]$/'],
+        ]);
+
+        $map = [];
+        $usedLetters = [];
+        foreach (range(0, 9) as $digit) {
+            $letter = strtoupper(trim((string) ($data['map'][$digit] ?? '')));
+            if ($letter === '') {
+                continue; // still unmapped — allowed, that digit just can't be encoded yet
+            }
+            // A letter shared by two digits would decode a cost back to the
+            // wrong number, silently — the whole point of this map is that
+            // encode and decode are exact inverses.
+            if (isset($usedLetters[$letter])) {
+                return back()->withErrors(['map' => "অক্ষর \"{$letter}\" একসাথে {$usedLetters[$letter]} আর {$digit} — দুই অঙ্কের জন্য দেওয়া হয়েছে। প্রতিটা অঙ্কের অক্ষর আলাদা হতে হবে, নইলে বারকোড থেকে দাম ভুল পড়া হবে।"]);
+            }
+            $usedLetters[$letter] = $digit;
+            $map[(string) $digit] = $letter;
+        }
+
+        Tenancy::shop()->update(['cost_code_digit_map' => $map]);
+
+        return back()->with('success', 'কস্ট-কোড সেটিংস সংরক্ষণ করা হয়েছে।');
     }
 
     private function resolveCategory(array $data): ProductCategory|\Illuminate\Http\RedirectResponse
