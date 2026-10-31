@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { estimateCode128Modules, thermalModuleWidth, thermalBarHeightMm, thermalLinesHidden, mmToPx } from '../barcodeFit';
+import { estimateCode128Modules, thermalModuleWidth, THERMAL_BAR_HEIGHT_MM, mmToPx } from '../barcodeFit';
 
 // Phase 41 — the width math behind docs/LABEL_PRINT_PLAN.md's table.
 // Usable width on a 38×25 label = 38 − 2×2.5mm quiet zone = 33mm.
@@ -52,37 +52,30 @@ describe('thermalModuleWidth', () => {
     });
 });
 
-// Baby Park turned the product-name and size/colour lines off (the article
-// barcode's own printed text already spells both out). The two lines they
-// freed are spent on taller bars rather than left as a blank bottom third.
-describe('thermalLinesHidden / thermalBarHeightMm', () => {
-    const variant = { variantLabel: 'SILVER, 37' };
+// A thermal sticker drops the product-name and size/colour lines (the
+// bars' own printed text already spells the article out), so their height
+// goes to the bars instead of leaving the bottom third blank.
+describe('THERMAL_BAR_HEIGHT_MM', () => {
+    const USABLE_MM = 33;
 
-    it('both lines off means hidden, and the bars grow to 9mm', () => {
-        const settings = { show_product_name: false, show_variant: false };
-        expect(thermalLinesHidden(settings, variant)).toBe(true);
-        expect(thermalBarHeightMm(settings, variant)).toBe(9);
+    it('is the 9mm the three-block thermal layout is built around', () => {
+        expect(THERMAL_BAR_HEIGHT_MM).toBe(9);
     });
 
-    it('the tuned 6mm height is kept whenever either line still shows', () => {
-        expect(thermalBarHeightMm({ show_product_name: true, show_variant: false }, variant)).toBe(6);
-        expect(thermalBarHeightMm({ show_product_name: false, show_variant: true }, variant)).toBe(6);
-        expect(thermalBarHeightMm({ show_product_name: true, show_variant: true }, variant)).toBe(6);
+    it('still leaves a 25mm label room for the shop name, bar text and price', () => {
+        // 25mm card − 2px×2 padding ≈ 90.5 css px of usable height.
+        // shop name ~12px + 3px, bars + their 8px text + 3px, price ~12px
+        const px = (mm) => mm * (96 / 25.4);
+        const used = 15 + (px(THERMAL_BAR_HEIGHT_MM) + 8 + 2 + 3) + 12;
+        expect(used).toBeLessThan(90.5); // nothing is ever clipped
     });
 
-    it('a shop that never saved these settings keeps the 6mm default', () => {
-        // LABEL_SETTINGS_DEFAULTS has both true — an absent key must read as
-        // shown, never as hidden, or every existing shop's label would change
-        expect(thermalLinesHidden({}, variant)).toBe(false);
-        expect(thermalBarHeightMm({}, variant)).toBe(6);
-        expect(thermalBarHeightMm(undefined, variant)).toBe(6);
-    });
-
-    it('a product-level label with no variant text counts that line as hidden', () => {
-        // show_variant is on, but there IS no size/colour to print — the row
-        // doesn't render, so the height is genuinely free
-        const settings = { show_product_name: false, show_variant: true };
-        expect(thermalLinesHidden(settings, { variantLabel: '' })).toBe(true);
-        expect(thermalBarHeightMm(settings, null)).toBe(9);
+    it('does not change how wide a module may be — height and width are independent', () => {
+        // Width is decided by what the bars ENCODE (the short scanCode),
+        // never by the long article text printed under them — which on its
+        // own would overflow the label, and is exactly why the two were
+        // decoupled (see BarcodeLabelCard's render docblock).
+        expect(thermalModuleWidth('ZV4821', USABLE_MM).fits).toBe(true);
+        expect(thermalModuleWidth('SMS-B-20001-NSORZ-BRN', USABLE_MM).fits).toBe(false);
     });
 });

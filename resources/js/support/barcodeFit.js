@@ -39,30 +39,19 @@ export function thermalModuleWidth(value, usableMm) {
 }
 
 /**
- * True when a thermal label renders NOTHING between the shop name and the
- * barcode — i.e. both the product-name and the size/color lines are off
- * (Baby Park: the article barcode's own printed text already spells out
- * supplier, colour and size, so repeating them above the bars just ate
- * two lines of a 25mm sticker).
+ * Bar height in mm on a thermal label.
  *
- * Those two lines are ~2 of the label's 6 lines, so with them gone the
- * remaining three blocks would sit crammed against the top with the
- * bottom third of the sticker blank. thermalBarHeightMm spends that
- * freed height on taller bars instead, which also scan more reliably.
+ * Was 6mm while a thermal sticker still printed the product-name and
+ * size/colour lines between the shop name and the bars. It no longer
+ * does (BarcodeLabelCard renders neither in thermal mode): on Baby
+ * Park's article barcodes the bars' own printed text — e.g.
+ * "SMS-B-20001-NSORZ-BRN" — already spells out supplier, article and
+ * colour, so those two lines repeated what was directly beneath them
+ * and ate two lines of a 25mm sticker. Printed live, the barcode's
+ * white background also painted over their lower halves, leaving them
+ * half-legible (Khaled's photo).
+ *
+ * Their height goes to the bars rather than being left as a blank
+ * bottom third, which also makes the code scan more reliably.
  */
-export function thermalLinesHidden(settings, label = null) {
-    const nameShown = settings?.show_product_name !== false;
-    const variantShown = settings?.show_variant !== false && !!label?.variantLabel;
-
-    return !nameShown && !variantShown;
-}
-
-/**
- * Bar height in mm for a thermal label: the tuned 6mm when all six lines
- * are present (docs/LABEL_PRINT_PLAN.md's 25mm budget — Khaled's live
- * priority is that nothing is ever clipped), 9mm when the two middle
- * text lines are hidden and that height is going spare anyway.
- */
-export function thermalBarHeightMm(settings, label = null) {
-    return thermalLinesHidden(settings, label) ? 9 : 6;
-}
+export const THERMAL_BAR_HEIGHT_MM = 9;
