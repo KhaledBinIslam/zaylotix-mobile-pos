@@ -68,6 +68,41 @@ function setThemeChoice(value) {
 // start one, so a shop that never uses this feature never sees it nagged ---
 const activeWorkPeriod = computed(() => page.props.activeWorkPeriod);
 
+/*
+ * The handful of screens this shop opens every day, pinned to the top.
+ *
+ * Each entry repeats the gate of the row it points at, so a shortcut can
+ * never appear for someone who would be bounced by the real row — and
+ * the real rows themselves are untouched further down the page.
+ * Reordering this list is the whole of changing what sits on top.
+ */
+const quickLinks = computed(() => [
+    {
+        show: hasPerm('barcode_labels') && features.value.includes('barcode_printing'),
+        icon: '🏷️', label: t('nav.barcode'), href: route('app.barcodeLabels.index'),
+    },
+    {
+        show: hasPerm('stock') && features.value.includes('article_series'),
+        icon: '👟', label: t('more.articleCreateTitle'), href: route('app.articles.create'),
+    },
+    {
+        show: hasPerm('stock'),
+        icon: '📦', label: t('nav.stock'), href: route('app.stock'),
+    },
+    {
+        show: hasPerm('sales_history'),
+        icon: '🧾', label: t('nav.salesHistory'), href: route('app.sales'),
+    },
+    {
+        show: hasPerm('reports') && features.value.includes('reports'),
+        icon: '📊', label: t('nav.reports'), href: route('app.reports'),
+    },
+    {
+        show: hasPerm('accounts') && features.value.includes('accounts'),
+        icon: '🧮', label: t('nav.accounts'), href: route('app.accounts'),
+    },
+].filter((q) => q.show));
+
 // --- multi-branch: owner-triggered catalog re-sync (only from the main shop itself) ---
 const branches = computed(() => page.props.branches);
 const isMainShopWithBranches = computed(() => isOwner.value && branches.value && !props.shop?.parent_shop_id);
@@ -427,6 +462,27 @@ onMounted(() => {
     <AppLayout active="more">
         <div class="pgttl">{{ t('more.title') }}</div>
         <div class="pgsub">{{ shop?.name }} • {{ shop?.phone }}</div>
+
+        <!--
+            Khaled: "more e gia jeshb button beshi use hoi jemon barcode
+            label soho j button eshb agee rakio". This page is long enough
+            that the things a shoe shop touches every day sat several
+            screens down.
+
+            Pinned ABOVE the existing sections rather than reordered into
+            them: every row below keeps its position, its permission gate
+            and its feature gate exactly as it was, so nothing that works
+            today can stop working. Each shortcut carries the same gate as
+            the row it points at.
+        -->
+        <template v-if="quickLinks.length">
+            <div class="sechead"><h2>{{ t('more.sectionQuick') }}</h2></div>
+            <div class="quickgrid">
+                <Link v-for="q in quickLinks" :key="q.href" :href="q.href" class="quickcard">
+                    <div class="qi">{{ q.icon }}</div><b>{{ q.label }}</b>
+                </Link>
+            </div>
+        </template>
 
         <template v-if="hasPerm('sales_history') || (hasPerm('barcode_labels') && features.includes('barcode_printing')) || (hasPerm('pos') && isRestaurant) || (hasPerm('promotions') && features.includes('promotions')) || (hasPerm('pos') && features.includes('quotations')) || hasPerm('pos') || isMainShopWithBranches || (isOwner && branches) || (hasPerm('service_billing') && features.includes('service_billing')) || (hasPerm('installments') && features.includes('installment_sales'))">
             <div class="sechead"><h2>{{ t('more.sectionSales') }}</h2></div>
@@ -1101,3 +1157,32 @@ onMounted(() => {
         </Sheet>
     </AppLayout>
 </template>
+
+<style scoped>
+/* The everyday shortcuts at the top of the page. Scoped, so it cannot
+   reach any other screen's .row/.ava styling. */
+.quickgrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+    gap: 8px;
+    margin-bottom: 14px;
+}
+.quickcard {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 14px 8px;
+    text-align: center;
+    text-decoration: none;
+    color: var(--fg);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    min-height: 84px;
+}
+.quickcard b { font-size: 12px; line-height: 1.3; font-weight: 600; }
+.quickcard .qi { font-size: 22px; line-height: 1; }
+.quickcard:active { background: var(--panel2); }
+</style>
