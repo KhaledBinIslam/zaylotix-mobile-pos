@@ -194,17 +194,41 @@ class CatalogSync
             'master_product_id' => $p->id,
         ];
 
-        if ($existing) {
-            // stock deliberately excluded -- a branch's own count is never overwritten by a sync
-            $existing->update($attrs);
-
-            return $existing;
-        }
-
         // see this class's own docblock -- a brand-new pooled row must start
         // already equal to the main shop's current count, never an empty 0
         // that then has to wait for a stock-changing event to self-correct
         $startingStock = $mainShop->hasFeature('shared_stock_pool') ? (float) $p->stock : 0;
+
+        if ($existing) {
+            // stock deliberately excluded -- a branch's own count is never overwritten by a sync
+            $wasTrashed = $existing->deleted_at !== null;
+            $existing->update($attrs);
+
+            /*
+             * A DELETED branch copy was matched, updated, and left
+             * deleted — so the branch never got the article back.
+             *
+             * Khaled deleted B-20007 at Baby Park, which took Liberty's
+             * copy down with it, then entered B-20007 again. The sync
+             * found that tombstone by name and re-pointed it at the new
+             * article without ever reviving it: Baby Park had the shoes,
+             * Liberty showed nothing, and the two shops' stock figures
+             * stopped agreeing. "2 shop e stock ektai" — so it has to
+             * come back.
+             *
+             * Its stock is reset rather than kept, because the row it is
+             * being re-attached to is a DIFFERENT article: the old count
+             * belonged to the one that was deleted. That is the same
+             * rule a brand-new row already follows, which is what this
+             * row now effectively is.
+             */
+            if ($wasTrashed) {
+                $existing->restore();
+                $existing->forceFill(['stock' => $startingStock])->saveQuietly();
+            }
+
+            return $existing;
+        }
 
         return Product::create(['shop_id' => $branch->id, 'stock' => $startingStock, ...$attrs]);
     }
@@ -240,12 +264,22 @@ class CatalogSync
                 // set on the main shop should show up on the branch too
                 $attrs = ['size' => $v->size, 'color' => $v->color, 'barcode' => $v->barcode, 'price' => $v->price, 'cost' => $v->cost, 'photo_path' => $v->photo_path, 'reorder_point' => $v->reorder_point];
 
+                // see this class's own docblock -- same starting-stock fix as upsertBranchProduct()
+                $startingStock = $mainShop->hasFeature('shared_stock_pool') ? (float) $v->stock : 0;
+
                 if ($existing) {
                     // stock deliberately excluded -- same reasoning as syncProducts
+                    $wasTrashed = $existing->deleted_at !== null;
                     $existing->update($attrs);
+
+                    // a removed size coming back with the article, same
+                    // reasoning as upsertBranchProduct(): the count it
+                    // held belonged to the article that was deleted
+                    if ($wasTrashed) {
+                        $existing->restore();
+                        $existing->forceFill(['stock' => $startingStock])->saveQuietly();
+                    }
                 } else {
-                    // see this class's own docblock -- same starting-stock fix as upsertBranchProduct()
-                    $startingStock = $mainShop->hasFeature('shared_stock_pool') ? (float) $v->stock : 0;
                     ProductVariant::create(['shop_id' => $branch->id, 'product_id' => $branchProductId, 'stock' => $startingStock, ...$attrs]);
                 }
             }
