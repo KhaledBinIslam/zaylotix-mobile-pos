@@ -1,6 +1,6 @@
 <script setup>
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { encodeCost } from '@/support/costCode';
 
@@ -209,6 +209,18 @@ watch(() => ({ ...form.photos }), (photos, oldPhotos) => {
     }
 });
 
+/*
+ * Every reason a save was refused, in one place.
+ *
+ * Each message was already shown — beside the box it belongs to, on a
+ * form long enough that the save button sits several screens below the
+ * serial and the cost. Press save at the bottom, get refused by the
+ * serial check at the top, and the screen simply does nothing. Khaled:
+ * "B-20008, B-20012 egula kn nicchena".
+ */
+const errorList = computed(() => Object.values(form.errors).filter(Boolean));
+const errorBox = ref(null);
+
 function save() {
     justSaved.value = null;
     form.transform((data) => ({
@@ -234,6 +246,9 @@ function save() {
             refreshSerial();
             buildGrid(); // re-apply the same color/size shape with qty back to 0
         },
+        // bring the refusal to where the thumb already is, instead of
+        // leaving the owner staring at a button that did nothing
+        onError: () => nextTick(() => errorBox.value?.scrollIntoView({ behavior: 'smooth', block: 'center' })),
     });
 }
 </script>
@@ -418,6 +433,13 @@ function save() {
                 <div style="margin-top:8px;font-size:13px;color:var(--mut)">মোট স্টক: <strong>{{ totalStock }}</strong></div>
             </div>
             <div v-if="form.errors.variants" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.variants }}</div>
+        </div>
+
+        <div v-if="errorList.length" ref="errorBox" class="card" style="border:1px solid var(--rose);margin-bottom:12px">
+            <b style="color:var(--rose)">সেভ হয়নি — কারণ:</b>
+            <ul style="margin:6px 0 0;padding-left:18px;font-size:13px;color:var(--rose);line-height:1.6">
+                <li v-for="(msg, i) in errorList" :key="i">{{ msg }}</li>
+            </ul>
         </div>
 
         <button type="button" class="btn primary" style="width:100%" :disabled="form.processing" @click="save">

@@ -26,6 +26,22 @@ class ArticlesSettingsDoctor extends Command
 
     protected $description = 'Shows the saved size-group / cost-code / colour-code settings per shop, and which shop answers for each.';
 
+    /**
+     * A matched main shop brings its branches along. Nobody remembers a
+     * branch's id or its exact name, and "--name='Baby Park'" quietly
+     * reported on one of the two shops that share this catalog — which
+     * looked like a clean bill of health for both.
+     *
+     * @param  \Illuminate\Support\Collection<int,Shop>  $shops
+     * @return \Illuminate\Support\Collection<int,Shop>
+     */
+    public static function withBranchesOf($shops)
+    {
+        return $shops->merge(
+            Shop::withoutGlobalScopes()->whereIn('parent_shop_id', $shops->pluck('id'))->get()
+        )->unique('id')->sortBy('id')->values();
+    }
+
     public function handle(): int
     {
         // --name because on production nobody remembers the shop id, and
@@ -40,6 +56,8 @@ class ArticlesSettingsDoctor extends Command
 
             return self::FAILURE;
         }
+
+        $shops = self::withBranchesOf($shops);
 
         foreach ($shops as $shop) {
             $settingsShop = $shop->articleSettingsShop();

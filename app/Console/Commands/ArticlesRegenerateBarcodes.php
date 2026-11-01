@@ -50,6 +50,11 @@ class ArticlesRegenerateBarcodes extends Command
             return self::FAILURE;
         }
 
+        // a branch has its own Product/ProductVariant rows, so it needs
+        // its own pass — and "--name='Baby Park'" reached only one of the
+        // two shops sharing this catalog
+        $shops = ArticlesSettingsDoctor::withBranchesOf($shops);
+
         foreach ($shops as $shop) {
             $this->newLine();
             $this->line("<fg=cyan>SHOP {$shop->id} — {$shop->name}</>");

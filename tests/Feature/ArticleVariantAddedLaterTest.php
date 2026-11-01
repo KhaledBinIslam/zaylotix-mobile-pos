@@ -266,4 +266,25 @@ class ArticleVariantAddedLaterTest extends TestCase
             ProductVariant::where('product_id', $product->id)->where('size', '36')->value('barcode')
         );
     }
+
+    public function test_a_barcode_already_held_is_explained_rather_than_crashing(): void
+    {
+        [$shop, $owner, $product] = $this->anArticle();
+
+        // the article's own row is gone, but something still holds the
+        // barcode it would rebuild — re-entering that serial at the same
+        // cost produces the identical string and used to die on the
+        // unique (shop_id, barcode) index with a crash page
+        Product::withoutGlobalScopes()->whereKey($product->id)->update(['deleted_at' => now()]);
+
+        $this->actingAs($owner, 'web')->post('/app/articles', [
+            'client_uuid' => (string) Str::uuid(),
+            'manufacturer_code' => 'SMS',
+            'category_id' => ProductCategory::where('shop_id', $shop->id)->value('id'),
+            'cost' => 1300,
+            'price' => 1990,
+            'serial' => 10001,
+            'variants' => [['color' => 'SILVER', 'size' => '36', 'qty' => 2]],
+        ])->assertSessionHasErrors('serial');
+    }
 }

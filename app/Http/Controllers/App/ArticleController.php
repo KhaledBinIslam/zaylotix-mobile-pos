@@ -230,7 +230,7 @@ class ArticleController extends Controller
             }
         }
 
-        $product = DB::transaction(function () use ($shop, $category, $supplier, $unitId, $data, $costCode, $isKids, $kidsPrices, $kidsCosts, $articleCost, $basePrice, $variantRows, $request) {
+        $build = function () use ($shop, $category, $supplier, $unitId, $data, $costCode, $isKids, $kidsPrices, $kidsCosts, $articleCost, $basePrice, $variantRows, $request) {
             // A typed serial is used as-is; the counter is then pushed past
             // it so the next automatic one can't land on it. Without one,
             // the counter issues the next as it always did.
@@ -310,7 +310,30 @@ class ArticleController extends Controller
             }
 
             return $product;
-        });
+        };
+
+        /*
+         * A barcode this shop already holds used to come back as a 500.
+         *
+         * products and product_variants both carry a unique (shop_id,
+         * barcode) index, and an article barcode is a pure function of
+         * manufacturer, category, serial and cost — so re-entering a
+         * serial at the same cost rebuilds the identical string. Where a
+         * row somewhere still holds it (a deleted article from before
+         * barcodes were released, say), the insert died on the
+         * constraint and the owner got a crash page with nothing to act
+         * on. Say which barcode is in the way instead.
+         */
+        try {
+            $product = DB::transaction($build);
+        } catch (\Illuminate\Database\QueryException $e) {
+            if (! str_contains(strtolower($e->getMessage()), 'unique')
+                && ! str_contains(strtolower($e->getMessage()), 'duplicate')) {
+                throw $e;
+            }
+
+            return back()->withErrors(['serial' => "এই আর্টিকেলের বারকোড এই দোকানে আগেই ব্যবহার হয়েছে — অন্য একটা আর্টিকেল নম্বর দিন, অথবা ক্রয় মূল্য বদলে দেখুন। (আগের আর্টিকেলটা মুছে ফেলা থাকলে সার্ভারে `php artisan articles:regenerate-barcodes` চালালে বারকোডটা ছাড়া পাবে।)"]);
+        }
 
         if ($shop->hasFeature('shared_catalog') && ! $shop->parent_shop_id) {
             foreach ($shop->branches as $branch) {
