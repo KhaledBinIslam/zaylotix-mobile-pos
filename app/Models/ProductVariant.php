@@ -49,13 +49,74 @@ class ProductVariant extends Model
          * entry left to free.
          */
         static::deleted(function (ProductVariant $variant) {
-            if ($variant->isForceDeleting() || $variant->barcode === null) {
+            if ($variant->isForceDeleting()) {
+                return;
+            }
+
+            // before the barcode is released, since that is what the
+            // branch's copy is matched by
+            $variant->deleteBranchCopies();
+
+            if ($variant->barcode === null) {
                 return;
             }
 
             static::withoutGlobalScopes()->whereKey($variant->id)->update(['barcode' => null]);
             $variant->barcode = null;
         });
+    }
+
+    /**
+     * Take the branch's copies of this size down with it.
+     *
+     * Product::deleteBranchCopies() does this for a whole article; a
+     * single size never did, so removing 22/WHITE at the main shop left
+     * the branch still showing and selling it. Worse, the main shop then
+     * re-added that size and CatalogSync gave the branch a SECOND row for
+     * it — Baby Park's branch ended up with eight sizes listed twice and
+     * eleven units of stock that do not exist.
+     *
+     * Matched the way CatalogSync itself matches: barcode first, since it
+     * is kept identical across branches on purpose, else size+colour.
+     *
+     * Stock is the delicate part. products.stock is the live sum of its
+     * variants, so a branch copy leaving has to take its units with it —
+     * EXCEPT when the two shops share a stock pool, where there is only
+     * one real number and the main shop's own delete already moved it for
+     * both. Decrementing again there would take the same units off twice.
+     *
+     * A mass update rather than ->delete(): the copy would otherwise run
+     * this hook for itself, and nothing hangs off a branch copy anyway.
+     */
+    public function deleteBranchCopies(): void
+    {
+        $product = Product::withoutGlobalScopes()->whereKey($this->product_id)->first();
+        if (! $product || $product->master_product_id !== null) {
+            return; // already a branch copy — nothing hangs off it
+        }
+
+        $branchProductIds = Product::withoutGlobalScopes()->where('master_product_id', $product->id)->pluck('id');
+        if ($branchProductIds->isEmpty()) {
+            return;
+        }
+
+        $pooled = $product->stockPoolMemberIds()->count() > 1;
+
+        $siblings = static::withoutGlobalScopes()->whereNull('deleted_at')
+            ->whereIn('product_id', $branchProductIds)->get();
+
+        $matches = filled($this->barcode)
+            ? $siblings->filter(fn (ProductVariant $v) => $v->barcode === $this->barcode)
+            : $siblings->filter(fn (ProductVariant $v) => $v->size === $this->size && $v->color === $this->color);
+
+        foreach ($matches as $copy) {
+            static::withoutGlobalScopes()->whereKey($copy->id)
+                ->update(['deleted_at' => now(), 'barcode' => null]);
+
+            if (! $pooled) {
+                Product::withoutGlobalScopes()->whereKey($copy->product_id)->decrement('stock', $copy->stock);
+            }
+        }
     }
 
     /** Same convention as Product::photoUrl() — a color's "representative" photo, when one's been uploaded for it. */
