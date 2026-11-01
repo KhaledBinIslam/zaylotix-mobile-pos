@@ -335,11 +335,11 @@ class ArticleController extends Controller
             return back()->withErrors(['serial' => "এই আর্টিকেলের বারকোড এই দোকানে আগেই ব্যবহার হয়েছে — অন্য একটা আর্টিকেল নম্বর দিন, অথবা ক্রয় মূল্য বদলে দেখুন। (আগের আর্টিকেলটা মুছে ফেলা থাকলে সার্ভারে `php artisan articles:regenerate-barcodes` চালালে বারকোডটা ছাড়া পাবে।)"]);
         }
 
-        if ($shop->hasFeature('shared_catalog') && ! $shop->parent_shop_id) {
-            foreach ($shop->branches as $branch) {
-                CatalogSync::syncToBranch($shop, $branch);
-            }
-        }
+        // syncBusiness, not a main-shop-only push: an article entered
+        // while viewing the BRANCH used to stay there, and the two shops
+        // stopped agreeing on what was in stock. Khaled: "jekhan tekhe
+        // uthuk stock 2 tar ekta". A no-op for a shop with no branches.
+        CatalogSync::syncBusiness($shop);
 
         Cache::put($cacheKey, ['product_id' => $product->id, 'barcode' => $product->barcode, 'name' => $product->name_en], now()->addHours(24));
 

@@ -53,9 +53,10 @@ class BranchController extends Controller
         $branches = Shop::withoutGlobalScopes()->where('parent_shop_id', $mainShop->id)->get();
         abort_if($branches->isEmpty(), 422, 'কোনো শাখা নেই।');
 
-        foreach ($branches as $branch) {
-            CatalogSync::syncToBranch($mainShop, $branch);
-        }
+        // syncBusiness, not syncToBranch: anything a branch entered on
+        // its own is lifted to the main shop first, so this button makes
+        // every shop agree rather than only pushing one way
+        CatalogSync::syncBusiness($mainShop);
 
         return back()->with('success', "{$branches->count()} টি শাখায় ক্যাটালগ সিঙ্ক করা হয়েছে।");
     }

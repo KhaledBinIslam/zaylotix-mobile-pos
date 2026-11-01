@@ -9,6 +9,7 @@ use App\Models\ProductVariant;
 use App\Models\Shop;
 use App\Support\Activity;
 use App\Support\ArticleVariant;
+use App\Support\CatalogSync;
 use App\Support\ColorBarcodeResolver;
 use App\Support\SizeGroupPricing;
 use App\Support\Tenancy;
@@ -102,6 +103,7 @@ class ProductVariantController extends Controller
         });
 
         $this->mintColorBarcodes($shop, $product, [$data['color'] ?? null]);
+        $this->shareWithTheBusiness($shop);
 
         return back()->with('success', 'ভ্যারিয়েন্ট যোগ হয়েছে।');
     }
@@ -227,6 +229,7 @@ class ProductVariantController extends Controller
         });
 
         $this->mintColorBarcodes($shop, $product, array_column($toCreate, 'color'));
+        $this->shareWithTheBusiness($shop);
 
         return back()->with('success', "{$created}টা ভ্যারিয়েন্ট যোগ হয়েছে।");
     }
@@ -239,6 +242,23 @@ class ProductVariantController extends Controller
      * aliases rather than overwrites, which is what lets
      * articles:regenerate-barcodes be re-run at any time.
      */
+    /**
+     * A size added at either shop belongs to the whole business.
+     *
+     * Khaled: "jekhan tekhe uthuk stock 2 tar ekta ebong etai dekhabe,
+     * eta tekhe 2 jon sell korbe". A size entered while viewing the
+     * branch used to stay at the branch, and the two shops' stock
+     * figures drifted apart. CatalogSync::syncBusiness() is a no-op for
+     * a shop with no branches or without shared_catalog, which is every
+     * other shop in the system.
+     */
+    private function shareWithTheBusiness(?Shop $shop): void
+    {
+        if ($shop) {
+            CatalogSync::syncBusiness($shop);
+        }
+    }
+
     private function mintColorBarcodes(?Shop $shop, Product $product, array $colors): void
     {
         if (! $shop || ! ArticleVariant::isArticle($product)) {

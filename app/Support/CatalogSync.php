@@ -39,6 +39,49 @@ use App\Models\Unit;
  */
 class CatalogSync
 {
+    /**
+     * One catalog for the whole business, whichever shop it was entered
+     * at.
+     *
+     * Khaled: "jekhan tekhe uthuk stock 2 tar ekta ebong etai dekhabe,
+     * eta tekhe 2 jon sell korbe". Syncing only ever went main → branch,
+     * so an article or a size entered at Liberty stayed at Liberty and
+     * the two shops' stock stopped agreeing — which is not a rule a shop
+     * owner has any reason to care about.
+     *
+     * So anything a branch holds on its own is lifted to the main shop
+     * first, and only then is the (now complete) catalog pushed back out
+     * to every branch. Lifted rather than copied: the main shop's row
+     * becomes the master the branch's own row points at, so from the
+     * next sync onwards there is one article and one stock figure, and
+     * the shared pool keeps both shops' counts in step.
+     */
+    public static function syncBusiness(Shop $shop): void
+    {
+        $mainShop = $shop->parent_shop_id
+            ? Shop::withoutGlobalScopes()->find($shop->parent_shop_id)
+            : $shop;
+
+        if (! $mainShop || ! $mainShop->hasFeature('shared_catalog')) {
+            return;
+        }
+
+        $branches = Shop::withoutGlobalScopes()->where('parent_shop_id', $mainShop->id)->get();
+        if ($branches->isEmpty()) {
+            return;
+        }
+
+        // every branch's own rows go up first, so the push back down
+        // carries them to the OTHER branches too
+        foreach ($branches as $branch) {
+            static::liftFromBranch($mainShop, $branch);
+        }
+
+        foreach ($branches as $branch) {
+            static::syncToBranch($mainShop, $branch);
+        }
+    }
+
     public static function syncToBranch(Shop $mainShop, Shop $branch): void
     {
         $categoryMap = static::syncCategories($mainShop, $branch);
@@ -65,6 +108,129 @@ class CatalogSync
             $existing = static::findExistingBranchProduct($branch, $product);
             $branchProduct = static::upsertBranchProduct($mainShop, $branch, $product, $existing, $categoryMap, $unitMap);
             static::syncPriceTiersForProduct($product, $branchProduct);
+        }
+    }
+
+    /**
+     * Everything this branch holds that the main shop does not, lifted
+     * up so the main shop owns it too.
+     *
+     * Two shapes of it: a whole product the branch created on its own
+     * (master_product_id still null), and a SIZE that a synced product
+     * grew at the branch. Both arrive at the main shop with the branch's
+     * own stock, because that is the real count of those pairs — under
+     * a shared pool there is one figure and both shops read it.
+     *
+     * Matched the way everything else here is matched: barcode first,
+     * since it is kept identical across shops on purpose, else name (for
+     * a product) or size+colour (for a size). A barcode already spoken
+     * for at the main shop is left off rather than forced; the unique
+     * (shop_id, barcode) index would refuse it, and
+     * articles:regenerate-barcodes mints a fresh one later.
+     */
+    private static function liftFromBranch(Shop $mainShop, Shop $branch): void
+    {
+        $pooled = $mainShop->hasFeature('shared_stock_pool');
+
+        // the branch's category/unit ids mean nothing at the main shop —
+        // its own rows are matched by name, the same key syncCategories()
+        // uses in the other direction
+        $mainCategories = ProductCategory::withoutGlobalScopes()->where('shop_id', $mainShop->id)->get()->keyBy('name');
+        $mainUnits = Unit::withoutGlobalScopes()->where('shop_id', $mainShop->id)->get()->keyBy('name');
+        $branchCategories = ProductCategory::withoutGlobalScopes()->where('shop_id', $branch->id)->get()->keyBy('id');
+        $branchUnits = Unit::withoutGlobalScopes()->where('shop_id', $branch->id)->get()->keyBy('id');
+
+        $mainProducts = Product::withoutGlobalScopes()->where('shop_id', $mainShop->id)->whereNull('deleted_at')->get();
+        $mainByBarcode = $mainProducts->filter(fn (Product $p) => filled($p->barcode))->keyBy('barcode');
+        $mainByName = $mainProducts->keyBy('name');
+
+        foreach (Product::withoutGlobalScopes()->where('shop_id', $branch->id)->whereNull('deleted_at')->get() as $bp) {
+            $master = $bp->master_product_id
+                ? $mainProducts->firstWhere('id', $bp->master_product_id)
+                : null;
+
+            if (! $master) {
+                $master = (filled($bp->barcode) ? $mainByBarcode->get($bp->barcode) : null) ?? $mainByName->get($bp->name);
+            }
+
+            if (! $master) {
+                $categoryName = $branchCategories->get($bp->category_id)?->name;
+                $unitName = $branchUnits->get($bp->unit_id)?->name;
+
+                $master = Product::create([
+                    'shop_id' => $mainShop->id,
+                    'category_id' => $categoryName ? $mainCategories->get($categoryName)?->id : null,
+                    'unit_id' => $unitName ? $mainUnits->get($unitName)?->id : null,
+                    'name' => $bp->name, 'name_en' => $bp->name_en, 'generic_name' => $bp->generic_name,
+                    'company' => $bp->company, 'shelf_location' => $bp->shelf_location,
+                    'requires_prescription' => $bp->requires_prescription ?? false, 'emoji' => $bp->emoji ?: '📦',
+                    'photo_path' => $bp->photo_path,
+                    'barcode' => filled($bp->barcode) && ! $mainByBarcode->has($bp->barcode) ? $bp->barcode : null,
+                    'sold_by_weight' => $bp->sold_by_weight ?? false, 'weight_unit' => $bp->weight_unit,
+                    'cost' => $bp->cost, 'price' => $bp->price, 'wholesale_price' => $bp->wholesale_price,
+                    'wholesale_moq' => $bp->wholesale_moq, 'discount_price' => $bp->discount_price,
+                    'reorder_point' => $bp->reorder_point,
+                    'stock' => $bp->stock,
+                ]);
+                $mainProducts->push($master);
+                if (filled($master->barcode)) {
+                    $mainByBarcode->put($master->barcode, $master);
+                }
+                $mainByName->put($master->name, $master);
+            }
+
+            if ($bp->master_product_id !== $master->id) {
+                $bp->forceFill(['master_product_id' => $master->id])->saveQuietly();
+            }
+
+            static::liftVariantsFromBranch($mainShop, $branch, $bp, $master, $pooled);
+        }
+    }
+
+    /** The branch's sizes that the master has no row for — see liftFromBranch(). */
+    private static function liftVariantsFromBranch(Shop $mainShop, Shop $branch, Product $bp, Product $master, bool $pooled): void
+    {
+        $branchVariants = ProductVariant::withoutGlobalScopes()
+            ->where('product_id', $bp->id)->whereNull('deleted_at')->orderBy('id')->get();
+        if ($branchVariants->isEmpty()) {
+            return;
+        }
+
+        $masterVariants = ProductVariant::withoutGlobalScopes()
+            ->where('product_id', $master->id)->whereNull('deleted_at')->get();
+        $created = false;
+
+        foreach ($branchVariants as $bv) {
+            $match = (filled($bv->barcode) ? $masterVariants->firstWhere('barcode', $bv->barcode) : null)
+                ?? $masterVariants->first(fn (ProductVariant $v) => (string) $v->size === (string) $bv->size && (string) $v->color === (string) $bv->color);
+
+            if ($match) {
+                continue;
+            }
+
+            $barcodeFree = filled($bv->barcode) && ! ProductVariant::withoutGlobalScopes()
+                ->where('shop_id', $mainShop->id)->where('barcode', $bv->barcode)->exists();
+
+            $new = ProductVariant::create([
+                'shop_id' => $mainShop->id, 'product_id' => $master->id,
+                'size' => $bv->size, 'color' => $bv->color,
+                'barcode' => $barcodeFree ? $bv->barcode : null,
+                'stock' => $bv->stock, 'reorder_point' => $bv->reorder_point,
+                'price' => $bv->price, 'cost' => $bv->cost, 'photo_path' => $bv->photo_path,
+            ]);
+            $masterVariants->push($new);
+            $created = true;
+        }
+
+        // products.stock is the live sum of its variants, so lifting a
+        // size up changes what the master holds. Written directly, never
+        // through applyStockDelta(): that pools the figure across shops,
+        // and the branch's own row already counts these pairs — moving
+        // it there too would count them twice.
+        if ($created) {
+            $sum = (float) ProductVariant::withoutGlobalScopes()
+                ->where('product_id', $master->id)->whereNull('deleted_at')->sum('stock');
+            Product::withoutGlobalScopes()->whereKey($master->id)->update(['stock' => $sum]);
         }
     }
 
