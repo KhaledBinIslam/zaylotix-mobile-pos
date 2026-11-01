@@ -333,6 +333,13 @@ class ArticleVariantAddedLaterTest extends TestCase
 
         $this->assertSame('SMS-L-10001-NSXXZ', $product->fresh()->barcode);
         $this->assertSame('SMS-L-10001-NSXXZ-SILVER-36', $variant->fresh()->barcode);
+        // the colour barcode is built FROM the article barcode, so it
+        // has to come along — even under --variants-only, which skips
+        // the colour pass for every other article
+        $this->assertSame(
+            'SMS-L-10001-NSXXZ-SILVER',
+            ProductColorBarcode::where('product_id', $product->id)->where('color', 'SILVER')->value('barcode')
+        );
     }
 
     public function test_add_missing_z_refuses_where_the_z_is_not_the_only_difference(): void

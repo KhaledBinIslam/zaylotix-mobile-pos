@@ -120,6 +120,18 @@ class ArticlesRegenerateBarcodes extends Command
                     'barcode' => $shouldBe.substr((string) $variant->barcode, strlen($current)),
                 ])->saveQuietly();
             }
+
+            // The colour barcode is built FROM the article barcode, so it
+            // still carries the old code until it is rebuilt — and under
+            // --variants-only the colour loop below never runs. Only the
+            // articles actually being corrected here are touched, and
+            // ColorBarcodeResolver keeps the old value as an alias, so a
+            // sticker already printed goes on scanning.
+            $colors = ProductVariant::withoutGlobalScopes()->where('product_id', $product->id)
+                ->whereNotNull('color')->distinct()->pluck('color');
+            foreach ($colors as $color) {
+                ColorBarcodeResolver::resolve($shop, $product, $color, $shouldBe);
+            }
         }
 
         return true;
