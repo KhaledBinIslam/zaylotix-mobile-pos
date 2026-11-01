@@ -6,6 +6,7 @@ use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\ProductColorBarcode;
 use App\Models\ProductVariant;
+use App\Models\Shop;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesShops;
@@ -340,6 +341,37 @@ class ArticleVariantAddedLaterTest extends TestCase
             'SMS-L-10001-NSXXZ-SILVER',
             ProductColorBarcode::where('product_id', $product->id)->where('color', 'SILVER')->value('barcode')
         );
+    }
+
+    public function test_add_missing_z_reaches_a_branch_copy_that_has_no_supplier_of_its_own(): void
+    {
+        [$shop, $owner, $product] = $this->anArticle();
+        Product::withoutGlobalScopes()->whereKey($product->id)->update(['barcode' => 'SMS-L-10001-NSXX']);
+
+        // a branch copy as CatalogSync makes one: no supplier_id, since
+        // suppliers belong to a shop. The manufacturer code has to come
+        // from the master, or the whole branch is passed over in silence.
+        $branch = Shop::create([
+            'name' => 'Liberty', 'phone' => 'PENDING-'.uniqid(), 'parent_shop_id' => $shop->id,
+            'sales_mode' => 'both', 'lang' => 'bn', 'plan' => 'trial', 'status' => 'active',
+            'subscription_start' => now()->toDateString(), 'subscription_expiry' => now()->addMonth()->toDateString(),
+            'cash_balance' => 0, 'bank_balance' => 0, 'capital' => 0, 'vat_mode' => 'none', 'invoice_counter' => 1000,
+            'onboarded_at' => now(),
+        ]);
+        $branchCategory = ProductCategory::create([
+            'shop_id' => $branch->id, 'name' => "Women's Shoes", 'name_en' => "Women's Shoes", 'code' => 'L',
+        ]);
+        $copy = Product::create([
+            'shop_id' => $branch->id, 'category_id' => $branchCategory->id, 'name' => 'L-10001', 'name_en' => 'L-10001',
+            'barcode' => 'SMS-L-10001-NSXX', 'cost' => 1300, 'price' => 1990, 'stock' => 0,
+            'master_product_id' => $product->id,
+        ]);
+
+        $this->artisan('articles:regenerate-barcodes', [
+            '--shop' => $branch->id, '--variants-only' => true, '--add-missing-z' => true,
+        ])->assertSuccessful();
+
+        $this->assertSame('SMS-L-10001-NSXXZ', $copy->fresh()->barcode);
     }
 
     public function test_add_missing_z_refuses_where_the_z_is_not_the_only_difference(): void

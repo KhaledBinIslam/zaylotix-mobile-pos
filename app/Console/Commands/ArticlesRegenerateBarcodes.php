@@ -97,7 +97,20 @@ class ArticlesRegenerateBarcodes extends Command
         $mfr = strtoupper(trim((string) $product->supplier?->short_code));
         $categoryCode = strtoupper(trim((string) $product->category?->code));
         $costCode = ArticleBarcode::encodeCost($shop, (int) $product->cost);
-        if ($serial === null || $mfr === '' || $categoryCode === '' || $costCode === null) {
+
+        // Never skip in silence. This returned false without a word when
+        // a part was missing, and a branch's copies (which carry no
+        // supplier of their own) were all passed over while the summary
+        // cheerfully read "0টা আর্টিকেলে".
+        $missing = array_keys(array_filter([
+            'আর্টিকেল নম্বর' => $serial === null,
+            'ম্যানুফ্যাকচার কোড' => $mfr === '',
+            'ক্যাটাগরি কোড' => $categoryCode === '',
+            'কস্ট-কোড' => $costCode === null,
+        ]));
+        if ($missing) {
+            $this->warn("  ⚠ \"{$product->name_en}\" — বাদ দেওয়া হলো, এগুলো পাওয়া যায়নি: ".implode(', ', $missing));
+
             return false;
         }
 
@@ -159,7 +172,17 @@ class ArticlesRegenerateBarcodes extends Command
             // so the relations have to be loaded past it by hand or
             // ArticleVariant sees an article with no category at all
             $product->setRelation('category', ProductCategory::withoutGlobalScopes()->find($product->category_id));
-            $product->setRelation('supplier', Supplier::withoutGlobalScopes()->find($product->supplier_id));
+
+            // A BRANCH copy has no supplier of its own: suppliers belong
+            // to a shop, so CatalogSync deliberately does not carry
+            // supplier_id across. The manufacturer code still has to come
+            // from somewhere, and the master's supplier is the right
+            // somewhere — it is the one its barcode was built from.
+            $supplierId = $product->supplier_id;
+            if (! $supplierId && $product->master_product_id) {
+                $supplierId = Product::withoutGlobalScopes()->whereKey($product->master_product_id)->value('supplier_id');
+            }
+            $product->setRelation('supplier', Supplier::withoutGlobalScopes()->find($supplierId));
 
             if ($this->option('add-missing-z') && $this->addMissingZ($shop, $product, $isDryRun)) {
                 $zAdded++;
