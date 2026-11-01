@@ -317,6 +317,40 @@ class ArticleVariantAddedLaterTest extends TestCase
         );
     }
 
+    public function test_add_missing_z_puts_the_terminator_back_on_an_imported_cost_code(): void
+    {
+        [$shop, $owner, $product] = $this->anArticle();
+
+        // what the importer left behind: the original sticker's code,
+        // which carried the Z on some rows and not others
+        Product::withoutGlobalScopes()->whereKey($product->id)->update(['barcode' => 'SMS-L-10001-NSXX']);
+        $variant = ProductVariant::where('product_id', $product->id)->where('size', '36')->firstOrFail();
+        $variant->forceFill(['barcode' => 'SMS-L-10001-NSXX-SILVER-36'])->saveQuietly();
+
+        $this->artisan('articles:regenerate-barcodes', [
+            '--shop' => $shop->id, '--variants-only' => true, '--add-missing-z' => true,
+        ])->assertSuccessful();
+
+        $this->assertSame('SMS-L-10001-NSXXZ', $product->fresh()->barcode);
+        $this->assertSame('SMS-L-10001-NSXXZ-SILVER-36', $variant->fresh()->barcode);
+    }
+
+    public function test_add_missing_z_refuses_where_the_z_is_not_the_only_difference(): void
+    {
+        [$shop, $owner, $product] = $this->anArticle();
+
+        // this article's cost says 1300 (NSXXZ), but its barcode hides
+        // 1500 — appending a Z would print a cost that is not this
+        // article's, so it is reported and left alone
+        Product::withoutGlobalScopes()->whereKey($product->id)->update(['barcode' => 'SMS-L-10001-NRXX']);
+
+        $this->artisan('articles:regenerate-barcodes', [
+            '--shop' => $shop->id, '--variants-only' => true, '--add-missing-z' => true,
+        ])->assertSuccessful();
+
+        $this->assertSame('SMS-L-10001-NRXX', $product->fresh()->barcode);
+    }
+
     public function test_the_colour_code_screen_offers_the_colours_that_need_one(): void
     {
         [$shop, $owner, $product] = $this->anArticle();

@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\Shop;
 use App\Support\ArticleSerial;
@@ -112,6 +113,26 @@ class ArticlesSettingsDoctor extends Command
                     $this->line('        freed: '.($used['freed'] ? '<fg=green>'.implode(', ', $used['freed']).'</>' : '—'));
                     $this->line('        form will prefill: <fg=cyan>'.$code.'-'.ArticleSerial::nextFree($shop, $code).'</>');
                 }
+            }
+
+            // Every cost code must end in Z — it marks the end of the
+            // code, which is why no digit may be mapped to it. encodeCost()
+            // always appends one, but Khaled's IMPORTED rows carried the
+            // original stickers' codes, and those had it on some rows and
+            // not others (the same 1350 appeared as "NSRXZ" and "NSRX").
+            // So "ends in Z" is a property of the data, not of the code,
+            // and only the data can say whether any are still missing it.
+            $noZ = Product::withoutGlobalScopes()->where('shop_id', $shop->id)
+                ->whereNull('deleted_at')
+                ->whereNotNull('barcode')
+                ->where('barcode', 'not like', '%Z')
+                ->orderBy('name')
+                ->pluck('barcode', 'name');
+            $this->line('  শেষে Z নেই এমন আর্টিকেল বারকোড: '.($noZ->isEmpty()
+                ? '<fg=green>কোনোটাই নেই</>'
+                : '<fg=red>'.$noZ->count().'টা</>'));
+            foreach ($noZ->take(20) as $name => $barcode) {
+                $this->line("    - {$name}: {$barcode}");
             }
 
             $missing = array_keys(array_filter($shop->costCodeDigitMap(), fn ($letter) => $letter === null || $letter === ''));

@@ -24,7 +24,7 @@ use Illuminate\Console\Command;
  */
 class ArticlesRegenerateBarcodes extends Command
 {
-    protected $signature = 'articles:regenerate-barcodes {--shop=} {--name= : shops whose name contains this, instead of an id} {--variants-only : only fill in missing variant barcodes, never touch a colour barcode} {--fix-unprintable : also REPLACE a variant barcode that Code128 cannot encode} {--dry-run}';
+    protected $signature = 'articles:regenerate-barcodes {--shop=} {--name= : shops whose name contains this, instead of an id} {--variants-only : only fill in missing variant barcodes, never touch a colour barcode} {--fix-unprintable : also REPLACE a variant barcode that Code128 cannot encode} {--add-missing-z : append the compulsory Z terminator to a cost code that lacks it} {--dry-run}';
 
     protected $description = 'Backfills/refreshes colour barcodes, and fills in any variant that has none, for a shop\'s articles. --dry-run previews only.';
 
@@ -64,6 +64,67 @@ class ArticlesRegenerateBarcodes extends Command
         return self::SUCCESS;
     }
 
+    /**
+     * Puts the compulsory Z back on a cost code that lacks it — Khaled:
+     * "NSXX price hole eta hobe NSXXZ".
+     *
+     * Every cost code ends in Z; it marks the end of the code, which is
+     * why no digit may be mapped to it. encodeCost() always appends one,
+     * but the IMPORTED rows carried the original stickers' codes, and
+     * those had it on some rows and not others — the same cost 1350
+     * arrived as both "NSRXZ" and "NSRX".
+     *
+     * Only ever acts where the Z is provably the ONLY difference: the
+     * barcode the shop's own settings say this article should carry,
+     * minus its final Z, must equal the barcode it actually carries.
+     * Anything else is a different problem (a cost corrected after the
+     * stickers were printed, say) and is reported rather than guessed at
+     * — because this rewrites what the next label prints.
+     *
+     * The variants' barcodes are rebuilt from the same prefix, by exact
+     * string replacement rather than recomputation, so a variant whose
+     * barcode was hand-typed or differs for its own reasons is left
+     * alone.
+     */
+    private function addMissingZ(Shop $shop, Product $product, bool $isDryRun): bool
+    {
+        $current = (string) $product->barcode;
+        if ($current === '' || str_ends_with($current, 'Z') || $product->cost === null) {
+            return false;
+        }
+
+        $serial = ArticleVariant::serialOf($product);
+        $mfr = strtoupper(trim((string) $product->supplier?->short_code));
+        $categoryCode = strtoupper(trim((string) $product->category?->code));
+        $costCode = ArticleBarcode::encodeCost($shop, (int) $product->cost);
+        if ($serial === null || $mfr === '' || $categoryCode === '' || $costCode === null) {
+            return false;
+        }
+
+        $shouldBe = ArticleBarcode::buildArticleBarcode($shop, $mfr, $categoryCode, $serial, $costCode);
+        if ($shouldBe !== $current.'Z') {
+            $this->warn("  ⚠ \"{$product->name_en}\" — {$current} বাদ দেওয়া হলো: শুধু Z যোগ করলে {$shouldBe} হওয়ার কথা ছিল, মেলেনি।");
+
+            return false;
+        }
+
+        $this->line("  আর্টিকেল \"{$product->name_en}\" — {$current} → {$shouldBe} ".($isDryRun ? 'হতো।' : 'করা হলো।'));
+
+        if (! $isDryRun) {
+            Product::withoutGlobalScopes()->whereKey($product->id)->update(['barcode' => $shouldBe]);
+            $product->barcode = $shouldBe;
+
+            foreach (ProductVariant::withoutGlobalScopes()->where('product_id', $product->id)
+                ->where('barcode', 'like', $current.'-%')->get() as $variant) {
+                $variant->forceFill([
+                    'barcode' => $shouldBe.substr((string) $variant->barcode, strlen($current)),
+                ])->saveQuietly();
+            }
+        }
+
+        return true;
+    }
+
     private function runForShop(Shop $shop): void
     {
         $isDryRun = (bool) $this->option('dry-run');
@@ -75,6 +136,7 @@ class ArticlesRegenerateBarcodes extends Command
         $variantsStuck = 0;
         $variantsUnprintable = 0;
         $colorsWithoutCode = [];
+        $zAdded = 0;
 
         foreach (Product::withoutGlobalScopes()->where('shop_id', $shop->id)->get() as $product) {
             if (! $product->barcode) {
@@ -86,6 +148,10 @@ class ArticlesRegenerateBarcodes extends Command
             // ArticleVariant sees an article with no category at all
             $product->setRelation('category', ProductCategory::withoutGlobalScopes()->find($product->category_id));
             $product->setRelation('supplier', Supplier::withoutGlobalScopes()->find($product->supplier_id));
+
+            if ($this->option('add-missing-z') && $this->addMissingZ($shop, $product, $isDryRun)) {
+                $zAdded++;
+            }
 
             /*
              * A size added from the stock screen's grid before that grid
@@ -125,8 +191,20 @@ class ArticlesRegenerateBarcodes extends Command
                     continue;
                 }
 
-                $computed = ArticleVariant::freeBarcodeFor($shop, $product, $variant->color, $variant->size, $variant->cost);
-                if ($computed === null) {
+                $computed = ArticleVariant::barcodeFor($shop, $product, $variant->color, $variant->size, $variant->cost);
+
+                // "আগেই কারো দখলে" is useless on its own — say WHO, or
+                // the owner has nothing to go and look at. Trashed rows
+                // included, since those hold the unique index too.
+                $holder = ProductVariant::withoutGlobalScopes()
+                    ->where('shop_id', $product->shop_id)
+                    ->where('barcode', $computed)
+                    ->where('id', '!=', $variant->id)
+                    ->first();
+                if ($holder) {
+                    $holderProduct = Product::withoutGlobalScopes()->whereKey($holder->product_id)->first();
+                    $this->warn("  ⚠ \"{$product->name_en} / {$variant->label()}\" — {$computed} পাওয়া যাচ্ছে না।");
+                    $this->warn("      এটা এখন আছে: \"{$holderProduct?->name_en} / {$holder->label()}\"".($holder->deleted_at ? ' (মুছে ফেলা)' : '').", id {$holder->id}");
                     $variantsStuck++;
 
                     continue;
@@ -178,6 +256,10 @@ class ArticlesRegenerateBarcodes extends Command
             $this->info(($isDryRun ? 'প্রিভিউ: ' : '')."রঙের বারকোড: {$new}টা নতুন, {$changed}টা বদলানো, {$unchanged}টা অপরিবর্তিত।");
         }
         $this->info(($isDryRun ? 'প্রিভিউ: ' : '')."ভ্যারিয়েন্টের বারকোড: {$variantsFilled}টা বসানো".($variantsStuck ? ", {$variantsStuck}টা পারা যায়নি (ওই বারকোড আগেই কারো দখলে)" : '').'।');
+
+        if ($this->option('add-missing-z')) {
+            $this->info(($isDryRun ? 'প্রিভিউ: ' : '')."শেষে Z বসানো হয়েছে: {$zAdded}টা আর্টিকেলে।");
+        }
 
         if ($colorsWithoutCode) {
             $this->newLine();
