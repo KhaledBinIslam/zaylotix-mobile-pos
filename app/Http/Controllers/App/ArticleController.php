@@ -442,7 +442,38 @@ class ArticleController extends Controller
         return Inertia::render('App/Articles/ColorCodeSettings', [
             'colorCodeMap' => $shop->colorCodeMap(),
             'barcodeIncludeSize' => $shop->barcodeIncludeSize(),
+            // Colours a variant actually uses that have no code yet.
+            // Without a code a colour falls back to its own name, and a
+            // Bengali name builds a barcode Code128 cannot encode — so
+            // these are exactly the rows that must be filled in, and
+            // asking the owner to retype "বাদামী" from memory to fix it
+            // is no way to be told. Business-wide: a branch's own colours
+            // are the ones Baby Park was missing.
+            'colorsNeedingCode' => $this->colorsNeedingCode($shop),
         ]);
+    }
+
+    /**
+     * Every colour in use across this business whose barcode segment
+     * would not be printable — no configured code, and a name Code128
+     * cannot encode. ASCII colour names are left out: those already
+     * fall back to themselves perfectly well.
+     *
+     * @return array<int,string>
+     */
+    private function colorsNeedingCode(Shop $shop): array
+    {
+        $map = $shop->colorCodeMap();
+
+        return ProductVariant::withoutGlobalScopes()
+            ->whereIn('shop_id', Tenancy::businessShopIds($shop->id))
+            ->whereNull('deleted_at')
+            ->whereNotNull('color')
+            ->distinct()
+            ->pluck('color')
+            ->reject(fn ($color) => isset($map[$color]) || ArticleBarcode::isPrintable($color))
+            ->values()
+            ->all();
     }
 
     public function colorCodeSettingsUpdate(Request $request)

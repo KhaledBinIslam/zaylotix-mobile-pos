@@ -74,7 +74,14 @@ class ArticleVariant
             $articleBarcode = self::restampCost($shop, $product, (int) $cost) ?? $articleBarcode;
         }
 
-        return ArticleBarcode::buildVariantBarcode($shop, $articleBarcode, $color, (string) ($size ?? ''));
+        $barcode = ArticleBarcode::buildVariantBarcode($shop, $articleBarcode, $color, (string) ($size ?? ''));
+
+        // A colour with no configured short code falls back to its own
+        // name, so a Bengali colour builds a barcode no scanner can read
+        // and JsBarcode cannot draw. No barcode at all beats one that
+        // cannot be printed — and the owner has somewhere to fix it,
+        // which guessing a code here would take away from them.
+        return ArticleBarcode::isPrintable($barcode) ? $barcode : null;
     }
 
     /**

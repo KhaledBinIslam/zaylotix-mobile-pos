@@ -3,10 +3,21 @@ import { Head, Link, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { suggestColorCode } from '@/support/colorCodeSuggestions';
 
-const props = defineProps({ colorCodeMap: Object, barcodeIncludeSize: Boolean });
+const props = defineProps({
+    colorCodeMap: Object,
+    barcodeIncludeSize: Boolean,
+    // colours in use whose barcode segment would not be printable — see
+    // ArticleController::colorsNeedingCode()
+    colorsNeedingCode: { type: Array, default: () => [] },
+});
 
 const form = useForm({
-    rows: Object.entries(props.colorCodeMap || {}).map(([color, code]) => ({ color, code })),
+    // the colours that NEED a code come first, as empty rows waiting to
+    // be filled, so the fix is one tap away instead of a name to retype
+    rows: [
+        ...(props.colorsNeedingCode || []).map((color) => ({ color, code: '' })),
+        ...Object.entries(props.colorCodeMap || {}).map(([color, code]) => ({ color, code })),
+    ],
     barcode_include_size: props.barcodeIncludeSize,
 });
 
@@ -32,6 +43,15 @@ function save() {
         <div class="pgsub">প্রতিটা রঙের একটা ছোট কোড — বারকোডে ব্যবহার হয় (যেমন SILVER → SIL)</div>
 
         <Link :href="route('app.articles.create')" class="btn ghost sm" style="margin-bottom:16px;display:inline-block;text-decoration:none">← নতুন আর্টিকেলে ফিরুন</Link>
+
+        <div v-if="colorsNeedingCode.length" class="card" style="border:1px solid var(--gold2);margin-bottom:14px">
+            <b>⚠️ এই রংগুলোর কোড দিতে হবে</b>
+            <div style="font-size:13px;color:var(--mut);margin-top:6px;line-height:1.6">
+                বারকোড শুধু ইংরেজি অক্ষর আর সংখ্যা বইতে পারে। কোড না দেওয়া পর্যন্ত
+                <b>{{ colorsNeedingCode.join(', ') }}</b> — এই রঙের জুতাগুলোর স্টিকারে কোনো বারকোড বসানো যাচ্ছে না।
+                নিচে ওগুলো আগে থেকেই বসানো আছে, শুধু কোড লিখে সেভ করুন (যেমন বাদামী → BRN)।
+            </div>
+        </div>
 
         <div class="card" style="margin-bottom:14px">
             <div v-for="(row, i) in form.rows" :key="i" class="f2" style="grid-template-columns:2fr 1fr auto;align-items:end;margin-bottom:10px">

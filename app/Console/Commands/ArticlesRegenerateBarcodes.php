@@ -24,7 +24,7 @@ use Illuminate\Console\Command;
  */
 class ArticlesRegenerateBarcodes extends Command
 {
-    protected $signature = 'articles:regenerate-barcodes {--shop=} {--name= : shops whose name contains this, instead of an id} {--variants-only : only fill in missing variant barcodes, never touch a colour barcode} {--dry-run}';
+    protected $signature = 'articles:regenerate-barcodes {--shop=} {--name= : shops whose name contains this, instead of an id} {--variants-only : only fill in missing variant barcodes, never touch a colour barcode} {--fix-unprintable : also REPLACE a variant barcode that Code128 cannot encode} {--dry-run}';
 
     protected $description = 'Backfills/refreshes colour barcodes, and fills in any variant that has none, for a shop\'s articles. --dry-run previews only.';
 
@@ -73,6 +73,8 @@ class ArticlesRegenerateBarcodes extends Command
 
         $variantsFilled = 0;
         $variantsStuck = 0;
+        $variantsUnprintable = 0;
+        $colorsWithoutCode = [];
 
         foreach (Product::withoutGlobalScopes()->where('shop_id', $shop->id)->get() as $product) {
             if (! $product->barcode) {
@@ -85,17 +87,44 @@ class ArticlesRegenerateBarcodes extends Command
             $product->setRelation('category', ProductCategory::withoutGlobalScopes()->find($product->category_id));
             $product->setRelation('supplier', Supplier::withoutGlobalScopes()->find($product->supplier_id));
 
-            // A size added from the stock screen's grid before that grid
-            // knew about articles went in with no barcode — nothing to
-            // scan at the counter, and a blank label. Only ever FILLS a
-            // missing one; a barcode already on a variant is never
-            // touched, because it may be printed and stuck on stock.
-            // whereNull('deleted_at') because withoutGlobalScopes() drops
-            // the soft-delete scope too: a removed size would otherwise be
-            // handed the barcode back and immediately block the live row
-            // that replaced it, which is the very collision this fixes
-            foreach (ProductVariant::withoutGlobalScopes()->where('product_id', $product->id)
-                ->whereNull('deleted_at')->whereNull('barcode')->get() as $variant) {
+            /*
+             * A size added from the stock screen's grid before that grid
+             * knew about articles went in with no barcode — nothing to
+             * scan at the counter, and a blank label. By default only a
+             * MISSING one is filled: a barcode already on a variant may
+             * be printed and stuck on stock.
+             *
+             * --fix-unprintable widens that to "has nothing a scanner
+             * could read". A Bengali barcode was never on a sticker —
+             * JsBarcode cannot draw one — so there is no printed label to
+             * contradict, but it does still hold the unique index against
+             * the correct string, so the right barcode can never be
+             * issued while it sits there. Opt-in all the same: it
+             * overwrites a column, and that is the owner's call to make
+             * from a --dry-run, not mine.
+             *
+             * whereNull('deleted_at') because withoutGlobalScopes() drops
+             * the soft-delete scope too: a removed size would otherwise
+             * be handed its barcode back and immediately block the live
+             * row that replaced it — the very collision this fixes.
+             */
+            $candidates = ProductVariant::withoutGlobalScopes()->where('product_id', $product->id)
+                ->whereNull('deleted_at')
+                ->when(! $this->option('fix-unprintable'), fn ($q) => $q->whereNull('barcode'))
+                ->get()
+                ->filter(fn (ProductVariant $v) => ! ArticleBarcode::isPrintable($v->barcode));
+
+            foreach ($candidates as $variant) {
+                // "could not" has two very different causes, and only one
+                // of them is something the owner can act on — so they are
+                // counted and reported apart
+                if (ArticleVariant::barcodeFor($shop, $product, $variant->color, $variant->size, $variant->cost) === null) {
+                    $colorsWithoutCode[(string) $variant->color] = true;
+                    $variantsUnprintable++;
+
+                    continue;
+                }
+
                 $computed = ArticleVariant::freeBarcodeFor($shop, $product, $variant->color, $variant->size, $variant->cost);
                 if ($computed === null) {
                     $variantsStuck++;
@@ -149,5 +178,13 @@ class ArticlesRegenerateBarcodes extends Command
             $this->info(($isDryRun ? 'প্রিভিউ: ' : '')."রঙের বারকোড: {$new}টা নতুন, {$changed}টা বদলানো, {$unchanged}টা অপরিবর্তিত।");
         }
         $this->info(($isDryRun ? 'প্রিভিউ: ' : '')."ভ্যারিয়েন্টের বারকোড: {$variantsFilled}টা বসানো".($variantsStuck ? ", {$variantsStuck}টা পারা যায়নি (ওই বারকোড আগেই কারো দখলে)" : '').'।');
+
+        if ($colorsWithoutCode) {
+            $this->newLine();
+            $this->warn("  {$variantsUnprintable}টা ভ্যারিয়েন্টে বারকোড বসানো যায়নি — এই রংগুলোর কোনো ইংরেজি কোড ঠিক করা নেই:");
+            $this->warn('    '.implode(', ', array_keys($colorsWithoutCode)));
+            $this->warn('  বারকোড শুধু ইংরেজি অক্ষর-সংখ্যা বইতে পারে। অ্যাপে "⚙️ রং-কোড সেটিংস"-এ গিয়ে');
+            $this->warn('  এই রংগুলোর কোড বসান (যেমন বাদামী → BRN), তারপর এই কমান্ডটা আবার চালান।');
+        }
     }
 }

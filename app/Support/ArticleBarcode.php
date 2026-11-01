@@ -103,6 +103,25 @@ class ArticleBarcode
         return implode('-', $segments);
     }
 
+    /**
+     * Can this string actually be printed as a Code128 barcode?
+     *
+     * Code128 encodes ASCII 32-126 and nothing else. A colour with no
+     * configured short code falls back to its own name, so a shop naming
+     * its colours in Bengali builds strings like
+     * "O-B-20009-PXXZ-বাদামী-16" — which no scanner can read and
+     * JsBarcode cannot even draw. Baby Park's branch had sixteen sizes
+     * waiting for exactly that.
+     *
+     * The answer is a colour code in "⚙️ রং-কোড সেটিংস", not a
+     * transliteration guessed here: two colours guessed onto the same
+     * code would put two different shoes behind one barcode.
+     */
+    public static function isPrintable(?string $barcode): bool
+    {
+        return $barcode !== null && $barcode !== '' && preg_match('/^[\x20-\x7E]+$/', $barcode) === 1;
+    }
+
     /** The shop's configured short code for a color, or the color name itself uppercased (ASCII only — a Bengali color name is left as-is, never mangled). */
     public static function colorCode(Shop $shop, ?string $color): ?string
     {

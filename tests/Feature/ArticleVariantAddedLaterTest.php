@@ -267,6 +267,73 @@ class ArticleVariantAddedLaterTest extends TestCase
         );
     }
 
+    public function test_a_colour_with_no_english_code_gets_no_barcode_at_all(): void
+    {
+        [$shop, $owner, $product] = $this->anArticle();
+
+        // Baby Park's branch names its colours in Bengali. With no
+        // configured code the colour falls back to its own name, which
+        // built "O-B-20009-PXXZ-বাদামী-16" — a string Code128 cannot
+        // encode and JsBarcode cannot draw. Nothing beats unprintable.
+        $this->actingAs($owner, 'web')->post("/app/products/{$product->id}/variants/bulk", [
+            'variants' => [['color' => 'বাদামী', 'size' => '38', 'stock' => 1]],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertNull(ProductVariant::where('product_id', $product->id)->where('size', '38')->value('barcode'));
+
+        // and once the owner gives that colour a code, it mints normally
+        $shop->update(['color_code_map' => ['বাদামী' => 'BRN']]);
+        $this->artisan('articles:regenerate-barcodes', ['--shop' => $shop->id, '--variants-only' => true])->assertSuccessful();
+
+        $this->assertSame(
+            'SMS-L-10001-NSXXZ-BRN-38',
+            ProductVariant::where('product_id', $product->id)->where('size', '38')->value('barcode')
+        );
+    }
+
+    public function test_fix_unprintable_replaces_a_barcode_no_scanner_could_read(): void
+    {
+        [$shop, $owner, $product] = $this->anArticle();
+        $variant = ProductVariant::create([
+            'shop_id' => $shop->id, 'product_id' => $product->id,
+            'size' => '38', 'color' => 'বাদামী', 'stock' => 1,
+            'barcode' => 'SMS-L-10001-NSXXZ-বাদামী-38',
+        ]);
+        $shop->update(['color_code_map' => ['বাদামী' => 'BRN']]);
+
+        // left alone by default — the command never overwrites a barcode
+        $this->artisan('articles:regenerate-barcodes', ['--shop' => $shop->id, '--variants-only' => true])->assertSuccessful();
+        $this->assertSame('SMS-L-10001-NSXXZ-বাদামী-38', $variant->fresh()->barcode);
+
+        $this->artisan('articles:regenerate-barcodes', [
+            '--shop' => $shop->id, '--variants-only' => true, '--fix-unprintable' => true,
+        ])->assertSuccessful();
+        $this->assertSame('SMS-L-10001-NSXXZ-BRN-38', $variant->fresh()->barcode);
+
+        // a printable one is still never touched, flag or no flag
+        $this->assertSame(
+            'SMS-L-10001-NSXXZ-SILVER-36',
+            ProductVariant::where('product_id', $product->id)->where('size', '36')->value('barcode')
+        );
+    }
+
+    public function test_the_colour_code_screen_offers_the_colours_that_need_one(): void
+    {
+        [$shop, $owner, $product] = $this->anArticle();
+        ProductVariant::create([
+            'shop_id' => $shop->id, 'product_id' => $product->id,
+            'size' => '38', 'color' => 'বাদামী', 'stock' => 1,
+        ]);
+
+        $this->actingAs($owner, 'web')->get('/app/articles/color-code-settings')
+            ->assertInertia(fn ($page) => $page
+                ->where('colorsNeedingCode', ['বাদামী'])
+            );
+
+        // SILVER needs nothing — an ASCII name is already a usable segment
+        $this->assertNotContains('SILVER', ['বাদামী']);
+    }
+
     public function test_a_barcode_already_held_is_explained_rather_than_crashing(): void
     {
         [$shop, $owner, $product] = $this->anArticle();
