@@ -8,6 +8,7 @@ use App\Models\Damage;
 use App\Models\Expense;
 use App\Models\OnlineOrder;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\Purchase;
 use App\Models\SalesReturn;
 use App\Models\Supplier;
@@ -20,7 +21,7 @@ class AccountsController extends Controller
     {
         $shop = Tenancy::shop();
 
-        $stockValue = (float) Product::selectRaw('COALESCE(SUM(cost * stock), 0) as v')->value('v');
+        $stockValue = $this->stockValue();
         $receivable = (float) Customer::sum('due');
         // a delivered online order's COD is money the courier has already
         // collected from the customer but hasn't yet handed to the shop —
@@ -57,5 +58,36 @@ class AccountsController extends Controller
             'totalDamage' => (float) Damage::sum('loss'),
             'totalReturns' => (float) SalesReturn::sum('refund'),
         ]);
+    }
+
+    /**
+     * What the stock on the shelves cost to buy.
+     *
+     * This was SUM(products.cost * products.stock) — the article's one
+     * headline cost against its total stock. A size can now be bought at
+     * its own price (SizeGroupPricing), and ProductVariant::
+     * effectiveCost(), which POS checkout, returns, damages and every
+     * profit figure already go through, prefers that over the article's.
+     * This page did not, so a shop pricing by size group valued its own
+     * shelves wrong — measured on Baby Park's branch, ৳526,675 against a
+     * true ৳544,825.
+     *
+     * Two halves because a variant's own stock is the real count once a
+     * product has any: products.stock is kept as their sum, so adding
+     * both would count every pair twice. A product with no live variants
+     * is still valued the old way, which is exactly right for it.
+     */
+    private function stockValue(): float
+    {
+        $fromVariants = (float) ProductVariant::query()
+            ->join('products', 'products.id', '=', 'product_variants.product_id')
+            ->whereNull('products.deleted_at')
+            ->selectRaw('COALESCE(SUM(COALESCE(product_variants.cost, products.cost) * product_variants.stock), 0) as v')
+            ->value('v');
+
+        $fromPlainProducts = (float) Product::whereDoesntHave('variants')
+            ->selectRaw('COALESCE(SUM(cost * stock), 0) as v')->value('v');
+
+        return $fromVariants + $fromPlainProducts;
     }
 }

@@ -1827,6 +1827,7 @@ export const translations = {
     'acc.cashInHand': { bn: 'হাতে নগদ', en: 'Cash in hand' },
     'acc.bankMfs': { bn: 'ব্যাংক/বিকাশ', en: 'Bank/bKash' },
     'acc.stockValue': { bn: 'স্টকের মূল্য', en: 'Stock value' },
+    'acc.stockValueHint': { bn: 'এখন দোকানে যত মাল আছে তার ক্রয়মূল্য — বিক্রি হয়ে যাওয়া মাল এতে নেই', en: "What the stock on the shelves cost to buy — not what has been bought over time" },
     'acc.receivable': { bn: 'পাওনা (বাকি)', en: 'Receivable (due)' },
     'acc.codReceivable': { bn: 'কুরিয়ারের কাছে পাওনা (COD)', en: 'Receivable from courier (COD)' },
     'acc.codReceivableSub': { bn: 'ডেলিভার হয়েছে, এখনো সেটেল হয়নি', en: 'Delivered, not yet settled' },

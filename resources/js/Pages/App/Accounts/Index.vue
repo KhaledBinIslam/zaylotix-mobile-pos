@@ -73,7 +73,10 @@ function saveVariantDefaults() {
         <div class="sechead"><h2>{{ t('acc.assets') }}</h2><span class="link">{{ money(assets) }}</span></div>
         <div class="row"><div class="ava">💵</div><div class="mid"><b>{{ t('acc.cashInHand') }}</b></div><div class="end"><b style="color:var(--green)">{{ money(cash) }}</b></div></div>
         <div class="row"><div class="ava">🏦</div><div class="mid"><b>{{ t('acc.bankMfs') }}</b></div><div class="end"><b style="color:var(--green)">{{ money(bank) }}</b></div></div>
-        <div class="row"><div class="ava">📦</div><div class="mid"><b>{{ t('acc.stockValue') }}</b></div><div class="end"><b style="color:var(--green)">{{ money(stockValue) }}</b></div></div>
+        <!-- Khaled read this as "how much has the shop bought" and asked
+             where the real figure was. It is the shelves right now, at
+             what they cost — so the row says so. -->
+        <div class="row"><div class="ava">📦</div><div class="mid"><b>{{ t('acc.stockValue') }}</b><div style="font-size:11px;color:var(--mut);margin-top:2px">{{ t('acc.stockValueHint') }}</div></div><div class="end"><b style="color:var(--green)">{{ money(stockValue) }}</b></div></div>
         <div class="row"><div class="ava">🧾</div><div class="mid"><b>{{ t('acc.receivable') }}</b></div><div class="end"><b style="color:var(--green)">{{ money(receivable) }}</b></div></div>
         <div v-if="codReceivable > 0" class="row"><div class="ava">🛵</div><div class="mid"><b>{{ t('acc.codReceivable') }}</b><span>{{ t('acc.codReceivableSub') }}</span></div><div class="end"><b style="color:var(--green)">{{ money(codReceivable) }}</b></div></div>
 
