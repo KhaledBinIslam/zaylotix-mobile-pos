@@ -31,7 +31,7 @@ use Illuminate\Console\Command;
  */
 class ProductsMergeColour extends Command
 {
-    protected $signature = 'products:merge-colour {--shop=} {--name= : shops whose name contains this, instead of an id} {--from= : the colour name to retire} {--to= : the colour name to keep} {--dry-run}';
+    protected $signature = 'products:merge-colour {--shop=} {--name= : shops whose name contains this, instead of an id} {--from= : the colour name to retire} {--ids= : variant ids to retire, instead of --from — so a Bengali colour name never has to be typed at a terminal} {--to= : the colour name to keep} {--dry-run}';
 
     protected $description = 'Merges one colour name into another on every product of a shop. --dry-run previews only.';
 
@@ -39,8 +39,16 @@ class ProductsMergeColour extends Command
     {
         $from = trim((string) $this->option('from'));
         $to = trim((string) $this->option('to'));
-        if ($from === '' || $to === '' || $from === $to) {
-            $this->error('--from=<পুরোনো রং> আর --to=<নতুন রং> দিতে হবে, এবং দুটো আলাদা হতে হবে।');
+
+        // --ids exists because the colour being retired is often one a
+        // Windows terminal cannot carry — "বাদামী" typed at a cmd.exe
+        // prompt arrives mangled, and the rows would silently not match.
+        // The ids come from a --dry-run of the --from form, run
+        // somewhere that handles UTF-8.
+        $ids = array_values(array_filter(array_map('intval', explode(',', (string) $this->option('ids')))));
+
+        if ($to === '' || ($from === '' && ! $ids) || ($from !== '' && $from === $to)) {
+            $this->error('--to=<নতুন রং> দিতে হবে, সাথে --from=<পুরোনো রং> অথবা --ids=<ভ্যারিয়েন্ট id, কমা দিয়ে>।');
 
             return self::FAILURE;
         }
@@ -74,7 +82,9 @@ class ProductsMergeColour extends Command
                 $live = ProductVariant::withoutGlobalScopes()
                     ->where('product_id', $product->id)->whereNull('deleted_at')->orderBy('id')->get();
 
-                $olds = $live->filter(fn (ProductVariant $v) => (string) $v->color === $from);
+                $olds = $ids
+                    ? $live->filter(fn (ProductVariant $v) => in_array($v->id, $ids, true))
+                    : $live->filter(fn (ProductVariant $v) => (string) $v->color === $from);
                 if ($olds->isEmpty()) {
                     continue;
                 }
@@ -86,7 +96,7 @@ class ProductsMergeColour extends Command
                         $note = (float) $twin->stock === (float) $old->stock
                             ? 'স্টক একই'
                             : "<fg=yellow>স্টক আলাদা — রাখা হচ্ছে {$twin->stock}, বাদ যাচ্ছে {$old->stock}</>";
-                        $this->line("  \"{$product->name_en}\" {$old->size}/{$from} (id {$old->id}) — {$old->size}/{$to}-এ আছে, তাই "
+                        $this->line("  \"{$product->name_en}\" {$old->size}/{$old->color} (id {$old->id}) — {$old->size}/{$to}-এ আছে, তাই "
                             .($isDryRun ? 'বাদ যেত' : 'বাদ দেওয়া হলো').", {$note}।");
                         if (! $isDryRun) {
                             ProductVariant::withoutGlobalScopes()->whereKey($old->id)
@@ -97,7 +107,7 @@ class ProductsMergeColour extends Command
                         continue;
                     }
 
-                    $this->line("  \"{$product->name_en}\" {$old->size}/{$from} (id {$old->id}, স্টক {$old->stock}) — {$to} নামে "
+                    $this->line("  \"{$product->name_en}\" {$old->size}/{$old->color} (id {$old->id}, স্টক {$old->stock}) — {$to} নামে "
                         .($isDryRun ? 'বদলাতো' : 'বদলানো হলো').'।');
                     if (! $isDryRun) {
                         // barcode released: it carries the old colour's

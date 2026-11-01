@@ -75,4 +75,20 @@ class ProductsMergeColourTest extends TestCase
         $this->assertSame('WHITE', $other->fresh()->color);
         $this->assertSame('A-WHT-16', $other->fresh()->barcode);
     }
+
+    public function test_ids_can_name_the_rows_so_a_bengali_colour_never_has_to_be_typed(): void
+    {
+        [$shop] = $this->createShopWithOwner();
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Shoe', 'cost' => 100, 'price' => 200, 'stock' => 2]);
+        $keep = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => '16', 'color' => 'BROWN', 'stock' => 2]);
+        $stale = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => '16', 'color' => 'বাদামী', 'stock' => 2]);
+        $untouched = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => '17', 'color' => 'বাদামী', 'stock' => 1]);
+
+        // only the listed row goes; the one left out keeps its name
+        $this->artisan('products:merge-colour', ['--shop' => $shop->id, '--ids' => (string) $stale->id, '--to' => 'BROWN'])->assertSuccessful();
+
+        $this->assertNotNull(ProductVariant::withoutGlobalScopes()->whereKey($stale->id)->value('deleted_at'));
+        $this->assertNull($keep->fresh()->deleted_at);
+        $this->assertSame('বাদামী', $untouched->fresh()->color);
+    }
 }
