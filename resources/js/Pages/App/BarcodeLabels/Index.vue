@@ -10,6 +10,7 @@ import { thermalModuleWidth, THERMAL_BAR_HEIGHT_MM } from '@/support/barcodeFit'
 import { buildShareMetadata, canShareLabelFiles } from '@/support/bluetoothPrintShare';
 import { printedLabelKey } from '@/support/labelPrintKey';
 import { printableRowsOf } from '@/support/labelSelection';
+import { drawThermalLabel } from '@/support/thermalLabelCanvas';
 
 const props = defineProps({ products: Array, shop: Object });
 const { t } = useI18n();
@@ -186,20 +187,29 @@ const bluetoothProgress = ref('');
 async function buildLabelSheet() {
     if (!labels.value.length) return null;
     try {
+        const targetW = Math.round(sizeMm.value.width * 8);
+        const targetH = Math.round(sizeMm.value.height * 8);
+        const { default: JsBarcode } = await import('jsbarcode');
+
+        // The fast path draws every sticker itself, so it needs neither
+        // the cards on screen nor the wait for them to finish rendering
+        // — which on a slow tablet was most of the delay before the tap
+        // even became possible. It gives up as a whole, not label by
+        // label, so the fallback below stays the code that has been
+        // printing correctly all along.
+        if (thermal.value) {
+            const direct = await buildSheetDirectly(targetW, targetH, JsBarcode);
+            if (direct) return direct;
+        }
+
         if (!await waitForAllRendered()) {
             // say so rather than printing a half-drawn batch silently
             toast('⚠️ ' + t('bc.bluetoothSlowRender'));
         }
         await nextTick();
-        const [{ default: html2canvas }, { default: JsBarcode }] = await Promise.all([
-            import('html2canvas'),
-            import('jsbarcode'),
-        ]);
+        const { default: html2canvas } = await import('html2canvas');
         const cards = document.querySelectorAll('#label-print-overlay .label-card');
         if (!cards.length) { toast('❌ ' + t('bc.bluetoothNoLabels')); return; }
-
-        const targetW = Math.round(sizeMm.value.width * 8);
-        const targetH = Math.round(sizeMm.value.height * 8);
 
         // Live-caught at the client: 22 separate PNGs never opened the
         // Android share sheet at all (one PNG per copy). Two changes make
@@ -302,21 +312,7 @@ async function buildLabelSheet() {
         }
         if (!distinct.length) { toast('❌ ' + t('bc.bluetoothRenderFailed')); return; }
 
-        // one tall sheet: label k occupies rows k*targetH .. (k+1)*targetH-1
-        const sheet = document.createElement('canvas');
-        sheet.width = targetW;
-        sheet.height = targetH * distinct.length;
-        const sheetCtx = sheet.getContext('2d');
-        sheetCtx.fillStyle = '#ffffff';
-        sheetCtx.fillRect(0, 0, sheet.width, sheet.height);
-        distinct.forEach((d, k) => sheetCtx.drawImage(d.canvas, 0, k * targetH));
-
-        const blob = await new Promise((resolve) => sheet.toBlob(resolve, 'image/png'));
-        if (!blob) { toast('❌ ' + t('bc.bluetoothRenderFailed')); return; }
-        return {
-            files: [new File([blob], 'labels.png', { type: 'image/png' })],
-            text: buildShareMetadata(settings.value, { labelHeightPx: targetH, copies: distinct.map((d) => d.copies) }),
-        };
+        return await stackIntoSheet(distinct, targetW, targetH);
     } catch (e) {
         // this runs ahead of the tap, so a failure here has no share sheet
         // to report through — say it now rather than leaving the button to
@@ -330,6 +326,107 @@ async function buildLabelSheet() {
 // The sheet for the labels currently on screen, rendered ahead of the tap
 // (see buildLabelSheet). Thrown away whenever the preview closes or its
 // contents change, so a stale sheet can never be the thing that prints.
+/**
+ * The distinct labels stacked into the one tall PNG the helper app
+ * slices back apart, with the per-label copies count riding in the share
+ * metadata. Shared by both build paths so they can never disagree about
+ * the format the app is expecting.
+ */
+async function stackIntoSheet(distinct, targetW, targetH) {
+    if (!distinct.length) { toast('❌ ' + t('bc.bluetoothRenderFailed')); return null; }
+
+    // label k occupies rows k*targetH .. (k+1)*targetH-1
+    const sheet = document.createElement('canvas');
+    sheet.width = targetW;
+    sheet.height = targetH * distinct.length;
+    const sheetCtx = sheet.getContext('2d');
+    sheetCtx.fillStyle = '#ffffff';
+    sheetCtx.fillRect(0, 0, sheet.width, sheet.height);
+    distinct.forEach((d, k) => sheetCtx.drawImage(d.canvas, 0, k * targetH));
+
+    const blob = await new Promise((resolve) => sheet.toBlob(resolve, 'image/png'));
+    if (!blob) { toast('❌ ' + t('bc.bluetoothRenderFailed')); return null; }
+
+    return {
+        files: [new File([blob], 'labels.png', { type: 'image/png' })],
+        text: buildShareMetadata(settings.value, { labelHeightPx: targetH, copies: distinct.map((d) => d.copies) }),
+    };
+}
+
+/**
+ * The whole sheet drawn directly, without the page or html2canvas — or
+ * null if any one sticker is unusual, in which case the caller falls
+ * back to the capture path for the entire batch rather than mixing two
+ * ways of drawing in one run.
+ */
+async function buildSheetDirectly(targetW, targetH, JsBarcode) {
+    const distinct = [];
+    const indexByKey = new Map();
+
+    for (const label of labels.value) {
+        const key = printedLabelKey(label ?? {}, settings.value, true);
+        const seen = indexByKey.get(key);
+        if (seen !== undefined) {
+            distinct[seen].copies++;
+            continue;
+        }
+
+        const canvas = drawnThermalCanvas(label, targetW, targetH, JsBarcode);
+        if (!canvas) return null;
+
+        indexByKey.set(key, distinct.length);
+        distinct.push({ key, canvas, copies: 1 });
+    }
+
+    return distinct.length ? stackIntoSheet(distinct, targetW, targetH) : null;
+}
+
+/**
+ * One thermal sticker, drawn directly at printer resolution — or null if
+ * anything about it is unusual, which sends it down the old
+ * html2canvas path untouched.
+ *
+ * The bars are JsBarcode at whole dots, exactly as the capture path
+ * re-stamped them afterwards; here that IS the drawing, so the capture,
+ * the downscale and the white-out all disappear.
+ */
+function drawnThermalCanvas(label, targetW, targetH, JsBarcode) {
+    try {
+        const encoded = label?.scanCode || label?.barcode;
+        let barcodeCanvas = null;
+
+        if (encoded) {
+            const fit = thermalModuleWidth(encoded, sizeMm.value.width - 5);
+            if (!fit.fits) return null; // the card shows a warning for this — leave it to the old path
+
+            barcodeCanvas = document.createElement('canvas');
+            JsBarcode(barcodeCanvas, encoded, {
+                format: 'CODE128',
+                width: Math.max(1, Math.round(fit.moduleMm * 8)), // dots per module
+                height: THERMAL_BAR_HEIGHT_MM * 8,
+                margin: 0,
+                displayValue: settings.value.show_barcode_number !== false,
+                text: label.barcode,
+                fontSize: 16,
+            });
+            if (!barcodeCanvas.width || barcodeCanvas.width > targetW) return null;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = targetW;
+        canvas.height = targetH;
+
+        return drawThermalLabel(canvas, {
+            label: label ?? {},
+            settings: settings.value,
+            headerText: props.shop?.resolved_label_header || props.shop?.name || '',
+            barcodeCanvas,
+        });
+    } catch (e) {
+        return null; // fall through to html2canvas rather than print nothing
+    }
+}
+
 let preparedSheet = null;
 
 /*
