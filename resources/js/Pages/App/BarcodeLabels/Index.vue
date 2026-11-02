@@ -347,6 +347,12 @@ let preparedSheet = null;
  */
 const sheetReady = ref(false);
 
+/** Step-by-step record of the last Bluetooth attempt, shown in the overlay. */
+const bluetoothLog = ref([]);
+function say(text, bad = false) {
+    bluetoothLog.value.push({ text: (bad ? '❌ ' : '• ') + text, bad });
+}
+
 function prepareSheetAhead() {
     sheetReady.value = false;
     preparedSheet = buildLabelSheet().catch(() => null);
@@ -363,28 +369,56 @@ async function printViaBluetooth() {
     if (bluetoothPrinting.value || !labels.value.length) return;
     bluetoothPrinting.value = true;
     bluetoothProgress.value = t('bc.bluetoothPreparing');
+    bluetoothLog.value = [];
+    let handedOver = false;
     try {
         // already resolved in the normal case, so the user gesture that
         // opened this is still live when share() is called below
         const sheet = await (preparedSheet ?? buildLabelSheet());
-        if (!sheet) return; // buildLabelSheet already said why
+        if (!sheet) {
+            // buildLabelSheet already toasted, but a toast is exactly what
+            // keeps being missed — say it here too, where it stays
+            say(t('bc.logNoSheet'), true);
 
-        if (!navigator.canShare({ files: sheet.files })) {
-            toast('❌ ' + t('bc.bluetoothNotSupported'));
             return;
         }
+
+        const kb = Math.round((sheet.files[0]?.size ?? 0) / 1024);
+        say(t('bc.logSheetReady', { n: labels.value.length, kb }));
+
+        if (!navigator.canShare({ files: sheet.files })) {
+            say(t('bc.logCannotShare'), true);
+            toast('❌ ' + t('bc.bluetoothNotSupported'));
+
+            return;
+        }
+
+        say(t('bc.logSharing'));
         await navigator.share({ ...sheet, title: 'Zaylotix লেবেল প্রিন্ট' });
+        say(t('bc.logShared'));
+        handedOver = true;
     } catch (e) {
-        if (e?.name !== 'AbortError') { // user cancelled the native share sheet — not a failure
+        // AbortError is the native sheet being dismissed — but it is ALSO
+        // what Chrome throws when the tap's permission has expired, which
+        // is the failure that has been chased all along. Both are named,
+        // so the next report can tell them apart instead of guessing.
+        say(t('bc.logShareFailed', { name: e?.name || 'Error', msg: e?.message || String(e) }), true);
+        if (e?.name !== 'AbortError') {
             toast('❌ ' + t('bc.bluetoothShareFailed', { msg: e?.message || String(e) }));
         }
     } finally {
         bluetoothPrinting.value = false;
         bluetoothProgress.value = '';
-        // a shared sheet is spent: re-render for the next tap so a second
-        // print can never send a file built from labels since replaced
-        preparedSheet = null;
-        if (printing.value && labels.value.length) prepareSheetAhead();
+
+        // A sheet that was actually handed over is spent: re-render, so a
+        // second print can never send a file built from labels since
+        // replaced. One that FAILED was never consumed — keeping it means
+        // the retry is a single instant tap, which is the whole point when
+        // the first tap failed because the drawing took too long.
+        if (handedOver) {
+            preparedSheet = null;
+            if (printing.value && labels.value.length) prepareSheetAhead();
+        }
     }
 }
 
@@ -564,6 +598,17 @@ const printCss = computed(() => {
                         {{ bluetoothPrinting || !sheetReady ? (bluetoothProgress || t('bc.bluetoothPreparing')) : '📱 ' + t('bc.bluetoothPrint') }}
                     </button>
                     <button class="btn sm ghost" @click="closePrint">{{ t('bc.close') }}</button>
+                </div>
+                <!--
+                    What actually happened, kept ON SCREEN.
+
+                    Every failure here used to be a toast that faded before
+                    it could be read, so "render hoye off hoye jai" was all
+                    anyone could report and every fix after that was a
+                    guess. This log stays put and can be screenshotted.
+                -->
+                <div v-if="bluetoothLog.length" class="no-print" style="padding:8px 12px;font-size:12px;background:var(--panel);border-bottom:1px solid var(--line)">
+                    <div v-for="(line, i) in bluetoothLog" :key="i" :style="'color:' + (line.bad ? 'var(--rose)' : 'var(--mut)')">{{ line.text }}</div>
                 </div>
                 <!-- Phase 41 — browser print-dialog settings that make the
                      38×25 output land exactly; screen-only, never printed -->
