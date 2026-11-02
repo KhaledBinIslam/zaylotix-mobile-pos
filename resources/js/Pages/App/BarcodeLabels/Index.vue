@@ -10,7 +10,7 @@ import { thermalModuleWidth, THERMAL_BAR_HEIGHT_MM } from '@/support/barcodeFit'
 import { buildShareMetadata, canShareLabelFiles } from '@/support/bluetoothPrintShare';
 import { printedLabelKey } from '@/support/labelPrintKey';
 import { printableRowsOf } from '@/support/labelSelection';
-import { drawThermalLabel } from '@/support/thermalLabelCanvas';
+import { drawThermalLabel, DRAW_BUILD } from '@/support/thermalLabelCanvas';
 
 const props = defineProps({ products: Array, shop: Object });
 const { t } = useI18n();
@@ -371,14 +371,24 @@ async function buildSheetDirectly(targetW, targetH, JsBarcode) {
             continue;
         }
 
-        const canvas = drawnThermalCanvas(label, targetW, targetH, JsBarcode);
-        if (!canvas) return null;
+        const drawn = drawnThermalCanvas(label, targetW, targetH, JsBarcode);
+        if (!drawn.canvas) {
+            // named, not silent: "it was slow again" could not tell us
+            // whether this path ran at all
+            say(t('bc.logDirectSkipped', { reason: drawn.reason }), true);
+
+            return null;
+        }
 
         indexByKey.set(key, distinct.length);
-        distinct.push({ key, canvas, copies: 1 });
+        distinct.push({ key, canvas: drawn.canvas, copies: 1 });
     }
 
-    return distinct.length ? stackIntoSheet(distinct, targetW, targetH) : null;
+    if (!distinct.length) return null;
+
+    say(t('bc.logDirectDrew', { n: distinct.length, build: DRAW_BUILD }));
+
+    return stackIntoSheet(distinct, targetW, targetH);
 }
 
 /**
@@ -397,7 +407,8 @@ function drawnThermalCanvas(label, targetW, targetH, JsBarcode) {
 
         if (encoded) {
             const fit = thermalModuleWidth(encoded, sizeMm.value.width - 5);
-            if (!fit.fits) return null; // the card shows a warning for this — leave it to the old path
+            // the card shows a warning for this — leave it to the old path
+            if (!fit.fits) return { reason: `বারকোড লেবেলে আঁটে না (${fit.modules} মডিউল)` };
 
             barcodeCanvas = document.createElement('canvas');
             JsBarcode(barcodeCanvas, encoded, {
@@ -409,21 +420,27 @@ function drawnThermalCanvas(label, targetW, targetH, JsBarcode) {
                 text: label.barcode,
                 fontSize: 16,
             });
-            if (!barcodeCanvas.width || barcodeCanvas.width > targetW) return null;
+            if (!barcodeCanvas.width) return { reason: 'বারকোড আঁকা যায়নি' };
+            if (barcodeCanvas.width > targetW) {
+                return { reason: `বারকোড লেবেলের চেয়ে চওড়া (${barcodeCanvas.width} > ${targetW})` };
+            }
         }
 
         const canvas = document.createElement('canvas');
         canvas.width = targetW;
         canvas.height = targetH;
 
-        return drawThermalLabel(canvas, {
-            label: label ?? {},
-            settings: settings.value,
-            headerText: props.shop?.resolved_label_header || props.shop?.name || '',
-            barcodeCanvas,
-        });
+        return {
+            canvas: drawThermalLabel(canvas, {
+                label: label ?? {},
+                settings: settings.value,
+                headerText: props.shop?.resolved_label_header || props.shop?.name || '',
+                barcodeCanvas,
+            }),
+        };
     } catch (e) {
-        return null; // fall through to html2canvas rather than print nothing
+        // fall through to html2canvas rather than print nothing
+        return { reason: e?.message || String(e) };
     }
 }
 
@@ -459,6 +476,7 @@ function prepareSheetAhead() {
 watch([printing, labels], () => {
     preparedSheet = null;
     sheetReady.value = false;
+    bluetoothLog.value = [];
     if (printing.value && labels.value.length) prepareSheetAhead();
 });
 
@@ -466,7 +484,10 @@ async function printViaBluetooth() {
     if (bluetoothPrinting.value || !labels.value.length) return;
     bluetoothPrinting.value = true;
     bluetoothProgress.value = t('bc.bluetoothPreparing');
-    bluetoothLog.value = [];
+    // deliberately NOT cleared here: the sheet is built before the tap,
+    // so wiping the log on tap would throw away the half that explains
+    // how the drawing went. It is cleared when the preview's contents
+    // change instead.
     let handedOver = false;
     try {
         // already resolved in the normal case, so the user gesture that

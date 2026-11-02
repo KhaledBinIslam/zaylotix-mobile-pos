@@ -1967,6 +1967,8 @@ export const translations = {
     'bc.priceModeSingle': { bn: 'শুধু একটি দাম', en: 'Single price' },
     'bc.priceModeNone': { bn: 'দাম নেই', en: 'No price' },
     'bc.variantCount': { bn: '{n}টা ভ্যারিয়েন্ট', en: '{n} variants' },
+    'bc.logDirectDrew': { bn: 'দ্রুত পদ্ধতিতে আঁকা হলো: {n}টা আলাদা স্টিকার [{build}]', en: 'Drawn directly: {n} distinct stickers [{build}]' },
+    'bc.logDirectSkipped': { bn: 'দ্রুত পদ্ধতি বাদ ({reason}) — পুরোনো পদ্ধতিতে যাচ্ছে, ধীর হবে', en: 'Direct drawing skipped ({reason}) — falling back to the slow path' },
     'bc.logNoSheet': { bn: 'ছবি তৈরিই হয়নি — উপরে লাল লেখাটা দেখুন।', en: 'The image was never built — see the red message above.' },
     'bc.logSheetReady': { bn: 'ছবি তৈরি: {n}টা লেবেল, {kb} কিলোবাইট।', en: 'Image ready: {n} labels, {kb} KB.' },
     'bc.logCannotShare': { bn: 'এই ব্রাউজার ফাইল শেয়ার করতে পারছে না।', en: 'This browser cannot share the file.' },

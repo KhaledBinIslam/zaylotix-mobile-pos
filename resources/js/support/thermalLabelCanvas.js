@@ -25,6 +25,9 @@
 /** A CSS pixel is 1/96 inch; the printer lays down 8 dots per mm. */
 export const DOTS_PER_CSS_PX = (25.4 * 8) / 96;
 
+/** Build identifier, so a screenshot of the on-screen log proves which bundle a phone is actually running. */
+export const DRAW_BUILD = 'direct-1';
+
 const px = (cssPx) => cssPx * DOTS_PER_CSS_PX;
 
 /**
