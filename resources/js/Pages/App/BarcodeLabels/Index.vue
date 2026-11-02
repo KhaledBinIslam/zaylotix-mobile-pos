@@ -332,12 +332,30 @@ async function buildLabelSheet() {
 // contents change, so a stale sheet can never be the thing that prints.
 let preparedSheet = null;
 
+/*
+ * Whether that sheet actually EXISTS yet.
+ *
+ * The print button used to be tappable the moment the preview opened,
+ * while the images were still being drawn. Tapping then made share()
+ * wait — and Android expires the "the user just tapped" permission after
+ * a few seconds, so the share sheet simply never opened and nothing said
+ * why. Khaled, on a slow tablet with a size-by-size batch: "via bluth
+ * dile render hoye print option ase na r".
+ *
+ * So the button stays disabled, showing its progress, until the file is
+ * in hand. Then the tap is instant and the gesture is always still live.
+ */
+const sheetReady = ref(false);
+
 function prepareSheetAhead() {
+    sheetReady.value = false;
     preparedSheet = buildLabelSheet().catch(() => null);
+    preparedSheet.finally(() => { sheetReady.value = true; });
 }
 
 watch([printing, labels], () => {
     preparedSheet = null;
+    sheetReady.value = false;
     if (printing.value && labels.value.length) prepareSheetAhead();
 });
 
@@ -542,8 +560,8 @@ const printCss = computed(() => {
                     <!-- Phase 43 (docs/BT_PRINT_PLAN.md বিকল্প ক) — Zaylotix
                          Printer Helper (ছোট আলাদা অ্যাপ) ইনস্টল থাকলে এই
                          বাটনে সরাসরি Bluetooth-এ পাঠানো যাবে, কোনো PC লাগবে না -->
-                    <button v-if="showBluetoothPrint" class="btn sm ghost" :disabled="bluetoothPrinting" @click="printViaBluetooth">
-                        {{ bluetoothPrinting ? bluetoothProgress : '📱 ' + t('bc.bluetoothPrint') }}
+                    <button v-if="showBluetoothPrint" class="btn sm ghost" :disabled="bluetoothPrinting || !sheetReady" @click="printViaBluetooth">
+                        {{ bluetoothPrinting || !sheetReady ? (bluetoothProgress || t('bc.bluetoothPreparing')) : '📱 ' + t('bc.bluetoothPrint') }}
                     </button>
                     <button class="btn sm ghost" @click="closePrint">{{ t('bc.close') }}</button>
                 </div>

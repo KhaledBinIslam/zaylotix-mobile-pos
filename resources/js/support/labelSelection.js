@@ -15,11 +15,6 @@
  * Pure, so the rule that decides this can be tested without a browser.
  */
 export function printableRowsOf(product) {
-    const colours = product?.color_barcodes ?? [];
-    if (colours.length) {
-        return colours.map((cb) => ({ key: 'c:' + cb.id, copies: copiesFor(cb.stock) }));
-    }
-
     const variants = product?.variants ?? [];
     if (variants.length) {
         return variants
