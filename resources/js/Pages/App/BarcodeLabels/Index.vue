@@ -9,6 +9,7 @@ import { labelSizeMm } from '@/support/labelSizes';
 import { thermalModuleWidth, THERMAL_BAR_HEIGHT_MM } from '@/support/barcodeFit';
 import { buildShareMetadata, canShareLabelFiles } from '@/support/bluetoothPrintShare';
 import { printedLabelKey } from '@/support/labelPrintKey';
+import { printableRowsOf } from '@/support/labelSelection';
 
 const props = defineProps({ products: Array, shop: Object });
 const { t } = useI18n();
@@ -72,12 +73,33 @@ function toggleColorBarcode(cb) {
     else selected.value[key] = Math.max(1, cb.stock);
 }
 function selectAllVariants(p) {
-    const allSelected = p.variants.every((v) => !v.barcode || isSelected('v:' + v.id));
-    p.variants.forEach((v) => {
-        const key = 'v:' + v.id;
-        if (!v.barcode) return;
-        if (allSelected) delete selected.value[key];
-        else selected.value[key] = 1;
+    const rows = printableRowsOf(p);
+    if (!rows.length) return;
+
+    const allSelected = rows.every((r) => isSelected(r.key));
+    rows.forEach((r) => {
+        if (allSelected) delete selected.value[r.key];
+        else selected.value[r.key] = r.copies;
+    });
+}
+
+/**
+ * Every product on screen at once.
+ *
+ * Khaled, after a stock intake: "ekta ekta print dite gia onk somoy
+ * nosto hocche". Search the article numbers that just came in, press
+ * this, press print — the whole delivery's stickers in one go instead of
+ * one product at a time. Respects the search filter, so it only ever
+ * selects what he can see.
+ */
+function selectEverythingShown() {
+    const rows = filtered.value.flatMap((p) => printableRowsOf(p));
+    if (!rows.length) return;
+
+    const allSelected = rows.every((r) => isSelected(r.key));
+    rows.forEach((r) => {
+        if (allSelected) delete selected.value[r.key];
+        else selected.value[r.key] = r.copies;
     });
 }
 
@@ -423,7 +445,15 @@ const printCss = computed(() => {
             ⚙️ {{ t('bc.labelSettingsLink') }} ({{ sizeMm.width }}×{{ sizeMm.height }}mm, {{ settings.per_row || 2 }}/{{ t('bc.perRow') }})
         </Link>
 
-        <input v-model="q" :placeholder="t('bc.searchPlaceholder')" style="margin-bottom:12px">
+        <input v-model="q" :placeholder="t('bc.searchPlaceholder')" style="margin-bottom:8px">
+        <div v-if="filtered.length" style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+            <button class="btn sm ghost" style="width:auto;padding:6px 10px" @click="selectEverythingShown">
+                {{ t('bc.selectEverythingShown', { n: filtered.length }) }}
+            </button>
+            <button v-if="totalCopies" class="btn sm ghost" style="width:auto;padding:6px 10px" @click="selected = {}">
+                {{ t('bc.clearSelection') }}
+            </button>
+        </div>
 
         <div v-for="p in filtered" :key="p.id" class="card" style="padding:0;margin-bottom:8px;overflow:hidden">
             <div v-if="!p.variants?.length" class="row" @click="toggleProduct(p)" :class="{ incart: isSelected('p:' + p.id) }" :style="isSelected('p:' + p.id) ? 'border:none;background:var(--goldSoft)' : 'border:none'">
