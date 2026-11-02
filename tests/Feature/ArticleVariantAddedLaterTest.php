@@ -427,4 +427,34 @@ class ArticleVariantAddedLaterTest extends TestCase
             'variants' => [['color' => 'SILVER', 'size' => '36', 'qty' => 2]],
         ])->assertSessionHasErrors('serial');
     }
+
+    public function test_an_empty_grid_cell_is_a_zero_not_a_refusal(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+
+        // exactly what the browser sends for a size the shop has none of:
+        // v-model.number leaves '' behind when the box is cleared, and
+        // "required" then refused the whole article over it
+        $this->actingAs($owner, 'web')->post('/app/articles', [
+            'client_uuid' => (string) Str::uuid(),
+            'manufacturer_code' => 'H',
+            'new_category_name' => 'Slippers',
+            'category_code' => 'YSL1',
+            'cost' => 350,
+            'price' => 500,
+            'variants' => [
+                ['color' => 'BLACK', 'size' => '36', 'qty' => ''],
+                ['color' => 'BLACK', 'size' => '37', 'qty' => 1],
+                ['color' => 'BROWN', 'size' => '36', 'qty' => null],
+                ['color' => 'BROWN', 'size' => '37', 'qty' => 2],
+            ],
+        ])->assertSessionHasNoErrors();
+
+        $product = Product::withoutGlobalScopes()->where('shop_id', $shop->id)->firstOrFail();
+        // a blank size is simply not stocked, so it gets no row at all
+        $this->assertSame(2, ProductVariant::withoutGlobalScopes()
+            ->where('product_id', $product->id)->whereNull('deleted_at')->count());
+        $this->assertEquals(3, $product->stock);
+    }
 }

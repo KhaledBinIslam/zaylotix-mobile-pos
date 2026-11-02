@@ -112,7 +112,14 @@ class ArticleController extends Controller
             'variants' => ['required', 'array', 'min:1'],
             'variants.*.color' => ['nullable', 'string', 'max:50'],
             'variants.*.size' => ['required', 'string', 'max:50'],
-            'variants.*.qty' => ['required', 'integer', 'min:0'],
+            // nullable, not required: an EMPTIED grid cell arrives as ''
+            // (v-model.number hands back the raw value when there is no
+            // number to parse), and "required" then refused the whole
+            // article over a size the shop simply has none of. A blank
+            // cell means zero, which is what the filter below already
+            // reads it as. Khaled: "sob fill up korleo" — he had filled
+            // in everything he stocked, and the blanks were the point.
+            'variants.*.qty' => ['nullable', 'integer', 'min:0'],
             // SkyBuy-style picker (docs/ARTICLE_SERIES_PLAN.md §4) — one
             // optional photo per color, keyed by color name; never required,
             // the picker falls back to a plain color swatch without one
@@ -190,7 +197,7 @@ class ArticleController extends Controller
             $basePrice = $data['price'];
         }
 
-        $variantRows = array_values(array_filter($data['variants'], fn ($v) => (int) $v['qty'] > 0));
+        $variantRows = array_values(array_filter($data['variants'], fn ($v) => (int) ($v['qty'] ?? 0) > 0));
         if (! $variantRows) {
             return back()->withErrors(['variants' => 'অন্তত একটা রং/সাইজে স্টক দিতে হবে।']);
         }

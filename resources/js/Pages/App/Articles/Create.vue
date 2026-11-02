@@ -192,6 +192,18 @@ const gridSizes = computed(() => [...new Set(form.variants.map((v) => v.size))])
 function cellFor(color, size) {
     return form.variants.find((v) => v.color === color && v.size === size);
 }
+/**
+ * An emptied cell means "none of this size", which is 0 — but
+ * v-model.number leaves '' behind when there is no number to parse, and
+ * the server then refused the whole article over it. Khaled had filled
+ * in every size he actually stocks and could not save: "sob fill up
+ * korleo".
+ */
+function normalizeCell(color, size) {
+    const cell = cellFor(color, size);
+    if (cell && (cell.qty === '' || cell.qty === null || Number.isNaN(cell.qty))) cell.qty = 0;
+}
+
 const totalStock = computed(() => form.variants.reduce((s, v) => s + (Number(v.qty) || 0), 0));
 
 // ---- submit + "একবার এন্ট্রি, সব জায়গায়" (next article remembers manufacturer/category/colors/sizes) ----
@@ -230,6 +242,8 @@ function save() {
         cost: isKids.value ? null : data.cost,
         kids_prices: isKids.value ? data.kids_prices : null,
         kids_costs: isKids.value ? data.kids_costs : null,
+        // a cell the owner never touched, or cleared, is zero of that size
+        variants: (data.variants || []).map((v) => ({ ...v, qty: Number(v.qty) || 0 })),
     })).post(route('app.articles.store'), {
         forceFormData: true,
         onSuccess: () => {
@@ -425,7 +439,15 @@ function save() {
                                 <div v-if="color && previewColorBarcode(color)" style="font-family:monospace;font-size:10px;color:var(--mut);margin-top:3px">{{ previewColorBarcode(color) }}</div>
                             </td>
                             <td v-for="size in gridSizes" :key="size" style="padding:4px 4px">
-                                <input v-model.number="cellFor(color, size).qty" type="number" min="0" style="width:64px;text-align:center">
+                                <!-- @blur: clearing the box leaves '' behind, not 0 —
+                                     show the zero it means, so the running total
+                                     and the saved article can never disagree with
+                                     what is on screen -->
+                                <input
+                                    v-model.number="cellFor(color, size).qty" type="number" min="0"
+                                    style="width:64px;text-align:center"
+                                    @blur="normalizeCell(color, size)"
+                                >
                             </td>
                         </tr>
                     </tbody>
