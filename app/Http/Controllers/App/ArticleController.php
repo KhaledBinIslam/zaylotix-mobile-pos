@@ -84,7 +84,29 @@ class ArticleController extends Controller
         return response()->json(['serial' => ArticleSerial::nextFree($shop, $categoryCode)]);
     }
 
+    /**
+     * A database error here used to reach the browser as a 500, which
+     * Inertia cannot render into the form — so the button stayed on
+     * "Adding…" with nothing said, and the article looked like it was
+     * taking fifteen minutes when it had already failed.
+     *
+     * Every path out of this now ends in a message the owner can read.
+     * The specific causes are handled where they arise (a category code
+     * already in use, a barcode already held); this is the net under
+     * them, so no future one can hang the page again.
+     */
     public function store(Request $request)
+    {
+        try {
+            return $this->createArticle($request);
+        } catch (\Illuminate\Database\QueryException $e) {
+            report($e);
+
+            return back()->withErrors(['variants' => 'সেভ করা যায়নি — ডেটাবেজ এই তথ্যটা নিতে পারেনি। কোড বা বারকোড আগে থেকে ব্যবহার হচ্ছে কি না দেখুন, নয়তো স্ক্রিনশট পাঠান।']);
+        }
+    }
+
+    private function createArticle(Request $request)
     {
         $shop = Tenancy::shop();
 
@@ -590,11 +612,29 @@ class ArticleController extends Controller
             return back()->withErrors(['new_category_name' => 'নতুন ক্যাটাগরির নাম ও কোড দুটোই দিতে হবে।']);
         }
 
+        $code = strtoupper(trim($data['category_code']));
+
+        /*
+         * A category code is unique per shop — it has to be, since it is
+         * what the barcode is built from. Creating a second category on
+         * a code already in use died on the index, and an uncaught
+         * database error gives Inertia nothing to show: the button sat
+         * on "Adding…" for good. That is the fifteen minutes Khaled
+         * reported, not slowness — the save had already failed.
+         *
+         * Said plainly instead, naming the category holding the code, so
+         * the choice is his: pick that category, or use another code.
+         */
+        $taken = ProductCategory::whereRaw('UPPER(TRIM(code)) = ?', [$code])->first();
+        if ($taken) {
+            return back()->withErrors(['category_code' => "কোড \"{$code}\" আগে থেকেই \"{$taken->name}\" ক্যাটাগরিতে ব্যবহার হচ্ছে। উপরের তালিকা থেকে \"{$taken->name}\" বেছে নিন, নয়তো এই আর্টিকেলের জন্য অন্য একটা কোড দিন।"]);
+        }
+
         return ProductCategory::create([
             'name' => $data['new_category_name'],
             'name_en' => $data['new_category_name'],
             'emoji' => '👟',
-            'code' => strtoupper($data['category_code']),
+            'code' => $code,
         ]);
     }
 

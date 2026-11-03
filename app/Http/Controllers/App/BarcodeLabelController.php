@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\App;
 
 use App\Http\Controllers\Controller;
+use App\Models\LabelPrint;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Support\Tenancy;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 
@@ -76,7 +78,56 @@ class BarcodeLabelController extends Controller
                         'stock' => $p->variants->where('color', $cb->color)->sum('stock'),
                     ]),
                 ]),
+            // "kongular barcode print korchi kongular koreni" — which
+            // rows already have their stickers, keyed on the barcode so
+            // a sticker printed at one shop counts at the other too
+            'printed' => LabelPrint::summaryFor(Tenancy::businessShopIds($shop?->id)),
         ]);
+    }
+
+    /**
+     * Records a sticker run, so the picker can show what still needs
+     * labelling after a delivery.
+     *
+     * "Sent to the printer" is the honest claim — paper can still jam —
+     * so this is called once the browser's print dialog has been opened
+     * or the sheet handed to the helper app, not on some confirmation
+     * the app never receives.
+     *
+     * Barcodes are taken from the request rather than re-derived: what
+     * went on the paper is what the page had in hand, and re-reading the
+     * rows here could record something the owner never printed.
+     */
+    public function recordPrinted(Request $request)
+    {
+        $data = $request->validate([
+            'rows' => ['required', 'array', 'min:1', 'max:2000'],
+            'rows.*.barcode' => ['required', 'string', 'max:64'],
+            'rows.*.copies' => ['nullable', 'integer', 'min:1', 'max:10000'],
+            'rows.*.product_id' => ['nullable', 'integer'],
+            'rows.*.product_variant_id' => ['nullable', 'integer'],
+            'rows.*.product_color_barcode_id' => ['nullable', 'integer'],
+        ]);
+
+        $shopId = Tenancy::id();
+        $userId = Auth::guard('web')->id();
+        $now = now();
+
+        // one insert for the whole run: a 50-row batch should not be 50
+        // round trips on a shared-hosting database
+        LabelPrint::insert(array_map(fn ($row) => [
+            'shop_id' => $shopId,
+            'barcode' => $row['barcode'],
+            'product_id' => $row['product_id'] ?? null,
+            'product_variant_id' => $row['product_variant_id'] ?? null,
+            'product_color_barcode_id' => $row['product_color_barcode_id'] ?? null,
+            'user_id' => $userId,
+            'copies' => $row['copies'] ?? 1,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ], $data['rows']));
+
+        return back(303);
     }
 
     /**

@@ -332,6 +332,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
 
     Route::middleware(['perm:barcode_labels', 'feature:barcode_printing'])->group(function () {
         Route::get('barcode-labels', [BarcodeLabelController::class, 'index'])->name('barcodeLabels.index');
+        Route::post('barcode-labels/printed', [BarcodeLabelController::class, 'recordPrinted'])->name('barcodeLabels.printed');
         // gated by barcode_labels, not stock — printing a label for a
         // variant that happens to be missing one is part of the SAME job
         // this page already does, not a stock-editing action

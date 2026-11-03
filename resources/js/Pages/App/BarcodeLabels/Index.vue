@@ -12,7 +12,13 @@ import { printedLabelKey } from '@/support/labelPrintKey';
 import { printableRowsOf } from '@/support/labelSelection';
 import { drawThermalLabel, DRAW_BUILD } from '@/support/thermalLabelCanvas';
 
-const props = defineProps({ products: Array, shop: Object });
+const props = defineProps({
+    products: Array,
+    shop: Object,
+    // barcode -> { last, copies }: which stickers have already been
+    // printed, so a delivery can be finished rather than re-done
+    printed: { type: Object, default: () => ({}) },
+});
 const { t } = useI18n();
 const { toast } = useToast();
 

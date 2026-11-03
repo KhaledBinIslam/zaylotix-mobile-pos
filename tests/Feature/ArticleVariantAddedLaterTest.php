@@ -457,4 +457,27 @@ class ArticleVariantAddedLaterTest extends TestCase
             ->where('product_id', $product->id)->whereNull('deleted_at')->count());
         $this->assertEquals(3, $product->stock);
     }
+
+    public function test_a_category_code_already_in_use_is_explained_not_a_dead_button(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        ProductCategory::create(['shop_id' => $shop->id, 'name' => 'Slippers', 'name_en' => 'Slippers', 'code' => 'CD']);
+
+        // a second category on the same code died on the unique index,
+        // and the 500 left the form sitting on "Adding…" for good
+        $this->actingAs($owner, 'web')->post('/app/articles', [
+            'client_uuid' => (string) Str::uuid(),
+            'manufacturer_code' => 'H',
+            'new_category_name' => 'SLIPERS',
+            'category_code' => 'CD',
+            'cost' => 350,
+            'price' => 500,
+            'variants' => [['color' => 'BLACK', 'size' => '36', 'qty' => 1]],
+        ])->assertSessionHasErrors('category_code');
+
+        // and nothing was half-created on the way down
+        $this->assertSame(1, ProductCategory::withoutGlobalScopes()->where('shop_id', $shop->id)->count());
+        $this->assertSame(0, Product::withoutGlobalScopes()->where('shop_id', $shop->id)->count());
+    }
 }
