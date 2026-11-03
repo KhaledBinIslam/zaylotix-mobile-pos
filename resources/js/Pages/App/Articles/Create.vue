@@ -246,6 +246,7 @@ const errorBox = ref(null);
  */
 const SAVE_DEADLINE_MS = 45000;
 const saveStalled = ref('');
+const sessionExpired = ref(false);
 let cancelSave = null;
 let saveWatchdog = null;
 
@@ -265,8 +266,26 @@ let saveWatchdog = null;
 onMounted(() => {
     router.on('invalid', (event) => {
         const status = event.detail?.response?.status;
-        saveStalled.value = `সার্ভার সাড়া দিয়েছে কোড ${status ?? '?'} দিয়ে — এই লেখাটার ছবি পাঠান।`;
         event.preventDefault(); // our message instead of Inertia's blank modal
+
+        /*
+         * 419 is the one that was happening, and it is invisible by
+         * design: the session had expired while the page sat open, so
+         * every save came back rejected, no article was created and
+         * nothing was logged. The page never navigates, so nothing ever
+         * redirected him to the login screen either.
+         *
+         * The draft is already in localStorage, so saying "log in
+         * again" costs him nothing typed.
+         */
+        if (status === 419) {
+            sessionExpired.value = true;
+            saveStalled.value = '';
+
+            return;
+        }
+
+        saveStalled.value = `সার্ভার সাড়া দিয়েছে কোড ${status ?? '?'} দিয়ে — এই লেখাটার ছবি পাঠান।`;
     });
 
     router.on('exception', (event) => {
@@ -514,6 +533,15 @@ function save() {
                 <div style="margin-top:8px;font-size:13px;color:var(--mut)">মোট স্টক: <strong>{{ totalStock }}</strong></div>
             </div>
             <div v-if="form.errors.variants" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.variants }}</div>
+        </div>
+
+        <div v-if="sessionExpired" class="card" style="border:1px solid var(--rose);margin-bottom:12px">
+            <b style="color:var(--rose)">🔒 আপনার লগইনের মেয়াদ শেষ হয়ে গেছে</b>
+            <div style="font-size:13px;color:var(--mut);margin-top:6px;line-height:1.6">
+                পেজটা অনেকক্ষণ খোলা থাকায় সার্ভার আর চিনছে না — তাই সেভ হচ্ছিল না।
+                <b>আপনার লেখা কিছুই হারায়নি</b>, আবার লগইন করে এই পেজে ফিরলে সব আগের জায়গাতেই পাবেন।
+            </div>
+            <a href="/login" class="btn" style="margin-top:10px;display:block;text-align:center;text-decoration:none">আবার লগইন করুন</a>
         </div>
 
         <div v-if="saveStalled" class="card" style="border:1px solid var(--rose);margin-bottom:12px;color:var(--rose)">
