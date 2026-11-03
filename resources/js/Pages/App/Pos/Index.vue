@@ -1539,6 +1539,12 @@ const { pollReload, pollOnVisible } = usePollingReload();
 let pollTimer = null;
 function pollPosNow() {
     if (cartOpen.value || scannerOpen.value || receiptOpen.value || submitting.value) return;
+    // A hidden tab has nobody looking at the stock it would refresh, and
+    // this refetch is the shop's whole catalogue — 309 KB at Baby Park's
+    // size, every tick, on every device left open. pollOnVisible below
+    // re-polls the moment it comes back, so nothing goes stale in front
+    // of anyone.
+    if (document.visibilityState !== 'visible') return;
     pollReload({ only: ['products'], preserveScroll: true, preserveState: true });
 }
 // In 'search' mode there's no full `products` prop left to refresh — see
@@ -1550,7 +1556,12 @@ function pollPosNow() {
 // guarantee — see docs/FIX_PLAN.md's design note for the full reasoning.
 if (props.catalogMode !== 'search') {
     onMounted(() => {
-        pollTimer = setInterval(pollPosNow, 15000);
+        // 30s, not 15s: the poll exists to avoid an add-to-cart that is
+        // already doomed by another terminal's sale — a nicety, not a
+        // correctness guarantee, since checkout re-reads and locks stock
+        // server-side regardless (see the note above). Halving its rate
+        // halves the catalogue traffic it costs.
+        pollTimer = setInterval(pollPosNow, 30000);
     });
     pollOnVisible(pollPosNow);
     onBeforeUnmount(() => clearInterval(pollTimer));

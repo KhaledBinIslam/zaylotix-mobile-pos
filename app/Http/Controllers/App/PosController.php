@@ -188,11 +188,30 @@ class PosController extends Controller
      * `makeHidden` only affects array/JSON serialization, never PHP-side
      * access, so every other use of `$product->cost` elsewhere is untouched.
      */
+    /**
+     * Columns the POS screen never reads, kept out of the payload.
+     *
+     * This page ships the whole catalogue and re-fetches it on a timer,
+     * so every byte is paid for again and again: measured at Baby Park,
+     * 311 KB a tick, of which 229 KB is 780 variant rows at ~300 bytes
+     * each — a third of that being timestamps and foreign keys nothing
+     * on screen looks at. Khaled: "SITE SLOW MARTECHE".
+     *
+     * Grep-confirmed unused by Pos/Index.vue and Clothing/Pos.vue before
+     * removing each one. `reorder_point` IS read (the low-stock badge)
+     * and stays; the only `created_at` either page touches belongs to a
+     * held cart, not a product.
+     *
+     * makeHidden only affects serialization, never PHP-side access, so
+     * nothing server-side changes behaviour.
+     */
+    private const UNUSED_BY_POS = ['shop_id', 'photo_path', 'deleted_at', 'updated_at', 'created_at'];
+
     private static function hideCost($products)
     {
         return $products->each(function ($p) {
-            $p->makeHidden('cost');
-            $p->variants?->each(fn ($v) => $v->makeHidden('cost'));
+            $p->makeHidden(array_merge(['cost'], self::UNUSED_BY_POS));
+            $p->variants?->each(fn ($v) => $v->makeHidden(array_merge(['cost'], self::UNUSED_BY_POS)));
         });
     }
 
