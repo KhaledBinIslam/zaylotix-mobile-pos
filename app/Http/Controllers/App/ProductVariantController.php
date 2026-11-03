@@ -103,7 +103,7 @@ class ProductVariantController extends Controller
         });
 
         $this->mintColorBarcodes($shop, $product, [$data['color'] ?? null]);
-        $this->shareWithTheBusiness($shop);
+        $this->shareWithTheBusiness($shop, $product);
 
         return back()->with('success', 'ভ্যারিয়েন্ট যোগ হয়েছে।');
     }
@@ -229,7 +229,7 @@ class ProductVariantController extends Controller
         });
 
         $this->mintColorBarcodes($shop, $product, array_column($toCreate, 'color'));
-        $this->shareWithTheBusiness($shop);
+        $this->shareWithTheBusiness($shop, $product);
 
         return back()->with('success', "{$created}টা ভ্যারিয়েন্ট যোগ হয়েছে।");
     }
@@ -252,10 +252,13 @@ class ProductVariantController extends Controller
      * a shop with no branches or without shared_catalog, which is every
      * other shop in the system.
      */
-    private function shareWithTheBusiness(?Shop $shop): void
+    private function shareWithTheBusiness(?Shop $shop, Product $product): void
     {
         if ($shop) {
-            CatalogSync::syncBusiness($shop);
+            // this product only — syncBusiness() walks the entire
+            // catalogue of every shop, which is minutes of work to carry
+            // one new size across
+            CatalogSync::syncOneProduct($shop, $product);
         }
     }
 

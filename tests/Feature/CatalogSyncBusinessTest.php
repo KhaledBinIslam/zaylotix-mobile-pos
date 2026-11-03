@@ -106,6 +106,35 @@ class CatalogSyncBusinessTest extends TestCase
         }
     }
 
+    public function test_saving_one_article_does_not_walk_the_whole_catalogue(): void
+    {
+        [$shop, $branch] = $this->aChain();
+        $this->grantFeature($shop, 'article_series');
+
+        // a catalogue the size Baby Park's had grown to when adding an
+        // article sat on "Adding…" for fifteen minutes
+        for ($i = 1; $i <= 40; $i++) {
+            $p = Product::create(['shop_id' => $shop->id, 'name' => "OLD-{$i}", 'cost' => 10, 'price' => 20, 'stock' => 2]);
+            ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $p->id, 'size' => '36', 'color' => 'RED', 'stock' => 2]);
+        }
+        CatalogSync::syncToBranch($shop, $branch);
+
+        $queries = 0;
+        \Illuminate\Support\Facades\DB::listen(function () use (&$queries) { $queries++; });
+
+        $fresh = Product::create(['shop_id' => $shop->id, 'name' => 'NEW-1', 'cost' => 10, 'price' => 20, 'stock' => 1]);
+        ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $fresh->id, 'size' => '36', 'color' => 'RED', 'stock' => 1]);
+        CatalogSync::syncOneProduct($shop, $fresh);
+
+        // the branch gets it
+        $this->assertSame(41, Product::withoutGlobalScopes()->where('shop_id', $branch->id)->whereNull('deleted_at')->count());
+        $this->assertNotNull(Product::withoutGlobalScopes()->where('shop_id', $branch->id)->where('name', 'NEW-1')->first());
+
+        // and the cost does not scale with the catalogue: syncBusiness()
+        // on this same data runs well into four figures of queries
+        $this->assertLessThan(60, $queries, "one article's sync should not walk every product");
+    }
+
     public function test_a_shop_with_no_shared_catalog_is_left_alone(): void
     {
         [$shop] = $this->createShopWithOwner();
