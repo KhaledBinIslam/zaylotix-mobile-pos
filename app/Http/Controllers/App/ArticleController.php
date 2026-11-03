@@ -105,7 +105,11 @@ class ArticleController extends Controller
          * log after a press, the request never arrived and the problem
          * is in front of Laravel, not inside it.
          */
-        \Illuminate\Support\Facades\Log::info('article.store reached', [
+        // Log::error, not info: this server runs LOG_LEVEL=error, so an
+        // info line is thrown away silently — the diagnostic would have
+        // recorded nothing and looked like proof the request never
+        // arrived. Not an error; a marker loud enough to survive.
+        \Illuminate\Support\Facades\Log::error('article.store reached (diagnostic)', [
             'user' => \Illuminate\Support\Facades\Auth::guard('web')->id(),
             'shop' => Tenancy::id(),
             'variants' => is_array($request->input('variants')) ? count($request->input('variants')) : 'none',
