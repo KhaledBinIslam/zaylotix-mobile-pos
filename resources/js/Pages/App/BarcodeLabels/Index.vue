@@ -110,6 +110,32 @@ function selectEverythingShown() {
     });
 }
 
+/**
+ * The rows whose stickers have never been printed.
+ *
+ * Khaled, after a delivery: "kongular barcode print korchi kongular
+ * koreni". This is the answer to that in one press — finish what is
+ * left instead of re-printing whole articles to be sure.
+ */
+const neverPrintedRows = computed(() => filtered.value.flatMap((p) => printableRowsOf(p).map((r) => {
+    const v = (p.variants || []).find((x) => 'v:' + x.id === r.key);
+    const cb = (p.color_barcodes || []).find((x) => 'c:' + x.id === r.key);
+    const barcode = v?.barcode ?? cb?.barcode ?? (r.key.startsWith('p:') ? p.barcode : null);
+
+    return { ...r, barcode };
+}).filter((r) => r.barcode && !printedInfo(r.barcode))));
+
+function selectNeverPrinted() {
+    const rows = neverPrintedRows.value;
+    if (!rows.length) return;
+
+    const allSelected = rows.every((r) => isSelected(r.key));
+    rows.forEach((r) => {
+        if (allSelected) delete selected.value[r.key];
+        else selected.value[r.key] = r.copies;
+    });
+}
+
 /** Stock across every size of a product, for the header row of a variant product. */
 function totalStock(p) {
     return (p.variants || []).reduce((sum, v) => sum + Number(v.stock || 0), 0);
@@ -521,6 +547,7 @@ async function printViaBluetooth() {
         await navigator.share({ ...sheet, title: 'Zaylotix লেবেল প্রিন্ট' });
         say(t('bc.logShared'));
         handedOver = true;
+        recordPrinted();
     } catch (e) {
         // AbortError is the native sheet being dismissed — but it is ALSO
         // what Chrome throws when the tap's permission has expired, which
@@ -577,7 +604,55 @@ function buildAndPreview() {
     printing.value = true;
 }
 
+/**
+ * Tells the server what just went to a printer.
+ *
+ * "Sent" is the honest claim — paper can jam — so this fires when the
+ * browser's print dialog opens or the sheet is handed to the helper
+ * app, not on a confirmation that never comes back. Keyed on the
+ * barcode, which is identical across the shops of one business, so a
+ * sticker printed at Baby Park counts at Liberty too.
+ */
+function recordPrinted() {
+    const rows = [];
+    for (const p of props.products) {
+        const productCopies = selected.value['p:' + p.id];
+        if (productCopies && p.barcode) rows.push({ barcode: p.barcode, copies: productCopies, product_id: p.id });
+
+        for (const v of p.variants || []) {
+            const copies = selected.value['v:' + v.id];
+            if (copies && v.barcode) rows.push({ barcode: v.barcode, copies, product_id: p.id, product_variant_id: v.id });
+        }
+        for (const cb of p.color_barcodes || []) {
+            const copies = selected.value['c:' + cb.id];
+            if (copies && cb.barcode) rows.push({ barcode: cb.barcode, copies, product_id: p.id, product_color_barcode_id: cb.id });
+        }
+    }
+    if (!rows.length) return;
+
+    // preserveState: the picker must not reset under the owner's hands
+    // mid-print; the marks refresh on the next visit
+    router.post(route('app.barcodeLabels.printed'), { rows }, {
+        preserveState: true, preserveScroll: true, only: ['printed'],
+    });
+}
+
+/** Has this row's sticker been printed before, and when last? */
+function printedInfo(barcode) {
+    return barcode ? (props.printed?.[barcode] ?? null) : null;
+}
+
+function printedLabel(barcode) {
+    const info = printedInfo(barcode);
+    if (!info) return '';
+    const when = new Date(info.last.replace(' ', 'T'));
+    const day = Number.isNaN(when.getTime()) ? '' : when.toLocaleDateString('bn-BD', { day: 'numeric', month: 'short' });
+
+    return t('bc.printedOn', { n: info.copies, date: day });
+}
+
 function doPrint() {
+    recordPrinted();
     window.print();
 }
 
@@ -626,6 +701,12 @@ const printCss = computed(() => {
             <button class="btn sm ghost" style="width:auto;padding:6px 10px" @click="selectEverythingShown">
                 {{ t('bc.selectEverythingShown', { n: filtered.length }) }}
             </button>
+            <button
+                v-if="neverPrintedRows.length" class="btn sm ghost" style="width:auto;padding:6px 10px"
+                @click="selectNeverPrinted"
+            >
+                {{ t('bc.selectNeverPrinted', { n: neverPrintedRows.length }) }}
+            </button>
             <button v-if="totalCopies" class="btn sm ghost" style="width:auto;padding:6px 10px" @click="selected = {}">
                 {{ t('bc.clearSelection') }}
             </button>
@@ -668,6 +749,7 @@ const printCss = computed(() => {
                     <div class="mid">
                         <b>{{ cb.color }}</b>
                         <span>{{ cb.barcode }} • {{ money(p.price) }}</span>
+                        <span :style="'color:' + (printedInfo(cb.barcode) ? 'var(--green)' : 'var(--gold2)')">{{ printedInfo(cb.barcode) ? printedLabel(cb.barcode) : t('bc.neverPrinted') }}</span>
                         <span :style="'color:' + (Number(cb.stock) > 0 ? 'var(--mut)' : 'var(--rose)')">{{ t('bc.inStock', { n: cb.stock ?? 0 }) }}</span>
                     </div>
                     <div class="end" @click.stop>
@@ -683,6 +765,7 @@ const printCss = computed(() => {
                     <div class="mid">
                         <b>{{ variantLabel(v) }}</b>
                         <span v-if="v.barcode">{{ v.barcode }} • {{ money(v.price ?? p.price) }}</span>
+                        <span v-if="v.barcode" :style="'color:' + (printedInfo(v.barcode) ? 'var(--green)' : 'var(--gold2)')">{{ printedInfo(v.barcode) ? printedLabel(v.barcode) : t('bc.neverPrinted') }}</span>
                         <span v-else style="color:var(--rose)">{{ t('bc.noBarcode') }}</span>
                         <!-- printing a sticker per pair means the count he
                              wants is almost always this number, so it goes

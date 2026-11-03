@@ -1,5 +1,6 @@
 <script setup>
 import { Head, useForm, Link } from '@inertiajs/vue3';
+import { ref } from 'vue';
 import ZaylotixLogo from '@/Components/ZaylotixLogo.vue';
 import Spinner from '@/Components/Spinner.vue';
 import { useI18n } from '@/composables/useI18n';
@@ -7,6 +8,8 @@ import { useI18n } from '@/composables/useI18n';
 defineProps({ subscriptionExpired: Boolean });
 
 const { t } = useI18n();
+/** Off by default — someone can be standing at the counter. */
+const showPassword = ref(false);
 
 const form = useForm({
     login: '',
@@ -44,7 +47,22 @@ function submit() {
                     </div>
                     <div class="field">
                         <label>{{ t('login.passwordLabel') }}</label>
-                        <input v-model="form.password" type="password" autocomplete="current-password">
+                        <!-- Khaled: a shopkeeper typing a password on a
+                             phone keyboard cannot tell a typo from a
+                             wrong password, and gets locked out guessing
+                             which it was. -->
+                        <div style="position:relative">
+                            <input
+                                v-model="form.password" :type="showPassword ? 'text' : 'password'"
+                                autocomplete="current-password" style="padding-right:46px"
+                            >
+                            <button
+                                type="button"
+                                :aria-label="t(showPassword ? 'login.hidePassword' : 'login.showPassword')"
+                                style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;font-size:18px;line-height:1;padding:6px;cursor:pointer"
+                                @click="showPassword = !showPassword"
+                            >{{ showPassword ? '🙈' : '👁️' }}</button>
+                        </div>
                     </div>
                     <div v-if="form.errors.login" style="color:var(--rose);font-size:12.5px;margin-bottom:10px">{{ form.errors.login }}</div>
 
