@@ -1,5 +1,5 @@
 <script setup>
-import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { encodeCost } from '@/support/costCode';
@@ -248,6 +248,31 @@ const SAVE_DEADLINE_MS = 45000;
 const saveStalled = ref('');
 let cancelSave = null;
 let saveWatchdog = null;
+
+/*
+ * What the server actually answered.
+ *
+ * Inertia only routes 422s into form.errors. Anything else — a 419 with
+ * an expired token, a 403 from a security module, a 500, a dropped
+ * connection — goes to its own error modal or nowhere at all, and the
+ * button is simply left as it was. Khaled pressed save for half an hour
+ * while the server recorded no article and no error, so SOMETHING was
+ * answering and nothing was saying what.
+ *
+ * These two listeners put the status on screen. They do not fix
+ * anything; they end the guessing.
+ */
+onMounted(() => {
+    router.on('invalid', (event) => {
+        const status = event.detail?.response?.status;
+        saveStalled.value = `সার্ভার সাড়া দিয়েছে কোড ${status ?? '?'} দিয়ে — এই লেখাটার ছবি পাঠান।`;
+        event.preventDefault(); // our message instead of Inertia's blank modal
+    });
+
+    router.on('exception', (event) => {
+        saveStalled.value = 'সংযোগ বিচ্ছিন্ন: '+(event.detail?.exception?.message ?? 'কারণ জানা যায়নি')+' — এই লেখাটার ছবি পাঠান।';
+    });
+});
 
 function save() {
     justSaved.value = null;
