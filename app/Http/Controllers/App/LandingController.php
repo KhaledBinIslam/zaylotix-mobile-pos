@@ -4,8 +4,9 @@ namespace App\Http\Controllers\App;
 
 use App\Http\Controllers\Controller;
 use App\Models\SiteSetting;
-use Inertia\Inertia;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\File;
+use Inertia\Inertia;
 
 /**
  * The public "/" page for a guest — a proper intro (what Zaylotix is, what
@@ -18,6 +19,28 @@ use Illuminate\Support\Facades\File;
  */
 class LandingController extends Controller
 {
+    /**
+     * The site root.
+     *
+     * Lives here rather than as a closure in routes/web.php because a
+     * single closure route makes `route:cache` refuse the whole file —
+     * and without that cache Laravel rebuilds the entire route table on
+     * every request. Measured on production: 380ms of server time for a
+     * plain login page, with bootstrap/cache holding no config or route
+     * cache at all.
+     */
+    public function root()
+    {
+        if (Auth::guard('web')->check()) {
+            return redirect()->route('app.home');
+        }
+        if (Auth::guard('admin')->check()) {
+            return redirect()->route('admin.dashboard');
+        }
+
+        return $this->index();
+    }
+
     public function index()
     {
         return Inertia::render('App/Landing/Index', [

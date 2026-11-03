@@ -25,7 +25,10 @@ class SeedGuard
 
     public static function password(string $envKey, string $localDefault): string
     {
-        $value = env($envKey);
+        // config first, env as the fallback: env() returns null once
+        // `config:cache` has run, which would make every seeder refuse
+        // with "not set" however carefully the .env was filled in
+        $value = config('seeding.'.strtolower($envKey)) ?? env($envKey);
         $isProduction = app()->environment('production');
 
         if ($value === null || $value === '') {

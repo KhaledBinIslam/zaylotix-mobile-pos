@@ -15,6 +15,7 @@
  * product rather than silently prefilling a duplicate.
  */
 import { ref } from 'vue';
+import { scannerFormats, scannerOptions } from '@/support/scannerConfig';
 import Sheet from './Sheet.vue';
 import { useI18n } from '@/composables/useI18n';
 import { useToast } from '@/composables/useToast';
@@ -38,11 +39,15 @@ function close() {
 async function startBarcodeScan() {
     mode.value = 'barcode';
     try {
-        const { Html5Qrcode } = await import('html5-qrcode');
-        html5Qrcode = new Html5Qrcode('smart-scan-reader', { verbose: false });
+        const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
+
+        html5Qrcode = new Html5Qrcode('smart-scan-reader', {
+            verbose: false,
+            formatsToSupport: scannerFormats(Html5QrcodeSupportedFormats),
+        });
         await html5Qrcode.start(
             { facingMode: 'environment' },
-            { fps: 12, qrbox: scanBoxSize, videoConstraints: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } },
+            scannerOptions(scanBoxSize),
             async (decodedText) => {
                 if (navigator.vibrate) navigator.vibrate(40);
                 toast('✅ ' + t('pos.scannedCode') + ': ' + decodedText);

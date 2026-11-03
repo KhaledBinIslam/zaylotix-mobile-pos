@@ -1,6 +1,7 @@
 <script setup>
 import { Head, router, usePage } from '@inertiajs/vue3';
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { scannerFormats, scannerOptions } from '@/support/scannerConfig';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import ColorSizePicker from '@/Components/ColorSizePicker.vue';
@@ -1317,11 +1318,14 @@ async function doOpenScanner() {
     scanHint.value = t('pos.scanHintDefault');
 
     try {
-        const { Html5Qrcode } = await import('html5-qrcode');
-        html5Qrcode = new Html5Qrcode('reader', { verbose: false });
+        const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
+        html5Qrcode = new Html5Qrcode('reader', {
+            verbose: false,
+            formatsToSupport: scannerFormats(Html5QrcodeSupportedFormats),
+        });
         await html5Qrcode.start(
             { facingMode: 'environment' },
-            { fps: 12, qrbox: scanBoxSize, videoConstraints: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } },
+            scannerOptions(scanBoxSize),
             onScanSuccess,
             () => {},
         );

@@ -102,16 +102,10 @@ use Illuminate\Support\Facades\Route;
  * — as the very first thing anyone saw), now gets the public intro/landing
  * page instead. See LandingController.
  */
-Route::get('/', function () {
-    if (Auth::guard('web')->check()) {
-        return redirect()->route('app.home');
-    }
-    if (Auth::guard('admin')->check()) {
-        return redirect()->route('admin.dashboard');
-    }
-
-    return app(LandingController::class)->index();
-});
+// A controller action, not a closure: one closure route makes
+// `route:cache` refuse the entire file, and without that cache Laravel
+// rebuilds the whole route table on every single request.
+Route::get('/', [LandingController::class, 'root']);
 
 Route::middleware('guest')->group(function () {
     Route::get('login', [LoginController::class, 'create'])->name('login');
