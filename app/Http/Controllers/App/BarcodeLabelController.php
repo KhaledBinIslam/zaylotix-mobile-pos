@@ -14,9 +14,13 @@ use Inertia\Inertia;
 class BarcodeLabelController extends Controller
 {
     /** Product picker for printing barcode labels (shop name, optionally regular/discount price — see priceMode in BarcodeLabels/Index.vue) on a barcode printer. */
-    public function index()
+    public function index(Request $request)
     {
         $shop = Tenancy::shop();
+        // Stock's 🏷️ button links straight here for one article, so the
+        // page opens filtered to it with its rows already ticked — the
+        // only thing left is to press print
+        $openFor = $request->integer('product') ?: null;
         // Once a shop has turned "বারকোডে সাইজও যোগ করুন" on, a scan must
         // always resolve straight to one exact size+color — never leave the
         // ambiguous "one sticker per color" choice sitting next to it, or a
@@ -82,6 +86,7 @@ class BarcodeLabelController extends Controller
             // rows already have their stickers, keyed on the barcode so
             // a sticker printed at one shop counts at the other too
             'printed' => LabelPrint::summaryFor(Tenancy::businessShopIds($shop?->id)),
+            'openFor' => $openFor,
         ]);
     }
 

@@ -1633,6 +1633,7 @@ export const translations = {
     'stock.startingStock': { bn: 'শুরুর স্টক', en: 'Starting stock' },
     'stock.variantPriceOptional': { bn: 'দাম (ঐচ্ছিক)', en: 'Price (optional)' },
     'stock.variantCostOptional': { bn: 'ক্রয় মূল্য (ঐচ্ছিক)', en: 'Buying price (optional)' },
+    'stock.printLabels': { bn: 'এই আর্টিকেলের স্টিকার ছাপুন', en: 'Print this article\'s stickers' },
     'stock.variantBarcodeAutoHint': { bn: 'বারকোড — খালি রাখলে নিজে থেকে তৈরি হবে', en: 'Barcode — left blank, one is generated' },
     'stock.gridPriceHint': { bn: 'ক্রয় ও বিক্রয় মূল্য (খালি রাখলে আর্টিকেলের নিজের দামই চলবে):', en: 'Buying and selling price (blank = the article\'s own):' },
     'stock.addVariant': { bn: '+ ভ্যারিয়েন্ট যোগ', en: '+ Add variant' },

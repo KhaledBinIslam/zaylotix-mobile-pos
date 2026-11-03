@@ -1,6 +1,6 @@
 <script setup>
 import { Head, Link, router } from '@inertiajs/vue3';
-import { ref, computed, nextTick, watch } from 'vue';
+import { ref, computed, nextTick, onMounted, watch } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import BarcodeLabelCard from '@/Components/BarcodeLabelCard.vue';
 import { useI18n } from '@/composables/useI18n';
@@ -18,6 +18,9 @@ const props = defineProps({
     // barcode -> { last, copies }: which stickers have already been
     // printed, so a delivery can be finished rather than re-done
     printed: { type: Object, default: () => ({}) },
+    // arriving from Stock's 🏷️ button: open on this article alone,
+    // already ticked
+    openFor: { type: Number, default: null },
 });
 const { t } = useI18n();
 const { toast } = useToast();
@@ -31,6 +34,23 @@ const sizeMm = computed(() => labelSizeMm(settings.value));
 const showBluetoothPrint = computed(() => settings.value.print_mode === 'thermal' && canShareLabelFiles());
 
 const q = ref(new URLSearchParams(window.location.search).get('q') || '');
+
+/*
+ * Opened from Stock's 🏷️ button: show that article alone and tick
+ * everything it prints, so the owner lands one press from paper.
+ *
+ * Deliberately not auto-printing — paper gets used, and the copies are
+ * still his to adjust.
+ */
+onMounted(() => {
+    if (!props.openFor) return;
+
+    const product = props.products.find((p) => p.id === props.openFor);
+    if (!product) return;
+
+    q.value = product.name;
+    printableRowsOf(product).forEach((r) => { selected.value[r.key] = r.copies; });
+});
 const selected = ref({}); // { key: copies }
 
 function variantLabel(v) {
@@ -749,8 +769,13 @@ const printCss = computed(() => {
                     <div class="mid">
                         <b>{{ cb.color }}</b>
                         <span>{{ cb.barcode }} • {{ money(p.price) }}</span>
-                        <span :style="'color:' + (printedInfo(cb.barcode) ? 'var(--green)' : 'var(--gold2)')">{{ printedInfo(cb.barcode) ? printedLabel(cb.barcode) : t('bc.neverPrinted') }}</span>
-                        <span :style="'color:' + (Number(cb.stock) > 0 ? 'var(--mut)' : 'var(--rose)')">{{ t('bc.inStock', { n: cb.stock ?? 0 }) }}</span>
+                        <!-- on the stock line, not a line of its own: a
+                             fourth line overflowed the row and printed
+                             over the one above it -->
+                        <span>
+                            <span :style="'color:' + (Number(cb.stock) > 0 ? 'var(--mut)' : 'var(--rose)')">{{ t('bc.inStock', { n: cb.stock ?? 0 }) }}</span>
+                            <span :style="'color:' + (printedInfo(cb.barcode) ? 'var(--green)' : 'var(--gold2)')"> • {{ printedInfo(cb.barcode) ? printedLabel(cb.barcode) : t('bc.neverPrinted') }}</span>
+                        </span>
                     </div>
                     <div class="end" @click.stop>
                         <div v-if="isSelected('c:' + cb.id)" class="copies">
@@ -765,12 +790,14 @@ const printCss = computed(() => {
                     <div class="mid">
                         <b>{{ variantLabel(v) }}</b>
                         <span v-if="v.barcode">{{ v.barcode }} • {{ money(v.price ?? p.price) }}</span>
-                        <span v-if="v.barcode" :style="'color:' + (printedInfo(v.barcode) ? 'var(--green)' : 'var(--gold2)')">{{ printedInfo(v.barcode) ? printedLabel(v.barcode) : t('bc.neverPrinted') }}</span>
                         <span v-else style="color:var(--rose)">{{ t('bc.noBarcode') }}</span>
                         <!-- printing a sticker per pair means the count he
                              wants is almost always this number, so it goes
                              on every row rather than only in Stock -->
-                        <span :style="'color:' + (Number(v.stock) > 0 ? 'var(--mut)' : 'var(--rose)')">{{ t('bc.inStock', { n: v.stock ?? 0 }) }}</span>
+                        <span>
+                            <span :style="'color:' + (Number(v.stock) > 0 ? 'var(--mut)' : 'var(--rose)')">{{ t('bc.inStock', { n: v.stock ?? 0 }) }}</span>
+                            <span v-if="v.barcode" :style="'color:' + (printedInfo(v.barcode) ? 'var(--green)' : 'var(--gold2)')"> • {{ printedInfo(v.barcode) ? printedLabel(v.barcode) : t('bc.neverPrinted') }}</span>
+                        </span>
                     </div>
                     <div class="end" @click.stop>
                         <button v-if="!v.barcode" class="btn sm ghost" style="width:auto;padding:6px 10px" @click="generateBarcode(v)">{{ t('bc.generateBarcode') }}</button>

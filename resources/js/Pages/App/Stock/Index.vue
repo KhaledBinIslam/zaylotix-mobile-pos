@@ -11,6 +11,7 @@ import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts';
 import { usePollingReload } from '@/composables/usePollingReload';
 import { useToast } from '@/composables/useToast';
 import { colorGroups } from '@/support/productDisplay';
+import { usePermissions } from '@/composables/usePermissions';
 
 const props = defineProps({
     products: Object, categories: Array, units: Array, stats: Object, q: String, categoryId: [Number, String],
@@ -24,6 +25,7 @@ const props = defineProps({
 });
 
 const page = usePage();
+const { hasPerm } = usePermissions();
 const features = computed(() => page.props.features || []);
 const hasUnitConversion = computed(() => features.value.includes('unit_conversion'));
 const hasLowStockAlerts = computed(() => features.value.includes('low_stock_alerts'));
@@ -676,6 +678,17 @@ useKeyboardShortcuts({
                     {{ Number(p.stock) > 0 ? t('stock.markSoldOut') : t('stock.markAvailable') }}
                 </button>
                 <button v-else-if="!p.variants?.length && p.stock_mode !== 'untracked'" class="btn sm ghost" style="margin-top:6px" @click.stop="openStockIn(p)">{{ t('stock.stockIn') }}</button>
+                <!-- Khaled: "stock e ekta kore barcode button dite jeta
+                     te click korle oi serial barcode lebel page e nia
+                     jabe jekhan tekhe print dibe" — straight from the
+                     article to its own stickers, already ticked, so the
+                     only thing left is to press print. -->
+                <Link
+                    v-if="hasPerm('barcode_labels') && features.includes('barcode_printing')"
+                    :href="route('app.barcodeLabels.index', { product: p.id })"
+                    class="btn sm ghost" style="margin-top:6px;text-decoration:none" :title="t('stock.printLabels')"
+                    @click.stop
+                >🏷️</Link>
             </div>
         </div>
         <div v-if="!filtered.length" class="empty"><div class="big">📦</div>{{ isRestaurant ? t('stock.noProductsRestaurant') : t('stock.noProducts') }}</div>
