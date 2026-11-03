@@ -233,8 +233,32 @@ watch(() => ({ ...form.photos }), (photos, oldPhotos) => {
 const errorList = computed(() => Object.values(form.errors).filter(Boolean));
 const errorBox = ref(null);
 
+/*
+ * A save that never comes back used to leave the button disabled,
+ * reading "যোগ হচ্ছে..." for good — pressing it did nothing, and
+ * nothing reached the server either. Measured on production: no product
+ * created and no error logged for half an hour while Khaled kept
+ * pressing. A dropped connection on the shop's tablet is enough to do
+ * it, and only a full page reload cleared it.
+ *
+ * So the request is given a deadline. Past it the form is released and
+ * says what happened, rather than sitting there looking busy.
+ */
+const SAVE_DEADLINE_MS = 45000;
+const saveStalled = ref('');
+let cancelSave = null;
+let saveWatchdog = null;
+
 function save() {
     justSaved.value = null;
+    saveStalled.value = '';
+
+    if (!navigator.onLine) {
+        // say it before spending 45 seconds proving it
+        saveStalled.value = 'ইন্টারনেট সংযোগ নেই — সংযোগ ফিরলে আবার চাপুন। লেখা কিছু হারাবে না।';
+
+        return;
+    }
     form.transform((data) => ({
         ...data,
         category_id: data.category_id || null,
@@ -246,6 +270,16 @@ function save() {
         variants: (data.variants || []).map((v) => ({ ...v, qty: Number(v.qty) || 0 })),
     })).post(route('app.articles.store'), {
         forceFormData: true,
+        onCancelToken: (token) => { cancelSave = token.cancel; },
+        onStart: () => {
+            clearTimeout(saveWatchdog);
+            saveWatchdog = setTimeout(() => {
+                if (!form.processing) return;
+                cancelSave?.(); // releases form.processing, so the button works again
+                saveStalled.value = 'সার্ভার সাড়া দিচ্ছে না — ইন্টারনেট দেখে আবার "আর্টিকেল যোগ করুন" চাপুন। লেখা কিছু হারায়নি।';
+            }, SAVE_DEADLINE_MS);
+        },
+        onFinish: () => clearTimeout(saveWatchdog),
         onSuccess: () => {
             justSaved.value = { barcode: page.props.flash?.productBarcode };
             // carries manufacturer + category + colors/sizes into the next entry; clears everything per-article
@@ -455,6 +489,10 @@ function save() {
                 <div style="margin-top:8px;font-size:13px;color:var(--mut)">মোট স্টক: <strong>{{ totalStock }}</strong></div>
             </div>
             <div v-if="form.errors.variants" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.variants }}</div>
+        </div>
+
+        <div v-if="saveStalled" class="card" style="border:1px solid var(--rose);margin-bottom:12px;color:var(--rose)">
+            <b>⚠️ {{ saveStalled }}</b>
         </div>
 
         <div v-if="errorList.length" ref="errorBox" class="card" style="border:1px solid var(--rose);margin-bottom:12px">
