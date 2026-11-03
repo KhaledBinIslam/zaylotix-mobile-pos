@@ -303,6 +303,29 @@ const now = ref(Date.now());
 let clockTimer = null;
 onMounted(() => { clockTimer = setInterval(() => { now.value = Date.now(); }, 30000); });
 onBeforeUnmount(() => clearInterval(clockTimer));
+
+/*
+ * An expired login, said out loud, everywhere.
+ *
+ * Sessions last 12 hours. A shop opens the app in the morning and
+ * leaves it open; the page never navigates, so it never gets redirected
+ * to the login screen and everything LOOKS normal — while every save
+ * comes back 419 and Inertia routes a 419 nowhere at all. Baby Park's
+ * owner account spent an afternoon pressing "আর্টিকেল যোগ করুন" with
+ * no article created and no error logged anywhere.
+ *
+ * The article form handles its own; this is every other screen — stock
+ * edits, a sale, a stock-in — which would fail just as quietly.
+ */
+const sessionExpired = ref(false);
+router.on('invalid', (event) => {
+    if (event.detail?.response?.status !== 419) {
+        return; // anything else keeps Inertia's own handling
+    }
+
+    event.preventDefault();
+    sessionExpired.value = true;
+});
 const workPeriodElapsed = computed(() => {
     if (!activeWorkPeriod.value) return '';
     const mins = Math.max(0, Math.floor((now.value - new Date(activeWorkPeriod.value.opened_at).getTime()) / 60000));
@@ -963,6 +986,27 @@ const mobileNavSlots = computed(() => {
         </div>
         <button class="btn" :disabled="closeShiftForm.processing" @click="submitCloseShift">{{ closeShiftForm.processing ? '...' : t('workPeriod.endButton') }}</button>
     </Sheet>
+
+    <!-- An expired login used to be completely silent: saves stopped
+         working and the screen looked fine. Not dismissible, because
+         nothing on this page can be saved until they log in again. -->
+    <!-- a plain overlay rather than <Sheet>: this one must not be
+         dismissible (nothing can be saved until they log in again), and
+         Sheet is shared by every screen in the app -->
+    <div
+        v-if="sessionExpired"
+        style="position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:20px"
+    >
+        <div class="card" style="max-width:360px;width:100%">
+            <b style="color:var(--rose);font-size:16px">🔒 {{ t('session.expiredTitle') }}</b>
+            <div style="font-size:14px;line-height:1.7;color:var(--mut);margin-top:8px">
+                {{ t('session.expiredBody') }}
+            </div>
+            <a href="/login" class="btn" style="margin-top:14px;display:block;text-align:center;text-decoration:none">
+                {{ t('session.expiredAction') }}
+            </a>
+        </div>
+    </div>
 
     <Toast />
 </template>
