@@ -244,6 +244,9 @@ const errorBox = ref(null);
  * So the request is given a deadline. Past it the form is released and
  * says what happened, rather than sitting there looking busy.
  */
+/** Bumped on every release that touches this page — see the line under the save button. */
+const BUILD_MARK = 'A7';
+
 const SAVE_DEADLINE_MS = 45000;
 const saveStalled = ref('');
 const sessionExpired = ref(false);
@@ -292,6 +295,20 @@ onMounted(() => {
         saveStalled.value = 'সংযোগ বিচ্ছিন্ন: '+(event.detail?.exception?.message ?? 'কারণ জানা যায়নি')+' — এই লেখাটার ছবি পাঠান।';
     });
 });
+
+/**
+ * An escape hatch the owner can reach.
+ *
+ * Whatever leaves the form stuck — a request that never settles, a
+ * response nothing handles — the shop must never be left looking at a
+ * dead button with no way out but a reload it may not think to do.
+ */
+function releaseStuckSave() {
+    cancelSave?.();
+    clearTimeout(saveWatchdog);
+    form.processing = false;
+    saveStalled.value = 'ছেড়ে দেওয়া হলো — আবার "আর্টিকেল যোগ করুন" চাপুন। লেখা কিছু হারায়নি।';
+}
 
 function save() {
     justSaved.value = null;
@@ -557,6 +574,19 @@ function save() {
 
         <button type="button" class="btn primary" style="width:100%" :disabled="form.processing" @click="save">
             {{ form.processing ? 'যোগ হচ্ছে...' : 'আর্টিকেল যোগ করুন' }}
+        </button>
+        <!-- A screenshot of this line proves which bundle the device is
+             actually running. Four fixes went out against a save that
+             did nothing, and nobody could tell whether the phone had
+             even received them — the printer app needed exactly the same
+             marker for exactly the same reason. -->
+        <div style="text-align:center;font-size:11px;color:var(--dim);margin-top:6px">বিল্ড {{ BUILD_MARK }}</div>
+        <button
+            v-if="form.processing"
+            type="button" class="btn ghost sm" style="width:100%;margin-top:8px"
+            @click="releaseStuckSave"
+        >
+            আটকে গেছে? এখানে চাপুন
         </button>
 
         <div class="card" style="margin-top:20px;font-size:13px;color:var(--mut);line-height:1.6">

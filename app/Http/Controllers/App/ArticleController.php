@@ -97,6 +97,22 @@ class ArticleController extends Controller
      */
     public function store(Request $request)
     {
+        /*
+         * Temporary, deliberate: four fixes have been aimed at a save
+         * that produces no article and no error, and none of them
+         * helped, because nobody could say whether the request reaches
+         * PHP at all. This line answers that — if it is absent from the
+         * log after a press, the request never arrived and the problem
+         * is in front of Laravel, not inside it.
+         */
+        \Illuminate\Support\Facades\Log::info('article.store reached', [
+            'user' => \Illuminate\Support\Facades\Auth::guard('web')->id(),
+            'shop' => Tenancy::id(),
+            'variants' => is_array($request->input('variants')) ? count($request->input('variants')) : 'none',
+            'category_code' => $request->input('category_code'),
+            'serial' => $request->input('serial'),
+        ]);
+
         try {
             return $this->createArticle($request);
         } catch (\Illuminate\Database\QueryException $e) {
