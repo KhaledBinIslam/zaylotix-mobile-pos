@@ -615,21 +615,15 @@ class ArticleController extends Controller
         $code = strtoupper(trim($data['category_code']));
 
         /*
-         * A category code is unique per shop — it has to be, since it is
-         * what the barcode is built from. Creating a second category on
-         * a code already in use died on the index, and an uncaught
-         * database error gives Inertia nothing to show: the button sat
-         * on "Adding…" for good. That is the fifteen minutes Khaled
-         * reported, not slowness — the save had already failed.
+         * A code shared with another category is allowed on purpose.
          *
-         * Said plainly instead, naming the category holding the code, so
-         * the choice is his: pick that category, or use another code.
+         * Khaled files slippers for women under L because L is what his
+         * shop calls women's — the code names the sub-kind, the category
+         * names the product. ArticleSerial counts by code rather than by
+         * category, so both draw one serial stream and no two articles
+         * can reach the same barcode; the unique index was refusing a
+         * scheme that was never actually unsafe.
          */
-        $taken = ProductCategory::whereRaw('UPPER(TRIM(code)) = ?', [$code])->first();
-        if ($taken) {
-            return back()->withErrors(['category_code' => "কোড \"{$code}\" আগে থেকেই \"{$taken->name}\" ক্যাটাগরিতে ব্যবহার হচ্ছে। উপরের তালিকা থেকে \"{$taken->name}\" বেছে নিন, নয়তো এই আর্টিকেলের জন্য অন্য একটা কোড দিন।"]);
-        }
-
         return ProductCategory::create([
             'name' => $data['new_category_name'],
             'name_en' => $data['new_category_name'],

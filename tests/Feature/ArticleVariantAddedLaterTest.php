@@ -458,26 +458,67 @@ class ArticleVariantAddedLaterTest extends TestCase
         $this->assertEquals(3, $product->stock);
     }
 
-    public function test_a_category_code_already_in_use_is_explained_not_a_dead_button(): void
+    public function test_a_database_refusal_is_a_message_not_a_dead_button(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();
         $this->grantFeature($shop, 'article_series');
-        ProductCategory::create(['shop_id' => $shop->id, 'name' => 'Slippers', 'name_en' => 'Slippers', 'code' => 'CD']);
+        $product = Product::create([
+            'shop_id' => $shop->id, 'name' => 'L-10001', 'name_en' => 'L-10001',
+            'barcode' => 'H-L-10001-SRXZ', 'cost' => 350, 'price' => 500, 'stock' => 0,
+        ]);
+        ProductCategory::create(['shop_id' => $shop->id, 'name' => 'Ladies', 'name_en' => 'Ladies', 'code' => 'L']);
 
-        // a second category on the same code died on the unique index,
-        // and the 500 left the form sitting on "Adding…" for good
+        // an article whose barcode is already held: the insert dies on
+        // the unique index, and an uncaught 500 used to leave the form
+        // on "Adding…" with nothing said
         $this->actingAs($owner, 'web')->post('/app/articles', [
             'client_uuid' => (string) Str::uuid(),
             'manufacturer_code' => 'H',
-            'new_category_name' => 'SLIPERS',
-            'category_code' => 'CD',
+            'category_id' => ProductCategory::withoutGlobalScopes()->where('shop_id', $shop->id)->value('id'),
+            'cost' => 350,
+            'price' => 500,
+            'serial' => 10001,
+            'variants' => [['color' => 'BLACK', 'size' => '36', 'qty' => 1]],
+        ])->assertSessionHasErrors();
+
+        $this->assertSame(1, Product::withoutGlobalScopes()->where('shop_id', $shop->id)->count());
+    }
+
+    public function test_two_categories_may_share_a_code_and_still_get_unique_barcodes(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        ProductCategory::create(['shop_id' => $shop->id, 'name' => 'মেয়েদের জুতা', 'name_en' => 'Ladies', 'code' => 'L']);
+
+        // Khaled files slippers for women under L too: the code names
+        // the sub-kind, the category names the product
+        $this->actingAs($owner, 'web')->post('/app/articles', [
+            'client_uuid' => (string) Str::uuid(),
+            'manufacturer_code' => 'HV',
+            'new_category_name' => 'Slippers',
+            'category_code' => 'L',
             'cost' => 350,
             'price' => 500,
             'variants' => [['color' => 'BLACK', 'size' => '36', 'qty' => 1]],
-        ])->assertSessionHasErrors('category_code');
+        ])->assertSessionHasNoErrors();
 
-        // and nothing was half-created on the way down
-        $this->assertSame(1, ProductCategory::withoutGlobalScopes()->where('shop_id', $shop->id)->count());
-        $this->assertSame(0, Product::withoutGlobalScopes()->where('shop_id', $shop->id)->count());
+        $this->assertSame(2, ProductCategory::withoutGlobalScopes()->where('shop_id', $shop->id)->where('code', 'L')->count());
+
+        // and a second article, filed under the OTHER category on L
+        $ladies = ProductCategory::withoutGlobalScopes()->where('shop_id', $shop->id)->where('name', 'মেয়েদের জুতা')->firstOrFail();
+        $this->actingAs($owner, 'web')->post('/app/articles', [
+            'client_uuid' => (string) Str::uuid(),
+            'manufacturer_code' => 'HV',
+            'category_id' => $ladies->id,
+            'cost' => 350,
+            'price' => 500,
+            'variants' => [['color' => 'BLACK', 'size' => '36', 'qty' => 1]],
+        ])->assertSessionHasNoErrors();
+
+        // one serial stream across both, so the barcodes cannot collide
+        $barcodes = Product::withoutGlobalScopes()->where('shop_id', $shop->id)->pluck('barcode');
+        $this->assertCount(2, $barcodes);
+        $this->assertSame(2, $barcodes->unique()->count(), 'two categories on one code must never produce one barcode');
+        $this->assertSame(['L-10001', 'L-10002'], Product::withoutGlobalScopes()->where('shop_id', $shop->id)->pluck('name')->sort()->values()->all());
     }
 }
