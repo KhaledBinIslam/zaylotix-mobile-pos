@@ -15,11 +15,14 @@
 import { Head, Link } from '@inertiajs/vue3';
 import ZaylotixMark from '@/Components/ZaylotixMark.vue';
 
+// Client-facing: whoever opens this is a shop's own iPhone user, not
+// Khaled. Instructions only — no talk about who should share which link
+// (his feedback: "client jabe, ora porbe, oder jettuk lagbe ettuk").
 const steps = [
-    { icon: '🧭', title: 'Safari-তে খুলুন', detail: 'এই পেজটা iPhone-এর Safari ব্রাউজারে খুলতে হবে। Chrome বা Facebook-এর ভেতরের ব্রাউজার থেকে হবে না — লিংকটা কপি করে Safari-তে পেস্ট করুন।' },
-    { icon: '⬆️', title: 'Share বাটনে চাপ দিন', detail: 'স্ক্রিনের নিচে (বা উপরে) চারকোনা বাক্স থেকে তীর বের হওয়া আইকনটা — ওটাই Share।' },
-    { icon: '➕', title: '"Add to Home Screen" বাছুন', detail: 'তালিকা একটু নিচে নামলে "Add to Home Screen" পাবেন। চাপ দিন, তারপর ডানদিকে উপরে "Add"।' },
-    { icon: '✅', title: 'হয়ে গেল', detail: 'হোম স্ক্রিনে Zaylotix POS-এর আইকন চলে এসেছে — অ্যাপের মতোই আলাদা উইন্ডোতে খুলবে, লগইন মনে রাখবে।' },
+    { icon: '🧭', title: 'পেজটি Safari-তে খুলুন', detail: 'Chrome বা অন্য অ্যাপের ভেতরের ব্রাউজারে এই সুবিধা নেই।' },
+    { icon: '⬆️', title: 'Share আইকনে ট্যাপ করুন', detail: 'স্ক্রিনের নিচে, চারকোনা বাক্স থেকে তীর ওঠা আইকন।' },
+    { icon: '➕', title: '"Add to Home Screen" নির্বাচন করুন', detail: 'তারপর উপরে ডানদিকে "Add" চাপুন।' },
+    { icon: '✅', title: 'ইনস্টল সম্পন্ন', detail: 'হোম স্ক্রিনের Zaylotix POS আইকন থেকে অ্যাপটি ব্যবহার করুন।' },
 ];
 </script>
 
@@ -31,9 +34,9 @@ const steps = [
                 <ZaylotixMark :size="34" />
                 <b style="font-size:17px">Zaylotix POS</b>
             </div>
-            <h1 style="font-size:24px;font-weight:850;margin:14px 0 6px">iPhone-এ অ্যাপ বসান</h1>
+            <h1 style="font-size:24px;font-weight:850;margin:14px 0 6px">iPhone-এ ইনস্টল করুন</h1>
             <p style="color:var(--mut);font-size:13.5px;line-height:1.6;margin-bottom:18px">
-                iPhone-এ আলাদা কিছু ডাউনলোড করতে হয় না — Safari থেকে এক মিনিটে হোম স্ক্রিনে বসিয়ে নিলেই এটা অ্যাপের মতো চলে। নিচের ৪টা ধাপ:
+                চারটি ধাপ, এক মিনিটেরও কম সময়:
             </p>
 
             <div v-for="(s, i) in steps" :key="i" class="card" style="display:flex;gap:14px;align-items:flex-start;margin-bottom:12px">
@@ -44,11 +47,7 @@ const steps = [
                 </div>
             </div>
 
-            <div class="card" style="background:var(--greenSoft);border-color:var(--green);font-size:13px;line-height:1.6;margin-bottom:18px">
-                💡 দোকানের সবাইকে শুধু এই লিংকটা পাঠালেই হবে: <b>pos.zaylotix.com/ios</b>
-            </div>
-
-            <Link :href="route('login')" class="btn" style="text-decoration:none;display:block;text-align:center">লগইন পেজে যান →</Link>
+            <Link :href="route('login')" class="btn" style="text-decoration:none;display:block;text-align:center;margin-top:6px">লগইন করুন →</Link>
         </div>
     </div>
 </template>
