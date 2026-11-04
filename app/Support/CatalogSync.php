@@ -317,11 +317,15 @@ class CatalogSync
                 // code (docs/ARTICLE_SERIES_PLAN.md §2) kept in sync too —
                 // a branch's "Ladies" must carry the SAME article-barcode
                 // category code as the main shop's, or the two shops'
-                // barcodes would silently diverge for the same category
-                $existing->update(['name_en' => $cat->name_en, 'emoji' => $cat->emoji, 'code' => $cat->code]);
+                // barcodes would silently diverge for the same category.
+                // serial_start rides along for the same reason: the band
+                // decides which counter row ArticleSerial reaches, so a
+                // branch on a different band would hand out numbers from
+                // a range the main shop never uses for that category.
+                $existing->update(['name_en' => $cat->name_en, 'emoji' => $cat->emoji, 'code' => $cat->code, 'serial_start' => $cat->serial_start]);
                 $map[$cat->id] = $existing->id;
             } else {
-                $new = ProductCategory::create(['shop_id' => $branch->id, 'name' => $cat->name, 'name_en' => $cat->name_en, 'emoji' => $cat->emoji, 'code' => $cat->code]);
+                $new = ProductCategory::create(['shop_id' => $branch->id, 'name' => $cat->name, 'name_en' => $cat->name_en, 'emoji' => $cat->emoji, 'code' => $cat->code, 'serial_start' => $cat->serial_start]);
                 $map[$cat->id] = $new->id;
             }
         }

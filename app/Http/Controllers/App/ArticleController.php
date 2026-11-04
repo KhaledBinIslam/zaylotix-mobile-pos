@@ -43,7 +43,7 @@ class ArticleController extends Controller
 
         return Inertia::render('App/Articles/Create', [
             'suppliers' => Supplier::orderBy('name')->get(['id', 'name', 'short_code']),
-            'categories' => ProductCategory::orderBy('name')->get(['id', 'name', 'name_en', 'code']),
+            'categories' => ProductCategory::orderBy('name')->get(['id', 'name', 'name_en', 'code', 'serial_start']),
             'units' => Unit::orderBy('name')->get(['id', 'name', 'name_en']),
             'colorCodeMap' => $shop->colorCodeMap(),
             // lets the form show the cost-code segment of the barcode as
@@ -69,19 +69,27 @@ class ArticleController extends Controller
         $data = $request->validate([
             'category_id' => ['nullable', 'integer'],
             'category_code' => ['nullable', 'string', 'max:5'],
+            // the band a not-yet-saved category is being given, so the
+            // preview answers from the range the owner is typing rather
+            // than from whatever the shared code happens to sit at
+            'serial_start' => ['nullable', 'integer', 'min:1', 'max:99999999'],
         ]);
 
         $categoryCode = null;
+        $serialStart = null;
         if (! empty($data['category_id'])) {
-            $categoryCode = ProductCategory::find($data['category_id'])?->code;
+            $category = ProductCategory::find($data['category_id']);
+            $categoryCode = $category?->code;
+            $serialStart = $category?->serial_start;
         }
         $categoryCode ??= ! empty($data['category_code']) ? strtoupper($data['category_code']) : null;
+        $serialStart ??= $data['serial_start'] ?? null;
 
         if (! $categoryCode) {
             return response()->json(['serial' => null]);
         }
 
-        return response()->json(['serial' => ArticleSerial::nextFree($shop, $categoryCode)]);
+        return response()->json(['serial' => ArticleSerial::nextFree($shop, $categoryCode, $serialStart)]);
     }
 
     /**
@@ -115,6 +123,11 @@ class ArticleController extends Controller
             'category_id' => ['nullable', 'integer'],
             'new_category_name' => ['nullable', 'string', 'max:255'],
             'category_code' => ['nullable', 'string', 'max:5'],
+            // Where this category's article numbers begin — slippers from
+            // 90000, ladies from 10000, and so on. Only ever SETS a band
+            // that isn't set yet (see resolveCategory); changing an
+            // existing one is the serial-settings page's job.
+            'serial_start' => ['nullable', 'integer', 'min:1', 'max:99999999'],
             'manufacturer_code' => ['required', 'string', 'max:20'],
             'unit_id' => ['nullable', 'integer'],
             'new_unit_name' => ['nullable', 'string', 'max:50'],
@@ -265,9 +278,9 @@ class ArticleController extends Controller
             // the counter issues the next as it always did.
             $serial = isset($data['serial'])
                 ? (int) $data['serial']
-                : ArticleSerial::next($shop, $category->code);
+                : ArticleSerial::next($shop, $category->code, $category->serial_start);
             if (isset($data['serial'])) {
-                ArticleSerial::bumpFloor($shop, $category->code, $serial + 1);
+                ArticleSerial::bumpFloor($shop, $category->code, $serial + 1, $category->serial_start);
             }
 
             $articleBarcode = ArticleBarcode::buildArticleBarcode($shop, strtoupper($data['manufacturer_code']), $category->code, $serial, $costCode);
@@ -466,6 +479,95 @@ class ArticleController extends Controller
             ->pluck('id')->map('intval')->values()->all();
     }
 
+    /**
+     * Where each category's article numbers begin.
+     *
+     * Khaled reads the kind of shoe off the number itself — slippers
+     * 90000-up, ladies 10000-up, baby 20000-up, pumpi 50000-up, ladies-cat
+     * 30000-up. One screen with every category's range on it, because the
+     * ranges only make sense next to each other: the question he is
+     * actually answering is "which band is still free", and that cannot be
+     * answered one category at a time.
+     */
+    public function serialSettingsEdit()
+    {
+        $shop = Tenancy::shop();
+
+        $categories = ProductCategory::orderBy('name')->get(['id', 'name', 'name_en', 'code', 'serial_start']);
+
+        // What each category's numbers are ACTUALLY doing right now, which
+        // is the only way to tell a band that is working from one that was
+        // typed and never reached. Both come from the same place the entry
+        // form reads, so this page can never disagree with it.
+        $rows = $categories->map(function ($category) use ($shop) {
+            $code = strtoupper(trim((string) $category->code));
+            $used = $code === '' ? ['live' => [], 'freed' => [], 'everLowest' => null] : ArticleSerial::serialsUsed($shop, $code);
+
+            // a shared code pools its names, so count only what sits in
+            // THIS category's own band — otherwise Slippers would report
+            // Ladies' articles as its own
+            $band = $category->serial_start;
+            $inBand = $band === null
+                ? $used['live']
+                : array_values(array_filter($used['live'], fn ($s) => $s >= $band));
+
+            return [
+                'id' => $category->id,
+                'name' => $category->name,
+                'code' => $category->code,
+                'serial_start' => $category->serial_start,
+                'article_count' => count($inBand),
+                'lowest' => $inBand === [] ? null : min($inBand),
+                'highest' => $inBand === [] ? null : max($inBand),
+                'next_free' => $code === '' ? null : ArticleSerial::nextFree($shop, $code, $category->serial_start),
+            ];
+        })->values()->all();
+
+        return Inertia::render('App/Articles/SerialSettings', [
+            'rows' => $rows,
+            'defaultStart' => ArticleSerial::bandOf(null),
+        ]);
+    }
+
+    public function serialSettingsUpdate(Request $request)
+    {
+        $data = $request->validate([
+            'starts' => ['present', 'array'],
+            'starts.*' => ['nullable', 'integer', 'min:1', 'max:99999999'],
+        ]);
+
+        $categories = ProductCategory::whereIn('id', array_keys($data['starts']))->get();
+        $shop = Tenancy::shop();
+
+        foreach ($categories as $category) {
+            $start = $data['starts'][$category->id] ?? null;
+            $category->serial_start = $start !== null && $start !== '' ? (int) $start : null;
+            $category->save();
+
+            /*
+             * A band reached for the first time starts its counter at the
+             * band itself — but the shop may already hold articles up
+             * there (an import, or numbers typed by hand before the band
+             * existed). Without this the next automatic article would be
+             * offered a number a live one already answers to, and the save
+             * would be refused with nothing on screen explaining why.
+             */
+            $code = strtoupper(trim((string) $category->code));
+            if ($code === '' || $category->serial_start === null) {
+                continue;
+            }
+            $inBand = array_filter(
+                ArticleSerial::serialsUsed($shop, $code)['live'],
+                fn ($s) => $s >= $category->serial_start
+            );
+            if ($inBand !== []) {
+                ArticleSerial::bumpFloor($shop, $code, max($inBand) + 1, $category->serial_start);
+            }
+        }
+
+        return back()->with('success', 'সিরিয়াল রেঞ্জ সংরক্ষণ করা হয়েছে।');
+    }
+
     /** docs/ARTICLE_SERIES_PLAN.md §9 — editable রং-কোড list, suggestion-prefilled client-side (see resources/js/support/colorCodeSuggestions.js, the same table as ArticleBarcode::COLOR_CODE_SUGGESTIONS). */
     public function colorCodeSettingsEdit()
     {
@@ -605,6 +707,15 @@ class ArticleController extends Controller
                 $category->save();
             }
 
+            // A band is filled in once and then left alone. Changing it
+            // from here would silently move an established category's
+            // numbering mid-entry; SerialSettings is where it is edited
+            // deliberately, with every category's range on screen at once.
+            if ($category->serial_start === null && ! empty($data['serial_start'])) {
+                $category->serial_start = (int) $data['serial_start'];
+                $category->save();
+            }
+
             return $category;
         }
 
@@ -629,6 +740,10 @@ class ArticleController extends Controller
             'name_en' => $data['new_category_name'],
             'emoji' => '👟',
             'code' => $code,
+            // Khaled's ranges are the point of a new category as often as
+            // the name is — "slipers holei 90000 serial a porbe" — so the
+            // band is set at birth rather than needing a second trip.
+            'serial_start' => ! empty($data['serial_start']) ? (int) $data['serial_start'] : null,
         ]);
     }
 

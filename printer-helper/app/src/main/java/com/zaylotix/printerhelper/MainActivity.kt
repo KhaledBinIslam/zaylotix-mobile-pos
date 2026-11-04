@@ -8,9 +8,9 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.widget.ArrayAdapter
+import android.view.LayoutInflater
 import android.widget.Button
-import android.widget.ListView
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -26,16 +26,23 @@ import androidx.core.content.ContextCompat
 class MainActivity : AppCompatActivity() {
 
     private val bluetoothAdapter: BluetoothAdapter? by lazy { BluetoothAdapter.getDefaultAdapter() }
-    private lateinit var deviceList: ListView
+    private lateinit var deviceList: LinearLayout
     private lateinit var currentPrinterLabel: TextView
     private lateinit var emptyState: TextView
     private lateinit var statusText: TextView
     private var pairedDevices: List<BluetoothDevice> = emptyList()
 
+    /**
+     * CONNECT is what the whole app rests on; SCAN is only so
+     * cancelDiscovery() can run before a connect (see the manifest). A
+     * refused SCAN is therefore not fatal — the list and the printing both
+     * go on working — so only CONNECT decides what this reports.
+     */
     private val permissionLauncher = registerForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
     ) { granted ->
-        if (granted) loadPairedDevices() else statusText.text = getString(R.string.permission_needed)
+        if (granted[Manifest.permission.BLUETOOTH_CONNECT] == true) loadPairedDevices()
+        else statusText.text = getString(R.string.permission_needed)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -85,7 +92,7 @@ class MainActivity : AppCompatActivity() {
         if (hasBluetoothPermission()) {
             loadPairedDevices()
         } else {
-            permissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+            permissionLauncher.launch(arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN))
         }
     }
 
@@ -101,13 +108,33 @@ class MainActivity : AppCompatActivity() {
         pairedDevices = adapter.bondedDevices?.toList() ?: emptyList()
         emptyState.visibility = if (pairedDevices.isEmpty()) android.view.View.VISIBLE else android.view.View.GONE
 
-        val names = pairedDevices.map { "${it.name ?: "(নাম নেই)"}\n${it.address}\n${deviceTypeLabel(it.type)}" }
-        deviceList.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, names)
-        deviceList.setOnItemClickListener { _, _, position, _ ->
-            val device = pairedDevices[position]
-            PrinterPrefs.save(this, device.address, device.name)
-            updateCurrentPrinterLabel()
-            Toast.makeText(this, "✅ ${device.name ?: device.address} বাছা হয়েছে", Toast.LENGTH_SHORT).show()
+        // Rows built by hand rather than through an adapter: see
+        // activity_main.xml's own comment on why the ListView had to go.
+        // Rebuilt from scratch on every call because onResume() refreshes
+        // the list after a trip to Bluetooth settings, where the owner may
+        // have paired or forgotten a device.
+        val selected = PrinterPrefs.savedAddress(this)
+        deviceList.removeAllViews()
+        val inflater = LayoutInflater.from(this)
+        for (device in pairedDevices) {
+            val row = inflater.inflate(R.layout.device_row, deviceList, false)
+            row.findViewById<TextView>(R.id.rowName).text = device.name ?: getString(R.string.device_no_name)
+            row.findViewById<TextView>(R.id.rowAddress).text = device.address
+            row.findViewById<TextView>(R.id.rowType).text = deviceTypeLabel(device.type)
+            // which one is in use has to be readable at a glance — the
+            // line at the top of the screen was the only answer before,
+            // and it is scrolled away by the time the list is reached
+            row.findViewById<TextView>(R.id.rowTick).text =
+                if (device.address == selected) getString(R.string.selected_tick) else ""
+            row.setBackgroundColor(if (device.address == selected) 0xFFF0FFF4.toInt() else 0xFFFFFFFF.toInt())
+            row.setOnClickListener {
+                PrinterPrefs.save(this, device.address, device.name)
+                updateCurrentPrinterLabel()
+                loadPairedDevices() // move the tick to the row just tapped
+                statusText.text = ""
+                Toast.makeText(this, getString(R.string.device_picked, device.name ?: device.address), Toast.LENGTH_SHORT).show()
+            }
+            deviceList.addView(row)
         }
     }
 
@@ -154,8 +181,8 @@ class MainActivity : AppCompatActivity() {
                 printer.write(payload)
                 runOnUiThread { statusText.text = getString(R.string.print_success) }
             } catch (e: Exception) {
-                val typeNote = "ডিভাইস টাইপ: ${deviceTypeLabel(device.type)}"
-                runOnUiThread { statusText.text = getString(R.string.print_failed, e.message ?: e.toString()) + "\n$typeNote" }
+                val detail = (e.message ?: e.toString()) + " · " + deviceTypeLabel(device.type)
+                runOnUiThread { statusText.text = getString(R.string.print_failed_help, detail) }
             } finally {
                 printer.disconnect()
             }
@@ -190,7 +217,7 @@ class MainActivity : AppCompatActivity() {
                 Thread.sleep(4000)
                 runOnUiThread { statusText.text = getString(R.string.calibrate_success) }
             } catch (e: Exception) {
-                runOnUiThread { statusText.text = getString(R.string.print_failed, e.message ?: e.toString()) }
+                runOnUiThread { statusText.text = getString(R.string.print_failed_help, e.message ?: e.toString()) }
             } finally {
                 printer.disconnect()
             }

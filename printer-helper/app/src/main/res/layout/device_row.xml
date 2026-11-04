@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    One paired device in the picker.
+
+    Every colour here is explicit. The list used to be built from
+    android.R.layout.simple_list_item_1, whose text colour comes from the
+    theme (DayNight) while this screen's background is hardcoded white —
+    so on a phone in dark mode the rows rendered white-on-white. Khaled:
+    "bluetooth j add korbe show e hoina, click korle konta show hocche
+    bojina, upore likha utle boji". They were there and tappable the whole
+    time, just invisible.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="#FFFFFF"
+    android:paddingTop="14dp"
+    android:paddingBottom="14dp"
+    android:paddingStart="12dp"
+    android:paddingEnd="12dp">
+
+    <TextView
+        android:id="@+id/rowTick"
+        android:layout_width="28dp"
+        android:layout_height="wrap_content"
+        android:textSize="16sp"
+        android:textColor="#1FA463" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/rowName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="#0E1512" />
+
+        <TextView
+            android:id="@+id/rowAddress"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textSize="12sp"
+            android:textColor="#666666" />
+
+        <TextView
+            android:id="@+id/rowType"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textSize="12sp"
+            android:textColor="#666666" />
+    </LinearLayout>
+</LinearLayout>

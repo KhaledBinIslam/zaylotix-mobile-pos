@@ -38,8 +38,8 @@ android {
         // Bump BOTH on every release APK handed over. These sat at 1/"1.0"
         // through five releases, so "which build is on that phone" had no
         // answer — MainActivity now prints versionName on screen.
-        versionCode 2
-        versionName "1.1"
+        versionCode 3
+        versionName "1.2"
     }
 
     buildTypes {

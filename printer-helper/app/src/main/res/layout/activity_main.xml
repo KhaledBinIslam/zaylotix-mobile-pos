@@ -45,13 +45,30 @@
             android:textColor="@color/rose"
             android:visibility="gone" />
 
-        <ListView
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="@string/paired_devices_heading"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:textColor="@color/brand_dark" />
+
+        <!--
+            A plain container, not a ListView: a ListView nested in a
+            ScrollView is measured with unbounded height and collapses to
+            roughly one row, and its stock row layout took its text colour
+            from the DayNight theme while this screen's background is
+            hardcoded white — invisible rows on a phone in dark mode. Rows
+            are inflated by MainActivity from device_row.xml, which fixes
+            every colour it uses.
+        -->
+        <LinearLayout
             android:id="@+id/deviceList"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:divider="#EEEEEE"
-            android:dividerHeight="1dp" />
+            android:layout_marginTop="6dp"
+            android:orientation="vertical" />
 
         <Button
             android:id="@+id/openBluetoothSettingsBtn"

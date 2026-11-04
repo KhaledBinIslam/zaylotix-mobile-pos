@@ -31,7 +31,7 @@ function uuidv4() {
 
 const form = useForm({
     client_uuid: uuidv4(),
-    category_id: '', new_category_name: '', category_code: '',
+    category_id: '', new_category_name: '', category_code: '', serial_start: null,
     manufacturer_code: '',
     unit_id: '', new_unit_name: '',
     cost: '', price: '',
@@ -109,6 +109,10 @@ function refreshSerial() {
     serialTimer = setTimeout(async () => {
         try {
             const params = new URLSearchParams(form.category_id ? { category_id: form.category_id } : { category_code: categoryCode });
+            // a band being typed for a category that doesn't exist yet —
+            // without this the preview answers from whatever the shared
+            // code already sits at (Ladies' 10041 for a Slippers entry)
+            if (!form.category_id && form.serial_start) params.set('serial_start', form.serial_start);
             const res = await fetch(route('app.articles.peekSerial') + '?' + params, { headers: { Accept: 'application/json' } });
             previewSerial.value = (await res.json()).serial;
             // follow the suggestion until the owner types their own number,
@@ -117,7 +121,7 @@ function refreshSerial() {
         } catch (e) { previewSerial.value = null; }
     }, 300);
 }
-watch([() => form.category_id, () => form.category_code], refreshSerial, { immediate: true });
+watch([() => form.category_id, () => form.category_code, () => form.serial_start], refreshSerial, { immediate: true });
 
 // The cost's letter code, live. Null while the cost is empty OR while any
 // of its digits still has no letter in this shop's map — in both cases the
@@ -374,6 +378,7 @@ function save() {
                 <Link :href="route('app.articles.colorCodeSettings.edit')" class="btn ghost sm" style="text-decoration:none">⚙️ রং-কোড সেটিংস</Link>
                 <Link :href="route('app.articles.sizeGroupSettings.edit')" class="btn ghost sm" style="text-decoration:none">⚙️ সাইজ-গ্রুপ সেটিংস</Link>
                 <Link :href="route('app.articles.costCodeSettings.edit')" class="btn ghost sm" style="text-decoration:none">⚙️ কস্ট-কোড সেটিংস</Link>
+                <Link :href="route('app.articles.serialSettings.edit')" class="btn ghost sm" style="text-decoration:none">⚙️ সিরিয়াল রেঞ্জ</Link>
             </div>
         </div>
 
@@ -410,6 +415,22 @@ function save() {
                 <label>ক্যাটাগরি কোড (বারকোডে ব্যবহার হবে, যেমন L)</label>
                 <input v-model="form.category_code" placeholder="L" maxlength="5" style="text-transform:uppercase">
                 <div v-if="form.errors.category_code" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.category_code }}</div>
+            </div>
+
+            <!--
+                Only while the category is being CREATED. Khaled's ranges
+                are part of what a new category is ("slipers holei 90000
+                serial a porbe"), so asking here saves a second trip — but
+                changing an established one mid-entry would quietly move
+                its numbering, so that lives on the settings page instead.
+            -->
+            <div class="field" v-if="categoryMode === 'new'">
+                <label>সিরিয়াল শুরু (ঐচ্ছিক — যেমন স্লিপার ৯০০০০)</label>
+                <input v-model.number="form.serial_start" type="number" min="1" placeholder="90000">
+                <div style="font-size:12px;color:var(--mut);margin-top:6px">
+                    এই ক্যাটাগরির আর্টিকেল নম্বর কত থেকে শুরু হবে। খালি রাখলে ১০০০১ থেকে চলবে।
+                </div>
+                <div v-if="form.errors.serial_start" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.serial_start }}</div>
             </div>
 
             <div class="field" v-if="previewSerial">

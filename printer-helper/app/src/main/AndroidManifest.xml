@@ -14,6 +14,14 @@
         android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"
         tools:targetApi="31" />
+    <!-- Only so cancelDiscovery() can run before a connect: an in-progress
+         scan starves the RFCOMM handshake, which is one of the ways a
+         healthy printer answers with "read failed, socket might closed or
+         timeout". neverForLocation because this app genuinely never scans
+         for nearby devices — it connects to one already paired. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="31" />
 
     <uses-feature android:name="android.hardware.bluetooth" android:required="true" />
 

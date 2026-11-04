@@ -304,6 +304,8 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
             Route::get('articles/size-group-settings', [ArticleController::class, 'sizeGroupSettingsEdit'])->name('articles.sizeGroupSettings.edit');
             Route::patch('articles/size-group-settings', [ArticleController::class, 'sizeGroupSettingsUpdate'])->name('articles.sizeGroupSettings.update');
             // docs/ARTICLE_SERIES_PLAN.md §9
+            Route::get('articles/serial-settings', [ArticleController::class, 'serialSettingsEdit'])->name('articles.serialSettings.edit');
+            Route::patch('articles/serial-settings', [ArticleController::class, 'serialSettingsUpdate'])->name('articles.serialSettings.update');
             Route::get('articles/color-code-settings', [ArticleController::class, 'colorCodeSettingsEdit'])->name('articles.colorCodeSettings.edit');
             Route::patch('articles/color-code-settings', [ArticleController::class, 'colorCodeSettingsUpdate'])->name('articles.colorCodeSettings.update');
             Route::get('articles/cost-code-settings', [ArticleController::class, 'costCodeSettingsEdit'])->name('articles.costCodeSettings.edit');

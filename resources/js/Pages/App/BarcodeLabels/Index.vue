@@ -178,8 +178,60 @@ const filtered = computed(() => props.products.filter((p) =>
 
 const totalCopies = computed(() => Object.values(selected.value).reduce((a, b) => a + b, 0));
 
+/**
+ * Selected rows the current search has hidden.
+ *
+ * A tick survives a search change on purpose — an intake is filed one
+ * article number at a time and printed in one run at the end. But nothing
+ * said so, and a forgotten "select everything shown" from before the
+ * search stayed in the total: one product on screen, stock 16, and the
+ * button offering to print 1347 stickers. The number was right; what was
+ * missing was any way to see where it came from.
+ */
+const visibleKeys = computed(() => new Set(filtered.value.flatMap((p) => [
+    'p:' + p.id,
+    ...(p.variants || []).map((v) => 'v:' + v.id),
+    ...(p.color_barcodes || []).map((cb) => 'c:' + cb.id),
+])));
+const hiddenCopies = computed(() => Object.entries(selected.value)
+    .filter(([key]) => !visibleKeys.value.has(key))
+    .reduce((sum, [, copies]) => sum + copies, 0));
+
+/** Drop every tick the search is hiding, keeping what is on screen — the one-tap way out of a total the owner cannot account for. */
+function keepOnlyShown() {
+    for (const key of Object.keys(selected.value)) {
+        if (!visibleKeys.value.has(key)) delete selected.value[key];
+    }
+}
+
 const labels = ref([]); // flattened list of {name, variantLabel, barcode, price, discount_price}
 const printing = ref(false);
+
+/*
+ * How many cards the preview puts on screen before the owner asks for
+ * more.
+ *
+ * Every card draws its own barcode, so the grid's cost is linear in the
+ * number of COPIES, not in the number of distinct stickers — 1347 copies
+ * of eight stickers still mounted 1347 components. The client's tablet
+ * ran out of memory and Android restarted the app at the splash screen.
+ *
+ * `labels` itself is never capped: both print paths read it in full, so
+ * what gets printed is unchanged. Only what is rendered for looking at is
+ * limited, and expandAll() puts every card in the DOM before any path
+ * that needs them (browser print, and the html2canvas capture fallback).
+ */
+const PREVIEW_CAP = 60;
+const CONFIRM_ABOVE = 300;
+const previewLimit = ref(PREVIEW_CAP);
+const shownLabels = computed(() => labels.value.slice(0, previewLimit.value));
+
+/** Mount every card and wait for the DOM to catch up — for the paths that print what is actually on the page. */
+async function expandAll() {
+    if (previewLimit.value >= labels.value.length) return;
+    previewLimit.value = labels.value.length;
+    await nextTick();
+}
 
 // Phase 43 — each BarcodeLabelCard emits 'rendered' once its barcode/header
 // have actually finished drawing (see the component); the Bluetooth-print
@@ -254,6 +306,9 @@ async function buildLabelSheet() {
             if (direct) return direct;
         }
 
+        // the capture fallback rasterizes the cards themselves, so it
+        // needs the ones the preview cap is holding back
+        await expandAll();
         if (!await waitForAllRendered()) {
             // say so rather than printing a half-drawn batch silently
             toast('⚠️ ' + t('bc.bluetoothSlowRender'));
@@ -619,7 +674,19 @@ function buildAndPreview() {
         }
     }
     if (!list.length) return;
+
+    /*
+     * A batch this size is nearly always a mistake, and on the client's
+     * tablet it was a fatal one — 1347 cards mounted at once took the
+     * WebView's memory and Android killed the whole app, which from the
+     * shop floor looked like "Preview চাপলে অ্যাপ বন্ধ হয়ে যায়". The cap
+     * below keeps that from being fatal; this keeps it from being a
+     * surprise.
+     */
+    if (list.length > CONFIRM_ABOVE && !window.confirm(t('bc.hugeBatchConfirm', { n: list.length }))) return;
+
     renderedCount.value = 0;
+    previewLimit.value = PREVIEW_CAP;
     labels.value = list;
     printing.value = true;
 }
@@ -671,7 +738,11 @@ function printedLabel(barcode) {
     return t('bc.printedOn', { n: info.copies, date: day });
 }
 
-function doPrint() {
+async function doPrint() {
+    // window.print() prints the DOM, so every copy has to be mounted
+    // first — printing the capped view would silently produce 60 stickers
+    // where the owner asked for all of them.
+    await expandAll();
     recordPrinted();
     window.print();
 }
@@ -768,7 +839,7 @@ const printCss = computed(() => {
                     <div class="ava" style="font-size:16px">🎨</div>
                     <div class="mid">
                         <b>{{ cb.color }}</b>
-                        <span>{{ cb.barcode }} • {{ money(p.price) }}</span>
+                        <span class="sku">{{ cb.barcode }} • {{ money(p.price) }}</span>
                         <!-- on the stock line, not a line of its own: a
                              fourth line overflowed the row and printed
                              over the one above it -->
@@ -814,6 +885,19 @@ const printCss = computed(() => {
 
         <div style="height:78px"></div>
         <div class="posbar">
+            <!--
+                Where a total the owner cannot account for comes from. One
+                product on screen and "Preview (1347)" on the button was
+                correct and completely unexplained: the ticks were from an
+                earlier search. Naming them, with one tap to drop them, is
+                the whole fix — the ticks themselves still survive a search
+                on purpose (an intake is filed article by article and
+                printed in one run).
+            -->
+            <div v-if="hiddenCopies" style="font-size:12px;color:var(--mut);margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <span>{{ t('bc.hiddenSelected', { n: hiddenCopies }) }}</span>
+                <button class="btn sm ghost" style="width:auto;padding:4px 10px" @click="keepOnlyShown">{{ t('bc.keepOnlyShown') }}</button>
+            </div>
             <button class="btn" :disabled="!totalCopies" @click="buildAndPreview">
                 {{ t('bc.preview') }} ({{ totalCopies }})
             </button>
@@ -851,10 +935,18 @@ const printCss = computed(() => {
                 </div>
                 <div class="label-grid">
                     <BarcodeLabelCard
-                        v-for="(p, i) in labels" :key="i + ':' + (p.scanCode || p.barcode || '')"
+                        v-for="(p, i) in shownLabels" :key="i + ':' + (p.scanCode || p.barcode || '')"
                         :label="p" :shop="shop" :settings="settings" :dom-id="'barcode-svg-' + i"
                         @rendered="onLabelRendered"
                     />
+                </div>
+                <!-- what the cap is holding back, and that it changes
+                     nothing about what prints -->
+                <div v-if="labels.length > shownLabels.length" class="no-print" style="padding:14px;text-align:center;font-size:13px;color:var(--mut)">
+                    {{ t('bc.previewCapped', { shown: shownLabels.length, total: labels.length }) }}
+                    <button class="btn sm ghost" style="width:auto;padding:6px 12px;margin-top:8px" @click="expandAll">
+                        {{ t('bc.previewShowAll') }}
+                    </button>
                 </div>
             </div>
         </Teleport>
@@ -864,6 +956,16 @@ const printCss = computed(() => {
 <style>
 #label-print-overlay { position: fixed; inset: 0; background: #fff; z-index: 200; overflow-y: auto; }
 .label-grid { display: grid; gap: 8px; padding: 12px; }
+
+/* An article SKU is a chain of hyphenated segments
+   (O-B-20034-YXXZ-GOLDEN), and every hyphen is a break opportunity — in a
+   flex column squeezed by the copies box on the right it broke at all of
+   them at once, one segment per line, and the row grew several lines
+   tall. min-width:0 is what lets the column actually shrink instead of
+   forcing its content to wrap; the rest keeps the code on one line and
+   trims the tail, which is enough to recognise it by. */
+.row .mid { min-width: 0; }
+.row .mid .sku { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
 
 /* How many of this label to print. The − / + buttons are here because the
    count is nearly always nudged by one or two, and on a phone that beat

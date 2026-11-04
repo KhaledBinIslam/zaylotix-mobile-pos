@@ -13,10 +13,27 @@ use Illuminate\Support\Facades\DB;
  * CatalogSync: ProductCategory rows aren't linked across shops today, so
  * the counter can't safely live on that model — see
  * ArticleSeriesCounter's own docblock).
+ *
+ * A category may additionally pin where its numbers START
+ * (product_categories.serial_start) — Khaled reads the kind of shoe off
+ * the number itself: slippers 90000-up, ladies 10000-up, baby 20000-up,
+ * pumpi 50000-up, ladies-cat 30000-up. Every method here takes that band
+ * as its last argument; passing null means the historic single band
+ * beginning at START, so a category that never set one behaves exactly as
+ * it always has.
+ *
+ * Two categories sharing one code may sit in different bands, so the
+ * counter is keyed by (main shop, code, band) — see the band migration.
  */
 class ArticleSerial
 {
     private const START = 10001;
+
+    /** The band a category's numbers run in — its own, or the historic default. */
+    public static function bandOf(?int $serialStart): int
+    {
+        return $serialStart !== null && $serialStart > 0 ? $serialStart : self::START;
+    }
 
     /**
      * Race-safe even for the very first article of a brand-new category
@@ -26,21 +43,24 @@ class ArticleSerial
      * lock and increment, regardless of how many requests raced to create
      * it.
      */
-    public static function next(Shop $shop, string $categoryCode): int
+    public static function next(Shop $shop, string $categoryCode, ?int $serialStart = null): int
     {
         $mainShopId = $shop->parent_shop_id ?? $shop->id;
+        $band = self::bandOf($serialStart);
 
-        return DB::transaction(function () use ($mainShopId, $categoryCode) {
+        return DB::transaction(function () use ($mainShopId, $categoryCode, $band) {
             ArticleSeriesCounter::query()->insertOrIgnore([
                 'main_shop_id' => $mainShopId,
                 'category_code' => $categoryCode,
-                'next_serial' => self::START,
+                'series_start' => $band,
+                'next_serial' => $band,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
 
             $counter = ArticleSeriesCounter::where('main_shop_id', $mainShopId)
                 ->where('category_code', $categoryCode)
+                ->where('series_start', $band)
                 ->lockForUpdate()
                 ->first();
 
@@ -58,34 +78,39 @@ class ArticleSerial
      * article would collide. Never moves the counter backward — a no-op
      * if it's already past `atLeast`.
      */
-    public static function bumpFloor(Shop $shop, string $categoryCode, int $atLeast): void
+    public static function bumpFloor(Shop $shop, string $categoryCode, int $atLeast, ?int $serialStart = null): void
     {
         $mainShopId = $shop->parent_shop_id ?? $shop->id;
+        $band = self::bandOf($serialStart);
 
-        DB::transaction(function () use ($mainShopId, $categoryCode, $atLeast) {
+        DB::transaction(function () use ($mainShopId, $categoryCode, $atLeast, $band) {
             ArticleSeriesCounter::query()->insertOrIgnore([
                 'main_shop_id' => $mainShopId,
                 'category_code' => $categoryCode,
-                'next_serial' => self::START,
+                'series_start' => $band,
+                'next_serial' => $band,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
 
             ArticleSeriesCounter::where('main_shop_id', $mainShopId)
                 ->where('category_code', $categoryCode)
+                ->where('series_start', $band)
                 ->where('next_serial', '<', $atLeast)
                 ->update(['next_serial' => $atLeast]);
         });
     }
 
-    /** Read-only peek at what the next serial WOULD be — for the one-screen entry form's live preview (not built yet). Never reserves it. */
-    public static function peekNext(Shop $shop, string $categoryCode): int
+    /** Read-only peek at what the next serial WOULD be — for the one-screen entry form's live preview. Never reserves it. */
+    public static function peekNext(Shop $shop, string $categoryCode, ?int $serialStart = null): int
     {
         $mainShopId = $shop->parent_shop_id ?? $shop->id;
+        $band = self::bandOf($serialStart);
 
         return ArticleSeriesCounter::where('main_shop_id', $mainShopId)
             ->where('category_code', $categoryCode)
-            ->value('next_serial') ?? self::START;
+            ->where('series_start', $band)
+            ->value('next_serial') ?? $band;
     }
 
     /**
@@ -100,30 +125,34 @@ class ArticleSerial
      * ArticleController::store()'s own check is what guarantees two live
      * articles never share one.
      *
-     * The walk starts at the lowest serial this category has EVER used,
-     * deleted articles included — not at self::START, since imported
-     * categories began at 20001 and starting from 10001 would suggest a
-     * number from a range this shop has never used.
+     * With a band set, the walk starts at the band: a Slippers article
+     * must be offered 90000-something even while Ladies — the same code,
+     * a different band — sits at 10041. Numbers below the band belong to
+     * the other category and must never be suggested here.
      *
-     * It used to start at the lowest LIVE one, which made a gap below it
-     * invisible: Khaled deleted B-20007 and B-20008, the lowest live
-     * article became B-20009, and the walk could then only ever look
-     * upwards from there.
+     * Without one, the walk starts at the lowest serial this category has
+     * EVER used, deleted articles included — not at self::START, since
+     * imported categories began at 20001 and starting from 10001 would
+     * suggest a number from a range this shop has never used. It used to
+     * start at the lowest LIVE one, which made a gap below it invisible:
+     * Khaled deleted B-20007 and B-20008, the lowest live article became
+     * B-20009, and the walk could then only ever look upwards from there.
      *
      * Lives here rather than on the controller so the doctor command can
      * print the same answer the form will show, without a web request.
      */
-    public static function nextFree(Shop $shop, string $categoryCode): int
+    public static function nextFree(Shop $shop, string $categoryCode, ?int $serialStart = null): int
     {
-        $counterNext = self::peekNext($shop, $categoryCode);
+        $counterNext = self::peekNext($shop, $categoryCode, $serialStart);
         $serials = self::serialsUsed($shop, $categoryCode);
 
-        if ($serials['everLowest'] === null) {
+        $from = $serialStart !== null && $serialStart > 0 ? $serialStart : $serials['everLowest'];
+        if ($from === null) {
             return $counterNext;
         }
 
         $taken = array_flip($serials['live']);
-        for ($candidate = $serials['everLowest']; $candidate < $counterNext; $candidate++) {
+        for ($candidate = $from; $candidate < $counterNext; $candidate++) {
             if (! isset($taken[$candidate])) {
                 return $candidate;
             }
@@ -137,6 +166,11 @@ class ArticleSerial
      * live article still answers to and the ones a deleted article left
      * behind. Business-wide, because the counter itself is shared by a
      * shop and its branches.
+     *
+     * Deliberately NOT filtered by band: two categories on one code draw
+     * from the same pool of names, so a number held by either of them is
+     * taken for both. Band-awareness belongs in where the walk STARTS
+     * (nextFree), never in what counts as occupied.
      *
      * withoutGlobalScopes() throughout: this is called from a console
      * command too, where TenantScope resolves to shop_id = 0 and would

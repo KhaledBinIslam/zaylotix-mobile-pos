@@ -5,6 +5,17 @@
     <string name="title_select_printer">Bluetooth প্রিন্টার বাছুন</string>
     <string name="subtitle_select_printer">যে প্রিন্টারে লেবেল ছাপাবেন সেটা বাছুন — একবার বাছলেই পরের বার থেকে মনে রাখবে।</string>
     <string name="no_paired_devices">কোনো paired Bluetooth ডিভাইস পাওয়া যায়নি — আগে ফোনের Settings → Bluetooth থেকে প্রিন্টারটি pair করুন।</string>
+    <string name="paired_devices_heading">যেগুলো pair করা আছে — একটায় চাপ দিন</string>
+    <string name="selected_tick">✔</string>
+    <string name="device_no_name">(নাম নেই)</string>
+    <string name="device_picked">✅ %1$s বাছা হয়েছে</string>
+    <!--
+        The raw exception ("read failed, socket might closed or timeout,
+        read ret: -1") is the one the XP-365B throws for half a dozen
+        different physical causes, and it told Khaled nothing he could act
+        on. The exception still prints underneath, for a screenshot.
+    -->
+    <string name="print_failed_help">❌ প্রিন্টারে সংযোগ হয়নি।\n\nক্রমে দেখুন:\n১. প্রিন্টার চালু আছে তো? (বাতি জ্বলছে কি না)\n২. অন্য কোনো ফোন/ট্যাবে প্রিন্টারটা এখন কানেক্ট হয়ে নেই তো?\n৩. এখনো না হলে — ফোনের Settings → Bluetooth → XP-365B → Forget/Unpair, তারপর আবার pair করে এখানে ফিরে আসুন।\n\n(কারিগরি: %1$s)</string>
     <string name="open_bluetooth_settings">Bluetooth সেটিংস খুলুন</string>
     <string name="current_printer">বর্তমান প্রিন্টার</string>
     <string name="none_selected">কোনোটা বাছা নেই</string>

@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 class ArticleSeriesCounter extends Model
 {
-    protected $fillable = ['main_shop_id', 'category_code', 'next_serial'];
+    protected $fillable = ['main_shop_id', 'category_code', 'series_start', 'next_serial'];
 
     public function mainShop()
     {
