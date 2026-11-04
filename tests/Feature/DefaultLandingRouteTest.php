@@ -62,6 +62,14 @@ class DefaultLandingRouteTest extends TestCase
         $this->actingAs($owner, 'web')->get('/app/pos')->assertRedirect(route('app.onboarding'));
     }
 
+    /** The iPhone install guide is public and shareable — the link Khaled hands iOS users in place of an APK (iOS has none to give). */
+    public function test_the_ios_install_page_is_public(): void
+    {
+        $this->get('/ios')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->component('App/Landing/Ios'));
+    }
+
     /** Profit/margin moved off Home entirely to Reports - see HomeController's own comment. */
     public function test_home_no_longer_sends_profit_figures(): void
     {

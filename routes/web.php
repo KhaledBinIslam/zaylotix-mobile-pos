@@ -106,6 +106,7 @@ use Illuminate\Support\Facades\Route;
 // `route:cache` refuse the entire file, and without that cache Laravel
 // rebuilds the whole route table on every single request.
 Route::get('/', [LandingController::class, 'root']);
+Route::get('/ios', [LandingController::class, 'ios'])->name('landing.ios');
 
 Route::middleware('guest')->group(function () {
     Route::get('login', [LoginController::class, 'create'])->name('login');

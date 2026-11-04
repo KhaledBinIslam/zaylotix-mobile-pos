@@ -313,6 +313,12 @@ onBeforeUnmount(() => {
                     <a v-if="apkAvailable" href="/downloads/zaylotix-pos.apk" class="btn ghost lg">
                         <span class="licon" v-html="ICON_PATHS.devices"></span> {{ t('landing.appDownloadApk') }}
                     </a>
+                    <!-- iOS has no APK to offer — the honest install path
+                         is Safari's Add to Home Screen, walked through at
+                         /ios (the page Khaled shares with iPhone users) -->
+                    <Link :href="route('landing.ios')" class="btn ghost lg" style="text-decoration:none">
+                        🍎 {{ t('landing.appDownloadIos') }}
+                    </Link>
                 </div>
             </section>
 

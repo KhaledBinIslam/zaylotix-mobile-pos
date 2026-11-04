@@ -1631,7 +1631,7 @@ useKeyboardShortcuts({
                 </div>
 
                 <div v-if="filtered.length" class="pgrid rest-grid">
-                    <div v-for="p in visibleProducts" :key="p.id" class="pcard" :class="{ incart: qtyInCart(p.id) && !(hasProductVariants && p.variants?.length) }">
+                    <div v-for="p in visibleProducts" :key="p.id" class="pcard" :class="{ incart: qtyInCart(p.id) && !(hasProductVariants && p.variants?.length), 'pcard-wide': hasProductVariants && p.variants?.length }">
                         <span v-if="p.sold_by_weight && qtyInCart(p.id)" class="qbadge">{{ formatWeightQty(p, qtyInCart(p.id)) }}</span>
                         <span v-else-if="qtyInCart(p.id)" class="qbadge">{{ qtyInCart(p.id) }}</span>
                         <!-- a weighed product always opens the weight-entry sheet — a plain tap-to-add-1 makes no sense for a loose kg/litre item -->
@@ -1699,7 +1699,7 @@ useKeyboardShortcuts({
                                 <button
                                     v-for="g in groupsFor(p)" :key="g.color ?? '_'" type="button"
                                     class="upill" style="padding:4px;display:flex;align-items:center;gap:6px"
-                                    :style="activeColorGroup(p)?.color === g.color ? 'border-color:var(--sky);border-width:2px' : ''"
+                                    :style="activeColorGroup(p)?.color === g.color ? 'border-color:var(--green);border-width:2px;background:var(--greenSoft);font-weight:700' : ''"
                                     @click="selectColor(p, g.color)"
                                 >
                                     <img v-if="g.photoUrl" :src="g.photoUrl" style="width:26px;height:26px;border-radius:6px;object-fit:cover">
@@ -1802,7 +1802,11 @@ useKeyboardShortcuts({
             </aside>
         </div>
 
-        <div style="height:78px" class="lg:hidden"></div>
+        <!-- clearance for BOTH fixed layers (posbar ~58px + its bottom
+             offset over the nav) — at 78px the last card's size rows and
+             Add button could never scroll out from behind the bar, which
+             on the client's iPhone read as "card kete jacche" -->
+        <div style="height:150px" class="lg:hidden"></div>
         <div class="posbar lg:hidden">
             <div v-if="!cartCount" class="posbar-empty">{{ t('pos.cartEmptyHint') }}{{ canScan ? t('pos.orScan') : '' }}</div>
             <button v-else class="btn" @click="cartOpen = true">

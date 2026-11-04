@@ -41,6 +41,17 @@ class LandingController extends Controller
         return $this->index();
     }
 
+    /**
+     * pos.zaylotix.com/ios — the link Khaled shares with iPhone users in
+     * place of an APK. iOS has no sideloadable install file at all (App
+     * Store only), so "the app for iPhone" IS this page: Safari's Add to
+     * Home Screen, four steps, in Bengali. See the page's own docblock.
+     */
+    public function ios()
+    {
+        return Inertia::render('App/Landing/Ios');
+    }
+
     public function index()
     {
         return Inertia::render('App/Landing/Index', [

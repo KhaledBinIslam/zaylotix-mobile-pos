@@ -797,6 +797,7 @@ export const translations = {
     'landing.appDownloadSub': { bn: 'ব্রাউজার ছাড়াই সরাসরি অ্যাপ দিয়ে Zaylotix POS চালান', en: 'Run Zaylotix POS straight from an app — no browser needed' },
     'landing.appDownloadPlayStore': { bn: 'Play Store থেকে নামান', en: 'Get it on Play Store' },
     'landing.appDownloadApk': { bn: 'APK সরাসরি ডাউনলোড করুন', en: 'Download APK directly' },
+    'landing.appDownloadIos': { bn: 'iPhone-এ বসান (১ মিনিট)', en: 'Install on iPhone (1 min)' },
 
     // ---- login ----
     'login.title': { bn: 'লগইন', en: 'Log in' },

@@ -467,6 +467,14 @@ body {
    piece — capping how many cards ever get mounted at once in the first
    place, which this alone doesn't do. */
 .pcard { content-visibility: auto; contain-intrinsic-size: 0 140px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--sh); position: relative; width: 100%; }
+/* A card carrying a colour-chip row and a size/price table (the SkyBuy-
+   style picker Baby Park sells from) is a worksheet, not a tile — in the
+   phone's two-column grid its chips truncated and its rows cramped (the
+   client's screenshot). Full row on phones; ≥1024px the desktop grid has
+   room, so it stays a normal tile there. */
+@media (max-width: 1023px) {
+    .pcard-wide { grid-column: 1 / -1; contain-intrinsic-size: 0 320px; }
+}
 .pcard-main { display: block; width: 100%; padding: 12px; text-align: left; background: transparent; border: none; }
 /* a product with no photo and no emoji set falls back to a bare glyph
    (sometimes literally "?", left over from data entry) floating with no
@@ -520,7 +528,10 @@ body {
    already adds, so it sits just above the tab bar, never overlapping it. */
 .posbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(78px + env(safe-area-inset-bottom)); width: 100%; max-width: 430px; padding: 12px 18px 4px; background: linear-gradient(0deg, var(--bg) 70%, transparent); z-index: 25; }
 @media (min-width: 700px) and (max-width: 1023px) { .posbar { max-width: 680px; } }
-.posbar-empty { text-align: center; color: var(--dim); font-size: 13px; padding: 14px; }
+/* a solid pill, not ghost text over a fade — product rows scrolling
+   beneath the old translucent version looked torn in half on the
+   client's iPhone ("card kete jacche") when they were merely underneath */
+.posbar-empty { text-align: center; color: var(--mut); font-size: 13px; padding: 11px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 99px; box-shadow: var(--sh); }
 .cartcount { background: rgba(255, 255, 255, .28); min-width: 24px; height: 24px; padding: 0 7px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; font-weight: 850; font-size: 13px; }
 
 .receipt { background: #fff; color: #1a1a1a; border-radius: 14px; padding: 18px; font-size: 13px; }
