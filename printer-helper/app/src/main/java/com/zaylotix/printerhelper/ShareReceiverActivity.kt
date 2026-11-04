@@ -188,6 +188,9 @@ class ShareReceiverActivity : AppCompatActivity() {
                                 alpha > 32 && (Color.red(pixel) + Color.green(pixel) + Color.blue(pixel)) / 3 < 170
                             },
                             copies = copies,
+                            // the shop's own one-time darkness choice — null
+                            // (never set) sends nothing, today's exact payload
+                            density = PrinterPrefs.savedDensity(this),
                         )
                         printer.write(payload)
                         succeeded++

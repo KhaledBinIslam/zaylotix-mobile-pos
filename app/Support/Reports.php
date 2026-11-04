@@ -303,6 +303,48 @@ class Reports
             ])->all();
     }
 
+    /**
+     * What came INTO stock over the period, in taka, serial by serial —
+     * Khaled: "koto tk er mal utche ... kon serial e koto tk er maal
+     * utche ... details e report paowa jai". Read straight off the
+     * stock_intakes ledger (App\Support\IntakeLedger writes it inside the
+     * same transaction as every stock movement), so this figure cannot
+     * drift from what actually happened. The ledger starts the day it
+     * shipped — goods taken in before that predate it and are not
+     * reconstructed, because a reconstruction is exactly the kind of
+     * guess that shows a wrong amount.
+     *
+     * @return array{total_cost: float, total_qty: float, products: array}
+     */
+    public static function intakeReport(string $from, string $to): array
+    {
+        $rows = \App\Models\StockIntake::with(['product:id,name,name_en', 'variant:id,size,color', 'user:id,name'])
+            ->whereDate('created_at', '>=', $from)
+            ->whereDate('created_at', '<=', $to)
+            ->orderByDesc('id')
+            ->get();
+
+        $products = $rows->groupBy('product_id')->map(fn ($group) => [
+            'name' => $group->first()->product?->name ?? '—',
+            'qty' => (float) $group->sum('qty'),
+            'total_cost' => round((float) $group->sum('total_cost'), 2),
+            'entries' => $group->map(fn ($r) => [
+                'date' => $r->created_at->format('d/m/Y h:i A'),
+                'variant' => trim(implode(' ', array_filter([$r->variant?->size, $r->variant?->color]))) ?: null,
+                'qty' => (float) $r->qty,
+                'unit_cost' => (float) $r->unit_cost,
+                'total_cost' => (float) $r->total_cost,
+                'by' => $r->user?->name,
+            ])->values()->all(),
+        ])->sortByDesc('total_cost')->values()->all();
+
+        return [
+            'total_cost' => round((float) $rows->sum('total_cost'), 2),
+            'total_qty' => (float) $rows->sum('qty'),
+            'products' => $products,
+        ];
+    }
+
     /** Item-wise purchase totals — the purchase-side mirror of topProducts, since Khaled asked for "কী কিনলাম" to be as visible as "কী বিক্রি করলাম". Only purchases that actually named a product (a money-only purchase, e.g. paying a utility bill, has no product_id and is excluded). */
     public static function itemWisePurchases(string $from, string $to, int $limit = 50)
     {

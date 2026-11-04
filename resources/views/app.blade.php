@@ -22,6 +22,13 @@
         <link rel="icon" href="/favicon-32.png?v=2" sizes="32x32" type="image/png">
         <link rel="icon" href="/favicon-16.png?v=2" sizes="16x16" type="image/png">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
+        <!-- iPhone-এ Safari → Share → "Add to Home Screen" করলে অ্যাপের
+             মতো আলাদা উইন্ডোতে খোলে। নতুন iOS ম্যানিফেস্টের display:
+             standalone পড়েই বোঝে; এই দুটো লেগ্যাসি ট্যাগ পুরনো iOS-কেও
+             একই কথা বলে — না থাকলে সেখানে ব্রাউজার-বার সহ খুলত। -->
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="default">
+        <meta name="apple-mobile-web-app-title" content="Zaylotix POS">
 
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.googleapis.com">

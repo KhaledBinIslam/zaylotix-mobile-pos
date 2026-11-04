@@ -9,7 +9,13 @@ import { LABEL_SIZE_PRESETS, labelSizeMm } from '@/support/labelSizes';
 import { thermalModuleWidth, mmToPx } from '@/support/barcodeFit';
 import { useBluetoothPrinterScan } from '@/composables/useBluetoothPrinterScan';
 
-const props = defineProps({ longestLabelBarcode: { type: Object, default: null } });
+const props = defineProps({
+    longestLabelBarcode: { type: Object, default: null },
+    // business-wide, served from the settings shop — not from the shared
+    // `shop` prop, which is this BRANCH's own row and would show a value
+    // the business never obeys
+    saleNotification: { type: Object, default: () => ({}) },
+});
 
 const page = usePage();
 const shop = computed(() => page.props.shop);
@@ -23,6 +29,17 @@ const businessForm = useForm({
 });
 function saveBusinessInfo() {
     businessForm.patch(route('app.settings.businessInfo'), { preserveScroll: true });
+}
+
+// Khaled: "sells holei j branch e hoq ... owner [ke] sathe sathe
+// notification and mail jai moto" — one switch for the whole business,
+// an email of the owner's choosing.
+const saleNotifForm = useForm({
+    notify_owner_on_sale: !!props.saleNotification?.notify_owner_on_sale,
+    sale_notification_email: props.saleNotification?.sale_notification_email || '',
+});
+function saveSaleNotification() {
+    saleNotifForm.patch(route('app.settings.saleNotification'), { preserveScroll: true });
 }
 
 const ms = shop.value?.memo_settings || {};
@@ -140,6 +157,23 @@ const bleScan = useBluetoothPrinterScan();
             </div>
             <div v-else style="font-size:11.5px;color:var(--mut);margin:6px 0">লেবেল হেডার মূল দোকানের সেটিংস থেকে আসে।</div>
             <button class="btn sm" style="margin-top:6px" :disabled="businessForm.processing" @click="saveBusinessInfo">সংরক্ষণ করুন</button>
+        </div>
+
+        <div class="card" style="margin-bottom:14px">
+            <h3 style="margin:0 0 4px">🔔 বিক্রির নোটিফিকেশন</h3>
+            <div style="font-size:12px;color:var(--mut);margin-bottom:10px">
+                যেকোনো ব্রাঞ্চে বিক্রি হলেই মালিকের কাছে সাথে সাথে খবর যাবে — অ্যাপের বেল আইকনে, আর চাইলে ইমেইলেও। সেটিংসটা পুরো ব্যবসার জন্য একটাই।
+            </div>
+            <label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer">
+                <input type="checkbox" v-model="saleNotifForm.notify_owner_on_sale">
+                প্রতিটি বিক্রিতে অ্যাপে নোটিফিকেশন দাও
+            </label>
+            <div class="field" style="margin-top:8px">
+                <label>ইমেইলে পাঠাতে চাইলে ঠিকানা দিন (খালি রাখলে ইমেইল যাবে না)</label>
+                <input v-model="saleNotifForm.sale_notification_email" type="email" placeholder="owner@example.com">
+                <div v-if="saleNotifForm.errors.sale_notification_email" style="color:var(--rose);font-size:12px;margin-top:6px">{{ saleNotifForm.errors.sale_notification_email }}</div>
+            </div>
+            <button class="btn sm" style="margin-top:6px" :disabled="saleNotifForm.processing" @click="saveSaleNotification">সংরক্ষণ করুন</button>
         </div>
 
         <div class="grid-2col" style="display:grid;grid-template-columns:1fr;gap:14px">

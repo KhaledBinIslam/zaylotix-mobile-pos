@@ -92,6 +92,7 @@ class ProductVariantController extends Controller
                 'price' => $data['price'] ?? null,
                 'cost' => $data['cost'] ?? null,
             ]);
+            \App\Support\IntakeLedger::record($lockedProduct, $variant, (float) $data['stock'], isset($data['cost']) ? (float) $data['cost'] : null, 'variant_add');
 
             if ($isFirstVariant) {
                 $this->reconcilePreExistingStock($lockedProduct, (float) $data['stock'], (bool) ($data['write_off_rest'] ?? false));
@@ -201,7 +202,7 @@ class ProductVariantController extends Controller
                     ? SizeGroupPricing::priceForSize($shop, $size, $groupCosts)
                     : ($data['cost'] ?? null);
 
-                ProductVariant::create([
+                $newVariant = ProductVariant::create([
                     'product_id' => $product->id,
                     'size' => $row['size'] ?? null,
                     'color' => $row['color'] ?? null,
@@ -214,6 +215,7 @@ class ProductVariantController extends Controller
                     'price' => $rowPrice,
                     'cost' => $rowCost,
                 ]);
+                \App\Support\IntakeLedger::record($lockedProduct, $newVariant, (float) $row['stock'], $rowCost !== null ? (float) $rowCost : null, 'variant_add');
                 $totalStock += (int) $row['stock'];
             }
 
@@ -403,6 +405,9 @@ class ProductVariantController extends Controller
 
             $product = Product::whereKey($locked->product_id)->lockForUpdate()->first();
             $product?->applyStockDelta($data['qty']);
+            if ($product) {
+                \App\Support\IntakeLedger::record($product, $locked, (float) $data['qty'], isset($data['cost']) ? (float) $data['cost'] : null, 'variant_stock_in');
+            }
 
             Activity::log('product.variant.stockIn', "ভ্যারিয়েন্ট '{$locked->label()}'-এ {$data['qty']} স্টক যোগ করা হয়েছে।", $locked);
         });

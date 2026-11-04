@@ -48,6 +48,9 @@ class ReportController extends Controller
             'restaurantBreakdown' => $shop?->isRestaurant() ? Reports::restaurantBreakdown($from, $to) : null,
             'salesByType' => $shop?->hasFeature('wholesale_pricing') ? Reports::salesByType($from, $to) : null,
             'itemWisePurchases' => $shop?->hasFeature('purchases') ? Reports::itemWisePurchases($from, $to) : null,
+            // "কত টাকার মাল উঠেছে" — not feature-gated: every shop takes
+            // in stock, and the ledger simply has no rows until they do
+            'intakeReport' => Reports::intakeReport($from, $to),
             'batchWiseReport' => $shop?->hasFeature('batch_tracking') ? Reports::batchWiseReport($from, $to) : null,
             'categoryReport' => Reports::categoryReport($from, $to),
             'discountReport' => Reports::discountReport($from, $to),

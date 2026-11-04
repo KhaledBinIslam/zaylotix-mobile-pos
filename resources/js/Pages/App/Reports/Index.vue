@@ -7,6 +7,7 @@ import { useI18n } from '@/composables/useI18n';
 const props = defineProps({
     from: String, to: String, preset: String, stats: Object, sales: Array, topProducts: Array, bottomProducts: Array, productProfitReport: { type: Array, default: () => [] },
     expiringSoon: Array, cashierBreakdown: Array, restaurantBreakdown: Object, salesByType: Object, itemWisePurchases: Array,
+    intakeReport: Object,
     batchWiseReport: { type: Array, default: () => [] },
     summary: Object, categoryReport: Object, discountReport: Object, wastageReport: Array, ratingReport: Object, heatmap: Object, consumptionReport: Array, complimentaryReport: Object, combinedStats: Object,
     variantInventory: Object,
@@ -217,6 +218,34 @@ function heatColor(count) {
                     <b>{{ money(row.total) }}</b>
                 </div>
             </div>
+        </template>
+
+        <!-- "কত টাকার মাল উঠেছে" — the intake ledger, serial by serial,
+             each entry expandable to date/size/qty/cost/who -->
+        <template v-if="intakeReport">
+            <div class="sechead"><h2>{{ t('rep.intakeTitle') }}</h2></div>
+            <div class="card" style="background:var(--goldSoft);margin-bottom:10px;text-align:center">
+                <div style="color:var(--mut);font-size:13px">{{ t('rep.intakeTotal') }}</div>
+                <div style="font-size:24px;font-weight:850">{{ money(intakeReport.total_cost) }}</div>
+                <div style="font-size:12px;color:var(--mut)">{{ intakeReport.total_qty }} {{ t('stock.pieces') }}</div>
+            </div>
+            <div v-if="intakeReport.products?.length" class="card" style="padding:0;margin-bottom:14px">
+                <details v-for="(p, i) in intakeReport.products" :key="i" :style="i > 0 ? 'border-top:1px solid var(--line)' : ''">
+                    <summary class="row" style="cursor:pointer">
+                        <div class="mid"><b>{{ p.name }}</b><span>{{ p.qty }} {{ t('stock.pieces') }}</span></div>
+                        <div class="end"><b>{{ money(p.total_cost) }}</b></div>
+                    </summary>
+                    <div v-for="(e, j) in p.entries" :key="j" style="display:flex;justify-content:space-between;gap:8px;padding:6px 14px;font-size:12px;border-top:1px dashed var(--line)">
+                        <div>
+                            <b>{{ e.date }}</b>
+                            <span v-if="e.variant" style="color:var(--mut)"> • {{ e.variant }}</span>
+                            <span v-if="e.by" style="color:var(--mut)"> • {{ e.by }}</span>
+                        </div>
+                        <div style="white-space:nowrap">{{ e.qty }} × {{ money(e.unit_cost) }} = <b>{{ money(e.total_cost) }}</b></div>
+                    </div>
+                </details>
+            </div>
+            <div v-else class="card" style="margin-bottom:14px;font-size:12.5px;color:var(--mut)">{{ t('rep.intakeEmpty') }}</div>
         </template>
 
         <template v-if="itemWisePurchases?.length">

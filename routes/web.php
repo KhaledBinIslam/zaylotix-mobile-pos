@@ -528,6 +528,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::patch('settings/label', [SettingController::class, 'updateLabelSettings'])->name('settings.label');
         Route::patch('settings/mobile-nav', [SettingController::class, 'updateMobileNav'])->name('settings.mobileNav');
         Route::patch('settings/offline-sync-mode', [SettingController::class, 'updateOfflineSyncMode'])->name('settings.offlineSyncMode');
+        Route::patch('settings/sale-notification', [SettingController::class, 'updateSaleNotification'])->name('settings.saleNotification');
         Route::get('receipt-label-settings', [SettingController::class, 'receiptLabelEdit'])->name('settings.receiptLabel');
 
         Route::middleware('feature:vat')->group(function () {

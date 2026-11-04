@@ -32,6 +32,20 @@ class SalaryPaymentController extends Controller
                 'salary_type' => $e->salary_type,
                 'basic_salary' => (float) $e->basic_salary,
                 'outstanding_advance' => $outstandingAdvance,
+                // date + purpose of every advance still owed, plus any
+                // taken inside the month being viewed — Khaled: "details
+                // e sob dekhai koi tarik kon purpos advance niche"
+                'advances' => $e->salaryAdvances()
+                    ->where(fn ($q) => $q->where('outstanding', '>', 0)
+                        ->orWhereBetween('date', ["{$month}-01", date('Y-m-t', strtotime("{$month}-01"))]))
+                    ->orderByDesc('date')->orderByDesc('id')->get()
+                    ->map(fn ($a) => [
+                        'date' => $a->date->format('d/m/Y'),
+                        'amount' => (float) $a->amount,
+                        'outstanding' => (float) $a->outstanding,
+                        'note' => $a->note,
+                        'method' => $a->method,
+                    ])->values(),
                 'paid' => $paid ? [
                     'net_paid' => (float) $paid->net_paid,
                     'method' => $paid->method,

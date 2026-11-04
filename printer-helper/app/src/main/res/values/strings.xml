@@ -25,6 +25,13 @@
     <string name="calibrate_success">✅ ক্যালিব্রেশন সম্পন্ন — এখন আবার টেস্ট প্রিন্ট করে দেখুন</string>
     <string name="permission_needed">Bluetooth ব্যবহারের অনুমতি প্রয়োজন।</string>
 
+    <string name="density_heading">🔥 প্রিন্টের গাঢ়তা</string>
+    <string name="density_minus">−</string>
+    <string name="density_plus">+</string>
+    <string name="density_default_label">প্রিন্টারের নিজের সেটিং (ডিফল্ট)</string>
+    <string name="density_level_label">গাঢ়তা %1$d / 15</string>
+    <string name="density_hint">হালকা ছাপা হলে + চেপে বাড়িয়ে টেস্ট প্রিন্ট করে দেখুন — একবার সেট করলেই মনে থাকবে। গাঢ়তা সেট করার পর টেস্ট প্রিন্টে কিছুই না বের হলে আপনার প্রিন্টার এই কমান্ডটা নেয় না — − চেপে "ডিফল্ট"-এ ফিরিয়ে দিন।</string>
+
     <string name="printing_in_progress">প্রিন্ট হচ্ছে…</string>
     <string name="version_line">Zaylotix Printer %1$s (বিল্ড %2$d)</string>
     <!-- %2$d takes a Long from PackageInfo.longVersionCode -->

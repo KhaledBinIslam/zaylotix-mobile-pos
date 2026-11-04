@@ -322,7 +322,7 @@ class ArticleController extends Controller
                     }
                 }
 
-                ProductVariant::create([
+                $variant = ProductVariant::create([
                     'product_id' => $product->id,
                     'size' => $row['size'],
                     'color' => $row['color'] ?? null,
@@ -331,6 +331,9 @@ class ArticleController extends Controller
                     'price' => $variantPrice,
                     'cost' => $variantCost,
                 ]);
+                // the intake ledger ("কত টাকার মাল উঠেছে") — same
+                // transaction, priced at this size's own buying cost
+                \App\Support\IntakeLedger::record($product, $variant, (float) $row['qty'], $variantCost !== null ? (float) $variantCost : (float) $articleCost, 'article_create');
                 $gridTotal += (int) $row['qty'];
             }
 

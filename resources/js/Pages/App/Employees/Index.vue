@@ -68,6 +68,11 @@ function submitAdvance() {
                     <div style="font-size:12.5px;margin-top:4px">
                         {{ e.salary_type === 'monthly' ? t('emp.monthly') : t('emp.daily') }} — <b>{{ money(e.basic_salary) }}</b>
                     </div>
+                    <!-- Khaled: "keo joddhi running mase advance [nei]
+                         oder staf er oikhane jate advance ta dekhai" -->
+                    <div v-if="e.outstanding_advance > 0" style="font-size:12.5px;margin-top:4px;color:var(--rose)">
+                        {{ t('pay.outstandingAdvance') }}: <b>{{ money(e.outstanding_advance) }}</b>
+                    </div>
                     <span v-if="e.status === 'inactive'" class="pill rose" style="margin-top:6px;display:inline-block">{{ t('emp.inactive') }}</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:6px">
@@ -75,6 +80,20 @@ function submitAdvance() {
                     <button v-if="e.status === 'active'" class="btn sm ghost" style="width:auto;padding:6px 12px;font-size:12px" @click="openAdvance(e)">{{ t('emp.giveAdvance') }}</button>
                 </div>
             </div>
+            <details v-if="e.advances?.length" style="margin-top:8px;font-size:12.5px">
+                <summary style="cursor:pointer;color:var(--brand)">📋 {{ t('emp.advanceDetails') }} ({{ e.advances.length }})</summary>
+                <div v-for="(a, i) in e.advances" :key="i" style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)">
+                    <div>
+                        <b>{{ a.date }}</b>
+                        <span style="color:var(--mut)"> — {{ a.note || t('emp.noPurposeGiven') }}</span>
+                    </div>
+                    <div style="text-align:right;white-space:nowrap">
+                        <b>{{ money(a.amount) }}</b>
+                        <div v-if="a.outstanding > 0" style="color:var(--rose);font-size:11.5px">{{ t('emp.stillOwed') }}: {{ money(a.outstanding) }}</div>
+                        <div v-else style="color:var(--green);font-size:11.5px">{{ t('emp.settled') }}</div>
+                    </div>
+                </div>
+            </details>
         </div>
         <div v-if="!employees.length" class="empty"><div class="big">👥</div>{{ t('emp.noEmployees') }}</div>
 

@@ -177,9 +177,38 @@ class SettingController extends Controller
         }
         usort($candidates, fn ($a, $b) => strlen($b['encoded']) <=> strlen($a['encoded']));
 
+        // business-wide, read off the settings shop — a branch opening
+        // this page must see (and edit) the one switch both branches obey
+        $settingsShop = Tenancy::shop()->articleSettingsShop();
+
         return Inertia::render('App/Settings/ReceiptLabel', [
             'longestLabelBarcode' => $candidates[0] ?? null,
+            'saleNotification' => [
+                'notify_owner_on_sale' => (bool) $settingsShop->notify_owner_on_sale,
+                'sale_notification_email' => $settingsShop->sale_notification_email,
+            ],
         ]);
+    }
+
+    /**
+     * Khaled: "sells holei j branch e hoq ... owner [ke] sathe sathe
+     * notification and mail jai moto ... shop owner kon mail e mail jabe
+     * mail add korte pare moto". Saved on the settings shop whichever
+     * branch is saving, like every other business-wide setting.
+     */
+    public function updateSaleNotification(Request $request)
+    {
+        $data = $request->validate([
+            'notify_owner_on_sale' => ['required', 'boolean'],
+            'sale_notification_email' => ['nullable', 'email', 'max:255'],
+        ]);
+
+        Tenancy::shop()->articleSettingsShop()->update([
+            'notify_owner_on_sale' => $data['notify_owner_on_sale'],
+            'sale_notification_email' => $data['sale_notification_email'] ?: null,
+        ]);
+
+        return back()->with('success', 'বিক্রির নোটিফিকেশন সেটিংস সংরক্ষণ করা হয়েছে।');
     }
 
     /** Extra shop-identity fields a receipt can optionally print — none of these existed before, so every one is nullable and off by default (see memo_settings' show_* toggles). */

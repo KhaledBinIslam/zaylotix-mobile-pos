@@ -75,9 +75,36 @@ function submitPay() {
                     <div><span style="color:var(--mut)">{{ t('pay.deduction') }}: </span><b>{{ money(row.preview.attendance_deduction) }}</b></div>
                     <div><span style="color:var(--mut)">{{ t('pay.outstandingAdvance') }}: </span><b>{{ money(row.outstanding_advance) }}</b></div>
                 </div>
-                <div style="font-size:13px;margin-bottom:10px"><span style="color:var(--mut)">{{ t('pay.suggestedNet') }}: </span><b style="color:var(--green)">{{ money(row.preview.suggested_net) }}</b></div>
+                <div style="font-size:13px;margin-bottom:4px"><span style="color:var(--mut)">{{ t('pay.suggestedNet') }}: </span><b style="color:var(--green)">{{ money(row.preview.suggested_net) }}</b></div>
+                <!-- the number Khaled actually asked for: "r koita tk
+                     pabe" — what is left for this month once every taka
+                     already taken as advance comes off -->
+                <div v-if="row.outstanding_advance > 0" style="font-size:13px;margin-bottom:10px">
+                    <span style="color:var(--mut)">{{ t('pay.remainingAfterAdvance') }}: </span>
+                    <b :style="'color:' + (row.preview.suggested_net - row.outstanding_advance > 0 ? 'var(--green)' : 'var(--rose)')">
+                        {{ money(Math.max(0, row.preview.suggested_net - row.outstanding_advance)) }}
+                    </b>
+                </div>
                 <button class="btn sm" style="width:100%" @click="openPay(row)">{{ t('pay.payNow') }}</button>
             </template>
+
+            <!-- which advance, when, why — shown for paid and unpaid alike,
+                 because "koi tarik kon purpos advance niche" is a question
+                 about the month, not about whether payday has happened -->
+            <details v-if="row.advances?.length" style="margin-top:8px;font-size:12.5px">
+                <summary style="cursor:pointer;color:var(--brand)">📋 {{ t('emp.advanceDetails') }} ({{ row.advances.length }})</summary>
+                <div v-for="(a, i) in row.advances" :key="i" style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)">
+                    <div>
+                        <b>{{ a.date }}</b>
+                        <span style="color:var(--mut)"> — {{ a.note || t('emp.noPurposeGiven') }}</span>
+                    </div>
+                    <div style="text-align:right;white-space:nowrap">
+                        <b>{{ money(a.amount) }}</b>
+                        <div v-if="a.outstanding > 0" style="color:var(--rose);font-size:11.5px">{{ t('emp.stillOwed') }}: {{ money(a.outstanding) }}</div>
+                        <div v-else style="color:var(--green);font-size:11.5px">{{ t('emp.settled') }}</div>
+                    </div>
+                </div>
+            </details>
         </div>
         <div v-if="!rows.length" class="empty"><div class="big">👥</div>{{ t('att.noActiveEmployees') }}</div>
 

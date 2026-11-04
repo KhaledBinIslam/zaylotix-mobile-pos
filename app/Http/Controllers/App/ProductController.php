@@ -194,6 +194,12 @@ class ProductController extends Controller
         $this->syncPriceTiers($product, $data['price_tiers'] ?? []);
         $this->syncToBranchesIfSharedCatalog($product);
 
+        // a brand-new product that arrives WITH stock is goods walking in
+        // the door, same as any stock-in — the intake ledger counts it
+        if ((float) $product->stock > 0) {
+            \App\Support\IntakeLedger::record($product, null, (float) $product->stock, (float) $data['cost'], 'product_create');
+        }
+
         return back()->with('success', "{$product->name} added.");
     }
 
@@ -432,6 +438,8 @@ class ProductController extends Controller
                 abort(422, 'এই পণ্যটি মুছে ফেলা হয়েছে।');
             }
             \App\Support\StockIn::apply($locked, (float) $data['qty'], $data['cost'] ?? null);
+            // the intake ledger ("কত টাকার মাল উঠেছে") — same transaction
+            \App\Support\IntakeLedger::record($locked, null, (float) $data['qty'], isset($data['cost']) ? (float) $data['cost'] : null, 'product_stock_in');
 
             $shop = \App\Support\Tenancy::shop();
             // batch/FEFO tracking is an integer-quantity pharmacy layer — a

@@ -60,6 +60,29 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.testPrintBtn).setOnClickListener { runTestPrint() }
         findViewById<Button>(R.id.calibrateBtn).setOnClickListener { runCalibration() }
 
+        // Print darkness, 4Barcode-style: − below 0 falls off the scale
+        // back to "the printer's own setting", which sends no DENSITY
+        // line at all — the only state every firmware tolerates, and the
+        // state every shop starts in.
+        findViewById<Button>(R.id.densityDownBtn).setOnClickListener {
+            val current = PrinterPrefs.savedDensity(this)
+            PrinterPrefs.saveDensity(this, when {
+                current == null -> null // already at default — stay there
+                current <= 0 -> null    // stepping below 0 returns to default
+                else -> current - 1
+            })
+            updateDensityLabel()
+        }
+        findViewById<Button>(R.id.densityUpBtn).setOnClickListener {
+            val current = PrinterPrefs.savedDensity(this)
+            // first + lands on 8, the middle of TSPL's 0-15 — starting a
+            // "make it darker" journey at 0 (the lightest) would read as
+            // the button doing the opposite of what it says
+            PrinterPrefs.saveDensity(this, if (current == null) 8 else (current + 1).coerceAtMost(15))
+            updateDensityLabel()
+        }
+        updateDensityLabel()
+
         // on screen so a support question never has to guess which build
         // is installed — see the layout comment on versionText. Read from
         // the package manager rather than BuildConfig, which this Gradle
@@ -138,6 +161,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun updateDensityLabel() {
+        val density = PrinterPrefs.savedDensity(this)
+        findViewById<TextView>(R.id.densityValue).text =
+            if (density == null) getString(R.string.density_default_label)
+            else getString(R.string.density_level_label, density)
+    }
+
     private fun updateCurrentPrinterLabel() {
         val name = PrinterPrefs.savedName(this)
         val address = PrinterPrefs.savedAddress(this)
@@ -177,7 +207,9 @@ class MainActivity : AppCompatActivity() {
                         kotlin.math.abs(x.toDouble() / widthPx - y.toDouble() / heightPx) < 0.01 ||
                         kotlin.math.abs(x.toDouble() / widthPx - (1 - y.toDouble() / heightPx)) < 0.01
                 }
-                val payload = TsplImageEncoder.buildSingleLabelPayload(38.0, 25.0, 2.0, widthPx, heightPx, bitmap)
+                // the saved darkness rides on the test print too, so "set,
+                // test, look" is one loop on this screen
+                val payload = TsplImageEncoder.buildSingleLabelPayload(38.0, 25.0, 2.0, widthPx, heightPx, bitmap, density = PrinterPrefs.savedDensity(this))
                 printer.write(payload)
                 runOnUiThread { statusText.text = getString(R.string.print_success) }
             } catch (e: Exception) {

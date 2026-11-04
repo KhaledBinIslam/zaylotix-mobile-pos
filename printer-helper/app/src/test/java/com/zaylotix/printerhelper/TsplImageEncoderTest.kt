@@ -82,6 +82,29 @@ class TsplImageEncoderTest {
     }
 
     @Test
+    fun `an opted-in density becomes a DENSITY line between GAP and SET TEAR ON`() {
+        val bitmap = byteArrayOf(0x80.toByte(), 0x01)
+        val payload = TsplImageEncoder.buildSingleLabelPayload(
+            widthMm = 38.0, heightMm = 25.0, gapMm = 2.0,
+            widthPx = 8, heightPx = 1, bitmapBytes = bitmap, density = 12,
+        )
+
+        val expectedHeader = "SIZE 38 mm,25 mm\r\nGAP 2 mm,0 mm\r\nDENSITY 12\r\nSET TEAR ON\r\nDIRECTION 0\r\nCLS\r\nBITMAP 0,0,1,1,0,".toByteArray(Charsets.US_ASCII)
+        val expectedFooter = "\r\nPRINT 1,1\r\n".toByteArray(Charsets.US_ASCII)
+        assertArrayEquals(expectedHeader + bitmap + expectedFooter, payload)
+    }
+
+    @Test
+    fun `a density outside TSPLs range is clamped not sent raw`() {
+        val payload = TsplImageEncoder.buildSingleLabelPayload(
+            widthMm = 38.0, heightMm = 25.0, gapMm = 2.0,
+            widthPx = 8, heightPx = 1, bitmapBytes = ByteArray(1), density = 99,
+        )
+        val text = String(payload.copyOfRange(0, 60), Charsets.US_ASCII)
+        org.junit.Assert.assertTrue("got: $text", text.contains("DENSITY 15\r\n"))
+    }
+
+    @Test
     fun `a copies count becomes TSPLs own PRINT repeat so N identical labels are one job`() {
         val payload = TsplImageEncoder.buildSingleLabelPayload(
             widthMm = 38.0, heightMm = 25.0, gapMm = 2.0,

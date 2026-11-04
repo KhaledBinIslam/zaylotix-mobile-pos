@@ -51,11 +51,23 @@ object TsplImageEncoder {
      * so this function has exactly one job and can't drift from what a
      * single `PRINT 1,1` actually does.
      */
-    fun buildSingleLabelPayload(widthMm: Double, heightMm: Double, gapMm: Double, widthPx: Int, heightPx: Int, bitmapBytes: ByteArray, copies: Int = 1): ByteArray {
+    fun buildSingleLabelPayload(widthMm: Double, heightMm: Double, gapMm: Double, widthPx: Int, heightPx: Int, bitmapBytes: ByteArray, copies: Int = 1, density: Int? = null): ByteArray {
         val stride = bytesPerRow(widthPx)
         val header = buildString {
             append("SIZE ").append(fmtMm(widthMm)).append(" mm,").append(fmtMm(heightMm)).append(" mm\r\n")
             append("GAP ").append(fmtMm(gapMm)).append(" mm,0 mm\r\n")
+            // Khaled: "barcode halka color e print hocche ... 4barcode
+            // apps ey option ache koto gharo color e print kore" — an
+            // OPT-IN heat level, exactly what 4Barcode exposes. Null (the
+            // default) emits nothing, keeping the payload byte-identical
+            // to the proven header below — see that comment for why the
+            // XP-365B must never be sent one uninvited. A shop whose
+            // printer accepts it (the S29 does, via 4Barcode) sets it
+            // once in MainActivity; a shop whose firmware rejects it sees
+            // the test print die and sets it back to default.
+            if (density != null) {
+                append("DENSITY ").append(density.coerceIn(0, 15)).append("\r\n")
+            }
             // SET TEAR ON — the tear bar sits ~14mm past the print head on
             // these printers; tear mode makes the printer BACKFEED to the
             // label's true start before printing and present the finished

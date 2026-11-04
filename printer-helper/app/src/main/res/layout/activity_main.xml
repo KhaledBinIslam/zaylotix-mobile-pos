@@ -94,6 +94,61 @@
             android:layout_marginTop="10dp"
             android:text="@string/calibrate_gap" />
 
+        <!-- Print darkness (TSPL DENSITY), the same per-shop one-time
+             setting 4Barcode exposes. Default = the printer's own panel
+             setting, which sends NOTHING — the only mode every firmware
+             tolerates (the XP-365B discards a whole job over a DENSITY
+             line it dislikes). Explicit colours throughout: this screen's
+             background is hardcoded white — see device_row.xml. -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="@string/density_heading"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:textColor="#0E1512" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <Button
+                android:id="@+id/densityDownBtn"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="56dp"
+                android:layout_height="wrap_content"
+                android:text="@string/density_minus" />
+
+            <TextView
+                android:id="@+id/densityValue"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:textColor="#0E1512" />
+
+            <Button
+                android:id="@+id/densityUpBtn"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="56dp"
+                android:layout_height="wrap_content"
+                android:text="@string/density_plus" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/density_hint"
+            android:textSize="11.5sp"
+            android:textColor="#666666" />
+
         <TextView
             android:id="@+id/statusText"
             android:layout_width="match_parent"

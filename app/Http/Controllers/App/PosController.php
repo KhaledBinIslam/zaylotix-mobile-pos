@@ -351,10 +351,19 @@ class PosController extends Controller
                 throw $e;
             }
 
+            // a replayed offline sale is as real as a live one — the owner
+            // hears about both or the branch totals and the bell disagree
+            \App\Support\SaleNotifier::afterCheckout($sale);
+
             return response()->json(['sale' => $sale]);
         }
 
         $sale = self::performCheckout($data, $shopId, $userId);
+
+        // AFTER the transaction has committed, and never inside
+        // performCheckout() itself — BillingPreview/GatewayPricePreview
+        // run that and roll it back, and a preview must not email anyone
+        \App\Support\SaleNotifier::afterCheckout($sale);
 
         return response()->json(['sale' => $sale]);
     }
