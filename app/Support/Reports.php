@@ -318,13 +318,31 @@ class Reports
      */
     public static function intakeReport(string $from, string $to): array
     {
-        $rows = \App\Models\StockIntake::with(['product:id,name,name_en', 'variant:id,size,color', 'user:id,name'])
+        /*
+         * Business-wide, not per-shop: Baby Park's stock is one pool
+         * across both branches ("2 shop e stock ektai"), so goods taken
+         * in at either branch belong in the same answer to "কত টাকার মাল
+         * উঠেছে". No double counting is possible — IntakeLedger writes
+         * only at the controller that physically received the goods,
+         * never from CatalogSync's branch copies.
+         */
+        $shopIds = Tenancy::businessShopIds(Tenancy::id());
+
+        $rows = \App\Models\StockIntake::withoutGlobalScopes()
+            ->whereIn('shop_id', $shopIds)
+            ->with(['product' => fn ($q) => $q->withoutGlobalScopes()->select('id', 'name', 'name_en'),
+                'variant' => fn ($q) => $q->withoutGlobalScopes()->select('id', 'size', 'color'),
+                'user:id,name'])
             ->whereDate('created_at', '>=', $from)
             ->whereDate('created_at', '<=', $to)
             ->orderByDesc('id')
             ->get();
 
-        $products = $rows->groupBy('product_id')->map(fn ($group) => [
+        // grouped by the article's NAME (its serial), not product_id — the
+        // same article is a different row at the main shop and the branch
+        // (CatalogSync copies), and L-90000 taken in at both must be one
+        // line, not two
+        $products = $rows->groupBy(fn ($r) => $r->product?->name ?? ('#'.$r->product_id))->map(fn ($group) => [
             'name' => $group->first()->product?->name ?? '—',
             'qty' => (float) $group->sum('qty'),
             'total_cost' => round((float) $group->sum('total_cost'), 2),

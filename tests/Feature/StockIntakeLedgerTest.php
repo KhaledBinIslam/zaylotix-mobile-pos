@@ -104,6 +104,33 @@ class StockIntakeLedgerTest extends TestCase
         $this->assertCount(2, $report['products'][0]['entries']);
     }
 
+    public function test_a_branch_intake_shows_in_the_main_shops_report_as_one_business(): void
+    {
+        [$main, $mainOwner] = $this->createShopWithOwner();
+        $branch = \App\Models\Shop::create([
+            'name' => 'Liberty', 'phone' => 'PENDING-'.uniqid(), 'parent_shop_id' => $main->id,
+            'sales_mode' => 'both', 'lang' => 'bn', 'plan' => 'trial', 'status' => 'active',
+            'subscription_start' => now()->toDateString(), 'subscription_expiry' => now()->addMonth()->toDateString(),
+            'cash_balance' => 0, 'bank_balance' => 0, 'capital' => 0, 'vat_mode' => 'none', 'invoice_counter' => 1000,
+            'onboarded_at' => now(),
+        ]);
+        // the SAME article exists as a different row in each shop
+        // (CatalogSync copies) — the report must show ONE line for it
+        $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'L-90000', 'cost' => 700, 'price' => 1200, 'stock' => 0]);
+        $branchProduct = Product::create(['shop_id' => $branch->id, 'name' => 'L-90000', 'cost' => 700, 'price' => 1200, 'stock' => 0]);
+        StockIntake::create(['shop_id' => $main->id, 'product_id' => $mainProduct->id, 'qty' => 2, 'unit_cost' => 700, 'total_cost' => 1400, 'source' => 'article_create']);
+        StockIntake::create(['shop_id' => $branch->id, 'product_id' => $branchProduct->id, 'qty' => 3, 'unit_cost' => 700, 'total_cost' => 2100, 'source' => 'variant_stock_in']);
+
+        $this->actingAs($mainOwner, 'web');
+        \App\Support\Tenancy::set($main->id);
+        $report = \App\Support\Reports::intakeReport(now()->toDateString(), now()->toDateString());
+
+        $this->assertEquals(3500, $report['total_cost']);
+        $this->assertCount(1, $report['products']);
+        $this->assertSame('L-90000', $report['products'][0]['name']);
+        $this->assertCount(2, $report['products'][0]['entries']);
+    }
+
     public function test_another_shops_intakes_never_leak_into_the_report(): void
     {
         [$shopA, $ownerA] = $this->createShopWithOwner();

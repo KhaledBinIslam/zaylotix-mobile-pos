@@ -1,5 +1,5 @@
 <script setup>
-import { Head, router, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useI18n } from '@/composables/useI18n';
@@ -76,7 +76,13 @@ function saveVariantDefaults() {
         <!-- Khaled read this as "how much has the shop bought" and asked
              where the real figure was. It is the shelves right now, at
              what they cost — so the row says so. -->
-        <div class="row"><div class="ava">📦</div><div class="mid"><b>{{ t('acc.stockValue') }}</b><div style="font-size:11px;color:var(--mut);margin-top:2px">{{ t('acc.stockValueHint') }}</div></div><div class="end"><b style="color:var(--green)">{{ money(stockValue) }}</b></div></div>
+        <!-- Khaled: "stock mulle click korle details e jate ese jai" — the
+             figure opens its own serial-by-serial breakdown -->
+        <Link :href="route('app.accounts.stockValue')" class="row" style="text-decoration:none;color:inherit;cursor:pointer">
+            <div class="ava">📦</div>
+            <div class="mid"><b>{{ t('acc.stockValue') }}</b><div style="font-size:11px;color:var(--mut);margin-top:2px">{{ t('acc.stockValueHint') }} · {{ t('acc.tapForDetails') }}</div></div>
+            <div class="end"><b style="color:var(--green)">{{ money(stockValue) }}</b><span style="color:var(--mut);margin-left:6px">›</span></div>
+        </Link>
         <div class="row"><div class="ava">🧾</div><div class="mid"><b>{{ t('acc.receivable') }}</b></div><div class="end"><b style="color:var(--green)">{{ money(receivable) }}</b></div></div>
         <div v-if="codReceivable > 0" class="row"><div class="ava">🛵</div><div class="mid"><b>{{ t('acc.codReceivable') }}</b><span>{{ t('acc.codReceivableSub') }}</span></div><div class="end"><b style="color:var(--green)">{{ money(codReceivable) }}</b></div></div>
 

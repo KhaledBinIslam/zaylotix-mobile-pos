@@ -481,6 +481,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
 
     Route::middleware(['perm:accounts', 'feature:accounts'])->group(function () {
         Route::get('accounts', [AccountsController::class, 'index'])->name('accounts');
+        Route::get('accounts/stock-value', [AccountsController::class, 'stockValueDetail'])->name('accounts.stockValue');
         Route::get('accounts/ledger', [CashTransactionController::class, 'index'])->name('cashLedger.index');
         Route::post('accounts/ledger', [CashTransactionController::class, 'store'])->name('cashLedger.store');
         Route::get('accounts/loans', [LoanController::class, 'index'])->name('loans.index');

@@ -77,6 +77,61 @@ class AccountsController extends Controller
      * both would count every pair twice. A product with no live variants
      * is still valued the old way, which is exactly right for it.
      */
+    /**
+     * The stock value, serial by serial — what the one figure on the
+     * Accounts page is MADE of. Khaled: "serail dhore kontar stock mullo
+     * koto ache ... stock mulle click korle details e jate ese jai."
+     *
+     * Same arithmetic as stockValue() — COALESCE(variant cost, article
+     * cost) × stock per size, article cost × stock for a plain product —
+     * applied row by row instead of in one SUM, so the detail's grand
+     * total and the card can never disagree.
+     */
+    public function stockValueDetail()
+    {
+        $variantProducts = Product::whereHas('variants')
+            ->with(['variants' => fn ($q) => $q->orderBy('color')->orderBy('size')])
+            ->get(['id', 'name', 'name_en', 'emoji', 'cost']);
+
+        $rows = $variantProducts->map(function (Product $p) {
+            $variants = $p->variants->map(fn (ProductVariant $v) => [
+                'label' => trim(implode(', ', array_filter([$v->size, $v->color]))) ?: '—',
+                'qty' => (float) $v->stock,
+                'unit_cost' => (float) ($v->cost ?? $p->cost),
+                'value' => round((float) ($v->cost ?? $p->cost) * (float) $v->stock, 2),
+            ])->filter(fn ($v) => $v['qty'] != 0)->values();
+
+            return [
+                'name' => $p->name,
+                'emoji' => $p->emoji,
+                'qty' => round((float) $variants->sum('qty'), 3),
+                'value' => round((float) $variants->sum('value'), 2),
+                'variants' => $variants->all(),
+            ];
+        });
+
+        $plainRows = Product::whereDoesntHave('variants')
+            ->where('stock', '!=', 0)
+            ->get(['id', 'name', 'emoji', 'cost', 'stock'])
+            ->map(fn (Product $p) => [
+                'name' => $p->name,
+                'emoji' => $p->emoji,
+                'qty' => (float) $p->stock,
+                'value' => round((float) $p->cost * (float) $p->stock, 2),
+                'variants' => [],
+            ]);
+
+        $all = $rows->concat($plainRows)
+            ->filter(fn ($r) => $r['qty'] != 0 || $r['value'] != 0)
+            ->sortByDesc('value')->values();
+
+        return Inertia::render('App/Accounts/StockValue', [
+            'rows' => $all->all(),
+            'total' => round((float) $all->sum('value'), 2),
+            'totalQty' => round((float) $all->sum('qty'), 3),
+        ]);
+    }
+
     private function stockValue(): float
     {
         $fromVariants = (float) ProductVariant::query()
