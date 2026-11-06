@@ -85,6 +85,7 @@ class SetupSeamanShop extends Command
 
         $password = $this->option('password') ?: Str::password(12);
         $passwordWasGenerated = ! $this->option('password');
+        $shopWasCreated = ! $existing;
 
         $shop = DB::transaction(function () use ($existing, $password) {
             // Same defensive re-seed as SetupBabyPark: every Feature row
@@ -102,6 +103,15 @@ class SetupSeamanShop extends Command
                     'website' => $existing->website ?: self::WEBSITE,
                     'owner_name' => $existing->owner_name ?: self::OWNER_NAME,
                 ]);
+
+                // an explicitly GIVEN password on a re-run is a deliberate
+                // reset; a generated one is not applied anywhere and must
+                // never be printed as if it were (live: the re-run showed a
+                // fresh random password that opened nothing)
+                if ($this->option('password')) {
+                    User::where('shop_id', $existing->id)->where('role', 'owner')
+                        ->update(['password' => bcrypt($this->option('password'))]);
+                }
 
                 return $existing;
             }
@@ -140,10 +150,12 @@ class SetupSeamanShop extends Command
         $this->info('✅ SEAMAN SHOE STORE সেটআপ সম্পন্ন।');
         $this->line("Shop ID: {$shop->id} (লগইন ফোন: ".self::OWNER_PHONE.')');
         $this->line('Plan: monthly · account_type: paid · status: active · মেয়াদ: '.$shop->subscription_expiry.' (নবায়ন Admin > Subscription দিয়ে, Baby Park-এর মতোই)');
-        if ($passwordWasGenerated) {
+        if ($shopWasCreated && $passwordWasGenerated) {
             $this->warn("পাসওয়ার্ড (এখনই সেভ করুন, আর দেখানো হবে না): {$password}");
-        } else {
+        } elseif (! $passwordWasGenerated) {
             $this->info('পাসওয়ার্ড দেওয়া অপশন থেকে সেট হয়েছে।');
+        } else {
+            $this->line('পাসওয়ার্ড বদলায়নি — আগেরটাই চালু। বদলাতে চাইলে --password= দিয়ে চালান।');
         }
 
         return self::SUCCESS;

@@ -55,6 +55,29 @@ class SetupSeamanShopTest extends TestCase
         $shop = Shop::withoutGlobalScopes()->where('phone', '01833722077')->first();
         // the first owner user survives; a re-run never creates a second
         $this->assertSame(1, User::where('shop_id', $shop->id)->where('role', 'owner')->count());
+        // an EXPLICIT password on a re-run is a deliberate reset and applies
+        $owner = User::where('shop_id', $shop->id)->where('role', 'owner')->first();
+        $this->assertTrue(\Illuminate\Support\Facades\Hash::check('secret-for-test-2', $owner->password));
+    }
+
+    /**
+     * Live bug: a no-password RE-RUN printed a freshly generated password
+     * that had been applied to nothing — anyone saving it would be saving
+     * a password that opens nothing. A re-run without --password must say
+     * the password is unchanged, never show one, and never change one.
+     */
+    public function test_a_rerun_without_password_neither_changes_nor_prints_one(): void
+    {
+        $this->artisan('shop:setup-seaman', ['--password' => 'secret-for-test-1'])->assertSuccessful();
+
+        $this->artisan('shop:setup-seaman')
+            ->expectsOutputToContain('পাসওয়ার্ড বদলায়নি')
+            ->doesntExpectOutputToContain('এখনই সেভ করুন')
+            ->assertSuccessful();
+
+        $shop = Shop::withoutGlobalScopes()->where('phone', '01833722077')->first();
+        $owner = User::where('shop_id', $shop->id)->where('role', 'owner')->first();
+        $this->assertTrue(\Illuminate\Support\Facades\Hash::check('secret-for-test-1', $owner->password));
     }
 
     public function test_dry_run_writes_nothing(): void
