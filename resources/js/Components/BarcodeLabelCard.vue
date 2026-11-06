@@ -167,6 +167,9 @@ onMounted(async () => {
     }
 });
 
+// SEAMAN Phase 7 — undefined/'classic' for every pre-existing shop
+const isDetailed = computed(() => props.settings.template === 'detailed');
+
 watch(() => [props.label.barcode, props.settings.show_barcode_number, props.settings.print_mode], render);
 watch(() => [props.shop?.resolved_label_header, props.shop?.name, props.settings.show_shop_name], async () => {
     await nextTick();
@@ -176,17 +179,26 @@ watch(() => [props.shop?.resolved_label_header, props.shop?.name, props.settings
 
 <template>
     <div class="label-card" :class="{ thermal }" :style="thermalCardSize ? { width: thermalCardSize.width + 'mm', height: thermalCardSize.height + 'mm', margin: '0 auto' } : null">
-        <div v-if="settings.show_shop_name && headerText" class="label-head">
+        <!-- SEAMAN Phase 7 — 'detailed' template: website on top, the
+             name/brand/size lines BELOW the bars; every other shop's card
+             renders exactly as before -->
+        <div v-if="isDetailed && shop?.website" class="label-site">{{ shop.website }}</div>
+        <div v-if="!isDetailed && settings.show_shop_name && headerText" class="label-head">
             <div ref="headerEl" class="label-shop" :style="{ fontSize: headerFontSize + 'px' }">{{ headerText }}</div>
         </div>
-        <div v-if="showMiddleLines && settings.show_product_name" class="label-name">{{ label.name }}</div>
-        <div v-if="showMiddleLines && settings.show_variant && label.variantLabel" class="label-variant">{{ label.variantLabel }}</div>
+        <div v-if="!isDetailed && showMiddleLines && settings.show_product_name" class="label-name">{{ label.name }}</div>
+        <div v-if="!isDetailed && showMiddleLines && settings.show_variant && label.variantLabel" class="label-variant">{{ label.variantLabel }}</div>
         <!-- Phase 41 — never shrink a too-long barcode silently: say so.
              Screen-only (no-print): the preview is a mandatory tap before
              printing, so the warning is always seen before paper is used. -->
         <div v-if="thermal && barcodeWarn === 'overflow'" class="label-warn no-print">⚠️ বারকোডটি এই লেবেলের জন্য খুব লম্বা — ছাপা হয়নি</div>
         <div v-else-if="thermal && barcodeWarn === 'onedot'" class="label-warn no-print">⚠️ লম্বা বারকোড — সরু বারে ছাপা হবে, স্ক্যান টেস্ট করে নিন</div>
         <svg :id="domId"></svg>
+        <template v-if="isDetailed">
+            <div class="label-name">{{ label.name }}</div>
+            <div class="label-variant">Brand: {{ label.brandName || 'Nil' }}</div>
+            <div v-if="label.variantLabel" class="label-variant">{{ label.variantLabel }}</div>
+        </template>
         <div v-if="settings.price_mode !== 'none'" class="label-price">
             <template v-if="settings.price_mode === 'both' && label.discount_price">
                 <span class="label-price-reg">নিয়মিত ৳{{ Math.round(label.price) }}</span>
@@ -202,6 +214,7 @@ watch(() => [props.shop?.resolved_label_header, props.shop?.name, props.settings
 .label-head { display: flex; align-items: center; justify-content: center; margin-bottom: 1px; width: 100%; }
 .label-shop { font-weight: 900; color: #000; white-space: nowrap; line-height: 1.1; max-width: 100%; }
 .label-name { font-size: 9px; font-weight: 700; margin-bottom: 1px; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.label-site { font-size: 7px; font-weight: 900; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .label-variant { font-size: 8px; font-weight: 600; color: #333; margin-bottom: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .label-price { font-size: 12px; color: #000; margin-top: 1px; display: flex; flex-direction: column; align-items: center; gap: 0; line-height: 1.15; }
 .label-price-reg { font-size: 8px; color: #888; text-decoration: line-through; }

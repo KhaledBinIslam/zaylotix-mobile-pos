@@ -542,6 +542,9 @@ function drawnThermalCanvas(label, targetW, targetH, JsBarcode) {
                 label: label ?? {},
                 settings: settings.value,
                 headerText: props.shop?.resolved_label_header || props.shop?.name || '',
+                // Phase 7 (detailed template) — the editable shop setting;
+                // empty = the line simply isn't printed
+                websiteText: props.shop?.website || '',
                 barcodeCanvas,
             }),
         };
@@ -655,21 +658,21 @@ function buildAndPreview() {
         const productCopies = selected.value['p:' + p.id];
         if (productCopies) {
             for (let i = 0; i < productCopies; i++) {
-                list.push({ name: p.name, variantLabel: '', barcode: p.barcode, price: p.price, discount_price: p.discount_price });
+                list.push({ name: p.name, variantLabel: '', barcode: p.barcode, price: p.price, discount_price: p.discount_price, brandName: p.brand_name || null });
             }
         }
         for (const v of p.variants || []) {
             const copies = selected.value['v:' + v.id];
             if (!copies) continue;
             for (let i = 0; i < copies; i++) {
-                list.push({ name: p.name, variantLabel: variantLabel(v), barcode: v.barcode, scanCode: v.scan_code, price: v.price ?? p.price, discount_price: null });
+                list.push({ name: p.name, variantLabel: variantLabel(v), barcode: v.barcode, scanCode: v.scan_code, price: v.price ?? p.price, discount_price: null, brandName: v.brand_name || null });
             }
         }
         for (const cb of p.color_barcodes || []) {
             const copies = selected.value['c:' + cb.id];
             if (!copies) continue;
             for (let i = 0; i < copies; i++) {
-                list.push({ name: p.name, variantLabel: cb.color, barcode: cb.barcode, scanCode: cb.scan_code, price: p.price, discount_price: p.discount_price });
+                list.push({ name: p.name, variantLabel: cb.color, barcode: cb.barcode, scanCode: cb.scan_code, price: p.price, discount_price: p.discount_price, brandName: p.brand_name || null });
             }
         }
     }

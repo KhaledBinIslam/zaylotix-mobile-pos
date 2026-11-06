@@ -65,6 +65,7 @@ class SetupSeamanShop extends Command
         'weighted_average_costing', // Phase 4 — variant stock-in averages cost instead of overwriting
         'parties', // Phase 5 — corporate parties, bill-wise dues, A4 statements + PDF + WhatsApp
         'opening_stock', // Phase 6B — the stock-entry grid + bulk sheet
+        'label_templates', // Phase 7 — the detailed sticker (website/name/brand/size/price)
     ];
 
     /**

@@ -50,6 +50,10 @@ class BarcodeLabelController extends Controller
             // already did.
             'products' => Product::orderBy('name')
                 ->with([
+                    // Phase 7 — the detailed label template prints "Brand: X";
+                    // harmless extra columns for every other shop
+                    'brand:id,name',
+                    'variants.brand:id,name',
                     'variants' => fn ($q) => $q->orderBy('size')->orderBy('color'),
                     // docs/ARTICLE_SERIES_PLAN.md §9 — lets this page offer
                     // "one label per color" (summed stock across every size)
@@ -62,11 +66,12 @@ class BarcodeLabelController extends Controller
                 // sticker per pair and was choosing counts blind. It is
                 // not cost/margin data, so a cashier with only
                 // `barcode_labels` seeing it is fine.
-                ->get(['id', 'name', 'name_en', 'emoji', 'barcode', 'price', 'discount_price', 'stock'])
+                ->get(['id', 'name', 'name_en', 'emoji', 'barcode', 'price', 'discount_price', 'stock', 'brand_id'])
                 ->map(fn ($p) => [
                     'id' => $p->id, 'name' => $p->name, 'name_en' => $p->name_en, 'emoji' => $p->emoji,
                     'barcode' => $p->barcode, 'price' => $p->price, 'discount_price' => $p->discount_price,
                     'stock' => $p->stock,
+                    'brand_name' => $p->brand?->name,
                     // docs/ARTICLE_SERIES_PLAN.md §10 — scan_code is what the
                     // printed label's bars actually ENCODE (short, scannable
                     // by a phone camera); barcode stays the full descriptive
@@ -75,6 +80,8 @@ class BarcodeLabelController extends Controller
                         'id' => $v->id, 'size' => $v->size, 'color' => $v->color,
                         'barcode' => $v->barcode, 'scan_code' => 'ZV'.$v->id,
                         'price' => $v->price, 'stock' => $v->stock,
+                        // the variant's own brand beats the product's (the helmet case)
+                        'brand_name' => $v->brand?->name ?? $p->brand?->name,
                     ]),
                     'color_barcodes' => $includeSize ? [] : $p->colorBarcodes->map(fn ($cb) => [
                         'id' => $cb->id, 'color' => $cb->color, 'barcode' => $cb->barcode,

@@ -47,6 +47,10 @@ class Shop extends Model
     ];
 
     public const LABEL_SETTINGS_DEFAULTS = [
+        // SEAMAN Phase 7 — 'classic' is the pre-existing sticker, byte for
+        // byte; 'detailed' adds website/name/brand/size lines (feature
+        // 'label_templates' gates the picker AND the save)
+        'template' => 'classic', // 'classic' | 'detailed'
         'size' => '38x25', // '38x25' | '50x25' | '40x30' | 'custom'
         'custom_width_mm' => null,
         'custom_height_mm' => null,

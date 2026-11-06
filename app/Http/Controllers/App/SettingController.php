@@ -278,7 +278,16 @@ class SettingController extends Controller
             'label_gap_mm' => ['sometimes', 'numeric', 'min:0', 'max:10'],
             'offset_x_mm' => ['sometimes', 'numeric', 'min:-5', 'max:5'],
             'offset_y_mm' => ['sometimes', 'numeric', 'min:-5', 'max:5'],
+            // SEAMAN Phase 7 — `sometimes` for the same old-bundle reason
+            'template' => ['sometimes', 'in:classic,detailed'],
         ]);
+
+        // the detailed template is a paid-shop feature: without it the
+        // value silently stays classic, so a hand-crafted POST can never
+        // flip a label layout the shop was never shown
+        if (($data['template'] ?? 'classic') === 'detailed' && ! Tenancy::shop()?->hasFeature('label_templates')) {
+            $data['template'] = 'classic';
+        }
 
         if ($data['size'] === 'custom' && (! $data['custom_width_mm'] || ! $data['custom_height_mm'])) {
             return back()->withErrors(['custom_width_mm' => 'Custom সাইজের জন্য width ও height দুটোই দিতে হবে।']);

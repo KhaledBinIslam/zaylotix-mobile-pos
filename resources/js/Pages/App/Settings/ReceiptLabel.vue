@@ -64,7 +64,10 @@ const labelForm = useForm({
     // Phase 41 (docs/LABEL_PRINT_PLAN.md) — thermal-roll print mode
     print_mode: ls.print_mode || 'classic', label_gap_mm: ls.label_gap_mm ?? 2,
     offset_x_mm: ls.offset_x_mm ?? 0, offset_y_mm: ls.offset_y_mm ?? 0,
+    // SEAMAN Phase 7 — the sticker template (feature 'label_templates')
+    template: ls.template || 'classic',
 });
+const hasLabelTemplates = computed(() => (page.props.features || []).includes('label_templates'));
 function saveLabelSettings() {
     labelForm.patch(route('app.settings.label'), { preserveScroll: true });
 }
@@ -216,6 +219,18 @@ const bleScan = useBluetoothPrinterScan();
         <div class="grid-2col" style="display:grid;grid-template-columns:1fr;gap:14px;margin-top:14px">
             <div class="card">
                 <h3 style="margin:0 0 10px">বারকোড লেবেলে কী দেখাবে</h3>
+                <!-- SEAMAN Phase 7 — the sticker template; only shops with
+                     the label_templates feature see this choice at all -->
+                <div v-if="hasLabelTemplates" class="field">
+                    <label>স্টিকার টেমপ্লেট</label>
+                    <div class="seg" style="flex-wrap:wrap">
+                        <button type="button" :class="{ on: labelForm.template !== 'detailed' }" @click="labelForm.template = 'classic'">আগের মতো (দাম + বারকোড)</button>
+                        <button type="button" :class="{ on: labelForm.template === 'detailed' }" @click="labelForm.template = 'detailed'">বিস্তারিত (ওয়েবসাইট/নাম/ব্র্যান্ড/সাইজ/দাম)</button>
+                    </div>
+                    <div v-if="labelForm.template === 'detailed'" style="font-size:12px;color:var(--mut);margin-top:6px">
+                        উপরের লাইনটা আসে শপ সেটিংসের ওয়েবসাইট ঘর থেকে ({{ shop?.website || 'খালি — ছাপবে না' }})। ব্র্যান্ড না থাকলে "Brand: Nil"।
+                    </div>
+                </div>
                 <div class="field">
                     <label>লেবেল সাইজ</label>
                     <div class="seg" style="flex-wrap:wrap">
