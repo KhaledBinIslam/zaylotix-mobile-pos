@@ -79,6 +79,14 @@ class SeamanImportTest extends TestCase
         $this->assertSame(26, $variants($epaulettes)->count());
         $this->assertSame('Rank / Type', $epaulettes->option2_label);
 
+        // every sticker printable with ZERO manual taps: variants carry
+        // ZV{id}, plain products ZP{id} ("barcode ami kn banabo")
+        $this->assertSame(0, ProductVariant::withoutGlobalScopes()->where('shop_id', $shop->id)->whereNull('barcode')->count());
+        $first = $variants($helmet)->orderBy('id')->first();
+        $this->assertSame('ZV'.$first->id, $first->barcode);
+        $monkeyCap = $product('Monkey Cap'); // no variants at all
+        $this->assertSame('ZP'.$monkeyCap->id, $monkeyCap->barcode);
+
         // stock is 0 everywhere — the owner adds his own counts (Phase 6B)
         $this->assertSame(0, Product::withoutGlobalScopes()->where('shop_id', $shop->id)->where('stock', '>', 0)->count());
         $this->assertSame(0, ProductVariant::withoutGlobalScopes()->where('shop_id', $shop->id)->where('stock', '>', 0)->count());

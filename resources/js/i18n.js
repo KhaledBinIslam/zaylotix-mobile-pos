@@ -1907,6 +1907,7 @@ export const translations = {
     'os.bulkFailed': { bn: 'আপলোড হয়নি — আবার চেষ্টা করুন', en: 'Upload failed — try again' },
     'os.pickFile': { bn: 'আগে CSV ফাইলটা বেছে নিন', en: 'Pick the CSV file first' },
     'os.nilCount': { bn: 'এখনো স্টক বসানো হয়নি: {n} টি — দেখতে চাপুন', en: 'Still at zero stock: {n} — tap to see them' },
+    'bc.noPriceWarn': { bn: '{n} টা লেবেলের দাম বসানো নেই — স্টিকারে "Price: Nil" ছাপবে। আগে পণ্যের দাম ঠিক করলে ভালো।', en: '{n} labels have no price — they will print "Price: Nil". Better to fix the prices first.' },
 
     // SEAMAN Phase 5 — corporate parties & dues
     'party.title': { bn: 'কর্পোরেট পার্টি', en: 'Corporate Parties' },

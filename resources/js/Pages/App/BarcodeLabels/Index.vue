@@ -541,10 +541,9 @@ function drawnThermalCanvas(label, targetW, targetH, JsBarcode) {
             canvas: drawThermalLabel(canvas, {
                 label: label ?? {},
                 settings: settings.value,
+                // the detailed template's top line is this same EDITABLE
+                // label-header setting (owner sets it to seamanstore.com)
                 headerText: props.shop?.resolved_label_header || props.shop?.name || '',
-                // Phase 7 (detailed template) — the editable shop setting;
-                // empty = the line simply isn't printed
-                websiteText: props.shop?.website || '',
                 barcodeCanvas,
             }),
         };
@@ -553,6 +552,9 @@ function drawnThermalCanvas(label, targetW, targetH, JsBarcode) {
         return { reason: e?.message || String(e) };
     }
 }
+
+/** How many of the labels about to print carry no real price (0/empty, no discount either) — surfaced before paper is used. */
+const noPriceCount = computed(() => labels.value.filter((l) => !(Number(l.price) > 0) && !(Number(l.discount_price) > 0)).length);
 
 let preparedSheet = null;
 
@@ -919,6 +921,11 @@ const printCss = computed(() => {
                         {{ bluetoothPrinting || !sheetReady ? (bluetoothProgress || t('bc.bluetoothPreparing')) : '📱 ' + t('bc.bluetoothPrint') }}
                     </button>
                     <button class="btn sm ghost" @click="closePrint">{{ t('bc.close') }}</button>
+                </div>
+                <!-- "do not print ৳0" — the labels print "Price: Nil", and
+                     this says HOW MANY, before any paper is used -->
+                <div v-if="noPriceCount > 0" class="no-print" style="padding:8px 12px;background:#fff7ed;color:#b45309;font-size:13px;border-bottom:1px solid var(--line)">
+                    ⚠️ {{ t('bc.noPriceWarn', { n: noPriceCount }) }}
                 </div>
                 <!--
                     What actually happened, kept ON SCREEN.

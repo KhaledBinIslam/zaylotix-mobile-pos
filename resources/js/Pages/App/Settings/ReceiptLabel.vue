@@ -228,7 +228,7 @@ const bleScan = useBluetoothPrinterScan();
                         <button type="button" :class="{ on: labelForm.template === 'detailed' }" @click="labelForm.template = 'detailed'">বিস্তারিত (ওয়েবসাইট/নাম/ব্র্যান্ড/সাইজ/দাম)</button>
                     </div>
                     <div v-if="labelForm.template === 'detailed'" style="font-size:12px;color:var(--mut);margin-top:6px">
-                        উপরের লাইনটা আসে শপ সেটিংসের ওয়েবসাইট ঘর থেকে ({{ shop?.website || 'খালি — ছাপবে না' }})। ব্র্যান্ড না থাকলে "Brand: Nil"।
+                        উপরের লাইনটা আসে "লেবেল হেডার" সেটিং থেকে — ওখানে seamanstore.com লিখে দিন (এখন: {{ shop?.resolved_label_header || shop?.name }})। ব্র্যান্ড না থাকলে "Brand: Nil", দাম না থাকলে "Price: Nil"।
                     </div>
                 </div>
                 <div class="field">

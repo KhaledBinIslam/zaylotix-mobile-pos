@@ -88,6 +88,35 @@ class ImportSeamanProducts extends Command
                 foreach ($groups as $group) {
                     $this->importGroup($group);
                 }
+
+                // every sticker must be printable WITHOUT a per-variant
+                // "generate barcode" tap (Khaled: "barcode ami kn banabo") —
+                // same ZV/ZP values the label page would have assigned,
+                // unique by the global auto-increment. Runs every time, so
+                // it also backfills rows an earlier import left blank; a
+                // barcode that already exists is never touched.
+                $this->counts['barcodes'] = 0;
+                ProductVariant::withoutGlobalScopes()
+                    ->where('shop_id', $this->shopId)->whereNull('deleted_at')->whereNull('barcode')
+                    ->orderBy('id')->each(function ($v) {
+                        $v->update(['barcode' => 'ZV'.$v->id]);
+                        $this->counts['barcodes']++;
+                    });
+                // plain products only — a product whose variants carry the
+                // barcodes doesn't get one of its own. Raw id list rather
+                // than whereDoesntHave: the relation would re-apply the
+                // tenant scope, which isn't set inside a console run.
+                $variantProductIds = ProductVariant::withoutGlobalScopes()
+                    ->where('shop_id', $this->shopId)->whereNull('deleted_at')
+                    ->distinct()->pluck('product_id');
+                Product::withoutGlobalScopes()
+                    ->where('shop_id', $this->shopId)->whereNull('deleted_at')->whereNull('barcode')
+                    ->whereNotIn('id', $variantProductIds)
+                    ->orderBy('id')->each(function ($p) {
+                        $p->update(['barcode' => 'ZP'.$p->id]);
+                        $this->counts['barcodes']++;
+                    });
+
                 if ($dry) {
                     throw new \RuntimeException('__DRY_RUN__');
                 }
@@ -107,6 +136,7 @@ class ImportSeamanProducts extends Command
             ['notun category/sub-category', $this->counts['categories']],
             ['notun supplier', $this->counts['suppliers']],
             ['notun brand', $this->counts['brands']],
+            ['barcode bosano holo (ZV/ZP)', $this->counts['barcodes'] ?? 0],
         ]);
 
         if ($this->checkThese !== []) {

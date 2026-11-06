@@ -140,8 +140,9 @@ describe('drawThermalLabel — detailed template', () => {
         drawThermalLabel(canvas, {
             label: SEAMAN_LABEL,
             settings: DETAILED,
-            headerText: 'SEAMAN SHOE STORE',
-            websiteText: 'seamanstore.com',
+            // the same EDITABLE label-header setting classic uses — the
+            // owner sets it to seamanstore.com, it is never hard-coded
+            headerText: 'seamanstore.com',
             barcodeCanvas: { width: 280, height: 64 },
             ...overrides,
         });
@@ -166,17 +167,35 @@ describe('drawThermalLabel — detailed template', () => {
         expect(calls.some((c) => c.op === 'fillText' && c.text === 'Brand: Nil')).toBe(true);
     });
 
-    it('drops the size line when the item has none, and the website line when the shop has none', () => {
+    it('drops the size line when the item has none, and the header line when the shop has none', () => {
         const calls = drawDetailed({
             label: { ...SEAMAN_LABEL, variantLabel: '' },
-            websiteText: '',
+            headerText: '',
         }).calls;
         expect(calls.some((c) => c.op === 'fillText' && c.text.includes('20½'))).toBe(false);
         expect(calls.some((c) => c.op === 'fillText' && c.text.includes('seamanstore'))).toBe(false);
-        // with no website the bars move to the very top block
+        // with no header text the bars move to the very top block
         const bars = calls.find((c) => c.op === 'drawImage');
         const firstText = calls.filter((c) => c.op === 'fillText').sort((a, b) => a.y - b.y)[0];
         expect(bars.y).toBeLessThan(firstText.y);
+    });
+
+    it('prints "Price: Nil", never ৳0, when the price is empty or zero — detailed only', () => {
+        for (const price of [0, null, undefined, '0']) {
+            const calls = drawDetailed({ label: { ...SEAMAN_LABEL, price, discount_price: null } }).calls;
+            expect(calls.some((c) => c.op === 'fillText' && c.text === 'Price: Nil')).toBe(true);
+            expect(calls.some((c) => c.op === 'fillText' && c.text.includes('৳'))).toBe(false);
+        }
+
+        // a real price still prints as money, Nil nowhere in sight
+        const calls = drawDetailed().calls;
+        expect(calls.some((c) => c.op === 'fillText' && c.text === '৳1250')).toBe(true);
+        expect(calls.some((c) => c.op === 'fillText' && c.text === 'Price: Nil')).toBe(false);
+
+        // and the CLASSIC sticker keeps its exact old behaviour (৳0),
+        // because Baby Park's output is pinned byte-for-byte
+        const classic = draw({ label: { ...LABEL, price: 0 } }).calls;
+        expect(classic.some((c) => c.op === 'fillText' && c.text === '৳0')).toBe(true);
     });
 
     it('text gives way, never the bars: everything stays on the sticker with a long name', () => {

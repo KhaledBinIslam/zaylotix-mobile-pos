@@ -83,12 +83,12 @@ export function truncateToFit(measure, text, maxWidth) {
  * @param {string} opts.headerText  the shop/business name for the top line
  * @param {HTMLCanvasElement|null} opts.barcodeCanvas  bars already drawn at whole dots, or null
  */
-export function drawThermalLabel(canvas, { label, settings, headerText, websiteText, barcodeCanvas }) {
+export function drawThermalLabel(canvas, { label, settings, headerText, barcodeCanvas }) {
     // SEAMAN Phase 7 — the 'detailed' template is its own drawing path;
     // the classic path below is UNTOUCHED, byte-for-byte, because Baby
     // Park's live stickers are pinned to it (and to its tests).
     if (settings.template === 'detailed') {
-        return drawDetailedLabel(canvas, { label, settings, websiteText, barcodeCanvas });
+        return drawDetailedLabel(canvas, { label, settings, headerText, barcodeCanvas });
     }
 
     const ctx = canvas.getContext('2d');
@@ -152,9 +152,13 @@ export function drawThermalLabel(canvas, { label, settings, headerText, websiteT
 
 /**
  * SEAMAN Phase 7 — the 'detailed' sticker, top to bottom, centred:
- * seamanstore.com / BARCODE / product name / Brand: X (Nil when none) /
- * size-or-option / ৳price. The website line prints only when the shop
- * setting has one; the size line is dropped when the item has none.
+ * the shop's EDITABLE label-header text (the owner sets it to
+ * seamanstore.com; it is the same লেবেল হেডার setting classic uses,
+ * never hard-coded) / BARCODE with its code printed small beneath /
+ * product name / Brand: X (Nil when none) / size-or-option (dropped
+ * when the item has none) / selling price — and when the price is
+ * 0/empty it prints "Price: Nil", never ৳0 (that rule is detailed-only;
+ * the classic path keeps printing exactly what it always has).
  *
  * Fitting: text gives up space before the barcode ever does — if the
  * lines would overflow the sticker, every font scales down together
@@ -162,7 +166,16 @@ export function drawThermalLabel(canvas, { label, settings, headerText, websiteT
  * ellipsised. The bars keep their height and whole-dot placement
  * exactly as the classic path draws them.
  */
-function drawDetailedLabel(canvas, { label, settings, websiteText, barcodeCanvas }) {
+export function detailedPriceLines(label, settings) {
+    const lines = priceLinesOf(label, settings);
+    if (settings.price_mode === 'none') return lines;
+
+    const hasRealPrice = Number(label.price) > 0 || Number(label.discount_price) > 0;
+
+    return hasRealPrice ? lines : [{ text: 'Price: Nil', cssPx: 10, strike: false }];
+}
+
+function drawDetailedLabel(canvas, { label, settings, headerText, barcodeCanvas }) {
     const ctx = canvas.getContext('2d');
     const W = canvas.width;
     const H = canvas.height;
@@ -178,13 +191,13 @@ function drawDetailedLabel(canvas, { label, settings, websiteText, barcodeCanvas
     const usable = W - padX * 2;
 
     const lines = [];
-    if (websiteText) lines.push({ text: websiteText, cssPx: 7, after: 2, barcodeAfter: true });
-    else lines.push(null); // keeps the barcode first when there is no website
+    if (headerText) lines.push({ text: headerText, cssPx: 7, after: 2, barcodeAfter: true });
+    else lines.push(null); // keeps the barcode first when there is no header text
 
     if (label.name) lines.push({ text: label.name, cssPx: 9, after: 2 });
     lines.push({ text: 'Brand: ' + (label.brandName || 'Nil'), cssPx: 7, after: 2 });
     if (label.variantLabel) lines.push({ text: label.variantLabel, cssPx: 8, after: 2 });
-    for (const priceLine of priceLinesOf(label, settings)) {
+    for (const priceLine of detailedPriceLines(label, settings)) {
         lines.push({ text: priceLine.text, cssPx: priceLine.cssPx, after: 1, strike: priceLine.strike });
     }
 

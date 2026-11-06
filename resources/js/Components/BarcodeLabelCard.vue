@@ -182,7 +182,7 @@ watch(() => [props.shop?.resolved_label_header, props.shop?.name, props.settings
         <!-- SEAMAN Phase 7 — 'detailed' template: website on top, the
              name/brand/size lines BELOW the bars; every other shop's card
              renders exactly as before -->
-        <div v-if="isDetailed && shop?.website" class="label-site">{{ shop.website }}</div>
+        <div v-if="isDetailed && headerText" class="label-site">{{ headerText }}</div>
         <div v-if="!isDetailed && settings.show_shop_name && headerText" class="label-head">
             <div ref="headerEl" class="label-shop" :style="{ fontSize: headerFontSize + 'px' }">{{ headerText }}</div>
         </div>
@@ -200,7 +200,9 @@ watch(() => [props.shop?.resolved_label_header, props.shop?.name, props.settings
             <div v-if="label.variantLabel" class="label-variant">{{ label.variantLabel }}</div>
         </template>
         <div v-if="settings.price_mode !== 'none'" class="label-price">
-            <template v-if="settings.price_mode === 'both' && label.discount_price">
+            <!-- detailed template never shows ৳0 — "Price: Nil" instead -->
+            <b v-if="isDetailed && !(Number(label.price) > 0) && !(Number(label.discount_price) > 0)" class="label-price-disc">Price: Nil</b>
+            <template v-else-if="settings.price_mode === 'both' && label.discount_price">
                 <span class="label-price-reg">নিয়মিত ৳{{ Math.round(label.price) }}</span>
                 <b class="label-price-disc">ছাড় ৳{{ Math.round(label.discount_price) }}</b>
             </template>
