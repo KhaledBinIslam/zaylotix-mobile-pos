@@ -1,0 +1,167 @@
+ref,category,sub_category,product,brand,supplier,option_name,option_value,colors,sizes,purchase_price,selling_price,unit,verify
+1,Suit,Boiler Suit,Boiler Suit Plain,,Sujon|Bulu|Monir|Manik|Garments,,,White|Off White|Navy Blue|Dark Navy Blue|Royal Blue|Orange|Light Orange|Dark Orange|Grey|Light Grey|Dark Grey|Olive|Light Olive|Dark Olive|Sky Blue|Chocolate|Red|Khaki,S|M|L|XL|XXL|XXXL|4XL,600,920,pcs,
+1,Suit,Boiler Suit,Boiler Suit with Radium,,Sujon|Bulu|Monir|Manik|Garments,Type,SD,(same as above),S|M|L|XL|XXL|XXXL|4XL,650,1190,pcs,VERIFY: note says 'SD' and 'with radium' (reflective tape) - confirm what SD means
+1,Suit,Boiler Suit,Boiler Suit with Radium,,Sujon|Bulu|Monir|Manik|Garments,Type,2D,(same as above),S|M|L|XL|XXL|XXXL|4XL,950,1500,pcs,VERIFY: confirm what 2D means
+2,Suit,2-Part Boiler Suit,2-Part Boiler Suit,,Sujon|Bulu|Monir|Manik|Garments,,,(same as boiler suit),S|M|L|XL|XXL|XXXL|4XL,,,pcs,VERIFY: note says 'same' - same prices as boiler suit?
+-,Uniform,Full Uniform,Uniform Full,,,Fabric,PT? / CT / TC / CL?,,,470/450/450/200,1090-1250 / 890-950 / 890-950 / 600-650,pcs,VERIFY: left-margin block on page 1 unreadable - owner must give fabric names and prices
+3,Uniform,White Uniform,White Uniform with Shoulder - Half Sleeve,,President Toray|China Toray|Indonesian TC|Garments,Fabric,President Toray|China Toray|Indonesian TC|Garments,White,M|L|XL|XXL|XXXL|4XL,,,pcs,VERIFY: prices per fabric not clear
+4,Uniform,White Uniform,White Uniform Full Sleeve,,President Toray|China Toray|Indonesian TC|Garments,Fabric,President Toray|China Toray|Indonesian TC|Garments,White,M|L|XL|XXL|XXXL|4XL,,,pcs,VERIFY: prices per fabric not clear
+5,Shoe,Safety Shoe,Lotus Safety Shoe,Lotus,Lotus,Article,LH Orange|LH 604|LH Grey|LH Sports,,39-44,1200,1890,pair,VERIFY: article names; LH Sports size 39-40 only?
+6,Shoe,Safety Shoe,Lotus Safety Shoe,Lotus,Jubilee,,,,39-44,1250,1890,pair,same shoe from 2nd supplier
+7,Shoe,Safety Shoe,Power X Safety Shoe,Power X,Safety Gallery,,,,39-45,1600,2290,pair,
+7,Shoe,Safety Shoe,Power X Safety Shoe,Power X,Jubilee,,,,39-45,1750,2250,pair,
+8,Shoe,Safety Shoe,Runner China Safety Shoe,Runner,Safety Gallery,,,,39-44,1700,2250,pair,
+8,Shoe,Safety Shoe,Runner China Safety Shoe,Runner,Jubilee,,,,39-44,1800,2250,pair,
+9,Shoe,Safety Shoe,Fashion Safety Shoe,Fashion,Safety Gallery,,,,40-44,1950,2850,pair,
+9,Shoe,Safety Shoe,Fashion Safety Shoe,Fashion,Jubilee,,,,40-44,2250,2850,pair,
+10,Shoe,Safety Shoe,Warrior Safety Shoe,Liberty (India),,,,,39-44,1300,2500,pair,
+11,Shoe,Safety Shoe,Shift X Safety Shoe,Shift,Shift,,,,39-45,1300,2200,pair,
+11,Shoe,Safety Shoe,Scandia Safety Shoe,Scandia,Scandia Italy,,,,40-46,1500,4500,pair,VERIFY: SP 4500 vs PP 1500
+12,Shoe,Safety Shoe,Z Safety Shoe,Z,Shift,,,,45|46|47|48,1000,2500,pair,
+13,Pant,Formal Pant,Black Formal Pant,,Jahin Vai Dhaka,Fabric,Thai Wayu,Black,27-41,720,1250,pcs,VERIFY: fabric spelling
+14,Pant,Formal Pant,Black Formal Pant,,,Fabric,High Sufi China,Black,27-41,570,950,pcs,VERIFY: fabric spelling
+15,Shoe,Gumboot,Gumboot JCD High,JCD,JCD,,,,40-44,400,650,pair,
+16,Shoe,Gumboot,Gumboot JCD Low,JCD,JCD,,,,40-44,380,625,pair,
+17,Shoe,Gumboot,Safety Gumboot,Sailon,Sunwei,,,Yellow,40-44,900,1250,pair,
+18,Safety Equipment,Safety Goggles,Safety Goggles,Udyogi,Safety Gallery,,,,,150,350,pcs,
+19,Safety Equipment,Safety Goggles,Safety Goggles,BD,Safety Gallery,,,,,70,150,pcs,
+20,Safety Equipment,Safety Vest,Safety Vest,,Safety Gallery,Pocket,No Pocket,Orange|Navy Blue|Lemon,,120,190,pcs,
+20,Safety Equipment,Safety Vest,Safety Vest,,Safety Gallery,Pocket,2 Pocket,Orange|Navy Blue|Lemon,,140,220,pcs,
+20,Safety Equipment,Safety Vest,Safety Vest,,Safety Gallery,Pocket,4 Pocket,Orange|Navy Blue|Lemon,,180,250,pcs,
+21,Safety Equipment,Barricade Tape,Area Blocker (Barricade Tape),BD,,Length,50 m,,,65,210,roll,VERIFY: note looks like 910 - 210 more likely
+21,Safety Equipment,Barricade Tape,Area Blocker (Barricade Tape),BD,,Length,100 m,,,110,190,roll,VERIFY: SP 190 or 150?
+22,Socks,Short Socks,Socks,SKS,,Length,Short,,,32,105,pair,
+22,Socks,Long Socks,Socks,SKS,,Length,Long,,,90,150,pair,VERIFY: SP 150 or 180?
+23,Socks,Short Socks,Socks,Bata,,Length,Short,,,60,110,pair,
+23,Socks,Long Socks,Socks,Bata,,Length,Long,,,60,130,pair,
+23,Socks,Short Socks,Socks,Apex,,Length,Short,,,60,110,pair,
+23,Socks,Long Socks,Socks,Apex,,Length,Long,,,60,130,pair,
+24,Others,Torch,Torch,,,Model,Mini,,,130,250,pcs,
+24,Others,Torch,Torch,,,Model,Heavy,,,250,450,pcs,
+25,Safety Equipment,Helmet,Helmet,Super Safeguard,,,,White|Navy Blue|Orange|Red|Green,,170,250,pcs,
+25,Safety Equipment,Helmet,Helmet,Safeguard,,,,White|Navy Blue|Orange|Red|Green,,160,220,pcs,
+25,Safety Equipment,Helmet,Helmet,Crown,,,,White|Navy Blue|Orange|Red|Green,,100,150,pcs,
+25,Safety Equipment,Helmet,Helmet,Global,,,,White|Navy Blue|Orange|Red|Green,,120,160,pcs,
+26,Shoe,Safety Shoe,Safety Shoe,BD,,,,Black,40-44,550,790,pair,
+27,Flag,Bangladesh Flag,Bangladesh Flag,BD,,,,,,500,690,pcs,VERIFY: note reads 6690 - 690 more likely
+27,Flag,Bangladesh Flag,Bangladesh Ensign (Ship Flag),BD,,,,,,650,890,pcs,VERIFY: note says 'NANCIENT' - read as Ensign
+28,Flag,Country Flag,Country Flag,,,Country,(select country),,,150,1050,pcs,VERIFY: SP 1050 (850 was crossed out)
+29,Mask,Safety Mask,Safety Mask Venus V-410,Venus,,,,,,70,150,pcs,
+30,Mask,Safety Mask,Safety Mask,3M,,,,,,30,70,pcs,
+31,Mask,Chipping Mask,Chipping Mask,BD,,,,,,25,70,pcs,
+32,Mask,Dust Mask,Dust Mask,,,Model,NP305,,,120,250,pcs,VERIFY: model names (NP305/NP306?)
+32,Mask,Dust Mask,Dust Mask,,,Model,NP306,,,160,360,pcs,VERIFY: model name
+33,Mask,Respirator Mask,Respirator Mask Heavy Duty,,,,,,,380,690,pcs,VERIFY: product name unreadable
+34,Epaulettes,Rank Epaulettes,Epaulettes,,,Rank / Type,D/CDT - Soft,,,100,150,pair,
+34,Epaulettes,Rank Epaulettes,Epaulettes,,,Rank / Type,D/CDT - Hard,,,150,400,pair,
+34,Epaulettes,Rank Epaulettes,Epaulettes,,,Rank / Type,E/CDT - Soft,,,100,150,pair,
+34,Epaulettes,Rank Epaulettes,Epaulettes,,,Rank / Type,E/CDT - Hard,,,150,400,pair,
+34,Epaulettes,Rank Epaulettes,Epaulettes,,,Rank / Type,3rd Officer - Soft,,,150,350,pair,
+34,Epaulettes,Rank Epaulettes,Epaulettes,,,Rank / Type,3rd Officer - Hard,,,200,600,pair,
+34,Epaulettes,Rank Epaulettes,Epaulettes,,,Rank / Type,2nd Officer - Soft,,,200,450,pair,
+34,Epaulettes,Rank Epaulettes,Epaulettes,,,Rank / Type,2nd Officer - Hard,,,250,650,pair,
+34,Epaulettes,Rank Epaulettes,Epaulettes,,,Rank / Type,Chief Officer - Soft,,,300,500,pair,
+34,Epaulettes,Rank Epaulettes,Epaulettes,,,Rank / Type,Chief Officer - Hard,,,350,700,pair,
+34,Epaulettes,Rank Epaulettes,Epaulettes,,,Rank / Type,Master - Soft,,,350,600,pair,
+34,Epaulettes,Rank Epaulettes,Epaulettes,,,Rank / Type,Master - Hard,,,400,800,pair,
+34,Epaulettes,Rank Epaulettes,Epaulettes,,,Rank / Type,4th Engineer - Soft,,,150,350,pair,
+34,Epaulettes,Rank Epaulettes,Epaulettes,,,Rank / Type,4th Engineer - Hard,,,200,600,pair,
+34,Epaulettes,Rank Epaulettes,Epaulettes,,,Rank / Type,3rd Engineer - Soft,,,200,450,pair,
+34,Epaulettes,Rank Epaulettes,Epaulettes,,,Rank / Type,3rd Engineer - Hard,,,250,650,pair,
+34,Epaulettes,Rank Epaulettes,Epaulettes,,,Rank / Type,2nd Engineer - Soft,,,300,500,pair,
+34,Epaulettes,Rank Epaulettes,Epaulettes,,,Rank / Type,2nd Engineer - Hard,,,350,700,pair,
+34,Epaulettes,Rank Epaulettes,Epaulettes,,,Rank / Type,Chief Engineer - Soft,,,350,600,pair,
+34,Epaulettes,Rank Epaulettes,Epaulettes,,,Rank / Type,Chief Engineer - Hard,,,400,800,pair,
+34,Epaulettes,Rank Epaulettes,Epaulettes,,,Rank / Type,Junior ETO - Soft,,,200,450,pair,
+34,Epaulettes,Rank Epaulettes,Epaulettes,,,Rank / Type,Junior ETO - Hard,,,250,650,pair,
+34,Epaulettes,Rank Epaulettes,Epaulettes,,,Rank / Type,Senior ETO - Soft,,,300,500,pair,
+34,Epaulettes,Rank Epaulettes,Epaulettes,,,Rank / Type,Senior ETO - Hard,,,350,700,pair,
+34,Epaulettes,Rank Epaulettes,Epaulettes,,,Rank / Type,Academy Cadet - Hard,,,250,350,pair,
+34,Epaulettes,Rank Epaulettes,Epaulettes,,,Rank / Type,Senior Cadet / Academy Junior Cadet,,,200,350,pair,VERIFY: last line partly crossed out
+35,Belt,Leather Belt,Leather Waist Belt,,Nasin,Model,Plain,Black|Brown,,360,690,pcs,VERIFY: supplier spelling (Nasin/Nasir?)
+36,Belt,Leather Belt,Leather Waist Belt,,Nasin,Model,Party,,,600,1050,pcs,VERIFY: model name
+37,Belt,Leather Belt,Leather Waist Belt,,Nasin,Model,Oil Leather,,,450,890,pcs,
+38,Cap,Polo Cap,Merchant Navy Polo Cap,,,,,Navy Blue|Black,,160,350,pcs,
+39,Cap,Polo Cap,Polo Cap Export,,,,,,,156,356,pcs,
+40,Shoe Care,Shoe Polish,Shoe Color (Polish),,,,,,,150,190,pcs,VERIFY: SP 190? note unclear
+41,Shoe Care,Foot Powder,Foot Powder,,Jahangir Enterprise Dhaka,,,,,150,290,pcs,VERIFY: supplier spelling
+42,Cap,Peak Cap,Peak Cap Junior,,,,,,20.5|21|21.5|22|22.5|23,450,1050,pcs,
+43,Cap,Peak Cap,Peak Cap Senior,,,,,,20.5|21|21.5|22|22.5|23,550,1250,pcs,
+44,Cap,Monkey Cap,Monkey Cap,,,,,,,80,100,pcs,
+45,Gloves,Dotted Gloves,Dotted Gloves,,,,,Yellow,,300,450,pair,
+45,Gloves,Dotted Gloves,Dotted Gloves,,,,,Black,,200,450,pair,VERIFY: PP 200?
+45,Gloves,Cotton Gloves,Cotton Gloves,,,,,Off White,,100,250,pair,
+45,Gloves,Cotton Gloves,Cotton Gloves,,,,,White,,170,240,pair,
+46,Gloves,Leather Gloves,Leather Gloves,,,Length,Half 10 inch,,,80,150,pair,
+46,Gloves,Leather Gloves,Leather Gloves,,,Length,Full 14 inch,,,140,180,pair,
+47,Gloves,Welding Gloves,Argon Leather Gloves (Welding),,,Length,Half 10 inch,,,100,150,pair,
+47,Gloves,Welding Gloves,Argon Leather Gloves (Welding),,,Length,Full 14 inch,,,150,220,pair,
+48,Safety Equipment,PPE,PPE (3M),3M,Shift,,,,,150,290,pcs,VERIFY: note says 'PPF' - what exact item?
+49,Jacket,Parka Jacket,Parka Jacket,BD,,,,,,650,950,pcs,
+49,Jacket,Parka Jacket,Parka Jacket,,Shift,,,,,350,950,pcs,VERIFY: PP 350?
+50,Jacket,Parka Jacket,Parka Jacket 2-Part,,,,,,,1250,1650,pcs,
+51,Epaulettes,Epaulette Ribbon,Epaulette Ribbon,,,,,,,2200,,roll,VERIFY: 'pennol/petro' = ?; selling price Nil - per roll or per metre?
+52,Jacket,Raincoat,Raincoat,BMW,,,,,L|XL|XXL|XXXL|4XL,450,690,pcs,VERIFY: note says 'Namcot/Rancot' - read as Raincoat
+52,Jacket,Raincoat,Raincoat,Yeming China,,,,,L|XL|XXL|XXXL|4XL,850,1950,pcs,
+52,Jacket,Raincoat,Raincoat,Rubber Olive,,,,,L|XL|XXL|XXXL|4XL,1150,1890,pcs,
+53,Shoe,DMS Boot,DMS Boot,BMTF,,,,,,900,1950,pair,
+53,Shoe,DMS Boot,DMS Boot,BD,,,,,,550,850,pair,
+54,Shoe,Safety Shoe,Safety Shoe,BD,,,,,,550,690,pair,VERIFY: duplicate of #26 (550/790)?
+55,Shoe,Safety Shoe,Safety Shoe Reconditioned,,,,,,,500,750,pair,
+56,Suit,Navy Suit,Navy Suit,,,,,,,250,350,pcs,VERIFY: note says 'Navy 3mo suite' - exact name?
+57,Suit,Track Suit,Track Suit,BD Police,,,,,S|M|L|XL|XXL|XXXL,650,1050,pcs,
+57,Suit,Track Suit,Track Suit,Playboy,,,,,S|M|L|XL|XXL|XXXL,780,1250,pcs,
+58,T-Shirt,Merchant Navy T-Shirt,T-Shirt Merchant Navy,,,,,Black|Navy|White|Maroon,M|L|XL|XXL|XXXL,250,490,pcs,note: '100pc' written - min order?
+59,Others,Kitchen Apron,Kitchen Apron,,,Type,Export,,,50,350,pcs,VERIFY: SP 250 or 350?
+59,Others,Kitchen Apron,Kitchen Apron,BD,,Type,Customised,,,160,290,pcs,
+60,Pant,Formal Pant,White Formal Pant,,,Fabric,High Sufi,White,27-45,570,850,pcs,
+61,Shirt,White Shirt,White Shirt,,,Sleeve,Full Sleeve,White,S|M|L|XL|XXL|XXXL,470,750,pcs,fabric President Toray
+61,Shirt,White Shirt,White Shirt,,,Sleeve,Half Sleeve,White,S|M|L|XL|XXL|XXXL,470,720,pcs,fabric President Toray
+62,T-Shirt,Game T-Shirt,Game T-Shirt Customised (Embroidery),,,,,Maroon|White|Royal Blue|Sky Blue|Red|Black,M|L|XL|XXL|XXXL,250,350,pcs,
+63,Shoe,Formal Shoe,Black Oxford Shoe,Bata,,,,Black,39-45,1050,1850,pair,
+63,Shoe,Formal Shoe,Black Oxford Shoe,BD,,,,Black,39-45,1250,1890,pair,VERIFY: note shows PP 1950 which is above SP - likely 1250 or 1050
+63,Shoe,Formal Shoe,Black Oxford Shoe,BMTF,,,,Black,39-45,1250,1890,pair,
+64,Shoe,PT Shoe,PT Shoe,Reltop,,Article,001,,,900,1690,pair,VERIFY: brand 'Reltop' and 'cats/Keds'
+64,Shoe,PT Shoe,PT Shoe,Reltop,,Article,002,,,1290,1890,pair,
+64,Shoe,PT Shoe,PT Shoe,BD,,Article,Pol,,,850,1600,pair,VERIFY: article name
+65,Others,Blanket,Blanket Double Part,,,,,Navy Blue|Royal Blue|Black,,360,460,pcs,
+66,Shoe,Slipper,Bata Slipper Article 72,Bata,,,,Black|Brown,,880,1050,pair,
+67,Punjabi & Paijama,Punjabi,White Punjabi,,,Fabric,Pacific & Toray,White,S|M|L|XL|XXL|XXXL,850,1250,pcs,
+68,Punjabi & Paijama,Paijama,Paijama,,,,,White|Black,38|40|42|44|46,250,450,pcs,
+69,Punjabi & Paijama,Tupi,White Tupi,,,,,White,,80,100,pcs,
+70,Pant,Half Pant,Half Pant Customised (Embroidery),,,,,,,180,250,pcs,
+71,Suit,Sleeping Suit,Sleeping Suit,,,,,Sky Blue|White|Black|Maroon,,550,650,pcs,
+72,Cap,Peak Cap,Peak Cap for Academy,,,,,,20.5|21|21.5|22|22.5|23,350,550,pcs,
+73,Accessories,Name Plate / Badge,Name Plate,,,Type,Standard,,,65,100,pcs,VERIFY: note says 'Name belt' - Name plate or name tape?
+73,Accessories,Name Plate / Badge,Name Badge Customised,,,Type,Customised,,,150,350,pcs,
+74,Accessories,Tie,Tie Customised,,,,,,,80,150,pcs,
+75,Belt,Navy Belt,Navy Belt with Buckle,,,,,Black|Blue|White,,250,450,pcs,
+76,Stationery,Note Book,Hand Note Book Customised,,,,,,,30,66,pcs,
+77,Stationery,Khata,Khata Customised,,,,,,,70,100,pcs,
+78,Stationery,Bond,Bond (paper?),,,,,,,250,300,pcs,VERIFY: note says 'Contro/Cotton Bond' - what is it?
+79,Suit,Tunic Set,Tunic Set,,,,,,,1500,2500,set,
+80,Suit,Blazer Suit,Customised Blazer Suit,,,,,,,5500,7500,set,
+81,Shoe,Formal Shoe,White Apex Shoe,Apex,,,,White,,280,1090,pair,VERIFY: PP 280? SP 1090?
+82,Jacket,Sweater,Sweater,,,Type,Navy,,,450,750,pcs,
+82,Jacket,Sweater,Sweater,,,Type,Customised,,,550,950,pcs,
+83,Belt,Safety Belt,Safety Belt,,,,,,,300,450,pcs,
+84,Safety Equipment,Safety Harness,Safety Harness Double Hook,Udyogi,,,,,,2800,3050,pcs,VERIFY: PP 2500 or 2800?
+84,Safety Equipment,Safety Harness,Safety Harness China,China,,,,,,1700,2200,pcs,
+85,Safety Equipment,Ear Plug,Ear Plug 3M 1271,3M,,,,,,28,120,pair,VERIFY: model and SP unreadable
+85,Safety Equipment,Ear Plug,Ear Plug 3M 1270,3M,,,,,,22,100,pair,
+85,Safety Equipment,Ear Plug,Ear Plug 3M 1110,3M,,,,,,15,70,pair,
+86,Safety Equipment,Ear Muff,Ear Muff,3M,,,,,,550,1050,pcs,
+86,Safety Equipment,Ear Muff,Ear Muff,BD,,,,,,300,450,pcs,
+87,Life Jacket,Life Jacket,Life Jacket,BD,,,,,,350,550,pcs,
+87,Life Jacket,Life Jacket,Life Jacket,China,,Size,Small,,,250,550,pcs,
+87,Life Jacket,Life Jacket,Life Jacket,China,,Size,Medium,,,280,650,pcs,
+87,Life Jacket,Life Jacket,Life Jacket,China,,Size,XL,,,350,750,pcs,
+87,Life Jacket,Life Jacket,Life Jacket,China,,Size,XXL,,,400,850,pcs,
+88,Life Jacket,Inflatable Life Jacket,Inflatable Life Jacket,,,Model,Manual,,,1500,1950,pcs,
+88,Life Jacket,Inflatable Life Jacket,Inflatable Life Jacket,,,Model,Automatic,,,1700,2200,pcs,
+89,Accessories,Brooch,Brooch,,,,,,,150,450,pcs,
+90,Shoe,Safety Shoe,CAT Safety Shoe,CAT,Safety Gallery,,,,40-44,1850,2550,pair,VERIFY: SP 2350 or 2550?
+91,Gloves,Fishing Gloves,Fishing Gloves,,,,,,,350,450,dozen,sold per dozen
+91,Gloves,Rubber Gloves,Rubber Gloves,Sun,,,,,,80,120,pair,
+91,Gloves,Surf Gloves,SURF Gloves,,,,,,,130,220,pair,
+92,Belt,Reflective Belt,Reflective Belt,,,,,Orange|Lemon|Blue,,120,200,pcs,
