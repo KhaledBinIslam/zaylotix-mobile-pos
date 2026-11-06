@@ -724,6 +724,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
     Route::middleware(['perm:purchases', 'feature:suppliers'])->group(function () {
         Route::get('suppliers', [SupplierController::class, 'index'])->name('suppliers');
         Route::post('suppliers', [SupplierController::class, 'store'])->name('suppliers.store');
+        Route::delete('suppliers/{supplier}', [SupplierController::class, 'destroy'])->name('suppliers.destroy');
         Route::get('suppliers/{supplier}', [SupplierController::class, 'show'])->name('suppliers.show');
         Route::post('suppliers/{supplier}/payments', [SupplierPaymentController::class, 'store'])->name('suppliers.payments.store');
         Route::post('suppliers/{supplier}/due', [SupplierController::class, 'addDue'])->name('suppliers.due');

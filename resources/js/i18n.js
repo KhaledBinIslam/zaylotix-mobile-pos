@@ -1907,6 +1907,8 @@ export const translations = {
     'os.bulkFailed': { bn: 'আপলোড হয়নি — আবার চেষ্টা করুন', en: 'Upload failed — try again' },
     'os.pickFile': { bn: 'আগে CSV ফাইলটা বেছে নিন', en: 'Pick the CSV file first' },
     'os.nilCount': { bn: 'এখনো স্টক বসানো হয়নি: {n} টি — দেখতে চাপুন', en: 'Still at zero stock: {n} — tap to see them' },
+    'os.productSupplier': { bn: '🚚 সাপ্লায়ার (এই পণ্যের ডিফল্ট)', en: '🚚 Supplier (this product’s default)' },
+    'supplier.deleteConfirm': { bn: "'{name}' মুছবেন? কেনা/বাকি/খাতার ইতিহাস থাকলে মুছা যাবে না; শুধু ভুল/ডাবল নাম মুছে। পণ্যে থাকলে সাপ্লায়ার হয়ে যাবে Nil।", en: "Delete '{name}'? Refused if any purchase/due/ledger history exists — for duplicates/typos only. Products fall back to Nil." },
     'bc.noPriceWarn': { bn: '{n} টা লেবেলের দাম বসানো নেই — স্টিকারে "Price: Nil" ছাপবে। আগে পণ্যের দাম ঠিক করলে ভালো।', en: '{n} labels have no price — they will print "Price: Nil". Better to fix the prices first.' },
 
     // SEAMAN Phase 5 — corporate parties & dues

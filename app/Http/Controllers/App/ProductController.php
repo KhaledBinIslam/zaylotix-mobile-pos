@@ -219,6 +219,7 @@ class ProductController extends Controller
                 'option2_label' => $data['option2_label'] ?? null,
             ] : []),
             ...$this->brandField($data),
+            ...$this->supplierField($data),
             ...(array_key_exists('internal_note', $data) ? ['internal_note' => ($data['internal_note'] ?? null) ?: null] : []),
         ]);
 
@@ -304,6 +305,7 @@ class ProductController extends Controller
                 'option2_label' => $data['option2_label'] ?? null,
             ] : []),
             ...$this->brandField($data),
+            ...$this->supplierField($data),
             ...(array_key_exists('internal_note', $data) ? ['internal_note' => ($data['internal_note'] ?? null) ?: null] : []),
         ];
 
@@ -459,6 +461,24 @@ class ProductController extends Controller
         $brandId = ! empty($data['brand_id']) ? \App\Models\Brand::find($data['brand_id'])?->id : null;
 
         return ['brand_id' => $brandId];
+    }
+
+    /**
+     * Seaman live report: the product sheet showed the supplier (🚚) but
+     * had no way to SET it — only stock-in did. Same contract as
+     * brandField(): feature-gated, tenant-resolved, a foreign id quietly
+     * becomes "no supplier" (Nil), and shops without the feature see no
+     * change at all because the key is simply absent.
+     */
+    private function supplierField(array $data): array
+    {
+        if (! array_key_exists('supplier_id', $data) || ! \App\Support\Tenancy::shop()?->hasFeature('suppliers')) {
+            return [];
+        }
+
+        $supplierId = ! empty($data['supplier_id']) ? \App\Models\Supplier::find($data['supplier_id'])?->id : null;
+
+        return ['supplier_id' => $supplierId];
     }
 
     public function stockIn(Product $product)

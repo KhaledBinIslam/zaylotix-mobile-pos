@@ -223,7 +223,7 @@ const editingHasVariants = computed(() => (editing.value?.variants?.length ?? 0)
 const preExistingUnallocatedStock = computed(() => (!editingHasVariants.value && Number(editing.value?.stock) > 0) ? Number(editing.value.stock) : 0);
 const form = useForm({
     name: '', name_en: '', generic_name: '', company: '', shelf_location: '', requires_prescription: false, emoji: '📦', photo: null, remove_photo: false, category_id: '', new_category_name: '',
-    option1_label: '', option2_label: '', brand_id: '', internal_note: '',
+    option1_label: '', option2_label: '', brand_id: '', supplier_id: '', internal_note: '',
     unit_id: '', new_unit_name: '', barcode: '', cost: '', price: '', wholesale_price: '', wholesale_moq: '', discount_price: '', stock: '',
     reorder_point: '', sold_by_weight: false, weight_unit: 'kg', track_serial: false,
     // restaurant-only (see isRestaurant) — 'tracked' everywhere else,
@@ -322,7 +322,7 @@ function openEdit(p) {
     form.generic_name = p.generic_name; form.company = p.company; form.shelf_location = p.shelf_location; form.requires_prescription = p.requires_prescription;
     form.category_id = p.category_id; form.unit_id = p.unit_id; form.barcode = p.barcode;
     form.option1_label = p.option1_label || ''; form.option2_label = p.option2_label || '';
-    form.brand_id = p.brand_id || ''; form.internal_note = p.internal_note || '';
+    form.brand_id = p.brand_id || ''; form.supplier_id = p.supplier_id || ''; form.internal_note = p.internal_note || '';
     form.cost = p.cost; form.price = p.price; form.wholesale_price = p.wholesale_price; form.wholesale_moq = p.wholesale_moq; form.discount_price = p.discount_price;
     form.price_tiers = (p.price_tiers || []).map(tier => ({ min_qty: tier.min_qty, price: tier.price }));
     // p.stock comes back from the server as a decimal-cast string ("124.000")
@@ -1012,6 +1012,15 @@ useKeyboardShortcuts({
                     <option v-for="b in brands" :key="b.id" :value="b.id">{{ b.name }}</option>
                 </select>
                 <div v-if="form.errors.category_id" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.category_id }}</div>
+            </div>
+            <!-- Seaman live report: the sheet SHOWED 🚚 but nothing set it —
+                 this saves with the same সংরক্ষণ button as every field -->
+            <div v-if="suppliers" class="field">
+                <label>{{ t('os.productSupplier') }}</label>
+                <select v-model="form.supplier_id">
+                    <option :value="''">Nil — {{ t('os.noSupplier') }}</option>
+                    <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+                </select>
             </div>
             <div class="field"><label>{{ t('stock.orNewCategory') }}</label><input v-model="form.new_category_name" :placeholder="t('stock.orNewCategoryPlaceholder')"></div>
             <div class="field">

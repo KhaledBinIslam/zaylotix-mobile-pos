@@ -1,5 +1,5 @@
 <script setup>
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
@@ -41,6 +41,20 @@ function saveSupplier() {
     addForm.post(route('app.suppliers.store'), { onSuccess: () => { addSheet.value = false; addForm.reset(); } });
 }
 
+// delete — for a just-created duplicate/typo; the server refuses the
+// moment any purchase/payment/intake history exists, so this can never
+// erase hisab. Button recovery: disabled while the request runs.
+const page = usePage();
+const deleting = ref(false);
+function destroySupplier(s) {
+    if (!confirm(t('supplier.deleteConfirm', { name: s.name }))) return;
+    deleting.value = true;
+    router.delete(route('app.suppliers.destroy', s.id), {
+        preserveScroll: true,
+        onFinish: () => (deleting.value = false),
+    });
+}
+
 const paySheet = ref(false);
 const paying = ref(null);
 const payForm = useForm({ amount: '', method: 'cash' });
@@ -69,6 +83,11 @@ function pay() {
         </div>
 
         <button class="btn ghost" style="margin-bottom:16px" @click="addSheet = true">{{ t('supplier.add') }}</button>
+
+        <!-- why a delete was refused — stays visible, never a fading toast -->
+        <div v-if="page.props.errors?.supplier" class="card" style="margin-bottom:12px;background:var(--roseSoft);color:var(--rose);font-size:13px">
+            ⚠️ {{ page.props.errors.supplier }}
+        </div>
 
         <input v-model="q" :placeholder="t('supplier.searchPlaceholder')" style="margin-bottom:10px">
         <label class="chk" style="margin-bottom:12px"><input type="checkbox" v-model="sortBySold"> {{ t('supplier.sortBySold') }}</label>
@@ -101,7 +120,12 @@ function pay() {
                     <span>📞 {{ s.phone || t('due.noNumber') }}</span>
                     <span v-if="statsLine(s)" style="color:var(--gold2);font-size:11.5px">{{ statsLine(s) }}</span>
                 </div>
-                <div class="end"><span class="pill mint">{{ t('supplier.settled') }}</span></div>
+                <div class="end" style="display:flex;align-items:center;gap:8px">
+                    <span class="pill mint">{{ t('supplier.settled') }}</span>
+                    <!-- duplicate/typo rows only — the server refuses any
+                         supplier with real history, so this stays safe -->
+                    <button class="btn sm ghost rose" style="width:auto;padding:6px 10px" :disabled="deleting" @click.prevent.stop="destroySupplier(s)">🗑️</button>
+                </div>
             </Link>
         </template>
 

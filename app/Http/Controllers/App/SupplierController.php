@@ -111,6 +111,18 @@ class SupplierController extends Controller
             'address' => ['nullable', 'string', 'max:255'],
         ]);
 
+        $name = trim($data['name']);
+
+        // same-NAME guard (Seaman live report: typing an existing supplier's
+        // name silently made a twin) — case-insensitive, tenant-scoped, and
+        // a warning rather than a new row, exactly like the phone guard below
+        $nameTwin = Supplier::whereRaw('LOWER(name) = ?', [mb_strtolower($name)])->first();
+        if ($nameTwin) {
+            return back()->withErrors([
+                'name' => "এই নামে সাপ্লায়ার আগেই আছে: {$nameTwin->name}। নতুন করে যোগ করার দরকার নেই।",
+            ]);
+        }
+
         $phone = $data['phone'] ?? null;
         $existing = $phone ? Supplier::where('phone', $phone)->first() : null;
 
@@ -121,12 +133,45 @@ class SupplierController extends Controller
         }
 
         Supplier::create([
-            'name' => $data['name'],
+            'name' => $name,
             'phone' => $phone,
             'address' => $data['address'] ?? null,
         ]);
 
-        return back()->with('success', "{$data['name']} added.");
+        return back()->with('success', "{$name} added.");
+    }
+
+    /**
+     * Delete a supplier — meant for a just-created duplicate/typo row.
+     * Refused the moment ANY history hangs off it: a payable balance,
+     * purchases, payments (they cascade-delete!) or intake-ledger rows —
+     * money/stock history is never silently erased. A clean delete only
+     * clears pointers: products that named this supplier go back to "Nil"
+     * (the FK is nullOnDelete), nothing else changes.
+     */
+    public function destroy(Request $request, Supplier $supplier)
+    {
+        $this->authorize('update', $supplier);
+        abort_unless($request->user()->role === 'owner', 403, 'শুধু মালিক সাপ্লায়ার মুছতে পারেন।');
+
+        if ((float) $supplier->payable != 0.0) {
+            return back()->withErrors(['supplier' => "'{$supplier->name}'-এর বাকি ".number_format((float) $supplier->payable, 2).' টাকা — আগে হিসাব মিটিয়ে নিন, তারপর মুছুন।']);
+        }
+        if (Purchase::where('supplier_id', $supplier->id)->exists()) {
+            return back()->withErrors(['supplier' => "'{$supplier->name}'-এর কেনার ইতিহাস আছে — মুছা যাবে না (ভুল নাম হলে ওটার কেনাগুলো আসলে এই সাপ্লায়ারেরই কিনা দেখে নিন)।"]);
+        }
+        if (\App\Models\SupplierPayment::where('supplier_id', $supplier->id)->exists()) {
+            return back()->withErrors(['supplier' => "'{$supplier->name}'-এর পেমেন্ট ইতিহাস আছে — মুছা যাবে না।"]);
+        }
+        if (\App\Models\StockIntake::where('supplier_id', $supplier->id)->exists()) {
+            return back()->withErrors(['supplier' => "'{$supplier->name}'-এর নামে মাল-উঠার খাতায় এন্ট্রি আছে — মুছা যাবে না।"]);
+        }
+
+        $name = $supplier->name;
+        $supplier->delete();
+        Activity::log('supplier.delete', "সাপ্লায়ার '{$name}' মুছে ফেলা হয়েছে (কোনো ইতিহাস ছিল না)।");
+
+        return back()->with('success', "'{$name}' মুছে ফেলা হয়েছে — পণ্যে থাকলে সেগুলোর সাপ্লায়ার এখন Nil।");
     }
 
     /**
