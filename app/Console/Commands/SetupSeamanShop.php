@@ -59,6 +59,7 @@ class SetupSeamanShop extends Command
         'export', 'barcode_printing', 'purchases', 'returns', 'damages',
         'stock_count', 'product_variants', 'activity_log', 'suppliers',
         'low_stock_alerts', 'shop_backup', 'cashier_management',
+        'sub_categories', // Phase 2 — category → sub-category, this shop only
     ];
 
     public function handle(): int

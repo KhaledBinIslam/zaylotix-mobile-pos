@@ -84,6 +84,22 @@ const canScan = computed(() => props.salesMode === 'scan' || props.salesMode ===
 const q = ref('');
 const searchInput = ref(null);
 const cat = ref('all');
+
+// --- SEAMAN Phase 2: category → sub-category. Flat shops: every category
+// is top-level, children lists are empty, rendering/filtering identical. ---
+const topCategories = computed(() => (props.categories || []).filter((c) => !c.parent_id));
+const posChildrenOf = (id) => (props.categories || []).filter((c) => c.parent_id === id);
+const posSubParentId = computed(() => {
+    if (cat.value === 'all') return null;
+    const selected = (props.categories || []).find((c) => c.id === cat.value);
+    return selected ? (selected.parent_id || selected.id) : null;
+});
+const posSubChips = computed(() => (posSubParentId.value ? posChildrenOf(posSubParentId.value) : []));
+/** The ids the current selection stands for: a parent speaks for its children too. */
+const catFamilyIds = computed(() => {
+    if (cat.value === 'all') return new Set();
+    return new Set([cat.value, ...posChildrenOf(cat.value).map((c) => c.id)]);
+});
 const cart = ref([]); // [{product_id, product_unit_id, qty, discount}]
 
 // Scale follow-up — only relevant when catalogMode === 'search' (see the
@@ -231,7 +247,10 @@ const normalizedCatalog = computed(() => props.products.map((p) => ({
 const filtered = computed(() => {
     if (props.catalogMode === 'search') return searchResults.value;
 
-    const inCategory = normalizedCatalog.value.filter(({ product: p }) => cat.value === 'all' || p.category_id === cat.value);
+    // a parent category includes its sub-categories ("Shoe" = every kind
+    // of shoe — SEAMAN Phase 2); a flat shop's set is just {id}, so the
+    // match is the same === it always was
+    const inCategory = normalizedCatalog.value.filter(({ product: p }) => cat.value === 'all' || catFamilyIds.value.has(p.category_id));
     if (!q.value) return inCategory.map(({ product }) => product);
 
     const normalizedQ = normalizeSearch(q.value);
@@ -1598,7 +1617,10 @@ useKeyboardShortcuts({
             <!-- category rail — desktop only, the mobile tabbar below covers the same job on phone -->
             <aside class="hidden lg:block lg:order-1 lg:w-52 lg:shrink-0 lg:sticky lg:top-6">
                 <button class="rest-rail-btn" :class="{ on: cat === 'all' }" @click="cat = 'all'">{{ t('pos.allProducts') }}</button>
-                <button v-for="c in categories" :key="c.id" class="rest-rail-btn" :class="{ on: cat === c.id }" @click="cat = c.id">{{ c.emoji }} {{ c.name }}</button>
+                <button v-for="c in topCategories" :key="c.id" class="rest-rail-btn" :class="{ on: cat === c.id }" @click="cat = c.id">{{ c.emoji }} {{ c.name }}</button>
+                <template v-if="posSubChips.length">
+                    <button v-for="s in posSubChips" :key="'s' + s.id" class="rest-rail-btn" style="padding-left:26px" :class="{ on: cat === s.id }" @click="cat = s.id">{{ s.emoji }} {{ s.name }}</button>
+                </template>
             </aside>
 
             <!-- menu -->
@@ -1627,7 +1649,14 @@ useKeyboardShortcuts({
 
                 <div class="tabbar lg:hidden">
                     <button :class="{ on: cat === 'all' }" @click="cat = 'all'">{{ t('pos.allProducts') }}</button>
-                    <button v-for="c in categories" :key="c.id" :class="{ on: cat === c.id }" @click="cat = c.id">{{ c.emoji }} {{ c.name }}</button>
+                    <button v-for="c in topCategories" :key="c.id" :class="{ on: cat === c.id || posChildrenOf(c.id).some((s) => s.id === cat) }" @click="cat = c.id">{{ c.emoji }} {{ c.name }}</button>
+                </div>
+                <!-- SEAMAN Phase 2 — the selected category's kinds; a
+                     cashier reaches any item in two taps. Renders nothing
+                     for a category without children. -->
+                <div v-if="posSubChips.length" class="tabbar lg:hidden" style="margin-top:-8px">
+                    <button :class="{ on: cat === posSubParentId }" @click="cat = posSubParentId">{{ t('cat.allOfParent') }}</button>
+                    <button v-for="s in posSubChips" :key="s.id" :class="{ on: cat === s.id }" @click="cat = s.id">{{ s.emoji }} {{ s.name }}</button>
                 </div>
 
                 <div v-if="filtered.length" class="pgrid rest-grid">

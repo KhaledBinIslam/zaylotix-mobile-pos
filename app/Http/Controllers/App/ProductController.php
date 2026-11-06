@@ -68,7 +68,11 @@ class ProductController extends Controller
         // page* is capped, so finding a specific product by name/barcode
         // still searches everything, not just the current page.
         $base = Product::with($with)
-            ->when($categoryId, fn ($query) => $query->where('category_id', $categoryId))
+            // a parent category's filter includes its sub-categories —
+            // "show me shoes" means every kind of shoe (SEAMAN Phase 2).
+            // For every shop without children the id list is just [id],
+            // byte-identical to the old where('category_id', =)
+            ->when($categoryId, fn ($query) => $query->whereIn('category_id', ProductCategory::idsIncludingChildren((int) $categoryId)))
             ->when($company, fn ($query) => $query->where('company', $company))
             ->when($genericName, fn ($query) => $query->where('generic_name', $genericName))
             ->when($stockStatus === 'low', fn ($query) => $query->lowStock())
@@ -113,7 +117,7 @@ class ProductController extends Controller
 
         return Inertia::render('App/Stock/Index', [
             'products' => $products,
-            'categories' => ProductCategory::orderBy('name')->get(),
+            'categories' => ProductCategory::orderBy('name')->get(), // parent_id rides along for the sub-category chips
             'units' => Unit::orderBy('name')->get(),
             'stats' => $stats,
             'q' => $q,

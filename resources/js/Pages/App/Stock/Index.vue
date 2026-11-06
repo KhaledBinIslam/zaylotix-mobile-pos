@@ -146,6 +146,20 @@ const outOfStockCount = computed(() => props.stats.out_of_stock);
 const expiringSoonCount = computed(() => props.stats.expiring_soon);
 const categoryCounts = computed(() => props.stats.category_counts);
 
+// --- SEAMAN Phase 2: category → sub-category (flat shops unaffected:
+// every category is top-level, childrenOf() is always empty) ---
+const topCategories = computed(() => (props.categories || []).filter((c) => !c.parent_id));
+const childrenOf = (id) => (props.categories || []).filter((c) => c.parent_id === id);
+/** The sub-chip row belongs to whichever parent the current selection lives under. */
+const subParentId = computed(() => {
+    if (cat.value === 'all') return null;
+    const selected = (props.categories || []).find((c) => c.id === cat.value);
+    return selected ? (selected.parent_id || selected.id) : null;
+});
+const subChips = computed(() => (subParentId.value ? childrenOf(subParentId.value) : []));
+/** A parent tab's count covers its whole family — "Shoe" counts every kind of shoe. */
+const countWithChildren = (id) => (categoryCounts.value[id] || 0) + childrenOf(id).reduce((s, c) => s + (categoryCounts.value[c.id] || 0), 0);
+
 // Root-caused live (2026-09-23, real-user report): a non-weight-based
 // product's stock badge on every row here always said "পিস" (pieces),
 // regardless of what unit the owner actually picked for it (কেজি, লিটার,
@@ -654,7 +668,16 @@ useKeyboardShortcuts({
 
         <div class="tabbar">
             <button :class="{ on: cat === 'all' }" @click="setCategory('all')">{{ t('stock.allCategories') }} · {{ totalProducts }}</button>
-            <button v-for="c in categories" :key="c.id" :class="{ on: cat === c.id }" @click="setCategory(c.id)">{{ c.emoji }} {{ c.name }} · {{ categoryCounts[c.id] || 0 }}</button>
+            <!-- top-level only; for every shop without sub-categories this
+                 list IS the whole list, rendering exactly as before -->
+            <button v-for="c in topCategories" :key="c.id" :class="{ on: cat === c.id || childrenOf(c.id).some((s) => s.id === cat) }" @click="setCategory(c.id)">{{ c.emoji }} {{ c.name }} · {{ countWithChildren(c.id) }}</button>
+            <button v-if="features.includes('sub_categories')" style="border-style:dashed" @click="router.visit(route('app.categories.index'))">⚙️ {{ t('cat.manage') }}</button>
+        </div>
+        <!-- SEAMAN Phase 2: a selected parent's kinds, one more tap deep.
+             Renders nothing when the category has no children. -->
+        <div v-if="subChips.length" class="tabbar" style="margin-top:-8px">
+            <button :class="{ on: cat === subParentId }" @click="setCategory(subParentId)">{{ t('cat.allOfParent') }}</button>
+            <button v-for="s in subChips" :key="s.id" :class="{ on: cat === s.id }" @click="setCategory(s.id)">{{ s.emoji }} {{ s.name }} · {{ categoryCounts[s.id] || 0 }}</button>
         </div>
 
         <div v-for="p in filtered" :key="p.id" class="row" @click="openEdit(p)">
@@ -779,7 +802,12 @@ useKeyboardShortcuts({
                 <label>{{ t('stock.category') }}</label>
                 <select v-model="form.category_id">
                     <option :value="''">{{ t('stock.selectPlaceholder') }}</option>
-                    <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.emoji }} {{ c.name }}</option>
+                    <!-- parents first, each one's sub-categories indented
+                         under it — flat shops see the identical flat list -->
+                    <template v-for="c in topCategories" :key="c.id">
+                        <option :value="c.id">{{ c.emoji }} {{ c.name }}</option>
+                        <option v-for="s in childrenOf(c.id)" :key="s.id" :value="s.id">&nbsp;&nbsp;— {{ s.emoji }} {{ s.name }}</option>
+                    </template>
                 </select>
                 <div v-if="form.errors.category_id" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.category_id }}</div>
             </div>

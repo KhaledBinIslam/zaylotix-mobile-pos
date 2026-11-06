@@ -8,6 +8,7 @@ use App\Http\Controllers\App\AdSpendController;
 use App\Http\Controllers\App\ArticleController;
 use App\Http\Controllers\App\BarcodeLabelController;
 use App\Http\Controllers\App\BranchController;
+use App\Http\Controllers\App\CategoryController;
 use App\Http\Controllers\App\CourierController;
 use App\Http\Controllers\App\CsrfTokenController;
 use App\Http\Controllers\App\CustomerController;
@@ -255,6 +256,15 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
 
         Route::get('medicine-catalog/search', [MedicineCatalogController::class, 'search'])->name('medicineCatalog.search');
         Route::get('products/barcode-lookup/{barcode}', [ProductController::class, 'barcodeLookup'])->name('products.barcodeLookup');
+    });
+
+    // SEAMAN Phase 2 — category → sub-category management; gated so no
+    // other shop ever sees the page or can create a child category
+    Route::middleware(['perm:stock', 'feature:sub_categories'])->group(function () {
+        Route::get('categories', [CategoryController::class, 'index'])->name('categories.index');
+        Route::post('categories', [CategoryController::class, 'store'])->name('categories.store');
+        Route::patch('categories/{category}', [CategoryController::class, 'update'])->name('categories.update');
+        Route::delete('categories/{category}', [CategoryController::class, 'destroy'])->name('categories.destroy');
     });
 
     Route::middleware(['perm:stock', 'feature:dead_stock_clearance'])->group(function () {
