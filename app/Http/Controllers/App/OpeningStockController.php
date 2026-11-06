@@ -39,6 +39,7 @@ class OpeningStockController extends Controller
         $data = $request->validate([
             'supplier_id' => ['nullable', 'integer'],
             'default_cost' => ['nullable', 'numeric', 'min:0'],
+            'default_price' => ['nullable', 'numeric', 'min:0'],
             'cells' => ['required', 'array', 'min:1'],
             'cells.*.variant_id' => ['nullable', 'integer'],
             'cells.*.color' => ['nullable', 'string', 'max:100'],
@@ -50,10 +51,16 @@ class OpeningStockController extends Controller
 
         $supplierId = ! empty($data['supplier_id']) ? Supplier::find($data['supplier_id'])?->id : null;
         $defaultCost = isset($data['default_cost']) ? (float) $data['default_cost'] : null;
+        // Khaled live: the grid let him price a NEW cell but never an
+        // EXISTING one — "oikhane sell price set korte parchina", stock
+        // from a supplier at a fresh price kept landing back at the
+        // article's old default. Same "default for all cells, per-cell
+        // overrides it" shape as cost, just for price.
+        $defaultPrice = isset($data['default_price']) ? (float) $data['default_price'] : null;
 
         $created = 0;
 
-        DB::transaction(function () use ($product, $data, $supplierId, $defaultCost, &$created) {
+        DB::transaction(function () use ($product, $data, $supplierId, $defaultCost, $defaultPrice, &$created) {
             $lockedProduct = Product::whereKey($product->id)->lockForUpdate()->first();
             abort_unless($lockedProduct, 422, 'পণ্যটি ইতিমধ্যে মুছে ফেলা হয়েছে।');
 
@@ -62,6 +69,7 @@ class OpeningStockController extends Controller
             foreach ($data['cells'] as $cell) {
                 $qty = (float) $cell['qty'];
                 $paidCost = isset($cell['cost']) ? (float) $cell['cost'] : $defaultCost;
+                $paidPrice = isset($cell['price']) ? (float) $cell['price'] : $defaultPrice;
 
                 $variant = null;
                 if (! empty($cell['variant_id'])) {
@@ -86,7 +94,7 @@ class OpeningStockController extends Controller
                         'size' => $size,
                         'stock' => 0,
                         'cost' => $paidCost,
-                        'price' => isset($cell['price']) ? (float) $cell['price'] : null,
+                        'price' => $paidPrice,
                     ]);
                     // printable immediately — same ZV{id} the label page generates
                     $variant->update(['barcode' => 'ZV'.$variant->id]);
@@ -105,11 +113,20 @@ class OpeningStockController extends Controller
                             ? round((($oldStock * $oldCost) + ($qty * $paidCost)) / ($oldStock + $qty), 2)
                             : $paidCost;
                     }
+                    // price is never blended (there's no "average sell
+                    // price" concept) — a supplied one just overwrites,
+                    // same as everywhere else price is set
+                    if ($paidPrice !== null) {
+                        $variant->price = $paidPrice;
+                    }
                     $variant->applyStockDelta($qty);
                     $variant->save();
                     IntakeLedger::record($lockedProduct, $variant, $qty, $paidCost, 'opening_stock', $supplierId);
                 } else {
                     // the plain, variantless product: one box, straight on
+                    if ($paidPrice !== null) {
+                        $lockedProduct->update(['price' => $paidPrice]);
+                    }
                     IntakeLedger::record($lockedProduct, null, $qty, $paidCost, 'opening_stock', $supplierId);
                 }
 

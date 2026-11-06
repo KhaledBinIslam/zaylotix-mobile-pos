@@ -84,6 +84,7 @@ class BarcodeLabelController extends Controller
                     'stock' => $p->stock,
                     'brand_name' => $p->brand?->name,
                     'category_name' => $p->category?->name,
+                    'supplier_id' => $p->supplier_id,
                     'supplier_name' => $p->supplier?->name,
                     'generic_name' => $p->generic_name,
                     'company' => $p->company,
@@ -103,9 +104,20 @@ class BarcodeLabelController extends Controller
                         'sources' => $v->relationLoaded('sources') ? $v->sources->map(fn ($s) => [
                             'id' => $s->id, 'barcode' => $s->barcode, 'scan_code' => $s->barcode,
                             'price' => $s->price, 'stock' => $s->stock,
+                            'supplier_id' => $s->supplier_id,
                             'supplier_name' => $s->supplier?->name,
                         ]) : null,
                     ]),
+                    // Part 1 — a VARIANTLESS product's own lots (this was
+                    // loaded on every request already but never actually
+                    // reached the page, so a plain product's per-supplier
+                    // stickers never had a sources array to print from)
+                    'sources' => $p->relationLoaded('sources') ? $p->sources->map(fn ($s) => [
+                        'id' => $s->id, 'barcode' => $s->barcode, 'scan_code' => $s->barcode,
+                        'price' => $s->price, 'stock' => $s->stock,
+                        'supplier_id' => $s->supplier_id,
+                        'supplier_name' => $s->supplier?->name,
+                    ]) : null,
                     'color_barcodes' => $includeSize ? [] : $p->colorBarcodes->map(fn ($cb) => [
                         'id' => $cb->id, 'color' => $cb->color, 'barcode' => $cb->barcode,
                         'scan_code' => 'ZC'.$cb->id,
@@ -117,6 +129,11 @@ class BarcodeLabelController extends Controller
             // a sticker printed at one shop counts at the other too
             'printed' => LabelPrint::summaryFor(Tenancy::businessShopIds($shop?->id)),
             'openFor' => $openFor,
+            // Khaled live: "supplier filter option lagbe barcode print e" —
+            // null-means-hidden, same contract as Stock page's own suppliers prop
+            'suppliers' => $shop?->hasFeature('suppliers')
+                ? \App\Models\Supplier::orderBy('name')->get(['id', 'name'])
+                : null,
         ]);
     }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { searchProducts, productHaystack } from '../clientProductSearch';
+import { searchProducts, productHaystack, productHasSupplier } from '../clientProductSearch';
 
 /**
  * Barcode Labels' old filter was a bare includes() on name/barcode only —
@@ -90,5 +90,39 @@ describe('searchProducts', () => {
         expect(hay).toContain('navy blue');
         expect(hay).toContain('manik');
         expect(hay).toContain('zv12');
+    });
+});
+
+/**
+ * Khaled live: the barcode-print picker showed one stale supplier badge per
+ * product (its single supplier_id, set once) even once Part 1 lines let a
+ * product carry several real suppliers — "ekhon sob Bulu dekhacche". The
+ * filter matches the ACTUAL lines (product's own, or any variant's), and
+ * only falls back to the single field for a product with no lines at all.
+ */
+describe('productHasSupplier', () => {
+    const bulu = { id: 1, name: 'Boiler Suit', supplier_id: 7, variants: [
+        { id: 11, sources: [{ id: 101, supplier_id: 7 }] },
+        { id: 12, sources: [{ id: 102, supplier_id: 9 }] }, // a different lot, different supplier
+    ] };
+    const plain = { id: 2, name: 'Helmet', supplier_id: 7, sources: [{ id: 201, supplier_id: 9 }], variants: [] };
+    const noLines = { id: 3, name: 'Old Stock', supplier_id: 7, variants: [] }; // pre-Part-1 data, no lines yet
+
+    it('matches a supplier present on ANY of the product\'s variant lines', () => {
+        expect(productHasSupplier(bulu, 7)).toBe(true);
+        expect(productHasSupplier(bulu, 9)).toBe(true);
+        expect(productHasSupplier(bulu, 99)).toBe(false);
+    });
+
+    it('matches a supplier on the product\'s OWN line (variantless product)', () => {
+        expect(productHasSupplier(plain, 9)).toBe(true);
+        // the product's stale supplier_id (7) is NOT what sold this lot — a
+        // product with real lines must never fall back past them
+        expect(productHasSupplier(plain, 7)).toBe(false);
+    });
+
+    it('falls back to the single supplier_id for a product with no lines at all', () => {
+        expect(productHasSupplier(noLines, 7)).toBe(true);
+        expect(productHasSupplier(noLines, 9)).toBe(false);
     });
 });

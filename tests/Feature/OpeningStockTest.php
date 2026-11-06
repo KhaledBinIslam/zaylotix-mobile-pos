@@ -86,6 +86,54 @@ class OpeningStockTest extends TestCase
         $this->assertSame('opening_stock', StockIntake::where('product_variant_id', $pink->id)->sole()->source);
     }
 
+    /**
+     * Khaled live: stock came in from a new supplier at a new sell price,
+     * but the grid only ever let him PRICE a brand-new cell — an existing
+     * one kept its old price no matter what he typed, because nothing
+     * ever sent it to the server. default_price (every cell) and a cell's
+     * own price (overrides the default) now both reach an EXISTING
+     * variant too, exactly like cost already did; price is a straight
+     * overwrite, never blended (there's no "average sell price").
+     */
+    public function test_an_existing_variants_price_can_be_set_from_the_grid(): void
+    {
+        [$shop, $owner] = $this->aGridShop();
+        $this->actingAs($owner, 'web');
+
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Boiler Suit', 'cost' => 650, 'price' => 1090, 'stock' => 0]);
+        $m = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => 'M', 'stock' => 0, 'cost' => 650, 'price' => 1090]);
+        $l = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => 'L', 'stock' => 0, 'cost' => 650, 'price' => 1090]);
+
+        $this->post(route('app.products.openingStock', $product->id), [
+            'default_cost' => 650,
+            'default_price' => 990, // applies to every cell that doesn't override it
+            'cells' => [
+                ['variant_id' => $m->id, 'qty' => 5], // picks up the default price
+                ['variant_id' => $l->id, 'qty' => 3, 'price' => 1200], // its own price wins
+            ],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertEquals(990, (float) $m->fresh()->price);
+        $this->assertEquals(1200, (float) $l->fresh()->price);
+    }
+
+    /** No price typed anywhere — the existing price is left exactly alone, same as before this feature existed. */
+    public function test_an_existing_variants_price_is_untouched_when_none_is_given(): void
+    {
+        [$shop, $owner] = $this->aGridShop();
+        $this->actingAs($owner, 'web');
+
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Boiler Suit', 'cost' => 650, 'price' => 1090, 'stock' => 0]);
+        $m = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => 'M', 'stock' => 0, 'cost' => 650, 'price' => 1090]);
+
+        $this->post(route('app.products.openingStock', $product->id), [
+            'default_cost' => 650,
+            'cells' => [['variant_id' => $m->id, 'qty' => 5]],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertEquals(1090, (float) $m->fresh()->price);
+    }
+
     public function test_the_grid_is_refused_without_the_feature(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();

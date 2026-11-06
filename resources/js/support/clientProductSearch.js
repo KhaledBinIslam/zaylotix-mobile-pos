@@ -33,6 +33,27 @@ export function productHaystack(p) {
 }
 
 /**
+ * Does this product carry a line — on the product itself, or on any of its
+ * variants — from this exact supplier? Falls back to the product's own
+ * single supplier_id when it has no lines at all (a shop without
+ * source_lines, or a product Part 1's backfill hasn't touched yet), so the
+ * filter still works for data that predates per-line suppliers.
+ */
+export function productHasSupplier(p, supplierId) {
+    const ownLines = p.sources || [];
+    const variantLines = (p.variants || []).flatMap((v) => v.sources || []);
+    const allLines = [...ownLines, ...variantLines];
+
+    // a product with real lines is judged ONLY by them, even if none of
+    // those lines happen to match this supplier — falling back to the
+    // stale single supplier_id here would un-filter exactly the lots this
+    // filter exists to tell apart (Khaled: "ekhon sob Bulu dekhacche")
+    if (allLines.length) return allLines.some((s) => s.supplier_id === supplierId);
+
+    return p.supplier_id === supplierId;
+}
+
+/**
  * @returns the matching products, best first; the original array when the
  * query is blank (so "no search" stays byte-identical to no filtering).
  */

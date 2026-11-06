@@ -7,7 +7,7 @@ import { useI18n } from '@/composables/useI18n';
 import { useToast } from '@/composables/useToast';
 import { labelSizeMm } from '@/support/labelSizes';
 import { thermalModuleWidth, THERMAL_BAR_HEIGHT_MM, detailedBarcodeDots } from '@/support/barcodeFit';
-import { searchProducts } from '@/support/clientProductSearch';
+import { searchProducts, productHasSupplier } from '@/support/clientProductSearch';
 import { buildShareMetadata, canShareLabelFiles } from '@/support/bluetoothPrintShare';
 import { printedLabelKey } from '@/support/labelPrintKey';
 import { printableRowsOf } from '@/support/labelSelection';
@@ -22,6 +22,7 @@ const props = defineProps({
     // arriving from Stock's 🏷️ button: open on this article alone,
     // already ticked
     openFor: { type: Number, default: null },
+    suppliers: { type: Array, default: null }, // null = suppliers feature off, filter hidden
 });
 const { t } = useI18n();
 const { toast } = useToast();
@@ -179,7 +180,13 @@ function generateProductBarcode(p) {
 // one shared matcher (support/clientProductSearch.js): multi-word any
 // order, variant size/colour, category, brand, supplier, ZV codes,
 // best matches first — the old bare includes() found none of those
-const filtered = computed(() => searchProducts(props.products, q.value));
+const supplierFilter = ref('');
+const filtered = computed(() => {
+    const bySearch = searchProducts(props.products, q.value);
+    if (!supplierFilter.value) return bySearch;
+
+    return bySearch.filter((p) => productHasSupplier(p, Number(supplierFilter.value)));
+});
 
 // ↑/↓ walks the results, Enter focuses the highlighted product's first
 // qty box — works for the keyboard and for a hardware scanner's Enter
@@ -848,7 +855,14 @@ const printCss = computed(() => {
 
         <input v-model="q" :placeholder="t('bc.searchPlaceholder')" style="margin-bottom:8px"
             @keydown.down.prevent="moveActive(1)" @keydown.up.prevent="moveActive(-1)" @keydown.enter.prevent="focusActive()">
-        <div v-if="q && !filtered.length" class="card" style="margin-bottom:12px;text-align:center;color:var(--mut);font-size:13px">
+        <!-- Khaled live: "supplier filter option lagbe barcode print e" -->
+        <div v-if="suppliers && suppliers.length" class="field" style="margin-bottom:8px">
+            <select v-model="supplierFilter">
+                <option value="">{{ t('stock.allSuppliers') }}</option>
+                <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+            </select>
+        </div>
+        <div v-if="(q || supplierFilter) && !filtered.length" class="card" style="margin-bottom:12px;text-align:center;color:var(--mut);font-size:13px">
             🔍 {{ t('bc.searchEmpty') }}
         </div>
         <div v-if="filtered.length" style="display:flex;gap:8px;align-items:center;margin-bottom:12px">

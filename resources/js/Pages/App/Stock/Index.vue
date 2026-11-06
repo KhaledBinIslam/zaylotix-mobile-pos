@@ -22,6 +22,7 @@ const props = defineProps({
     suppliers: { type: Array, default: null }, // null = suppliers feature off, selects hidden
     company: String, genericName: String, companies: { type: Array, default: () => [] }, genericNames: { type: Array, default: () => [] },
     stockStatus: String,
+    supplierId: [Number, String],
     // which categories price by size group, and the groups themselves —
     // so adding a size to an article later offers the SAME price boxes
     // the article form offered when it was created
@@ -62,6 +63,7 @@ const searchInput = ref(null);
 const cat = ref(props.categoryId || 'all');
 const companyFilter = ref(props.company || '');
 const genericFilter = ref(props.genericName || '');
+const supplierFilter = ref(props.supplierId || '');
 const filtered = computed(() => props.products.data);
 function applyFilter() {
     router.get(route('app.stock'), {
@@ -69,6 +71,7 @@ function applyFilter() {
         category_id: cat.value === 'all' ? undefined : cat.value,
         company: companyFilter.value || undefined,
         generic_name: genericFilter.value || undefined,
+        supplier_id: supplierFilter.value || undefined,
         stock_status: props.stockStatus || undefined,
     }, { preserveState: true, preserveScroll: true });
 }
@@ -81,6 +84,7 @@ function filterByStockStatus(status) {
         category_id: cat.value === 'all' ? undefined : cat.value,
         company: companyFilter.value || undefined,
         generic_name: genericFilter.value || undefined,
+        supplier_id: supplierFilter.value || undefined,
         stock_status: props.stockStatus === status ? undefined : status,
     }, { preserveState: true, preserveScroll: true });
 }
@@ -432,6 +436,34 @@ const editingCategory = computed(() => (props.categories || []).find((c) => c.id
 const hasVariantOptions = computed(() => features.value.includes('variant_options'));
 const hasSourceLines = computed(() => features.value.includes('source_lines'));
 
+/**
+ * Khaled live: the list row's 🚚 badge read the product's single, one-time
+ * supplier_id — stuck at whoever was set first, even once a source-lines
+ * product genuinely has several real suppliers across its lines ("ekhon
+ * sob Bulu dekhacche"). This reads the actual lines instead: every
+ * distinct supplier across the product's own sources and every variant's
+ * — one name shown plainly, several shown as a count + the names
+ * (Khaled's own call), and a product with no lines yet falls back to the
+ * old single field so nothing regresses for data not yet touched by Part 1.
+ */
+function productSupplierSummary(p) {
+    if (!hasSourceLines.value) return p.supplier?.name || 'Nil';
+
+    const names = [];
+    for (const line of p.sources || []) {
+        if (line.supplier?.name && !names.includes(line.supplier.name)) names.push(line.supplier.name);
+    }
+    for (const v of p.variants || []) {
+        for (const line of v.sources || []) {
+            if (line.supplier?.name && !names.includes(line.supplier.name)) names.push(line.supplier.name);
+        }
+    }
+    if (!names.length) return p.supplier?.name || 'Nil';
+    if (names.length === 1) return names[0];
+
+    return t('stock.supplierCount', { n: names.length, names: names.join(', ') });
+}
+
 // Part 1 — "add stock" sheet: supplier(+brand) + qty + buying price, one
 // screen, as few taps as possible. Remembers the last supplier picked on
 // THIS device (a per-viewer convenience, never shop-wide data) so the
@@ -604,8 +636,15 @@ const hasOpeningStock = computed(() => features.value.includes('opening_stock'))
 const osOpen = ref(false);
 const osQty = ref({});   // 'v{id}' or 'n|color|size' or 'plain' → qty
 const osCost = ref({});  // same keys → optional per-cell cost override
+const osPrice = ref({}); // same keys → optional per-cell sell-price override
 const osSupplier = ref('');
 const osDefaultCost = ref('');
+// Khaled live: stock came in from a new supplier at a new sell price, but
+// this grid only ever let him price a brand-new cell, never an EXISTING
+// one — the number he typed had nowhere to go and the article kept
+// showing its old price. Same "default for all cells, a cell's own box
+// overrides it" shape as cost, right next to it.
+const osDefaultPrice = ref('');
 const osNewColors = ref([]);
 const osNewSizes = ref([]);
 const osNewColorInput = ref('');
@@ -629,8 +668,11 @@ const osSizes = computed(() => {
     return set.length ? set : [''];
 });
 function openOpeningStock() {
-    osQty.value = {}; osCost.value = {};
+    osQty.value = {}; osCost.value = {}; osPrice.value = {};
     osSupplier.value = ''; osDefaultCost.value = editing.value?.cost ?? '';
+    // blank, not pre-filled like cost — a stock-in always HAS a cost, but
+    // price should only change when the owner actually types a new one
+    osDefaultPrice.value = '';
     osNewColors.value = []; osNewSizes.value = [];
     osNewColorInput.value = ''; osNewSizeInput.value = '';
     osOpen.value = true;
@@ -655,7 +697,11 @@ function submitOpeningStock() {
     if (!hasVariants) {
         const qty = Number(osQty.value.plain);
         if (!qty || qty <= 0) return;
-        cells.push({ qty, cost: osCost.value.plain !== undefined && osCost.value.plain !== '' ? Number(osCost.value.plain) : null });
+        cells.push({
+            qty,
+            cost: osCost.value.plain !== undefined && osCost.value.plain !== '' ? Number(osCost.value.plain) : null,
+            price: osPrice.value.plain !== undefined && osPrice.value.plain !== '' ? Number(osPrice.value.plain) : null,
+        });
     } else {
         for (const c of osColors.value) {
             for (const s of osSizes.value) {
@@ -665,9 +711,10 @@ function submitOpeningStock() {
                 if (raw === undefined || raw === '' || Number(raw) <= 0) continue;
                 const v = osVariantMap.value[`${c}|${s}`];
                 const cost = osCost.value[key] !== undefined && osCost.value[key] !== '' ? Number(osCost.value[key]) : null;
+                const price = osPrice.value[key] !== undefined && osPrice.value[key] !== '' ? Number(osPrice.value[key]) : null;
                 cells.push(v
-                    ? { variant_id: v.id, qty: Number(raw), cost }
-                    : { color: c || null, size: s || null, qty: Number(raw), cost });
+                    ? { variant_id: v.id, qty: Number(raw), cost, price }
+                    : { color: c || null, size: s || null, qty: Number(raw), cost, price });
             }
         }
     }
@@ -676,6 +723,7 @@ function submitOpeningStock() {
     router.post(route('app.products.openingStock', editing.value.id), {
         supplier_id: osSupplier.value || null,
         default_cost: osDefaultCost.value !== '' ? Number(osDefaultCost.value) : null,
+        default_price: osDefaultPrice.value !== '' ? Number(osDefaultPrice.value) : null,
         cells,
     }, {
         preserveScroll: true,
@@ -869,6 +917,18 @@ useKeyboardShortcuts({
             </div>
         </div>
 
+        <!-- Khaled live: "supplier filter option lagbe" — which products
+             came from which supplier, now that a product can carry several
+             (Part 1 lines). Matches on the ACTUAL lines for a source_lines
+             shop (ProductController::index), or the plain supplier_id
+             field otherwise — same filter, same dropdown either way. -->
+        <div v-if="suppliers && suppliers.length" class="field" style="margin-bottom:12px">
+            <select v-model="supplierFilter" @change="applyFilter">
+                <option value="">{{ t('stock.allSuppliers') }}</option>
+                <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+            </select>
+        </div>
+
         <!-- Phase 6B — how much of the imported catalog still sits at zero;
              taps straight into the existing out-of-stock filter -->
         <div v-if="hasOpeningStock && outOfStockCount > 0" class="card" style="margin-bottom:10px;padding:10px 12px;display:flex;align-items:center;gap:8px;cursor:pointer" @click="router.get(route('app.stock'), { stock_status: 'out' }, { preserveState: false })">
@@ -903,7 +963,7 @@ useKeyboardShortcuts({
                 <span v-if="p.generic_name || p.company" style="color:var(--mut)">💊 {{ p.generic_name }}<template v-if="p.company"> • 🏭 {{ p.company }}</template><template v-if="p.shelf_location"> • 📍 {{ p.shelf_location }}</template></span>
                 <!-- Phase 4 — "Nil", never blank: the owner's own rule for
                      anything missing. Only with the brands feature. -->
-                <span v-if="brands" style="color:var(--mut)">🏭 {{ p.brand?.name || 'Nil' }} • 🚚 {{ p.supplier?.name || 'Nil' }}</span>
+                <span v-if="brands" style="color:var(--mut)">🏭 {{ p.brand?.name || 'Nil' }} • 🚚 {{ productSupplierSummary(p) }}</span>
                 <!-- Phase 6 — the importer's VERIFY remarks ride on the
                      product until the owner fixes and clears them -->
                 <span v-if="p.internal_note" style="color:var(--amber,#b45309);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">📝 {{ p.internal_note.split('\n')[0] }}</span>
@@ -1485,6 +1545,7 @@ useKeyboardShortcuts({
                     </select>
                 </div>
                 <div class="field"><label>{{ t('os.defaultCost') }}</label><input v-model="osDefaultCost" type="number" step="0.01"></div>
+                <div class="field"><label>{{ t('os.defaultPrice') }}</label><input v-model="osDefaultPrice" type="number" step="0.01"></div>
             </div>
 
             <template v-if="(editing?.variants || []).length || osNewColors.length || osNewSizes.length">
@@ -1503,6 +1564,7 @@ useKeyboardShortcuts({
                                     <template v-if="osVariantMap[`${c}|${s}`] || osNewColors.includes(c) || osNewSizes.includes(s)">
                                         <input v-model="osQty[osKey(c, s)]" type="number" min="0" :placeholder="osVariantMap[`${c}|${s}`] ? String(0 + osVariantMap[`${c}|${s}`].stock) : t('os.newCell')" style="width:64px;padding:6px" :style="!osVariantMap[`${c}|${s}`] ? 'border-style:dashed' : ''">
                                         <input v-model="osCost[osKey(c, s)]" type="number" min="0" :placeholder="t('stock.costShort')" style="width:64px;padding:6px;margin-top:2px;font-size:11px;display:block">
+                                        <input v-model="osPrice[osKey(c, s)]" type="number" min="0" :placeholder="t('os.priceShort')" style="width:64px;padding:6px;margin-top:2px;font-size:11px;display:block">
                                     </template>
                                 </td>
                             </tr>
@@ -1525,6 +1587,7 @@ useKeyboardShortcuts({
                 <div class="f2">
                     <div class="field"><label>{{ t('os.plainQty') }}</label><input v-model="osQty.plain" type="number" min="0"></div>
                     <div class="field"><label>{{ t('stock.costOptional') }}</label><input v-model="osCost.plain" type="number" min="0"></div>
+                    <div class="field"><label>{{ t('os.sellPriceOptional') }}</label><input v-model="osPrice.plain" type="number" min="0"></div>
                 </div>
             </template>
 

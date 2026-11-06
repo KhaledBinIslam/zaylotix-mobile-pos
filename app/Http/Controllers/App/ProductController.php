@@ -66,6 +66,7 @@ class ProductController extends Controller
         $categoryId = $request->get('category_id');
         $company = $request->get('company');
         $genericName = $request->get('generic_name');
+        $supplierId = $request->get('supplier_id');
         // 'low' / 'out' — reported: Home's own low-stock/out-of-stock tiles
         // showed a number but tapping did nothing. Same thresholds as the
         // $stats calculation below (and Home's own), so the filtered list
@@ -89,6 +90,18 @@ class ProductController extends Controller
             ->when($genericName, fn ($query) => $query->where('generic_name', $genericName))
             ->when($stockStatus === 'low', fn ($query) => $query->lowStock())
             ->when($stockStatus === 'out', fn ($query) => $query->outOfStock())
+            // Khaled live: "ekhon sob Bulu dekhacche" — the list only ever
+            // filtered/showed a product's single default supplier_id, which
+            // stays stuck at whoever set it first even once Part 1 lines let
+            // a product carry several real suppliers. A source_lines shop
+            // matches on the LINES (any variant's or the product's own);
+            // supplier_id stays the whole story for a shop without the
+            // feature, same as every filter here did before this.
+            ->when($supplierId, fn ($query) => Tenancy::shop()?->hasFeature('source_lines')
+                ? $query->where(fn ($sq) => $sq->where('supplier_id', $supplierId)
+                    ->orWhereHas('sources', fn ($lq) => $lq->where('supplier_id', $supplierId))
+                    ->orWhereHas('variants.sources', fn ($lq) => $lq->where('supplier_id', $supplierId)))
+                : $query->where('supplier_id', $supplierId))
             ->orderByDesc('id');
 
         if ($q !== '') {
@@ -150,6 +163,7 @@ class ProductController extends Controller
             'company' => $company,
             'genericName' => $genericName,
             'stockStatus' => $stockStatus,
+            'supplierId' => $supplierId,
             // distinct, non-null values only — feeds the company/generic
             // filter dropdowns; a shop that's never used either field just
             // gets an empty list and the dropdown quietly doesn't show
