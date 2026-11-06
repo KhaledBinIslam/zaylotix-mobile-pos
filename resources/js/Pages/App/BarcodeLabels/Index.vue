@@ -6,7 +6,7 @@ import BarcodeLabelCard from '@/Components/BarcodeLabelCard.vue';
 import { useI18n } from '@/composables/useI18n';
 import { useToast } from '@/composables/useToast';
 import { labelSizeMm } from '@/support/labelSizes';
-import { thermalModuleWidth, THERMAL_BAR_HEIGHT_MM } from '@/support/barcodeFit';
+import { thermalModuleWidth, THERMAL_BAR_HEIGHT_MM, detailedBarcodeDots } from '@/support/barcodeFit';
 import { buildShareMetadata, canShareLabelFiles } from '@/support/bluetoothPrintShare';
 import { printedLabelKey } from '@/support/labelPrintKey';
 import { printableRowsOf } from '@/support/labelSelection';
@@ -510,20 +510,25 @@ async function buildSheetDirectly(targetW, targetH, JsBarcode) {
 function drawnThermalCanvas(label, targetW, targetH, JsBarcode) {
     try {
         const encoded = label?.scanCode || label?.barcode;
+        const isDetailed = settings.value.template === 'detailed';
         let barcodeCanvas = null;
 
         if (encoded) {
+            // detailed template: bars scale with the label (~90% width,
+            // ~38% height, biggest whole-dot module that fits) and the
+            // code text is drawn by the layout itself, under the bars.
+            // Classic keeps its proven 2-dot module + fixed 9mm exactly.
+            const detail = isDetailed ? detailedBarcodeDots(encoded, targetW, targetH) : null;
             const fit = thermalModuleWidth(encoded, sizeMm.value.width - 5);
-            // the card shows a warning for this — leave it to the old path
-            if (!fit.fits) return { reason: `বারকোড লেবেলে আঁটে না (${fit.modules} মডিউল)` };
+            if (detail ? !detail.fits : !fit.fits) return { reason: `বারকোড লেবেলে আঁটে না (${(detail || fit).modules} মডিউল)` };
 
             barcodeCanvas = document.createElement('canvas');
             JsBarcode(barcodeCanvas, encoded, {
                 format: 'CODE128',
-                width: Math.max(1, Math.round(fit.moduleMm * 8)), // dots per module
-                height: THERMAL_BAR_HEIGHT_MM * 8,
+                width: detail ? detail.moduleDots : Math.max(1, Math.round(fit.moduleMm * 8)), // dots per module
+                height: detail ? detail.heightDots : THERMAL_BAR_HEIGHT_MM * 8,
                 margin: 0,
-                displayValue: settings.value.show_barcode_number !== false,
+                displayValue: !isDetailed && settings.value.show_barcode_number !== false,
                 text: label.barcode,
                 fontSize: 16,
             });

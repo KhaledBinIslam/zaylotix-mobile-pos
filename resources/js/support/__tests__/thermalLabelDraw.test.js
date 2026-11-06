@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { drawThermalLabel } from '../thermalLabelCanvas';
+import { drawThermalLabel, brandSizeLine } from '../thermalLabelCanvas';
+import { detailedBarcodeDots } from '../barcodeFit';
 
 /**
  * A canvas that records what was drawn instead of drawing it.
@@ -128,95 +129,110 @@ describe('drawThermalLabel', () => {
 /** SEAMAN Phase 7 — the detailed template. The classic suite above IS the
  *  Baby-Park-unchanged guarantee: none of it mentions `template`, so it
  *  keeps exercising the exact pre-Phase-7 drawing path. */
-describe('drawThermalLabel — detailed template', () => {
+describe('drawThermalLabel — detailed template (proportional, round 3)', () => {
     const DETAILED = { ...SETTINGS, template: 'detailed', price_mode: 'single' };
     const SEAMAN_LABEL = {
         barcode: 'ZV1234', price: 1250,
         name: 'Peak Cap Senior', brandName: 'Lotus', variantLabel: '20½',
     };
 
-    function drawDetailed(overrides = {}) {
-        const canvas = recordingCanvas(W, H);
+    function drawDetailed(overrides = {}, w = W, h = H) {
+        const canvas = recordingCanvas(w, h);
         drawThermalLabel(canvas, {
             label: SEAMAN_LABEL,
             settings: DETAILED,
             // the same EDITABLE label-header setting classic uses — the
-            // owner sets it to seamanstore.com, it is never hard-coded
+            // owner sets it to seamanstore.com, never hard-coded
             headerText: 'seamanstore.com',
-            barcodeCanvas: { width: 280, height: 64 },
+            barcodeCanvas: { width: Math.round(w * 0.75), height: Math.round(h * 0.38) },
             ...overrides,
         });
 
         return canvas;
     }
 
-    it('lays out website, bars, name, brand, size, price — top to bottom', () => {
+    const textAt = (calls, match) => calls.find((c) => c.op === 'fillText' && c.text.includes(match));
+
+    it('lays out header / bars / ZV code / name / brand|size / price, top to bottom', () => {
         const calls = drawDetailed().calls;
-        const at = (match) => calls.find((c) => c.op === 'fillText' && c.text.includes(match))?.y;
         const bars = calls.find((c) => c.op === 'drawImage');
 
-        expect(at('seamanstore.com')).toBeLessThan(bars.y);
-        expect(at('Peak Cap Senior')).toBeGreaterThan(bars.y + bars.h - 1);
-        expect(at('Brand: Lotus')).toBeGreaterThan(at('Peak Cap Senior'));
-        expect(at('20½')).toBeGreaterThan(at('Brand: Lotus'));
-        expect(at('৳1250')).toBeGreaterThan(at('20½'));
+        expect(textAt(calls, 'seamanstore.com').y).toBeLessThan(bars.y);
+        expect(textAt(calls, 'ZV1234').y).toBeGreaterThan(bars.y + bars.h - 1);
+        expect(textAt(calls, 'Peak Cap Senior').y).toBeGreaterThan(textAt(calls, 'ZV1234').y);
+        expect(textAt(calls, 'Lotus  |  Size: 20½').y).toBeGreaterThan(textAt(calls, 'Peak Cap Senior').y);
+        expect(textAt(calls, '৳1250').y).toBeGreaterThan(textAt(calls, 'Lotus  |  Size: 20½').y);
     });
 
-    it('prints Brand: Nil when there is no brand — never a blank', () => {
-        const calls = drawDetailed({ label: { ...SEAMAN_LABEL, brandName: null } }).calls;
+    it('brand and size share ONE line; Brand: Nil when none; size part dropped when none', () => {
+        expect(brandSizeLine({ brandName: 'Lotus', variantLabel: '42' })).toBe('Lotus  |  Size: 42');
+        expect(brandSizeLine({ brandName: null, variantLabel: '42' })).toBe('Brand: Nil  |  Size: 42');
+        expect(brandSizeLine({ brandName: 'Lotus', variantLabel: '' })).toBe('Lotus');
+        expect(brandSizeLine({ brandName: null, variantLabel: null })).toBe('Brand: Nil');
+
+        const calls = drawDetailed({ label: { ...SEAMAN_LABEL, brandName: null, variantLabel: '' } }).calls;
         expect(calls.some((c) => c.op === 'fillText' && c.text === 'Brand: Nil')).toBe(true);
+        expect(calls.some((c) => c.op === 'fillText' && c.text.includes('Size:'))).toBe(false);
     });
 
-    it('drops the size line when the item has none, and the header line when the shop has none', () => {
-        const calls = drawDetailed({
-            label: { ...SEAMAN_LABEL, variantLabel: '' },
-            headerText: '',
-        }).calls;
-        expect(calls.some((c) => c.op === 'fillText' && c.text.includes('20½'))).toBe(false);
-        expect(calls.some((c) => c.op === 'fillText' && c.text.includes('seamanstore'))).toBe(false);
-        // with no header text the bars move to the very top block
-        const bars = calls.find((c) => c.op === 'drawImage');
-        const firstText = calls.filter((c) => c.op === 'fillText').sort((a, b) => a.y - b.y)[0];
-        expect(bars.y).toBeLessThan(firstText.y);
-    });
-
-    it('prints "Price: Nil", never ৳0, when the price is empty or zero — detailed only', () => {
+    it('prints "Price: Nil", never ৳0, when the price is empty/zero — classic keeps its old ৳0', () => {
         for (const price of [0, null, undefined, '0']) {
             const calls = drawDetailed({ label: { ...SEAMAN_LABEL, price, discount_price: null } }).calls;
             expect(calls.some((c) => c.op === 'fillText' && c.text === 'Price: Nil')).toBe(true);
             expect(calls.some((c) => c.op === 'fillText' && c.text.includes('৳'))).toBe(false);
         }
-
-        // a real price still prints as money, Nil nowhere in sight
-        const calls = drawDetailed().calls;
-        expect(calls.some((c) => c.op === 'fillText' && c.text === '৳1250')).toBe(true);
-        expect(calls.some((c) => c.op === 'fillText' && c.text === 'Price: Nil')).toBe(false);
-
-        // and the CLASSIC sticker keeps its exact old behaviour (৳0),
-        // because Baby Park's output is pinned byte-for-byte
         const classic = draw({ label: { ...LABEL, price: 0 } }).calls;
         expect(classic.some((c) => c.op === 'fillText' && c.text === '৳0')).toBe(true);
     });
 
-    it('text gives way, never the bars: everything stays on the sticker with a long name', () => {
-        const calls = drawDetailed({
-            label: { ...SEAMAN_LABEL, name: 'White Uniform with Shoulder - Half Sleeve President Toray Extra Long Name' },
-        }).calls;
-        const bars = calls.find((c) => c.op === 'drawImage');
-
-        expect(bars.h).toBe(64); // barcode height untouched
-        for (const c of calls) {
-            expect(c.y).toBeGreaterThanOrEqual(0);
-            expect(c.y).toBeLessThan(H);
+    it('spreads the blocks over the WHOLE label: the price sits in the bottom fifth', () => {
+        for (const [w, h] of [[400, 240], [304, 200]]) { // 50×30 and 38×25 at 8 dots/mm
+            const calls = drawDetailed({}, w, h).calls;
+            const price = textAt(calls, '৳1250');
+            expect(price.y).toBeGreaterThan(h * 0.72);
+            for (const c of calls) {
+                expect(c.y).toBeGreaterThanOrEqual(0);
+                expect(c.y).toBeLessThan(h);
+            }
         }
-        // the too-long name was ellipsised, not run off the edge
-        const name = calls.find((c) => c.op === 'fillText' && c.text.startsWith('White Uniform'));
-        expect(name.text.endsWith('…')).toBe(true);
+    });
+
+    it('a long name wraps to two lines, then ellipsises — the bars never shrink', () => {
+        const calls = drawDetailed({
+            label: { ...SEAMAN_LABEL, name: 'White Uniform with Shoulder Half Sleeve President Toray Extra Long' },
+        }).calls;
+        const nameLines = calls.filter((c) => c.op === 'fillText' && /White Uniform|Toray|…/.test(c.text) && !c.text.includes('seamanstore'));
+        expect(nameLines.length).toBe(2);
+        const bars = calls.find((c) => c.op === 'drawImage');
+        expect(bars.h).toBe(Math.round(H * 0.38)); // untouched
+        for (const c of calls) expect(c.y).toBeLessThan(H);
+    });
+
+    it('with no header text the bars start the sticker', () => {
+        const calls = drawDetailed({ headerText: '' }).calls;
+        const bars = calls.find((c) => c.op === 'drawImage');
+        const firstText = calls.filter((c) => c.op === 'fillText').sort((a, b) => a.y - b.y)[0];
+        expect(bars.y).toBeLessThan(firstText.y);
     });
 
     it('keeps the classic sticker byte-identical when template is absent', () => {
         const classic = draw().calls;
         const explicit = draw({ settings: { ...SETTINGS, template: 'classic' } }).calls;
         expect(explicit).toEqual(classic);
+    });
+});
+
+describe('detailedBarcodeDots — the bars scale with the label', () => {
+    it('picks the widest whole-dot module within ~90% of the label, taller labels = taller bars', () => {
+        const big = detailedBarcodeDots('ZV1234', 400, 240);   // 50×30mm
+        const small = detailedBarcodeDots('ZV1234', 304, 200); // 38×25mm
+
+        expect(big.moduleDots).toBeGreaterThanOrEqual(small.moduleDots);
+        expect(big.modules * big.moduleDots).toBeLessThanOrEqual(400 * 0.9);
+        expect(big.modules * big.moduleDots).toBeGreaterThan(400 * 0.55); // fills, not a stamp in the corner
+        expect(small.modules * small.moduleDots).toBeLessThanOrEqual(304 * 0.9);
+        expect(big.heightDots).toBe(Math.round(240 * 0.38));
+        expect(small.heightDots).toBe(Math.round(200 * 0.38));
+        expect(big.fits).toBe(true);
     });
 });

@@ -196,8 +196,7 @@ watch(() => [props.shop?.resolved_label_header, props.shop?.name, props.settings
         <svg :id="domId"></svg>
         <template v-if="isDetailed">
             <div class="label-name">{{ label.name }}</div>
-            <div class="label-variant">Brand: {{ label.brandName || 'Nil' }}</div>
-            <div v-if="label.variantLabel" class="label-variant">{{ label.variantLabel }}</div>
+            <div class="label-variant">{{ (label.brandName || 'Brand: Nil') + (label.variantLabel ? '  |  Size: ' + label.variantLabel : '') }}</div>
         </template>
         <div v-if="settings.price_mode !== 'none'" class="label-price">
             <!-- detailed template never shows ৳0 — "Price: Nil" instead -->

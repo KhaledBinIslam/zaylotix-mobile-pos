@@ -55,3 +55,24 @@ export function thermalModuleWidth(value, usableMm) {
  * bottom third, which also makes the code scan more reliably.
  */
 export const THERMAL_BAR_HEIGHT_MM = 9;
+
+/**
+ * SEAMAN Phase 7 (detailed template) — the bars SCALE WITH THE LABEL
+ * instead of the classic 2-dot cap: the widest whole-dot module that
+ * keeps the code within ~90% of the label width (quiet zone = the
+ * remaining 10%), and bars ~38% of the label height. Whole dots only,
+ * as everywhere else — a fractional module kills scanning at 203dpi.
+ * Classic mode keeps thermalModuleWidth() untouched.
+ */
+export function detailedBarcodeDots(value, labelWDots, labelHDots) {
+    const modules = estimateCode128Modules(value);
+    const maxW = Math.floor(labelWDots * 0.9);
+    const moduleDots = Math.max(1, Math.min(8, Math.floor(maxW / Math.max(1, modules))));
+
+    return {
+        modules,
+        moduleDots,
+        heightDots: Math.max(24, Math.round(labelHDots * 0.38)),
+        fits: modules <= maxW, // even 1 dot/module must fit
+    };
+}

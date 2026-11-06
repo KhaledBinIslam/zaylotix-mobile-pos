@@ -151,20 +151,23 @@ export function drawThermalLabel(canvas, { label, settings, headerText, barcodeC
 }
 
 /**
- * SEAMAN Phase 7 — the 'detailed' sticker, top to bottom, centred:
- * the shop's EDITABLE label-header text (the owner sets it to
- * seamanstore.com; it is the same লেবেল হেডার setting classic uses,
- * never hard-coded) / BARCODE with its code printed small beneath /
- * product name / Brand: X (Nil when none) / size-or-option (dropped
- * when the item has none) / selling price — and when the price is
- * 0/empty it prints "Price: Nil", never ৳0 (that rule is detailed-only;
- * the classic path keeps printing exactly what it always has).
+ * SEAMAN Phase 7 (round 3, after the first live Xprinter photo) — the
+ * 'detailed' sticker. Top to bottom, centred:
  *
- * Fitting: text gives up space before the barcode ever does — if the
- * lines would overflow the sticker, every font scales down together
- * (floored at 4 CSS px); a line still too wide at its floor is
- * ellipsised. The bars keep their height and whole-dot placement
- * exactly as the classic path draws them.
+ *   seamanstore.com (the EDITABLE label-header setting)  — small
+ *   BARCODE (its canvas is pre-built at ~90% label width, ~38% height)
+ *   ZV code                                              — small
+ *   product name                                         — largest, max 2 lines
+ *   Lotus  |  Size: 42  (Brand: Nil when none; size part dropped)
+ *   ৳1,250 / Price: Nil                                  — big, at the bottom
+ *
+ * EVERYTHING scales off the label's own width/height — no fixed pixel
+ * sizes, so a 50×30 roll fills exactly like a 38×25 one (the live
+ * photo's "content in the top half" was fixed-CSS-px sizing on a label
+ * bigger than the app's size setting). Whatever vertical space is left
+ * after the blocks becomes EQUAL gaps between them, so there is never
+ * a large empty area. Text shrinks and then ellipsises; the bars never
+ * lose a dot ("text gives way, never the bars").
  */
 export function detailedPriceLines(label, settings) {
     const lines = priceLinesOf(label, settings);
@@ -173,6 +176,14 @@ export function detailedPriceLines(label, settings) {
     const hasRealPrice = Number(label.price) > 0 || Number(label.discount_price) > 0;
 
     return hasRealPrice ? lines : [{ text: 'Price: Nil', cssPx: 10, strike: false }];
+}
+
+/** The one brand/size line: "Lotus  |  Size: 42", "Brand: Nil", "Brand: Nil  |  Size: L"… */
+export function brandSizeLine(label) {
+    const parts = [label.brandName || 'Brand: Nil'];
+    if (label.variantLabel) parts.push('Size: ' + label.variantLabel);
+
+    return parts.join('  |  ');
 }
 
 function drawDetailedLabel(canvas, { label, settings, headerText, barcodeCanvas }) {
@@ -186,75 +197,87 @@ function drawDetailedLabel(canvas, { label, settings, headerText, barcodeCanvas 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
 
-    const padX = Math.round(px(6));
-    const padY = Math.round(px(2));
+    const padX = Math.round(W * 0.04); // ~2mm side margin on a 50mm label
     const usable = W - padX * 2;
 
-    const lines = [];
-    if (headerText) lines.push({ text: headerText, cssPx: 7, after: 2, barcodeAfter: true });
-    else lines.push(null); // keeps the barcode first when there is no header text
+    const setFont = (size) => { ctx.font = `900 ${size}px ${FONT_STACK}`; };
+    const fitted = (text, startSize) => {
+        const size = fitFontSize((s) => { setFont(s); return ctx.measureText(text).width; }, text, usable, startSize, Math.max(6, Math.round(startSize * 0.5)));
+        setFont(size);
 
-    if (label.name) lines.push({ text: label.name, cssPx: 9, after: 2 });
-    lines.push({ text: 'Brand: ' + (label.brandName || 'Nil'), cssPx: 7, after: 2 });
-    if (label.variantLabel) lines.push({ text: label.variantLabel, cssPx: 8, after: 2 });
-    for (const priceLine of detailedPriceLines(label, settings)) {
-        lines.push({ text: priceLine.text, cssPx: priceLine.cssPx, after: 1, strike: priceLine.strike });
-    }
-
-    const textLines = lines.filter(Boolean);
-    const barcodeH = barcodeCanvas && barcodeCanvas.width > 0 ? barcodeCanvas.height + Math.round(px(3)) * 2 : 0;
-    const needed = textLines.reduce((sum, l) => sum + Math.round(px(l.cssPx) * 1.2) + Math.round(px(l.after)), 0);
-    const available = Math.max(0, H - padY * 2 - barcodeH);
-    // the text shrinks as one block; the bars never do
-    const scale = needed > available && needed > 0 ? available / needed : 1;
-
-    let y = padY;
-
-    const drawLine = (line) => {
-        const start = Math.max(Math.round(px(4)), Math.round(px(line.cssPx) * scale));
-        const measure = (s) => {
-            ctx.font = `900 ${s}px ${FONT_STACK}`;
-
-            return ctx.measureText(line.text).width;
-        };
-        const size = fitFontSize(measure, line.text, usable, start, Math.round(px(4)));
-        ctx.font = `900 ${size}px ${FONT_STACK}`;
-        const text = truncateToFit((t) => ctx.measureText(t).width, line.text, usable);
-        ctx.fillText(text, W / 2, y, usable);
-
-        if (line.strike) {
-            const w = Math.min(usable, ctx.measureText(text).width);
-            const mid = y + Math.round(size * 0.55);
-            ctx.fillRect(Math.round((W - w) / 2), mid, Math.round(w), Math.max(1, Math.round(px(1))));
-        }
-
-        y += Math.round(size * 1.2) + Math.round(px(line.after) * scale);
+        return { text: truncateToFit((t) => ctx.measureText(t).width, text, usable), size };
     };
 
-    const drawBars = () => {
-        if (!(barcodeCanvas && barcodeCanvas.width > 0)) return;
-        ctx.imageSmoothingEnabled = false;
-        y += Math.round(px(3));
-        const x = Math.max(0, Math.round((W - barcodeCanvas.width) / 2));
-        ctx.drawImage(barcodeCanvas, x, y);
-        y += barcodeCanvas.height + Math.round(px(3));
-    };
+    // ---- the blocks, each sized as a fraction of the label height ------
+    const hasBars = !!(barcodeCanvas && barcodeCanvas.width > 0);
+    const priceLines = detailedPriceLines(label, settings);
 
-    let barsDrawn = false;
-    for (const line of lines) {
-        if (line === null) {
-            drawBars();
-            barsDrawn = true;
-
-            continue;
-        }
-        drawLine(line);
-        if (line.barcodeAfter && !barsDrawn) {
-            drawBars();
-            barsDrawn = true;
+    // the name gets one line when it fits, a second when it needs it
+    const nameSize = Math.round(H * 0.115);
+    let nameLines = [];
+    if (label.name) {
+        setFont(nameSize);
+        if (ctx.measureText(label.name).width <= usable) {
+            nameLines = [label.name];
+        } else {
+            // greedy word-wrap onto two lines; the second shrinks/ellipsises
+            const words = String(label.name).split(/\s+/);
+            let first = '';
+            for (const word of words) {
+                const attempt = first ? first + ' ' + word : word;
+                setFont(nameSize);
+                if (ctx.measureText(attempt).width <= usable) first = attempt;
+                else break;
+            }
+            if (!first) first = words[0] ?? '';
+            const rest = String(label.name).slice(first.length).trim();
+            nameLines = rest ? [first, rest] : [first];
         }
     }
-    if (!barsDrawn) drawBars();
+
+    const blocks = [];
+    if (headerText) blocks.push({ kind: 'text', text: headerText, h: Math.round(H * 0.085) });
+    if (hasBars) blocks.push({ kind: 'bars', h: barcodeCanvas.height });
+    if (hasBars && label.barcode) blocks.push({ kind: 'text', text: String(label.barcode), h: Math.round(H * 0.07) });
+    for (const line of nameLines) blocks.push({ kind: 'text', text: line, h: Math.round(H * 0.115) });
+    blocks.push({ kind: 'text', text: brandSizeLine(label), h: Math.round(H * 0.085) });
+    for (const priceLine of priceLines) {
+        blocks.push({ kind: 'text', text: priceLine.text, h: Math.round(H * (priceLine.strike ? 0.09 : 0.15)), strike: priceLine.strike });
+    }
+
+    // ---- vertical fit: shrink TEXT (never the bars), then spread the ----
+    // ---- leftover height as equal gaps so nothing pools at the bottom --
+    const textH = blocks.filter((b) => b.kind === 'text').reduce((sum, b) => sum + b.h, 0);
+    const barsH = blocks.filter((b) => b.kind === 'bars').reduce((sum, b) => sum + b.h, 0);
+    const minGap = Math.max(2, Math.round(H * 0.012));
+    const budget = H - barsH - minGap * (blocks.length + 1);
+    const squeeze = textH > budget && textH > 0 ? Math.max(0.3, budget / textH) : 1;
+    for (const b of blocks) {
+        if (b.kind === 'text') b.h = Math.max(8, Math.round(b.h * squeeze));
+    }
+
+    const used = blocks.reduce((sum, b) => sum + b.h, 0);
+    const gap = Math.max(minGap, Math.floor((H - used) / (blocks.length + 1)));
+
+    // ---- draw ----------------------------------------------------------
+    let y = gap;
+    for (const block of blocks) {
+        if (block.kind === 'bars') {
+            // whole-pixel placement, smoothing off: a bar on half a dot
+            // is what stops a printed barcode scanning
+            ctx.imageSmoothingEnabled = false;
+            const x = Math.max(0, Math.round((W - barcodeCanvas.width) / 2));
+            ctx.drawImage(barcodeCanvas, x, y);
+        } else {
+            const { text, size } = fitted(block.text, Math.round(block.h / 1.1));
+            ctx.fillText(text, W / 2, y, usable);
+            if (block.strike) {
+                const w = Math.min(usable, ctx.measureText(text).width);
+                ctx.fillRect(Math.round((W - w) / 2), y + Math.round(size * 0.55), Math.round(w), Math.max(1, Math.round(H * 0.006)));
+            }
+        }
+        y += block.h + gap;
+    }
 
     return canvas;
 }
