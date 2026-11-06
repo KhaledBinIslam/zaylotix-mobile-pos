@@ -9,7 +9,7 @@ class Payment extends Model
 {
     use BelongsToTenant;
 
-    protected $fillable = ['shop_id', 'customer_id', 'sale_id', 'installment_plan_id', 'user_id', 'amount', 'due_before', 'due_after', 'method', 'date'];
+    protected $fillable = ['shop_id', 'customer_id', 'sale_id', 'installment_plan_id', 'user_id', 'amount', 'due_before', 'due_after', 'method', 'date', 'voided_at', 'voided_by', 'void_of_payment_id'];
 
     protected function casts(): array
     {
@@ -18,6 +18,7 @@ class Payment extends Model
             'due_before' => 'decimal:2',
             'due_after' => 'decimal:2',
             'date' => 'date:Y-m-d',
+            'voided_at' => 'datetime',
         ];
     }
 

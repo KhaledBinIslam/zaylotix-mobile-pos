@@ -556,6 +556,9 @@ onMounted(() => {
             <Link :href="route('app.customerList.index')" class="row">
                 <div class="ava">👥</div><div class="mid"><b>{{ t('more.customerList') }}</b><span>{{ t('more.customerListSub') }}</span></div><div class="end">›</div>
             </Link>
+            <Link v-if="features.includes('parties')" :href="route('app.parties.index')" class="row">
+                <div class="ava">🏢</div><div class="mid"><b>{{ t('party.title') }}</b><span>{{ t('party.subtitle') }}</span></div><div class="end">›</div>
+            </Link>
         </template>
 
         <!-- moved up from below "দোকান" (Shop) — reported as one of the

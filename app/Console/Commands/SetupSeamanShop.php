@@ -63,6 +63,7 @@ class SetupSeamanShop extends Command
         'variant_options', // Phase 3 — named option axes + size sets, this shop only
         'brands', // Phase 4 — brand per product/variant, Nil display, brand report
         'weighted_average_costing', // Phase 4 — variant stock-in averages cost instead of overwriting
+        'parties', // Phase 5 — corporate parties, bill-wise dues, A4 statements + PDF + WhatsApp
     ];
 
     /**

@@ -44,6 +44,7 @@ use App\Http\Controllers\App\CatalogSettingController;
 use App\Http\Controllers\App\MoreController;
 use App\Http\Controllers\App\NotificationController;
 use App\Http\Controllers\App\OnboardingController;
+use App\Http\Controllers\App\PartyController;
 use App\Http\Controllers\App\PaymentController;
 use App\Http\Controllers\App\PaymentGatewayController;
 use App\Http\Controllers\App\InstallmentController;
@@ -109,6 +110,13 @@ use Illuminate\Support\Facades\Route;
 // rebuilds the whole route table on every single request.
 Route::get('/', [LandingController::class, 'root']);
 Route::get('/ios', [LandingController::class, 'ios'])->name('landing.ios');
+
+// SEAMAN Phase 5 — the read-only party-statement PDF behind a signed,
+// expiring URL (the WhatsApp fallback share). NO auth on purpose: the
+// recipient is the party, not a user; the signature is the whole gate,
+// throttled so the URL can't be brute-forced from outside.
+Route::get('/p/statement', [App\Http\Controllers\App\PartyController::class, 'publicStatement'])
+    ->middleware(['signed', 'throttle:30,1'])->name('party.publicStatement');
 
 Route::middleware('guest')->group(function () {
     Route::get('login', [LoginController::class, 'create'])->name('login');
@@ -387,6 +395,25 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
 
     Route::middleware(['perm:export', 'feature:export'])->group(function () {
         Route::get('customer-list/export', [CustomerListController::class, 'exportSelected'])->name('customerList.exportSelected');
+    });
+
+    // SEAMAN Phase 5 — corporate parties & dues (a party IS a customer
+    // with party_type set; all money math stays in the existing due system)
+    Route::middleware(['perm:customers', 'feature:parties'])->group(function () {
+        Route::get('parties', [PartyController::class, 'index'])->name('parties.index');
+        Route::post('parties', [PartyController::class, 'store'])->name('parties.store');
+        Route::get('parties/{customer}', [PartyController::class, 'show'])->name('parties.show');
+        Route::patch('parties/{customer}', [PartyController::class, 'update'])->name('parties.update');
+        Route::get('parties/{customer}/statement', [PartyController::class, 'statement'])->name('parties.statement');
+        Route::get('parties/{customer}/statement-pdf', [PartyController::class, 'statementPdf'])->name('parties.statementPdf');
+        Route::get('parties/{customer}/bills/{sale}/pdf', [PartyController::class, 'billPdf'])->name('parties.billPdf');
+        Route::post('parties/{customer}/share-link', [PartyController::class, 'shareLink'])->name('parties.shareLink');
+    });
+
+    // voiding walks money back out of the drawer — that's a `due` power
+    // (same as collecting), not a mere customer-browsing one
+    Route::middleware(['perm:due', 'feature:parties'])->group(function () {
+        Route::post('payments/{payment}/void', [PaymentController::class, 'void'])->name('payments.void');
     });
 
     Route::middleware('perm:due')->group(function () {

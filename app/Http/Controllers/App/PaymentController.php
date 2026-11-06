@@ -23,7 +23,10 @@ class PaymentController extends Controller
 
         $data = $request->validate([
             'amount' => ['required', 'numeric', 'min:0.01'],
-            'method' => ['nullable', 'in:cash,bkash,nagad'],
+            // 'bank' added for the parties feature (SEAMAN Phase 5) —
+            // credited to bank_balance below exactly like bkash/nagad, so
+            // it's harmless for every shop whose UI never offers it
+            'method' => ['nullable', 'in:cash,bkash,nagad,bank'],
             // tagging a payment to a plan never changes the due math below —
             // it only tells InstallmentAllocation which installment(s) this
             // money actually covers (see its own docblock)
@@ -131,6 +134,63 @@ class PaymentController extends Controller
         });
 
         return back()->with('success', 'অগ্রিম থেকে বাকি সমন্বয় করা হয়েছে।');
+    }
+
+    /**
+     * SEAMAN Phase 5 (feature: parties) — voids a collected payment WITH an
+     * audit trail: the original row is never edited or deleted, it gets
+     * stamped voided_at/voided_by, and a compensating row (negative amount,
+     * void_of_payment_id pointing back) restores the due. Money walks back
+     * the way it came: cash out of cash_balance, bank/bkash/nagad out of
+     * bank_balance, an 'advance' application back onto advance_balance.
+     */
+    public function void(Payment $payment)
+    {
+        $customer = Customer::withoutGlobalScopes()->findOrFail($payment->customer_id);
+        $this->authorize('update', $customer);
+
+        DB::transaction(function () use ($payment) {
+            $lockedPayment = Payment::whereKey($payment->id)->lockForUpdate()->firstOrFail();
+
+            if ($lockedPayment->voided_at || $lockedPayment->void_of_payment_id || (float) $lockedPayment->amount <= 0) {
+                throw ValidationException::withMessages(['payment' => 'এই পেমেন্টটি বাতিল করা যাবে না (আগেই বাতিল, বা এটি নিজেই একটি বাতিল-এন্ট্রি)।']);
+            }
+
+            $locked = Customer::whereKey($lockedPayment->customer_id)->lockForUpdate()->first();
+            $amount = (float) $lockedPayment->amount;
+            $dueBefore = (float) $locked->due;
+
+            $locked->increment('due', $amount);
+
+            $locked->payments()->create([
+                'shop_id' => Tenancy::id(),
+                'sale_id' => $lockedPayment->sale_id,
+                'user_id' => Auth::guard('web')->id() ?? Auth::guard('sanctum')->id(),
+                'amount' => -$amount,
+                'due_before' => $dueBefore,
+                'due_after' => $dueBefore + $amount,
+                'method' => $lockedPayment->method,
+                'date' => now()->toDateString(),
+                'void_of_payment_id' => $lockedPayment->id,
+            ]);
+
+            $lockedPayment->update([
+                'voided_at' => now(),
+                'voided_by' => Auth::guard('web')->id() ?? Auth::guard('sanctum')->id(),
+            ]);
+
+            if ($lockedPayment->method === 'cash') {
+                \App\Models\Shop::whereKey(Tenancy::id())->decrement('cash_balance', $amount);
+            } elseif ($lockedPayment->method === 'advance') {
+                $locked->increment('advance_balance', $amount);
+            } else {
+                \App\Models\Shop::whereKey(Tenancy::id())->decrement('bank_balance', $amount);
+            }
+
+            \App\Support\Activity::log('payment.void', 'পেমেন্ট বাতিল: '.number_format($amount, 2).' ('.$lockedPayment->method.') — '.$locked->name, $lockedPayment);
+        });
+
+        return back()->with('success', 'পেমেন্ট বাতিল হয়েছে — বাকি আগের জায়গায় ফিরে গেছে।');
     }
 
     /** Per-customer payment ledger — date, amount, and the due snapshot right before/after that specific collection. */
