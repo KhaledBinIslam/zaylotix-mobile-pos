@@ -919,46 +919,60 @@ const printCss = computed(() => {
                         </div>
                     </div>
                 </div>
-                <div v-for="v in p.variants" :key="v.id" class="row" style="border-top:1px solid var(--line);padding-left:20px" :class="{ incart: isSelected('v:' + v.id) }" :style="isSelected('v:' + v.id) ? 'background:var(--goldSoft)' : ''" @click="toggleVariant(v)">
-                    <div class="ava" style="font-size:16px">🏷️</div>
-                    <div class="mid">
-                        <b>{{ variantLabel(v) }}</b>
-                        <span v-if="v.barcode">{{ v.barcode }} • {{ money(v.price ?? p.price) }}</span>
-                        <span v-else style="color:var(--rose)">{{ t('bc.noBarcode') }}</span>
-                        <!-- printing a sticker per pair means the count he
-                             wants is almost always this number, so it goes
-                             on every row rather than only in Stock -->
-                        <span>
-                            <span :style="'color:' + (Number(v.stock) > 0 ? 'var(--mut)' : 'var(--rose)')">{{ t('bc.inStock', { n: v.stock ?? 0 }) }}</span>
-                            <span v-if="v.barcode" :style="'color:' + (printedInfo(v.barcode) ? 'var(--green)' : 'var(--gold2)')"> • {{ printedInfo(v.barcode) ? printedLabel(v.barcode) : t('bc.neverPrinted') }}</span>
-                        </span>
-                    </div>
-                    <div class="end" @click.stop>
-                        <button v-if="!v.barcode" class="btn sm ghost" style="width:auto;padding:6px 10px" @click="generateBarcode(v)">{{ t('bc.generateBarcode') }}</button>
-                        <div v-else-if="isSelected('v:' + v.id)" class="copies">
-                            <button type="button" class="copies-step" @click="bumpCopies('v:' + v.id, -1)">−</button>
-                            <input v-model.number="selected['v:' + v.id]" type="number" min="1" inputmode="numeric" @blur="normalizeCopies('v:' + v.id)">
-                            <button type="button" class="copies-step" @click="bumpCopies('v:' + v.id, 1)">+</button>
+                <!-- template v-for, not a div v-for: the variant's own row
+                     and its sibling source-line rows both need 'v' in
+                     scope, but must stay FLAT siblings in the card (each
+                     its own .row) rather than nested inside one another —
+                     a .row nested inside a .row broke both the layout and
+                     the click handling (a tap on a source line bubbled up
+                     and also toggled the whole variant). A sibling plain
+                     div below the variant's closing tag read 'v' after the
+                     v-for that bound it had already closed and crashed
+                     every shop's page on first render ("Cannot read
+                     properties of undefined (reading 'sources')"),
+                     feature flag or not — this wrapper is the fix for both. -->
+                <template v-for="v in p.variants" :key="v.id">
+                    <div class="row" style="border-top:1px solid var(--line);padding-left:20px" :class="{ incart: isSelected('v:' + v.id) }" :style="isSelected('v:' + v.id) ? 'background:var(--goldSoft)' : ''" @click="toggleVariant(v)">
+                        <div class="ava" style="font-size:16px">🏷️</div>
+                        <div class="mid">
+                            <b>{{ variantLabel(v) }}</b>
+                            <span v-if="v.barcode">{{ v.barcode }} • {{ money(v.price ?? p.price) }}</span>
+                            <span v-else style="color:var(--rose)">{{ t('bc.noBarcode') }}</span>
+                            <!-- printing a sticker per pair means the count he
+                                 wants is almost always this number, so it goes
+                                 on every row rather than only in Stock -->
+                            <span>
+                                <span :style="'color:' + (Number(v.stock) > 0 ? 'var(--mut)' : 'var(--rose)')">{{ t('bc.inStock', { n: v.stock ?? 0 }) }}</span>
+                                <span v-if="v.barcode" :style="'color:' + (printedInfo(v.barcode) ? 'var(--green)' : 'var(--gold2)')"> • {{ printedInfo(v.barcode) ? printedLabel(v.barcode) : t('bc.neverPrinted') }}</span>
+                            </span>
+                        </div>
+                        <div class="end" @click.stop>
+                            <button v-if="!v.barcode" class="btn sm ghost" style="width:auto;padding:6px 10px" @click="generateBarcode(v)">{{ t('bc.generateBarcode') }}</button>
+                            <div v-else-if="isSelected('v:' + v.id)" class="copies">
+                                <button type="button" class="copies-step" @click="bumpCopies('v:' + v.id, -1)">−</button>
+                                <input v-model.number="selected['v:' + v.id]" type="number" min="1" inputmode="numeric" @blur="normalizeCopies('v:' + v.id)">
+                                <button type="button" class="copies-step" @click="bumpCopies('v:' + v.id, 1)">+</button>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <!-- Part 1 — print a sticker PER SUPPLIER/BRAND LOT, at that
-                     lot's own sell price; scanning it resolves to that
-                     exact lot on the sell screen, no guessing -->
-                <div v-for="line in v.sources || []" :key="'l' + line.id" class="row" style="border-top:1px solid var(--line);padding-left:36px" :class="{ incart: isSelected('l:' + line.id) }" :style="isSelected('l:' + line.id) ? 'background:var(--goldSoft)' : ''" @click="toggleSourceLine(line)">
-                    <div class="ava" style="font-size:14px">🚚</div>
-                    <div class="mid">
-                        <b style="font-size:12.5px">{{ line.supplier_name || 'Nil' }}</b>
-                        <span>{{ money(line.price) }} • {{ t('bc.inStock', { n: line.stock ?? 0 }) }}</span>
-                    </div>
-                    <div class="end" @click.stop>
-                        <div v-if="isSelected('l:' + line.id)" class="copies">
-                            <button type="button" class="copies-step" @click="bumpCopies('l:' + line.id, -1)">−</button>
-                            <input v-model.number="selected['l:' + line.id]" type="number" min="1" inputmode="numeric" @blur="normalizeCopies('l:' + line.id)">
-                            <button type="button" class="copies-step" @click="bumpCopies('l:' + line.id, 1)">+</button>
+                    <!-- Part 1 — print a sticker PER SUPPLIER/BRAND LOT, at
+                         that lot's own sell price; scanning it resolves to
+                         that exact lot on the sell screen, no guessing -->
+                    <div v-for="line in v.sources || []" :key="'l' + line.id" class="row" style="border-top:1px solid var(--line);padding-left:36px" :class="{ incart: isSelected('l:' + line.id) }" :style="isSelected('l:' + line.id) ? 'background:var(--goldSoft)' : ''" @click="toggleSourceLine(line)">
+                        <div class="ava" style="font-size:14px">🚚</div>
+                        <div class="mid">
+                            <b style="font-size:12.5px">{{ line.supplier_name || 'Nil' }}</b>
+                            <span>{{ money(line.price) }} • {{ t('bc.inStock', { n: line.stock ?? 0 }) }}</span>
+                        </div>
+                        <div class="end" @click.stop>
+                            <div v-if="isSelected('l:' + line.id)" class="copies">
+                                <button type="button" class="copies-step" @click="bumpCopies('l:' + line.id, -1)">−</button>
+                                <input v-model.number="selected['l:' + line.id]" type="number" min="1" inputmode="numeric" @blur="normalizeCopies('l:' + line.id)">
+                                <button type="button" class="copies-step" @click="bumpCopies('l:' + line.id, 1)">+</button>
+                            </div>
                         </div>
                     </div>
-                </div>
+                </template>
             </template>
         </div>
         <div v-if="!filtered.length" class="empty"><div class="big">🏷️</div>{{ t('bc.noProducts') }}</div>
