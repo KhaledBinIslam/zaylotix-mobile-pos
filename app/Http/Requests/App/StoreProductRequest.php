@@ -85,6 +85,11 @@ class StoreProductRequest extends FormRequest
             'batch_no' => ['nullable', 'string', 'max:100'],
             'size' => ['nullable', 'string', 'max:50'],
             'color' => ['nullable', 'string', 'max:50'],
+            // SEAMAN Phase 3 — what this product calls its two variant
+            // axes ("Rank"/"Type"); persisted only for shops with the
+            // variant_options feature (see ProductController)
+            'option1_label' => ['nullable', 'string', 'max:50'],
+            'option2_label' => ['nullable', 'string', 'max:50'],
             'imei' => ['nullable', 'string', 'max:50'],
             'reorder_point' => ['nullable', 'integer', 'min:0'],
         ];

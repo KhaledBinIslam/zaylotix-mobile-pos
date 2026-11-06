@@ -126,6 +126,11 @@ class ProductVariantController extends Controller
             'variants.*.size' => ['nullable', 'string', 'max:50'],
             'variants.*.color' => ['nullable', 'string', 'max:50'],
             'variants.*.stock' => ['required', 'integer', 'min:0'],
+            // SEAMAN Phase 3 — a cell's OWN price/cost (epaulettes: every
+            // Rank × Type pair sells at its own number). Absent = the
+            // grid-level/group/inherited value, exactly as before.
+            'variants.*.price' => ['nullable', 'numeric', 'min:0'],
+            'variants.*.cost' => ['nullable', 'numeric', 'min:0'],
             'write_off_rest' => ['nullable', 'boolean'],
             // Khaled: "oi serial e gia product add korle purchase r sell
             // price input diar option nai". One pair for a plain article,
@@ -195,12 +200,16 @@ class ProductVariantController extends Controller
             $totalStock = 0;
             foreach ($toCreate as $row) {
                 $size = (string) ($row['size'] ?? '');
-                $rowPrice = $groupPrices && $shop
-                    ? SizeGroupPricing::priceForSize($shop, $size, $groupPrices)
-                    : ($data['price'] ?? null);
-                $rowCost = $groupCosts && $shop
-                    ? SizeGroupPricing::priceForSize($shop, $size, $groupCosts)
-                    : ($data['cost'] ?? null);
+                // a cell's own number beats every broader rule — the owner
+                // typed it for exactly this row (SEAMAN Phase 3)
+                $rowPrice = $row['price']
+                    ?? ($groupPrices && $shop
+                        ? SizeGroupPricing::priceForSize($shop, $size, $groupPrices)
+                        : ($data['price'] ?? null));
+                $rowCost = $row['cost']
+                    ?? ($groupCosts && $shop
+                        ? SizeGroupPricing::priceForSize($shop, $size, $groupCosts)
+                        : ($data['cost'] ?? null));
 
                 $newVariant = ProductVariant::create([
                     'product_id' => $product->id,

@@ -60,6 +60,26 @@ class SetupSeamanShop extends Command
         'stock_count', 'product_variants', 'activity_log', 'suppliers',
         'low_stock_alerts', 'shop_backup', 'cashier_management',
         'sub_categories', // Phase 2 — category → sub-category, this shop only
+        'variant_options', // Phase 3 — named option axes + size sets, this shop only
+    ];
+
+    /**
+     * The size sets straight off the owner's handwritten note — seeded
+     * idempotently (updateOrCreate by name) so a re-run refreshes rather
+     * than duplicates. Half sizes are stored as "20.5" and displayed
+     * "20½" (resources/js/support/sizeDisplay.js).
+     */
+    private const SIZE_SETS = [
+        'Letter (S–4XL)' => ['S', 'M', 'L', 'XL', 'XXL', 'XXXL', '4XL'],
+        'T-Shirt (M–XXXL)' => ['M', 'L', 'XL', 'XXL', 'XXXL'],
+        'Shoe 39–44' => ['39', '40', '41', '42', '43', '44'],
+        'Shoe 40–44' => ['40', '41', '42', '43', '44'],
+        'Shoe 39–45' => ['39', '40', '41', '42', '43', '44', '45'],
+        'Shoe 40–46' => ['40', '41', '42', '43', '44', '45', '46'],
+        'Shoe 45–48' => ['45', '46', '47', '48'],
+        'Pant waist 27–45' => ['27', '28', '29', '30', '31', '32', '33', '34', '35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45'],
+        'Paijama 38–46' => ['38', '40', '42', '44', '46'],
+        'Peak cap 20½–23' => ['20.5', '21', '21.5', '22', '22.5', '23'],
     ];
 
     public function handle(): int
@@ -113,10 +133,12 @@ class SetupSeamanShop extends Command
                         ->update(['password' => bcrypt($this->option('password'))]);
                 }
 
+                $this->seedSizeSets($existing->id);
+
                 return $existing;
             }
 
-            return ShopProvisioner::provision(
+            $shop = ShopProvisioner::provision(
                 [
                     'name' => self::SHOP_NAME,
                     'name_en' => self::SHOP_NAME,
@@ -144,6 +166,10 @@ class SetupSeamanShop extends Command
                 $password,
                 self::FEATURE_KEYS
             );
+
+            $this->seedSizeSets($shop->id);
+
+            return $shop;
         });
 
         $this->newLine();
@@ -159,6 +185,16 @@ class SetupSeamanShop extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    private function seedSizeSets(int $shopId): void
+    {
+        foreach (self::SIZE_SETS as $name => $sizes) {
+            \App\Models\SizeSet::withoutGlobalScopes()->updateOrCreate(
+                ['shop_id' => $shopId, 'name' => $name],
+                ['sizes' => $sizes]
+            );
+        }
     }
 
     private function rollback(): int
@@ -180,6 +216,7 @@ class SetupSeamanShop extends Command
         DB::transaction(function () use ($shop) {
             Product::withoutGlobalScopes()->where('shop_id', $shop->id)->forceDelete();
             ProductCategory::withoutGlobalScopes()->where('shop_id', $shop->id)->delete();
+            \App\Models\SizeSet::withoutGlobalScopes()->where('shop_id', $shop->id)->delete();
             Unit::withoutGlobalScopes()->where('shop_id', $shop->id)->delete();
             User::where('shop_id', $shop->id)->delete();
             $shop->features()->detach();

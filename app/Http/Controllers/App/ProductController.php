@@ -117,7 +117,9 @@ class ProductController extends Controller
 
         return Inertia::render('App/Stock/Index', [
             'products' => $products,
-            'categories' => ProductCategory::orderBy('name')->get(), // parent_id rides along for the sub-category chips
+            'categories' => ProductCategory::orderBy('name')->get(), // parent_id + size_set_id ride along for chips and grid prefill
+            // Phase 3 — grid prefill: empty everywhere but SEAMAN today
+            'sizeSets' => \App\Models\SizeSet::orderBy('name')->get(['id', 'name', 'sizes']),
             'units' => Unit::orderBy('name')->get(),
             'stats' => $stats,
             'q' => $q,
@@ -193,6 +195,12 @@ class ProductController extends Controller
             'imei' => $data['imei'] ?? null,
             'reorder_point' => $data['reorder_point'] ?? null,
             ...$this->resolveStock($data),
+            // gated: a shop without variant_options keeps null labels, so
+            // its UI goes on saying রং/সাইজ everywhere exactly as today
+            ...(\App\Support\Tenancy::shop()?->hasFeature('variant_options') ? [
+                'option1_label' => $data['option1_label'] ?? null,
+                'option2_label' => $data['option2_label'] ?? null,
+            ] : []),
         ]);
 
         $this->syncPriceTiers($product, $data['price_tiers'] ?? []);
@@ -270,6 +278,12 @@ class ProductController extends Controller
             'imei' => $data['imei'] ?? null,
             'reorder_point' => $data['reorder_point'] ?? null,
             ...$this->resolveStock($data),
+            // same gate as store(): label columns stay untouched for every
+            // shop without variant_options
+            ...(\App\Support\Tenancy::shop()?->hasFeature('variant_options') ? [
+                'option1_label' => $data['option1_label'] ?? null,
+                'option2_label' => $data['option2_label'] ?? null,
+            ] : []),
         ];
 
         // for a variant product, `stock` is a live-maintained sum of

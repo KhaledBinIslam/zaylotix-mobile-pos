@@ -267,6 +267,14 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::delete('categories/{category}', [CategoryController::class, 'destroy'])->name('categories.destroy');
     });
 
+    // SEAMAN Phase 3 — reusable size sets (gated like the rest of the
+    // custom-variant work; today only shop #157 carries the feature)
+    Route::middleware(['perm:stock', 'feature:variant_options'])->group(function () {
+        Route::post('size-sets', [CategoryController::class, 'sizeSetStore'])->name('sizeSets.store');
+        Route::patch('size-sets/{sizeSet}', [CategoryController::class, 'sizeSetUpdate'])->name('sizeSets.update');
+        Route::delete('size-sets/{sizeSet}', [CategoryController::class, 'sizeSetDestroy'])->name('sizeSets.destroy');
+    });
+
     Route::middleware(['perm:stock', 'feature:dead_stock_clearance'])->group(function () {
         Route::get('dead-stock', [DeadStockController::class, 'index'])->name('deadStock.index');
         Route::patch('dead-stock/days', [DeadStockController::class, 'updateDays'])->name('deadStock.updateDays');

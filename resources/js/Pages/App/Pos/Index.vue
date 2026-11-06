@@ -2,6 +2,7 @@
 import { Head, router, usePage } from '@inertiajs/vue3';
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { scannerFormats, scannerOptions } from '@/support/scannerConfig';
+import { formatSize } from '@/support/sizeDisplay';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import ColorSizePicker from '@/Components/ColorSizePicker.vue';
@@ -1744,7 +1745,7 @@ useKeyboardShortcuts({
                                         :style="variantQtyInCart(v.id) ? 'background:var(--goldSoft)' : ''"
                                     >
                                         <td style="padding:7px 4px;font-weight:600">
-                                            {{ v.size }}
+                                            {{ formatSize(v.size) }}
                                             <!-- exactly which row is "marked" and by how much — the whole-card gold
                                                  highlight used to make this ambiguous across many size/color rows -->
                                             <div v-if="variantQtyInCart(v.id)" style="font-size:10.5px;color:var(--gold2);font-weight:700">✓ {{ variantQtyInCart(v.id) }} {{ t('pos.added') }}</div>

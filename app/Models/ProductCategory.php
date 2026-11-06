@@ -9,7 +9,7 @@ class ProductCategory extends Model
 {
     use BelongsToTenant;
 
-    protected $fillable = ['shop_id', 'parent_id', 'name', 'name_en', 'emoji', 'code', 'serial_start'];
+    protected $fillable = ['shop_id', 'parent_id', 'name', 'name_en', 'emoji', 'code', 'serial_start', 'size_set_id'];
 
     protected $casts = ['serial_start' => 'integer'];
 

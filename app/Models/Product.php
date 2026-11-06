@@ -18,6 +18,7 @@ class Product extends Model
         'shop_id', 'master_product_id', 'supplier_id', 'category_id', 'unit_id', 'name', 'name_en', 'generic_name', 'company', 'shelf_location', 'requires_prescription', 'emoji', 'photo_path', 'barcode',
         'sold_by_weight', 'weight_unit', 'track_serial',
         'cost', 'price', 'wholesale_price', 'wholesale_moq', 'discount_price', 'stock', 'stock_mode', 'expiry_date', 'batch_no', 'size', 'color', 'imei',
+        'option1_label', 'option2_label', // SEAMAN Phase 3 — what this product CALLS its colour/size axes (null = রং/সাইজ, every pre-existing product)
         'reorder_point', 'show_in_catalog', 'search_keywords',
     ];
 

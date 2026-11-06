@@ -7,6 +7,7 @@ import Pagination from '@/Components/Pagination.vue';
 import HowToHint from '@/Components/HowToHint.vue';
 import SmartScanSheet from '@/Components/SmartScanSheet.vue';
 import { useI18n } from '@/composables/useI18n';
+import { formatSize } from '@/support/sizeDisplay';
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts';
 import { usePollingReload } from '@/composables/usePollingReload';
 import { useToast } from '@/composables/useToast';
@@ -15,6 +16,7 @@ import { usePermissions } from '@/composables/usePermissions';
 
 const props = defineProps({
     products: Object, categories: Array, units: Array, stats: Object, q: String, categoryId: [Number, String],
+    sizeSets: { type: Array, default: () => [] },
     company: String, genericName: String, companies: { type: Array, default: () => [] }, genericNames: { type: Array, default: () => [] },
     stockStatus: String,
     // which categories price by size group, and the groups themselves —
@@ -218,6 +220,7 @@ const editingHasVariants = computed(() => (editing.value?.variants?.length ?? 0)
 const preExistingUnallocatedStock = computed(() => (!editingHasVariants.value && Number(editing.value?.stock) > 0) ? Number(editing.value.stock) : 0);
 const form = useForm({
     name: '', name_en: '', generic_name: '', company: '', shelf_location: '', requires_prescription: false, emoji: '📦', photo: null, remove_photo: false, category_id: '', new_category_name: '',
+    option1_label: '', option2_label: '',
     unit_id: '', new_unit_name: '', barcode: '', cost: '', price: '', wholesale_price: '', wholesale_moq: '', discount_price: '', stock: '',
     reorder_point: '', sold_by_weight: false, weight_unit: 'kg', track_serial: false,
     // restaurant-only (see isRestaurant) — 'tracked' everywhere else,
@@ -315,6 +318,7 @@ function openEdit(p) {
     form.name = p.name; form.name_en = p.name_en; form.emoji = p.emoji;
     form.generic_name = p.generic_name; form.company = p.company; form.shelf_location = p.shelf_location; form.requires_prescription = p.requires_prescription;
     form.category_id = p.category_id; form.unit_id = p.unit_id; form.barcode = p.barcode;
+    form.option1_label = p.option1_label || ''; form.option2_label = p.option2_label || '';
     form.cost = p.cost; form.price = p.price; form.wholesale_price = p.wholesale_price; form.wholesale_moq = p.wholesale_moq; form.discount_price = p.discount_price;
     form.price_tiers = (p.price_tiers || []).map(tier => ({ min_qty: tier.min_qty, price: tier.price }));
     // p.stock comes back from the server as a decimal-cast string ("124.000")
@@ -419,6 +423,24 @@ const gridGroupPrices = ref({});
 const gridGroupCosts = ref({});
 
 const editingCategory = computed(() => (props.categories || []).find((c) => c.id === editing.value?.category_id) || null);
+
+// --- SEAMAN Phase 3: named option axes + size sets + per-cell prices ---
+const hasVariantOptions = computed(() => features.value.includes('variant_options'));
+/** What this product calls its two axes — রং/সাইজ unless it renamed them. */
+const opt1Label = computed(() => editing.value?.option1_label || t('stock.color'));
+const opt2Label = computed(() => editing.value?.option2_label || t('stock.size'));
+/** The size set a category suggests: its own pick, else its parent's. A suggestion only — the owner edits the box freely. */
+function defaultSizesFor(category) {
+    if (!category) return null;
+    const setId = category.size_set_id
+        || (props.categories || []).find((c) => c.id === category.parent_id)?.size_set_id;
+    const set = setId ? (props.sizeSets || []).find((s) => s.id === setId) : null;
+    return set ? set.sizes.join(', ') : null;
+}
+// per-cell own price/cost (epaulettes: every Rank × Type sells at its own number)
+const gridPerCell = ref(false);
+const gridCellPrice = ref({});
+const gridCellCost = ref({});
 const editingUsesSizeGroups = computed(() => {
     const code = String(editingCategory.value?.code ?? '').trim().toUpperCase();
     return code !== '' && (props.sizeGroupCategoryCodes || []).includes(code);
@@ -436,9 +458,18 @@ function openGrid() {
     gridCost.value = '';
     gridGroupPrices.value = {};
     gridGroupCosts.value = {};
+    gridPerCell.value = false;
+    gridCellPrice.value = {};
+    gridCellCost.value = {};
     // Pre-fill from the shop's saved defaults (Accounts page) only when the
     // owner hasn't already typed something this session — never overwrite
-    // an in-progress edit.
+    // an in-progress edit. The category's size set (sub overrides parent)
+    // beats the shop-wide default, because it was picked for exactly this
+    // kind of product (SEAMAN Phase 3).
+    if (!gridSizesInput.value) {
+        const fromSet = defaultSizesFor(editingCategory.value);
+        if (fromSet) gridSizesInput.value = fromSet;
+    }
     if (!gridSizesInput.value && page.props.shop?.default_variant_sizes) gridSizesInput.value = page.props.shop.default_variant_sizes;
     if (!gridColorsInput.value && page.props.shop?.default_variant_colors) gridColorsInput.value = page.props.shop.default_variant_colors;
 }
@@ -455,7 +486,14 @@ function submitGrid() {
         for (const size of sizes) {
             const qty = gridStock.value[gridCellKey(color, size)];
             if (qty === undefined || qty === null || qty === '') continue;
-            variants.push({ color: color || null, size: size || null, stock: Number(qty) });
+            const row = { color: color || null, size: size || null, stock: Number(qty) };
+            if (gridPerCell.value) {
+                const cp = gridCellPrice.value[gridCellKey(color, size)];
+                const cc = gridCellCost.value[gridCellKey(color, size)];
+                if (cp !== undefined && cp !== '') row.price = Number(cp);
+                if (cc !== undefined && cc !== '') row.cost = Number(cc);
+            }
+            variants.push(row);
         }
     }
     if (!variants.length) {
@@ -1022,8 +1060,8 @@ useKeyboardShortcuts({
                 <div v-if="gridOpen" style="margin-top:10px;padding:10px;border:1px dashed var(--line);border-radius:var(--radius-sm)">
                     <div style="font-size:12px;color:var(--mut);margin-bottom:8px">{{ t('stock.gridHint') }}</div>
                     <div class="f2">
-                        <input v-model="gridColorsInput" :placeholder="t('stock.gridColorsPlaceholder')">
-                        <input v-model="gridSizesInput" :placeholder="t('stock.gridSizesPlaceholder')">
+                        <input v-model="gridColorsInput" :placeholder="editing?.option1_label ? opt1Label + ' — ' + t('stock.commaSeparated') : t('stock.gridColorsPlaceholder')">
+                        <input v-model="gridSizesInput" :placeholder="editing?.option2_label ? opt2Label + ' — ' + t('stock.commaSeparated') : t('stock.gridSizesPlaceholder')">
                     </div>
 
                     <div v-if="gridColors.length || gridSizes.length" style="overflow-x:auto;margin-top:10px">
@@ -1031,18 +1069,23 @@ useKeyboardShortcuts({
                             <thead>
                                 <tr>
                                     <th style="text-align:left;font-size:11px;color:var(--dim);padding:4px 6px"></th>
-                                    <th v-for="size in (gridSizes.length ? gridSizes : [''])" :key="'h-' + size" style="font-size:12px;padding:4px 6px;text-align:center">{{ size || t('stock.size') }}</th>
+                                    <th v-for="size in (gridSizes.length ? gridSizes : [''])" :key="'h-' + size" style="font-size:12px;padding:4px 6px;text-align:center">{{ size ? formatSize(size) : opt2Label }}</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr v-for="color in (gridColors.length ? gridColors : [''])" :key="'r-' + color">
-                                    <td style="font-size:12px;padding:4px 6px;white-space:nowrap">{{ color || t('stock.color') }}</td>
+                                    <td style="font-size:12px;padding:4px 6px;white-space:nowrap">{{ color || opt1Label }}</td>
                                     <td v-for="size in (gridSizes.length ? gridSizes : [''])" :key="'c-' + color + size" style="padding:3px">
                                         <input
                                             v-model="gridStock[gridCellKey(color, size)]"
                                             type="number" min="0" placeholder="0"
                                             style="width:56px;text-align:center;margin:0;padding:6px 4px"
                                         >
+                                        <!-- the cell's OWN numbers, only in per-cell mode (SEAMAN Phase 3) -->
+                                        <template v-if="gridPerCell">
+                                            <input v-model="gridCellCost[gridCellKey(color, size)]" type="number" min="0" :placeholder="t('stock.costShort')" style="width:56px;text-align:center;margin:3px 0 0;padding:4px;font-size:11px">
+                                            <input v-model="gridCellPrice[gridCellKey(color, size)]" type="number" min="0" :placeholder="t('stock.priceShort')" style="width:56px;text-align:center;margin:3px 0 0;padding:4px;font-size:11px">
+                                        </template>
                                     </td>
                                 </tr>
                             </tbody>
@@ -1053,6 +1096,11 @@ useKeyboardShortcuts({
                          buying and selling price, so it silently inherited
                          the article's headline one. Blank still inherits —
                          that is the old behaviour, now a choice. -->
+                    <label v-if="hasVariantOptions" style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12.5px;cursor:pointer">
+                        <input v-model="gridPerCell" type="checkbox">
+                        {{ t('stock.perCellPrices') }}
+                    </label>
+
                     <div style="margin-top:10px">
                         <div style="font-size:12px;color:var(--mut);margin-bottom:6px">{{ t('stock.gridPriceHint') }}</div>
                         <template v-if="editingUsesSizeGroups">
@@ -1087,11 +1135,24 @@ useKeyboardShortcuts({
                     </div>
                 </div>
 
+                <!-- SEAMAN Phase 3: what THIS product calls its two axes —
+                     epaulettes say Rank × Type where shoes say রং × সাইজ.
+                     Saved with the product (সংরক্ষণ button below); every
+                     grid/label/picker then speaks in those words. -->
+                <template v-if="hasVariantOptions">
+                    <div class="hr"></div>
+                    <div style="font-size:12px;color:var(--dim);margin-bottom:6px">{{ t('stock.optionLabelsHint') }}</div>
+                    <div class="f2">
+                        <input v-model="form.option1_label" :placeholder="t('stock.option1Placeholder')">
+                        <input v-model="form.option2_label" :placeholder="t('stock.option2Placeholder')">
+                    </div>
+                </template>
+
                 <div class="hr"></div>
                 <div style="font-size:12px;color:var(--dim);margin-bottom:6px">{{ t('stock.addVariantSingle') }}</div>
                 <div class="f2">
-                    <input v-model="variantForm.size" :placeholder="t('stock.size')">
-                    <input v-model="variantForm.color" :placeholder="t('stock.color')">
+                    <input v-model="variantForm.size" :placeholder="opt2Label">
+                    <input v-model="variantForm.color" :placeholder="opt1Label">
                 </div>
                 <div class="f2" style="margin-top:8px">
                     <input v-model="variantForm.stock" type="number" :placeholder="t('stock.startingStock')">

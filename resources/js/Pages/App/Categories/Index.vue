@@ -11,15 +11,16 @@
 import { ref } from 'vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import HowToHint from '@/Components/HowToHint.vue';
 import Sheet from '@/Components/Sheet.vue';
 import { useI18n } from '@/composables/useI18n';
 
-const props = defineProps({ tree: Array });
+const props = defineProps({ tree: Array, sizeSets: { type: Array, default: () => [] } });
 const { t } = useI18n();
 
 const sheet = ref(false);
 const editing = ref(null); // null = new
-const form = useForm({ name: '', emoji: '', parent_id: null });
+const form = useForm({ name: '', emoji: '', parent_id: null, size_set_id: null });
 
 function openNew(parentId = null) {
     editing.value = null;
@@ -32,7 +33,31 @@ function openEdit(cat, parentId = null) {
     form.name = cat.name;
     form.emoji = cat.emoji === '📦' ? '' : cat.emoji;
     form.parent_id = parentId;
+    form.size_set_id = cat.size_set_id || null;
     sheet.value = true;
+}
+
+// --- size sets (Phase 3): named size lists the variant grid prefills from ---
+const setSheet = ref(false);
+const editingSet = ref(null);
+const setForm = useForm({ name: '', sizes: '' });
+function openSetNew() {
+    editingSet.value = null;
+    setForm.reset();
+    setSheet.value = true;
+}
+function openSetEdit(s) {
+    editingSet.value = s;
+    setForm.name = s.name;
+    setForm.sizes = s.sizes.join(', ');
+    setSheet.value = true;
+}
+function saveSet() {
+    if (editingSet.value) setForm.patch(route('app.sizeSets.update', editingSet.value.id), { onSuccess: () => { setSheet.value = false; } });
+    else setForm.post(route('app.sizeSets.store'), { onSuccess: () => { setSheet.value = false; } });
+}
+function deleteSet(s) {
+    if (confirm(t('cat.setDeleteConfirm', { name: s.name }))) router.delete(route('app.sizeSets.destroy', s.id));
 }
 function save() {
     if (editing.value) form.patch(route('app.categories.update', editing.value.id), { onSuccess: () => { sheet.value = false; } });
@@ -71,6 +96,7 @@ function destinations() {
         <div class="pgttl">🗂️ {{ t('cat.title') }}</div>
         <div class="pgsub">{{ t('cat.subtitle') }}</div>
 
+        <HowToHint :text="t('cat.howTo')" />
         <Link :href="route('app.stock')" class="btn ghost sm" style="margin-bottom:12px;display:inline-block;text-decoration:none">← {{ t('cat.backToStock') }}</Link>
         <button class="btn" style="margin-bottom:16px" @click="openNew(null)">+ {{ t('cat.newCategory') }}</button>
 
@@ -97,6 +123,31 @@ function destinations() {
         </div>
         <div v-if="!tree.length" class="empty"><div class="big">🗂️</div>{{ t('cat.none') }}</div>
 
+        <!-- size sets: the lists the variant grid prefills from; a
+             category names its default in its own edit sheet above -->
+        <div class="sechead" style="margin-top:20px"><h2>📏 {{ t('cat.sizeSets') }}</h2></div>
+        <div class="card" style="font-size:12.5px;color:var(--mut);margin-bottom:10px">{{ t('cat.sizeSetsHint') }}</div>
+        <div v-for="s in sizeSets" :key="s.id" class="card" style="margin-bottom:8px;display:flex;align-items:center;gap:10px">
+            <div style="flex:1;min-width:0">
+                <b>{{ s.name }}</b>
+                <div style="font-size:12px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.sizes.join(', ') }}</div>
+            </div>
+            <button class="btn sm ghost" style="width:auto;padding:6px 10px;font-size:12px" @click="openSetEdit(s)">{{ t('emp.edit') }}</button>
+            <button class="btn sm ghost rose" style="width:auto;padding:6px 10px;font-size:12px" @click="deleteSet(s)">🗑️</button>
+        </div>
+        <button class="btn ghost sm" style="width:auto;padding:8px 14px" @click="openSetNew">+ {{ t('cat.newSizeSet') }}</button>
+
+        <Sheet v-model="setSheet" :title="editingSet ? editingSet.name : t('cat.newSizeSet')">
+            <div class="field"><label>{{ t('cat.name') }}</label><input v-model="setForm.name" placeholder="Shoe 39–44"></div>
+            <div class="field">
+                <label>{{ t('cat.sizesCommaHint') }}</label>
+                <input v-model="setForm.sizes" placeholder="39, 40, 41, 42, 43, 44">
+            </div>
+            <div v-if="Object.keys(setForm.errors).length" style="color:var(--rose);font-size:12.5px;margin-bottom:10px">{{ Object.values(setForm.errors)[0] }}</div>
+            <button class="btn" :disabled="setForm.processing" @click="saveSet">{{ t('emp.save') }}</button>
+            <button class="btn ghost" style="margin-top:10px" @click="setSheet = false">{{ t('common.cancel') }}</button>
+        </Sheet>
+
         <Sheet v-model="sheet" :title="editing ? t('emp.edit') + ' — ' + editing.name : (form.parent_id ? t('cat.newSubTitle') : t('cat.newCategory'))">
             <div class="field"><label>{{ t('cat.name') }}</label><input v-model="form.name"></div>
             <div class="field"><label>{{ t('cat.emoji') }}</label><input v-model="form.emoji" maxlength="8" placeholder="📦"></div>
@@ -105,6 +156,13 @@ function destinations() {
                 <select v-model="form.parent_id">
                     <option :value="null">{{ t('cat.topLevel') }}</option>
                     <option v-for="p in tree.filter((x) => x.id !== editing?.id)" :key="p.id" :value="p.id">{{ p.emoji }} {{ p.name }}</option>
+                </select>
+            </div>
+            <div v-if="editing && sizeSets.length" class="field">
+                <label>{{ t('cat.defaultSizeSet') }}</label>
+                <select v-model="form.size_set_id">
+                    <option :value="null">{{ t('cat.noSizeSet') }}</option>
+                    <option v-for="s in sizeSets" :key="s.id" :value="s.id">{{ s.name }}</option>
                 </select>
             </div>
             <div v-if="Object.keys(form.errors).length" style="color:var(--rose);font-size:12.5px;margin-bottom:10px">{{ Object.values(form.errors)[0] }}</div>
