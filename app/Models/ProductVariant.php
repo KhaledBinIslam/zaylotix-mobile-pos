@@ -25,6 +25,28 @@ class ProductVariant extends Model
         ];
     }
 
+    /**
+     * Case/whitespace-insensitive identity of a (colour, size) cell —
+     * 'Navy Blue' and ' navy blue' are the SAME variant. Seaman live,
+     * INV-1001: the owner typed the colour twice with different
+     * capitalisation, got twin variants, sold from one and watched the
+     * other's stock "not move". Every create-path duplicate check goes
+     * through this pair of helpers now.
+     */
+    public static function cellKey(?string $color, ?string $size): string
+    {
+        return mb_strtolower(trim((string) $color)).'|'.mb_strtolower(trim((string) $size));
+    }
+
+    /** Does this product already have a variant occupying the same (colour, size) cell, spelling differences aside? */
+    public static function cellExists(int $productId, ?string $color, ?string $size): bool
+    {
+        $key = self::cellKey($color, $size);
+
+        return static::where('product_id', $productId)->get(['color', 'size'])
+            ->contains(fn ($v) => self::cellKey($v->color, $v->size) === $key);
+    }
+
     protected static function booted(): void
     {
         /*

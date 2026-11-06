@@ -71,13 +71,13 @@ class OpeningStockController extends Controller
                     abort_unless($variant, 422, 'একটি ভ্যারিয়েন্ট পাওয়া যায়নি — পেজ রিফ্রেশ করে আবার চেষ্টা করুন।');
                 } elseif (($cell['color'] ?? null) !== null || ($cell['size'] ?? null) !== null) {
                     // a new colour row / size column straight from the grid —
-                    // same rules as adding a variant anywhere else
-                    $color = ($cell['color'] ?? null) ?: null;
-                    $size = ($cell['size'] ?? null) ?: null;
+                    // same rules as adding a variant anywhere else; trimmed,
+                    // and 'Navy Blue' can never twin 'Navy blue' (INV-1001)
+                    $color = trim((string) ($cell['color'] ?? '')) ?: null;
+                    $size = trim((string) ($cell['size'] ?? '')) ?: null;
+                    abort_if($color === null && $size === null, 422, 'নতুন ঘরের রং/সাইজ ফাঁকা।');
 
-                    $dupe = ProductVariant::where('product_id', $lockedProduct->id)
-                        ->where('color', $color)->where('size', $size)->exists();
-                    abort_if($dupe, 422, 'এই ঘরের ভ্যারিয়েন্ট আগেই আছে — পেজ রিফ্রেশ করে সেটাতেই স্টক বসান।');
+                    abort_if(ProductVariant::cellExists($lockedProduct->id, $color, $size), 422, 'এই ঘরের ভ্যারিয়েন্ট আগেই আছে (বড়/ছোট হাতের তফাত ধরা হয় না) — পেজ রিফ্রেশ করে সেটাতেই স্টক বসান।');
 
                     $variant = ProductVariant::create([
                         'shop_id' => Tenancy::id(),

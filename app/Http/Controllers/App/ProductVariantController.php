@@ -59,12 +59,15 @@ class ProductVariantController extends Controller
             return back()->withErrors(['size' => "{$product->name} ওজন/লিটার হিসেবে বিক্রি হয় — এতে ভ্যারিয়েন্ট যোগ করা যাবে না।"]);
         }
 
-        $duplicate = ProductVariant::where('product_id', $product->id)
-            ->where('size', $data['size'] ?? null)
-            ->where('color', $data['color'] ?? null)
-            ->exists();
-        if ($duplicate) {
-            return back()->withErrors(['size' => 'এই সাইজ/রং-এর ভ্যারিয়েন্ট ইতিমধ্যে আছে।']);
+        // case/whitespace-insensitive: 'Navy Blue' twinning 'Navy blue' is
+        // how Seaman's INV-1001 "stock didn't move" happened
+        if (ProductVariant::cellExists($product->id, $data['color'] ?? null, $data['size'] ?? null)) {
+            return back()->withErrors(['size' => 'এই সাইজ/রং-এর ভ্যারিয়েন্ট ইতিমধ্যে আছে (বড়/ছোট হাতের তফাত ধরা হয় না)।']);
+        }
+        $data['size'] = isset($data['size']) ? (trim($data['size']) ?: null) : null;
+        $data['color'] = isset($data['color']) ? (trim($data['color']) ?: null) : null;
+        if ($data['size'] === null && $data['color'] === null) {
+            return back()->withErrors(['size' => 'সাইজ অথবা রং অন্তত একটা দিন।']);
         }
 
         // A size added to an article AFTER it was created used to go in
@@ -150,15 +153,19 @@ class ProductVariantController extends Controller
             return back()->withErrors(['size' => "{$product->name} ওজন/লিটার হিসেবে বিক্রি হয় — এতে ভ্যারিয়েন্ট যোগ করা যাবে না।"]);
         }
 
+        // case/whitespace-insensitive keys — 'Navy Blue' must never twin
+        // 'Navy blue' (Seaman INV-1001); values are stored trimmed too
         $existingKeys = ProductVariant::where('product_id', $product->id)->get(['size', 'color'])
-            ->map(fn ($v) => ($v->size ?? '').'|'.($v->color ?? ''))->all();
+            ->map(fn ($v) => ProductVariant::cellKey($v->color, $v->size))->all();
 
         $toCreate = [];
         foreach ($data['variants'] as $row) {
-            if (empty($row['size']) && empty($row['color'])) {
+            $row['size'] = isset($row['size']) ? (trim((string) $row['size']) ?: null) : null;
+            $row['color'] = isset($row['color']) ? (trim((string) $row['color']) ?: null) : null;
+            if ($row['size'] === null && $row['color'] === null) {
                 continue;
             }
-            $key = ($row['size'] ?? '').'|'.($row['color'] ?? '');
+            $key = ProductVariant::cellKey($row['color'], $row['size']);
             if (in_array($key, $existingKeys, true)) {
                 continue;
             }

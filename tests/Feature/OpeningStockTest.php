@@ -138,4 +138,41 @@ class OpeningStockTest extends TestCase
         $this->assertSame('opening_stock', $row->source);
         $this->assertEquals(30, (float) $row->unit_cost);
     }
+
+    /**
+     * Seaman live, INV-1001: 'Navy Blue' typed next to an existing
+     * 'Navy blue' made twin variants — a sale decremented one while the
+     * owner watched the other. Every create path now refuses a
+     * case/whitespace twin.
+     */
+    public function test_a_case_twin_variant_is_refused_on_every_create_path(): void
+    {
+        [$shop, $owner] = $this->aGridShop();
+        $this->actingAs($owner, 'web');
+
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Radium Suit', 'cost' => 650, 'price' => 1190, 'stock' => 0]);
+        ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'color' => 'Navy blue', 'size' => 'XXL', 'stock' => 0]);
+
+        // the opening-stock grid's "new row"
+        $this->post(route('app.products.openingStock', $product->id), [
+            'cells' => [['color' => 'Navy Blue', 'size' => ' XXL ', 'qty' => 4]],
+        ])->assertStatus(422);
+
+        // the single add-variant form
+        $this->post(route('app.productVariants.store', $product->id), [
+            'color' => 'NAVY BLUE', 'size' => 'xxl', 'stock' => 0,
+        ])->assertSessionHasErrors('size');
+
+        // the bulk grid silently skips the twin instead of creating it
+        $this->post(route('app.productVariants.bulkStore', $product->id), [
+            'variants' => [
+                ['color' => 'navy blue', 'size' => 'XXL', 'stock' => 0],
+                ['color' => 'Orange', 'size' => 'M', 'stock' => 0],
+            ],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(2, ProductVariant::where('product_id', $product->id)->count()); // original + Orange only
+        $this->assertSame(1, ProductVariant::where('product_id', $product->id)
+            ->get()->filter(fn ($v) => ProductVariant::cellKey($v->color, $v->size) === ProductVariant::cellKey('Navy blue', 'XXL'))->count());
+    }
 }

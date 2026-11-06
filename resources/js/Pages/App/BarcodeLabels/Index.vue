@@ -7,6 +7,7 @@ import { useI18n } from '@/composables/useI18n';
 import { useToast } from '@/composables/useToast';
 import { labelSizeMm } from '@/support/labelSizes';
 import { thermalModuleWidth, THERMAL_BAR_HEIGHT_MM, detailedBarcodeDots } from '@/support/barcodeFit';
+import { searchProducts } from '@/support/clientProductSearch';
 import { buildShareMetadata, canShareLabelFiles } from '@/support/bluetoothPrintShare';
 import { printedLabelKey } from '@/support/labelPrintKey';
 import { printableRowsOf } from '@/support/labelSelection';
@@ -168,13 +169,33 @@ function generateProductBarcode(p) {
     router.patch(route('app.products.generateBarcode', p.id), {}, { preserveScroll: true, preserveState: true });
 }
 
-const filtered = computed(() => props.products.filter((p) =>
-    !q.value
-    || p.name.toLowerCase().includes(q.value.toLowerCase())
-    || p.name_en?.toLowerCase().includes(q.value.toLowerCase())
-    || (p.barcode || '').includes(q.value)
-    || p.variants?.some((v) => (v.barcode || '').includes(q.value))
-));
+// one shared matcher (support/clientProductSearch.js): multi-word any
+// order, variant size/colour, category, brand, supplier, ZV codes,
+// best matches first — the old bare includes() found none of those
+const filtered = computed(() => searchProducts(props.products, q.value));
+
+// ↑/↓ walks the results, Enter focuses the highlighted product's first
+// qty box — works for the keyboard and for a hardware scanner's Enter
+const activeIdx = ref(-1);
+watch(q, () => { activeIdx.value = filtered.value.length ? 0 : -1; });
+function moveActive(step) {
+    if (!filtered.value.length) return;
+    activeIdx.value = Math.min(filtered.value.length - 1, Math.max(0, activeIdx.value + step));
+    document.getElementById('bc-prod-' + filtered.value[activeIdx.value]?.id)?.scrollIntoView({ block: 'nearest' });
+}
+function focusActive() {
+    const p = filtered.value[activeIdx.value];
+    if (!p) return;
+    const el = document.getElementById('bc-prod-' + p.id);
+    el?.scrollIntoView({ block: 'nearest' });
+    // a plain product (no variants) with its own barcode: Enter ticks it
+    // the same as a tap, so the qty box exists to focus into — a
+    // hardware scanner's Enter can go straight from typing to a count
+    if (!p.variants?.length && p.barcode && !isSelected('p:' + p.id)) {
+        toggleProduct(p);
+    }
+    nextTick(() => el?.querySelector('input[type="number"]')?.focus());
+}
 
 const totalCopies = computed(() => Object.values(selected.value).reduce((a, b) => a + b, 0));
 
@@ -804,7 +825,11 @@ const printCss = computed(() => {
             ⚙️ {{ t('bc.labelSettingsLink') }} ({{ sizeMm.width }}×{{ sizeMm.height }}mm, {{ settings.per_row || 2 }}/{{ t('bc.perRow') }})
         </Link>
 
-        <input v-model="q" :placeholder="t('bc.searchPlaceholder')" style="margin-bottom:8px">
+        <input v-model="q" :placeholder="t('bc.searchPlaceholder')" style="margin-bottom:8px"
+            @keydown.down.prevent="moveActive(1)" @keydown.up.prevent="moveActive(-1)" @keydown.enter.prevent="focusActive()">
+        <div v-if="q && !filtered.length" class="card" style="margin-bottom:12px;text-align:center;color:var(--mut);font-size:13px">
+            🔍 {{ t('bc.searchEmpty') }}
+        </div>
         <div v-if="filtered.length" style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
             <button class="btn sm ghost" style="width:auto;padding:6px 10px" @click="selectEverythingShown">
                 {{ t('bc.selectEverythingShown', { n: filtered.length }) }}
@@ -820,7 +845,7 @@ const printCss = computed(() => {
             </button>
         </div>
 
-        <div v-for="p in filtered" :key="p.id" class="card" style="padding:0;margin-bottom:8px;overflow:hidden">
+        <div v-for="p in filtered" :key="p.id" :id="'bc-prod-' + p.id" class="card" style="padding:0;margin-bottom:8px;overflow:hidden">
             <div v-if="!p.variants?.length" class="row" @click="toggleProduct(p)" :class="{ incart: isSelected('p:' + p.id) }" :style="isSelected('p:' + p.id) ? 'border:none;background:var(--goldSoft)' : 'border:none'">
                 <div class="ava">{{ p.emoji }}</div>
                 <div class="mid">
