@@ -255,3 +255,25 @@ describe('stock never touches label CONTENT', () => {
         expect(texts).toContain('৳1890');
     });
 });
+
+describe('classic sticker — the readable code never widens the bars (Baby Park 327>304 fix)', () => {
+    it('draws the full code below the bars, shrunk to fit, never cut off', () => {
+        const calls = draw({ label: { barcode: 'CHINA-S-80001-IXXZ-BLACK-RED-36-3', price: 500 } }).calls;
+        const bars = calls.find((c) => c.op === 'drawImage');
+        const code = calls.find((c) => c.op === 'fillText' && c.text === 'CHINA-S-80001-IXXZ-BLACK-RED-36-3');
+
+        expect(code).toBeTruthy(); // the WHOLE code, no ellipsis
+        expect(code.y).toBeGreaterThan(bars.y + bars.h - 1);
+        expect(code.font).toContain('monospace');
+        // shrunk to the label, not spilling past it
+        const size = parseInt(/(\d+)px/.exec(code.font)[1], 10);
+        expect(code.text.length * size * 0.6).toBeLessThanOrEqual(W - 2 * Math.round((25.4 * 8) / 96 * 6) + 1);
+        // and the price still comes after it
+        expect(calls.find((c) => c.op === 'fillText' && c.text.includes('৳')).y).toBeGreaterThan(code.y);
+    });
+
+    it('draws no code line when the shop turned the number off', () => {
+        const calls = draw({ settings: { ...SETTINGS, show_barcode_number: false } }).calls;
+        expect(calls.some((c) => c.op === 'fillText' && c.font.includes('monospace'))).toBe(false);
+    });
+});

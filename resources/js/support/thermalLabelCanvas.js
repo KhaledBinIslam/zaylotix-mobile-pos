@@ -26,7 +26,7 @@
 export const DOTS_PER_CSS_PX = (25.4 * 8) / 96;
 
 /** Build identifier, so a screenshot of the on-screen log proves which bundle a phone is actually running. */
-export const DRAW_BUILD = 'direct-2';
+export const DRAW_BUILD = 'direct-3';
 
 const px = (cssPx) => cssPx * DOTS_PER_CSS_PX;
 
@@ -130,7 +130,34 @@ export function drawThermalLabel(canvas, { label, settings, headerText, barcodeC
         ctx.imageSmoothingEnabled = false;
         const x = Math.max(0, Math.round((W - barcodeCanvas.width) / 2));
         ctx.drawImage(barcodeCanvas, x, y);
-        y += barcodeCanvas.height + Math.round(px(3));
+        y += barcodeCanvas.height;
+
+        // The readable code is drawn HERE now, not by JsBarcode: its
+        // fixed-16px text made the barcode canvas WIDER than a 38mm
+        // label for Baby Park's long article codes (327 > 304 dots),
+        // which kicked every batch down the slow capture path. Same
+        // monospace look JsBarcode used; the full code always prints —
+        // it shrinks to fit, it is never cut off.
+        const code = label.barcode != null ? String(label.barcode) : '';
+        if (settings.show_barcode_number !== false && code !== '') {
+            const size = fitFontSize(
+                (s) => {
+                    ctx.font = `${s}px monospace`;
+
+                    return ctx.measureText(code).width;
+                },
+                code,
+                usable,
+                16, // dots — the size JsBarcode drew it at
+                8,
+            );
+            ctx.font = `${size}px monospace`;
+            y += Math.round(px(1));
+            ctx.fillText(code, W / 2, y, usable);
+            y += Math.round(size * 1.15) + Math.round(px(2));
+        } else {
+            y += Math.round(px(3));
+        }
     }
 
     for (const line of priceLinesOf(label, settings)) {

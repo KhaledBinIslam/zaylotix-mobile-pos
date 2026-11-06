@@ -527,14 +527,17 @@ function drawnThermalCanvas(label, targetW, targetH, JsBarcode) {
             if (detail ? !detail.fits : !fit.fits) return { reason: `বারকোড লেবেলে আঁটে না (${(detail || fit).modules} মডিউল)` };
 
             barcodeCanvas = document.createElement('canvas');
+            // bars ONLY — the readable code is drawn by the layout itself
+            // (both templates), fitted to the label. JsBarcode's own text
+            // at a fixed 16px widened the canvas past a 38mm label for
+            // long article codes and forced the whole batch onto the slow
+            // capture path ("327 > 304", Baby Park live).
             JsBarcode(barcodeCanvas, encoded, {
                 format: 'CODE128',
                 width: detail ? detail.moduleDots : Math.max(1, Math.round(fit.moduleMm * 8)), // dots per module
                 height: detail ? detail.heightDots : THERMAL_BAR_HEIGHT_MM * 8,
                 margin: 0,
-                displayValue: !isDetailed && settings.value.show_barcode_number !== false,
-                text: label.barcode,
-                fontSize: 16,
+                displayValue: false,
             });
             if (!barcodeCanvas.width) return { reason: 'বারকোড আঁকা যায়নি' };
             if (barcodeCanvas.width > targetW) {
