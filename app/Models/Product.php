@@ -180,6 +180,23 @@ class Product extends Model
     {
         $parts = [$this->name, $this->name_en, $this->generic_name, $this->barcode, $this->search_keywords];
 
+        // Khaled live: "sujon search korchi kichu asena" — a product's
+        // supplier name was never in here at all (brand/category weren't
+        // either — see ProductSearch's own docblock on what it covers),
+        // so typing a supplier never found anything. For a source_lines
+        // shop this pulls every distinct supplier across the product's
+        // OWN line and every variant's (one query — product_id is set on
+        // both, per the create_product_sources migration); a product with
+        // no lines yet is unaffected. search_text only goes stale here if
+        // nothing ever re-saves the product after a line changes — see
+        // ProductSource::upsertLine()'s touch() for why that can't happen.
+        if ($this->id && Tenancy::shop()?->hasFeature('source_lines')) {
+            $supplierNames = ProductSource::where('product_id', $this->id)
+                ->with('supplier:id,name')->get()
+                ->pluck('supplier.name')->filter()->unique()->all();
+            $parts = array_merge($parts, $supplierNames);
+        }
+
         return \App\Support\SearchNormalizer::normalize(implode(' ', array_filter($parts, fn ($p) => $p !== null && $p !== '')));
     }
 

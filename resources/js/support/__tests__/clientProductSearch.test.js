@@ -91,6 +91,21 @@ describe('searchProducts', () => {
         expect(hay).toContain('manik');
         expect(hay).toContain('zv12');
     });
+
+    /**
+     * Khaled live: "sujon search korchi kichu asena" — the product's own
+     * supplier_name (above) was still 'Manik' (set once, long ago), but
+     * the real stock on one of its variants now came from Sujon via a
+     * Part 1 line. Typing the LINE's supplier must find it too.
+     */
+    it('matches a supplier that only exists on a line, not the product\'s own field', () => {
+        const withLines = { ...PRODUCTS[0], variants: [
+            { ...PRODUCTS[0].variants[0], sources: [{ id: 101, supplier_id: 7, supplier_name: 'Sujon' }] },
+            PRODUCTS[0].variants[1],
+        ] };
+        expect(searchProducts([withLines], 'sujon').map((p) => p.id)).toEqual([1]);
+        expect(productHaystack(withLines)).toContain('sujon');
+    });
 });
 
 /**

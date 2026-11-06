@@ -181,6 +181,15 @@ class ProductSource extends Model
         ]);
         $line->update(['barcode' => 'ZL'.$line->id]);
 
+        // a brand-new supplier/brand combo changes what this PRODUCT should
+        // be findable by — Product::buildSearchText() only runs again when
+        // the product itself is saved, and nothing else here saves it
+        // ("sujon search korchi kichu asena" — the line existed, the
+        // cached search text just never learned about it). A merge into
+        // an already-existing line never changes the set of suppliers, so
+        // this is skipped there — no redundant save on a repeat delivery.
+        Product::find($productId)?->touch();
+
         return $line;
     }
 

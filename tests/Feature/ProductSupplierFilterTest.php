@@ -92,6 +92,36 @@ class ProductSupplierFilterTest extends TestCase
             );
     }
 
+    /**
+     * Khaled live: "sujon search korchi kichu asena" — product.search_text
+     * never knew about a supplier that only existed on a LINE, so typing
+     * the supplier's name in the Stock page's own text search (as opposed
+     * to the dropdown filter above) found nothing. ProductSource::
+     * upsertLine() touches the product on a brand-new line specifically
+     * so this stays correct without a separate reindex step.
+     */
+    public function test_text_search_finds_a_product_by_a_lines_supplier_name(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        foreach (['suppliers', 'source_lines', 'product_variants'] as $f) {
+            $this->grantFeature($shop, $f);
+        }
+        \App\Support\Tenancy::set($shop->id);
+
+        $manik = Supplier::create(['name' => 'Manik']);
+        $sujon = Supplier::create(['name' => 'Sujon']);
+        // the product's OWN field still says Manik — only the line says Sujon
+        $suit = Product::create(['shop_id' => $shop->id, 'name' => 'Boiler Suit', 'cost' => 650, 'price' => 1090, 'stock' => 4, 'supplier_id' => $manik->id]);
+        $m = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $suit->id, 'size' => 'M', 'stock' => 4]);
+        ProductSource::upsertLine($shop->id, $suit->id, $m->id, $sujon->id, null, 4, 700, 1090, 1090);
+
+        $this->actingAs($owner, 'web')->get('/app/stock?q=Sujon')
+            ->assertOk()->assertInertia(fn ($page) => $page
+                ->has('products.data', 1)
+                ->where('products.data.0.id', $suit->id)
+            );
+    }
+
     public function test_the_supplier_filter_dropdown_is_hidden_without_the_suppliers_feature(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();

@@ -22,8 +22,17 @@ export function productHaystack(p) {
         p.category_name, p.brand_name, p.supplier_name,
         p.barcode,
     ];
+    // Khaled live: "sujon search korchi kichu asena" — p.supplier_name
+    // above is the product's single, one-time field; a real supplier that
+    // only exists on a LINE (Part 1) was never in the haystack at all.
+    for (const line of p.sources || []) {
+        parts.push(line.supplier_name);
+    }
     for (const v of p.variants || []) {
         parts.push(v.size, v.color, v.barcode, v.scan_code, v.brand_name);
+        for (const line of v.sources || []) {
+            parts.push(line.supplier_name);
+        }
     }
     for (const cb of p.color_barcodes || []) {
         parts.push(cb.color, cb.barcode, cb.scan_code);
