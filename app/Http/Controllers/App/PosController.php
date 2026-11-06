@@ -12,6 +12,7 @@ use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\ProductColorBarcode;
 use App\Models\ProductColorBarcodeAlias;
+use App\Models\ProductSource;
 use App\Models\ProductUnit;
 use App\Models\ProductVariant;
 use App\Models\Promotion;
@@ -169,6 +170,14 @@ class PosController extends Controller
         if ($shop->hasFeature('batch_tracking')) {
             $relations[] = 'nearestBatch';
         }
+        // Part 1 (source_lines) — each variant's (and a plain product's
+        // own) supplier/brand lots, so the barcode scan and the
+        // auto-pick/picker logic (Pos/Index.vue, useOfflineCatalog's
+        // full-catalog cache) never need a round trip
+        if ($shop->hasFeature('source_lines')) {
+            $relations['variants.sources'] = fn ($q) => $q->with(['supplier:id,name', 'brand:id,name']);
+            $relations['sources'] = fn ($q) => $q->with(['supplier:id,name', 'brand:id,name']);
+        }
 
         return $relations;
     }
@@ -211,8 +220,69 @@ class PosController extends Controller
     {
         return $products->each(function ($p) {
             $p->makeHidden(array_merge(['cost'], self::UNUSED_BY_POS));
-            $p->variants?->each(fn ($v) => $v->makeHidden(array_merge(['cost'], self::UNUSED_BY_POS)));
+            $p->variants?->each(function ($v) {
+                $v->makeHidden(array_merge(['cost'], self::UNUSED_BY_POS));
+                $v->sources?->each(fn ($s) => $s->makeHidden(['cost']));
+            });
+            $p->sources?->each(fn ($s) => $s->makeHidden(['cost']));
         });
+    }
+
+    /**
+     * Part 1 (source_lines) — which supplier/brand LOT a checkout line
+     * actually depletes. `$available` is already stock-filtered and
+     * id-ordered at load time; `$remaining` is the LIVE per-lot stock
+     * left after earlier lines in this same cart (so two lines of the
+     * same lot in one cart can't both "see" its original stock).
+     *
+     * - No lots exist at all for this product/variant → null: the caller
+     *   falls straight through to the mirror price/cost, unchanged.
+     * - An explicit pick (scanned that lot's own barcode, or tapped the
+     *   picker) is honored exactly — never silently swapped for another
+     *   lot — and rejected if it doesn't belong here or has run out.
+     * - No explicit pick: auto-resolves to the OLDEST lot that still has
+     *   stock in this cart (FIFO) — the same rule whether every
+     *   remaining lot happens to share one price (the spec's "add
+     *   directly, no question") or prices genuinely differ (the
+     *   frontend's tiny picker is a UX nicety built from this exact
+     *   lot list; if it's skipped for any reason, checkout still
+     *   succeeds deterministically rather than blocking the sale).
+     *
+     * One cart LINE always resolves to exactly ONE lot — it never spills
+     * the remainder onto a second lot (that would silently blend two
+     * different real costs into one sale_item row). A line whose qty
+     * genuinely spans two lots' stock is rejected with a message telling
+     * the cashier to split it into two cart lines instead — the same
+     * "more than one line for the same variant" pattern this cart
+     * already supports (e.g. a box + loose pieces of one product).
+     */
+    private static function resolveCheckoutSource($available, $remaining, ?int $explicitId, float $qty, string $productName, ?string $variantLabel): ?ProductSource
+    {
+        if ($available->isEmpty()) {
+            return null;
+        }
+
+        $withStock = $available->filter(fn ($s) => ($remaining[$s->id] ?? 0) > 0);
+        $label = $variantLabel ? "{$productName} ({$variantLabel})" : $productName;
+
+        if ($explicitId) {
+            $picked = $withStock->firstWhere('id', $explicitId);
+            if (! $picked) {
+                abort(422, "{$label}-এর বাছাই করা সোর্সটি আর স্টকে নেই — তালিকা রিলোড করে আবার চেষ্টা করুন।");
+            }
+        } else {
+            $picked = $withStock->first(); // oldest (lowest id) with stock remaining — FIFO
+            if (! $picked) {
+                return null; // no lot has stock — the ordinary mirror-stock check just below reports the shortfall
+            }
+        }
+
+        if (($remaining[$picked->id] ?? 0) < $qty) {
+            $who = $picked->supplier?->name ?? 'Nil';
+            abort(422, "{$label} — {$who}-এর লটে আছে {$remaining[$picked->id]}, লাগবে {$qty}। একই পণ্যের দুই উৎস থেকে কিনতে কার্টে আলাদা লাইনে দিন।");
+        }
+
+        return $picked;
     }
 
     /**
@@ -616,6 +686,36 @@ class PosController extends Controller
                 ? collect()
                 : ProductVariant::whereIn('id', $variantIds)->lockForUpdate()->get()->keyBy('id');
 
+            // Part 1 (source_lines) — every supplier/brand lot that could
+            // possibly be sold by this cart, loaded and locked up front:
+            // every lot on each variant in the cart, plus every lot on
+            // each plain (variantless) product in the cart. Grouped so
+            // the per-item loop below can find "this variant/product's
+            // lots" without a query per line, and keyed by id for the
+            // FIFO-remaining-stock tracking the same loop also needs.
+            $sourcesOn = $shop->hasFeature('source_lines');
+            $sourcesByVariant = collect();
+            $sourcesByProduct = collect();
+            if ($sourcesOn) {
+                if ($variantIds->isNotEmpty()) {
+                    // NOT stock-filtered here — a zero-stock lot must still
+                    // be reachable by an explicit pick (so it can be
+                    // correctly REFUSED, not silently ignored as if it
+                    // never existed); stock>0 filtering happens via
+                    // $sourceStockRemaining below instead
+                    $sourcesByVariant = ProductSource::whereIn('product_variant_id', $variantIds)
+                        ->orderBy('id')->lockForUpdate()->get()->groupBy('product_variant_id');
+                }
+                $sourcesByProduct = ProductSource::whereIn('product_id', $productIds)->whereNull('product_variant_id')
+                    ->orderBy('id')->lockForUpdate()->get()->groupBy('product_id');
+            }
+            // remaining stock per lot, decremented as cart lines are
+            // validated — the same "more than one line can share a
+            // source" oversell guard $stockRemaining/$variantStockRemaining
+            // already give the product/variant levels
+            $sourceStockRemaining = $sourcesByVariant->flatten()->merge($sourcesByProduct->flatten())
+                ->mapWithKeys(fn ($s) => [$s->id => (float) $s->stock]);
+
             $subtotal = 0;
             $profit = 0;
             $lines = [];
@@ -744,6 +844,26 @@ class PosController extends Controller
                     $variantLabel = $variant->label();
                 }
 
+                // Part 1 (source_lines): resolve WHICH supplier/brand lot
+                // this line actually depletes — a line's own price/cost
+                // replaces the variant/product default above wholesale
+                // never applies to a lot (variants already ignore it too;
+                // see ProductVariant::effectivePrice()), and only the
+                // base retail line of a plain product looks at a lot
+                // (never a pack-unit conversion, which isn't lot-aware).
+                $resolvedSource = null;
+                if ($sourcesOn) {
+                    $available = $variant
+                        ? $sourcesByVariant->get($variant->id, collect())
+                        : ((! $isWholesale && empty($item['product_unit_id'])) ? $sourcesByProduct->get($product->id, collect()) : collect());
+                    $resolvedSource = self::resolveCheckoutSource($available, $sourceStockRemaining, $item['product_source_id'] ?? null, (float) $item['qty'], $product->name, $variantLabel);
+                }
+                if ($resolvedSource) {
+                    $unitPrice = (float) $resolvedSource->price;
+                    $unitCost = (float) $resolvedSource->cost;
+                    $sourceStockRemaining[$resolvedSource->id] -= $item['qty'];
+                }
+
                 $baseQtyNeeded = $item['qty'] * $factor;
 
                 if ($variant) {
@@ -781,6 +901,7 @@ class PosController extends Controller
                 $lines[] = [
                     'product' => $product,
                     'variant' => $variant,
+                    'source' => $resolvedSource,
                     'qty' => $item['qty'],
                     'price' => $unitPrice,
                     'discount' => $lineDiscount,
@@ -1048,11 +1169,20 @@ class PosController extends Controller
                     }
                 }
 
+                // Part 1 (source_lines) — the exact lot this line actually
+                // depleted, same amount as the variant/product it belongs
+                // to (its stock is a SLICE of the mirror's, see the
+                // migration's own note on why the mirror keeps summing)
+                if ($line['source']) {
+                    $line['source']->applyStockDelta(-$line['qty']);
+                }
+
                 SaleItem::create([
                     'shop_id' => $shopId,
                     'sale_id' => $sale->id,
                     'product_id' => $line['product']->id,
                     'product_variant_id' => $line['variant']?->id,
+                    'product_source_id' => $line['source']?->id,
                     'product_serial_id' => $serial?->id,
                     'product_name' => $line['product']->name,
                     'unit_label' => $line['unit_label'],
@@ -1147,6 +1277,22 @@ class PosController extends Controller
         // auto-increment id is unique by construction, so a straight
         // ::find() (tenant-scoped by the model's own global scope, same as
         // every lookup below) is all this needs — no new table.
+        // Part 1 (source_lines) — a lot's own printed sticker: "scanning a
+        // line's barcode -> that line, at its price, comes out of its
+        // stock" (no picker, no ambiguity — the scan IS the choice).
+        // Same shape as the ZV branch below, plus source_id so the
+        // frontend sends it straight through at checkout.
+        if (preg_match('/^ZL(\d+)$/', $barcode, $m)) {
+            $source = \App\Models\ProductSource::with('product.productUnits.unit')->find((int) $m[1]);
+            if ($source && $source->product) {
+                $product = $source->product;
+                $product->setRelation('variants', $product->variants()->get());
+
+                return response()->json(['found' => true, 'product' => $product, 'variant_id' => $source->product_variant_id, 'source_id' => $source->id]);
+            }
+
+            return response()->json(['found' => false], 404);
+        }
         if (preg_match('/^ZV(\d+)$/', $barcode, $m)) {
             $variant = ProductVariant::with('product.productUnits.unit')->find((int) $m[1]);
             if ($variant) {

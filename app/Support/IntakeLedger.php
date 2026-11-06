@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\Auth;
  */
 class IntakeLedger
 {
-    public static function record(Product $product, ?ProductVariant $variant, float $qty, ?float $unitCost, string $source, ?int $supplierId = null): void
+    public static function record(Product $product, ?ProductVariant $variant, float $qty, ?float $unitCost, string $source, ?int $supplierId = null, ?int $sourceId = null): void
     {
         if ($qty <= 0) {
             return; // nothing came in — a zero-qty grid cell, not an intake
@@ -37,6 +37,9 @@ class IntakeLedger
             // FROM WHOM, alongside what and at which cost — the same Power X
             // shoe really does arrive from two suppliers at two prices
             'supplier_id' => $supplierId,
+            // Part 1 (source_lines) — WHICH exact lot, when the shop tracks
+            // them; null for every shop/stock-in that doesn't
+            'product_source_id' => $sourceId,
             'qty' => $qty,
             'unit_cost' => round($cost, 2),
             'total_cost' => round($qty * $cost, 2),

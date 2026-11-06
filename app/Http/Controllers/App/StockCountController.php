@@ -4,8 +4,10 @@ namespace App\Http\Controllers\App;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Models\ProductSource;
 use App\Models\ProductVariant;
 use App\Models\StockCount;
+use App\Support\Tenancy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -13,6 +15,12 @@ class StockCountController extends Controller
 {
     public function store(Request $request)
     {
+        // Part 1 decision — Stock Count stays TOTAL-level (no UI exists to
+        // say which lot was mis-counted); a shop with source_lines still
+        // needs sum(lines.stock) === mirror.stock afterward, so every
+        // delta below is also applied across the item's existing lines,
+        // oldest first (ProductSource::applyFifoDelta()'s own docblock).
+        $sourcesOn = Tenancy::shop()?->hasFeature('source_lines') ?? false;
         $data = $request->validate([
             'counts' => ['required', 'array'],
             'counts.*.product_id' => ['required', 'exists:products,id'],
@@ -28,7 +36,7 @@ class StockCountController extends Controller
         // that impossible.
         $counts = collect($data['counts'])->sortBy('product_id')->values()->all();
 
-        $changes = DB::transaction(function () use ($counts) {
+        $changes = DB::transaction(function () use ($counts, $sourcesOn) {
             $changes = [];
 
             foreach ($counts as $row) {
@@ -63,6 +71,10 @@ class StockCountController extends Controller
                     $changes[] = ['product_id' => $product->id, 'product_variant_id' => $variant->id, 'from' => (float) $variant->stock, 'to' => $counted];
                     $variant->applyStockDelta($delta);
                     $product->applyStockDelta($delta);
+                    if ($sourcesOn) {
+                        $lines = ProductSource::where('product_variant_id', $variant->id)->orderBy('id')->lockForUpdate()->get();
+                        ProductSource::applyFifoDelta($lines, $delta);
+                    }
 
                     continue;
                 }
@@ -74,6 +86,10 @@ class StockCountController extends Controller
                 $delta = $counted - (float) $product->stock;
                 $changes[] = ['product_id' => $product->id, 'from' => (float) $product->stock, 'to' => $counted];
                 $product->applyStockDelta($delta);
+                if ($sourcesOn) {
+                    $lines = ProductSource::where('product_id', $product->id)->whereNull('product_variant_id')->orderBy('id')->lockForUpdate()->get();
+                    ProductSource::applyFifoDelta($lines, $delta);
+                }
             }
 
             StockCount::create([

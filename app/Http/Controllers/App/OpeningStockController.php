@@ -100,7 +100,7 @@ class OpeningStockController extends Controller
                     if ($paidCost !== null) {
                         $oldStock = (float) $variant->stock;
                         $oldCost = (float) ($variant->cost ?? $lockedProduct->cost ?? 0);
-                        $usesAverage = Tenancy::shop()?->hasFeature('weighted_average_costing');
+                        $usesAverage = Tenancy::shop()?->usesWeightedAverageCosting();
                         $variant->cost = ($usesAverage && $oldStock > 0)
                             ? round((($oldStock * $oldCost) + ($qty * $paidCost)) / ($oldStock + $qty), 2)
                             : $paidCost;
@@ -262,7 +262,7 @@ class OpeningStockController extends Controller
                         if ($row['cost'] !== null) {
                             $oldStock = (float) $variant->stock;
                             $oldCost = (float) ($variant->cost ?? $lockedProduct->cost ?? 0);
-                            $usesAverage = Tenancy::shop()?->hasFeature('weighted_average_costing');
+                            $usesAverage = Tenancy::shop()?->usesWeightedAverageCosting();
                             $variant->cost = ($usesAverage && $oldStock > 0)
                                 ? round((($oldStock * $oldCost) + ($row['add'] * $row['cost'])) / ($oldStock + $row['add']), 2)
                                 : $row['cost'];

@@ -341,6 +341,13 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
             Route::post('opening-stock/upload', [App\Http\Controllers\App\OpeningStockController::class, 'upload'])->name('openingStock.upload');
         });
 
+        // Part 1 — "one product, many sources": a supplier+brand lot's own
+        // stock-in, each with its own buying/selling price
+        Route::middleware('feature:source_lines')->group(function () {
+            Route::post('products/{product}/sources/stock-in', [App\Http\Controllers\App\ProductSourceController::class, 'stockInProduct'])->name('productSources.stockInProduct');
+            Route::post('product-variants/{productVariant}/sources/stock-in', [App\Http\Controllers\App\ProductSourceController::class, 'stockInVariant'])->name('productSources.stockInVariant');
+        });
+
         // docs/ARTICLE_SERIES_PLAN.md §7 — one-screen new article entry
         Route::middleware('feature:article_series')->group(function () {
             Route::get('articles/create', [ArticleController::class, 'create'])->name('articles.create');

@@ -10,7 +10,7 @@ class StockIntake extends Model
 {
     use BelongsToTenant;
 
-    protected $fillable = ['shop_id', 'product_id', 'product_variant_id', 'user_id', 'supplier_id', 'qty', 'unit_cost', 'total_cost', 'source'];
+    protected $fillable = ['shop_id', 'product_id', 'product_variant_id', 'product_source_id', 'user_id', 'supplier_id', 'qty', 'unit_cost', 'total_cost', 'source'];
 
     public function supplier()
     {

@@ -66,6 +66,7 @@ class SetupSeamanShop extends Command
         'parties', // Phase 5 — corporate parties, bill-wise dues, A4 statements + PDF + WhatsApp
         'opening_stock', // Phase 6B — the stock-entry grid + bulk sheet
         'label_templates', // Phase 7 — the detailed sticker (website/name/brand/size/price)
+        'source_lines', // Part 1 — multiple supplier/brand sources per product/variant
     ];
 
     /**

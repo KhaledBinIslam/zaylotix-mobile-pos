@@ -8,6 +8,7 @@ use App\Models\Damage;
 use App\Models\OnlineOrder;
 use App\Models\Product;
 use App\Models\ProductBatch;
+use App\Models\ProductSource;
 use App\Models\ProductVariant;
 use App\Models\Sale;
 use App\Models\SaleItem;
@@ -411,8 +412,31 @@ class ReturnController extends Controller
                     if ($targetVariant) {
                         $targetVariant->applyStockDelta($returnQty);
                         $targetProduct->applyStockDelta($returnQty);
+
+                        // Part 1 (source_lines) — restock the EXACT lot this
+                        // sale actually depleted, same-branch only (a
+                        // cross-branch return's "target" is a different
+                        // shop's different row — "the originating line"
+                        // doesn't carry over, so that case is left to the
+                        // mirror-only restock above, unchanged)
+                        if (! $isCrossBranch && $item->product_source_id) {
+                            $originLine = ProductSource::whereKey($item->product_source_id)->lockForUpdate()->first();
+                            if ($originLine && $originLine->product_variant_id === $targetVariant->id) {
+                                $originLine->applyStockDelta($returnQty);
+                            }
+                        }
                     } else {
                         $targetProduct->applyStockDelta($returnQty * (float) $item->unit_factor);
+
+                        // Part 1 — a plain product's own lot, base retail
+                        // line only (unit_factor 1): a pack-unit conversion
+                        // isn't lot-aware, same exclusion checkout itself applies
+                        if (! $isCrossBranch && $item->product_source_id && (float) $item->unit_factor === 1.0) {
+                            $originLine = ProductSource::whereKey($item->product_source_id)->lockForUpdate()->first();
+                            if ($originLine && $originLine->product_id === $targetProduct->id && $originLine->product_variant_id === null) {
+                                $originLine->applyStockDelta($returnQty);
+                            }
+                        }
 
                         if (! $isCrossBranch) {
                             // Batch stock restores proportionally for a
@@ -442,6 +466,10 @@ class ReturnController extends Controller
                     Damage::create([
                         'product_id' => $targetProduct->id,
                         'product_variant_id' => $targetVariant?->id,
+                        // Part 1 — pure traceability, no stock mutation here
+                        // (the stock already left at the original sale and
+                        // stays gone — a write-off is not a restock)
+                        'product_source_id' => ! $isCrossBranch ? $item->product_source_id : null,
                         'qty' => $returnQty,
                         'reason' => $damageReason.($isCrossBranch ? ' (অন্য শাখার বিক্রি)' : ''),
                         'loss' => $cost,

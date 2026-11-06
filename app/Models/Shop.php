@@ -348,6 +348,22 @@ class Shop extends Model
     }
 
     /**
+     * Should variant stock-in blend the new cost into a moving average on
+     * the product/variant MIRROR? Part 1 decision: once `source_lines` is
+     * on, each supplier's own cost is tracked precisely at the LINE level
+     * (ProductSourceController blends WITHIN a line unconditionally,
+     * independent of this), so cross-supplier blending on the mirror
+     * would just be a second, less accurate "true cost" competing with
+     * the first — the mirror instead overwrites to whichever line was
+     * last touched. A shop with weighted_average_costing but not yet
+     * source_lines keeps blending on the mirror exactly as before.
+     */
+    public function usesWeightedAverageCosting(): bool
+    {
+        return $this->hasFeature('weighted_average_costing') && ! $this->hasFeature('source_lines');
+    }
+
+    /**
      * `$this->features` (the magic relation PROPERTY) — not `$this->features()->pluck(...)`
      * (the relation query builder). Real bug found in a scale audit (see
      * docs/SCALING_GUIDE.md): the query-builder form runs a fresh

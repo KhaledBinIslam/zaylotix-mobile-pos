@@ -66,6 +66,12 @@ class BarcodeLabelController extends Controller
                     'category:id,name',
                     'supplier:id,name',
                 ])
+                ->when(Tenancy::shop()?->hasFeature('source_lines'), fn ($q) => $q->with([
+                    // Part 1 — print a sticker per supplier/brand lot, the
+                    // price on it being THAT lot's own sell price
+                    'variants.sources' => fn ($sq) => $sq->with('supplier:id,name'),
+                    'sources' => fn ($sq) => $sq->with('supplier:id,name'),
+                ]))
                 // stock is listed so the picker can show how many are
                 // actually in hand next to each row — Khaled prints a
                 // sticker per pair and was choosing counts blind. It is
@@ -91,6 +97,14 @@ class BarcodeLabelController extends Controller
                         'price' => $v->price, 'stock' => $v->stock,
                         // the variant's own brand beats the product's (the helmet case)
                         'brand_name' => $v->brand?->name ?? $p->brand?->name,
+                        // Part 1 — print a sticker PER LOT, at that lot's own
+                        // sell price; a product/shop without the feature
+                        // simply never has this relation loaded (null)
+                        'sources' => $v->relationLoaded('sources') ? $v->sources->map(fn ($s) => [
+                            'id' => $s->id, 'barcode' => $s->barcode, 'scan_code' => $s->barcode,
+                            'price' => $s->price, 'stock' => $s->stock,
+                            'supplier_name' => $s->supplier?->name,
+                        ]) : null,
                     ]),
                     'color_barcodes' => $includeSize ? [] : $p->colorBarcodes->map(fn ($cb) => [
                         'id' => $cb->id, 'color' => $cb->color, 'barcode' => $cb->barcode,

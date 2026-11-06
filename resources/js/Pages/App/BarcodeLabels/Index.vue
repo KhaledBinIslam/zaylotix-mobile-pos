@@ -100,6 +100,13 @@ function toggleColorBarcode(cb) {
     if (isSelected(key)) delete selected.value[key];
     else selected.value[key] = Math.max(1, cb.stock);
 }
+/** Part 1 — a supplier/brand LOT's own sticker; defaults the copy count to its own stock, same convention as every other row here. */
+function toggleSourceLine(line) {
+    if (!line.barcode) return;
+    const key = 'l:' + line.id;
+    if (isSelected(key)) delete selected.value[key];
+    else selected.value[key] = Math.max(1, line.stock);
+}
 function selectAllVariants(p) {
     const rows = printableRowsOf(p);
     if (!rows.length) return;
@@ -698,9 +705,19 @@ function buildAndPreview() {
         }
         for (const v of p.variants || []) {
             const copies = selected.value['v:' + v.id];
-            if (!copies) continue;
-            for (let i = 0; i < copies; i++) {
-                list.push({ name: p.name, variantLabel: variantLabel(v), barcode: v.barcode, scanCode: v.scan_code, price: v.price ?? p.price, discount_price: null, brandName: v.brand_name || null });
+            if (copies) {
+                for (let i = 0; i < copies; i++) {
+                    list.push({ name: p.name, variantLabel: variantLabel(v), barcode: v.barcode, scanCode: v.scan_code, price: v.price ?? p.price, discount_price: null, brandName: v.brand_name || null });
+                }
+            }
+            // Part 1 — a sticker per SUPPLIER/BRAND LOT, at that lot's own
+            // sell price, scanning straight to that exact lot (its ZL barcode)
+            for (const line of v.sources || []) {
+                const lineCopies = selected.value['l:' + line.id];
+                if (!lineCopies) continue;
+                for (let i = 0; i < lineCopies; i++) {
+                    list.push({ name: p.name, variantLabel: variantLabel(v), barcode: line.barcode, scanCode: line.scan_code, price: line.price, discount_price: null, brandName: line.supplier_name ? (t('os.supplier') + ': ' + line.supplier_name) : (v.brand_name || null) });
+                }
             }
         }
         for (const cb of p.color_barcodes || []) {
@@ -747,6 +764,10 @@ function recordPrinted() {
         for (const v of p.variants || []) {
             const copies = selected.value['v:' + v.id];
             if (copies && v.barcode) rows.push({ barcode: v.barcode, copies, product_id: p.id, product_variant_id: v.id });
+            for (const line of v.sources || []) {
+                const lineCopies = selected.value['l:' + line.id];
+                if (lineCopies && line.barcode) rows.push({ barcode: line.barcode, copies: lineCopies, product_id: p.id, product_variant_id: v.id });
+            }
         }
         for (const cb of p.color_barcodes || []) {
             const copies = selected.value['c:' + cb.id];
@@ -918,6 +939,23 @@ const printCss = computed(() => {
                             <button type="button" class="copies-step" @click="bumpCopies('v:' + v.id, -1)">−</button>
                             <input v-model.number="selected['v:' + v.id]" type="number" min="1" inputmode="numeric" @blur="normalizeCopies('v:' + v.id)">
                             <button type="button" class="copies-step" @click="bumpCopies('v:' + v.id, 1)">+</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Part 1 — print a sticker PER SUPPLIER/BRAND LOT, at that
+                     lot's own sell price; scanning it resolves to that
+                     exact lot on the sell screen, no guessing -->
+                <div v-for="line in v.sources || []" :key="'l' + line.id" class="row" style="border-top:1px solid var(--line);padding-left:36px" :class="{ incart: isSelected('l:' + line.id) }" :style="isSelected('l:' + line.id) ? 'background:var(--goldSoft)' : ''" @click="toggleSourceLine(line)">
+                    <div class="ava" style="font-size:14px">🚚</div>
+                    <div class="mid">
+                        <b style="font-size:12.5px">{{ line.supplier_name || 'Nil' }}</b>
+                        <span>{{ money(line.price) }} • {{ t('bc.inStock', { n: line.stock ?? 0 }) }}</span>
+                    </div>
+                    <div class="end" @click.stop>
+                        <div v-if="isSelected('l:' + line.id)" class="copies">
+                            <button type="button" class="copies-step" @click="bumpCopies('l:' + line.id, -1)">−</button>
+                            <input v-model.number="selected['l:' + line.id]" type="number" min="1" inputmode="numeric" @blur="normalizeCopies('l:' + line.id)">
+                            <button type="button" class="copies-step" @click="bumpCopies('l:' + line.id, 1)">+</button>
                         </div>
                     </div>
                 </div>

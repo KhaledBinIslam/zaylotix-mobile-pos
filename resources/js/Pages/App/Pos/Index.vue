@@ -454,7 +454,7 @@ function openScanColorPicker(product, color, onFeedback) {
 }
 
 /** A cart line is either a base sale, a pack-unit line, or a variant line — never a mix, mirrors PosController::checkout. */
-function addToCart(productId, productUnitId = null, { silent, productVariantId = null, qty = 1 } = {}) {
+function addToCart(productId, productUnitId = null, { silent, productVariantId = null, qty = 1, productSourceId = null } = {}) {
     if (!productId) return;
     const product = props.products.find((p) => p.id === productId);
     if (!product) return;
@@ -468,9 +468,14 @@ function addToCart(productId, productUnitId = null, { silent, productVariantId =
             return;
         }
 
-        const line = cart.value.find((l) => l.product_variant_id === productVariantId);
+        // Part 1 (source_lines) — a specific scanned/picked lot is its OWN
+        // cart line, never merged into a plain (no-lot) line of the same
+        // variant: the server resolves/prices/depletes per lot, so two
+        // different lots must stay two different checkout lines. A second
+        // scan of the SAME lot still just bumps its own qty, as before.
+        const line = cart.value.find((l) => l.product_variant_id === productVariantId && (l.product_source_id || null) === (productSourceId || null));
         if (line) line.qty += qty;
-        else cart.value.push({ product_id: productId, product_unit_id: null, product_variant_id: productVariantId, qty, discount: 0, imei: '' });
+        else cart.value.push({ product_id: productId, product_unit_id: null, product_variant_id: productVariantId, product_source_id: productSourceId, qty, discount: 0, imei: '' });
 
         if (!silent) toast('✅ ' + product.name + ' (' + variantLabel(variant) + ') ' + t('pos.added'));
         return;
@@ -883,7 +888,7 @@ function buildCheckoutPayload() {
         // session — see docs/FIX_PLAN.md's offline-sync fix).
         shop_id: shop.value?.id ?? null,
         shop_name: shop.value?.name ?? null,
-        items: cart.value.map((l) => ({ product_id: l.product_id, product_unit_id: l.product_unit_id, product_variant_id: l.product_variant_id, qty: l.qty, discount: l.discount || 0, imei: l.imei || '', ...lineSnapshot(l) })),
+        items: cart.value.map((l) => ({ product_id: l.product_id, product_unit_id: l.product_unit_id, product_variant_id: l.product_variant_id, product_source_id: l.product_source_id || null, qty: l.qty, discount: l.discount || 0, imei: l.imei || '', ...lineSnapshot(l) })),
         discount: discount.value || 0,
         complimentary: payMode.value === 'complimentary',
         coupon_code: couponCode.value || '',
@@ -1057,7 +1062,7 @@ async function payViaGateway(provider) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken(), Accept: 'application/json' },
             body: JSON.stringify({
-                items: cart.value.map((l) => ({ product_id: l.product_id, product_unit_id: l.product_unit_id, product_variant_id: l.product_variant_id, qty: l.qty, discount: l.discount || 0, imei: l.imei || '' })),
+                items: cart.value.map((l) => ({ product_id: l.product_id, product_unit_id: l.product_unit_id, product_variant_id: l.product_variant_id, product_source_id: l.product_source_id || null, qty: l.qty, discount: l.discount || 0, imei: l.imei || '' })),
                 discount: discount.value || 0,
                 coupon_code: couponCode.value || '',
                 redeem_points: redeemPoints.value || 0,
@@ -1415,6 +1420,28 @@ async function handleBarcode(decodedText, onFeedback) {
             }
         }
     }
+    // Part 1 (source_lines) — a lot's own printed sticker: scanning it IS
+    // the choice (no picker needed), straight to that exact supplier/
+    // brand lot at its own price/stock, server-revalidated at checkout.
+    const zl = code.match(/^ZL(\d+)$/);
+    if (zl) {
+        const sid = Number(zl[1]);
+        for (const p of props.products) {
+            const v = p.variants?.find((variant) => variant.sources?.some((s) => s.id === sid));
+            if (v) {
+                addToCart(p.id, null, { productVariantId: v.id, productSourceId: sid });
+                onFeedback('✅ ' + p.name + ' (' + variantLabel(v) + ')');
+                maybeAutoOpenCheckout();
+                return;
+            }
+            if (p.sources?.some((s) => s.id === sid)) {
+                addToCart(p.id);
+                onFeedback('✅ ' + p.name);
+                maybeAutoOpenCheckout();
+                return;
+            }
+        }
+    }
     const zc = code.match(/^ZC(\d+)$/);
     if (zc) {
         const cid = Number(zc[1]);
@@ -1482,7 +1509,7 @@ async function handleBarcode(decodedText, onFeedback) {
                 if (data.product.sold_by_weight) { closeScanner(); openWeightEntry(data.product); return; }
                 if (data.variant_id) {
                     const v = data.product.variants?.find((variant) => variant.id === data.variant_id);
-                    addToCart(data.product.id, null, { productVariantId: data.variant_id });
+                    addToCart(data.product.id, null, { productVariantId: data.variant_id, productSourceId: data.source_id || null });
                     onFeedback('✅ ' + data.product.name + (v ? ' (' + variantLabel(v) + ')' : ''));
                     maybeAutoOpenCheckout();
                 } else if (data.color) {

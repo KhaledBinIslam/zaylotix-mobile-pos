@@ -9,7 +9,7 @@ class Damage extends Model
 {
     use BelongsToTenant;
 
-    protected $fillable = ['shop_id', 'product_id', 'product_variant_id', 'product_batch_id', 'qty', 'reason', 'loss', 'date'];
+    protected $fillable = ['shop_id', 'product_id', 'product_variant_id', 'product_source_id', 'product_batch_id', 'qty', 'reason', 'loss', 'date'];
 
     protected function casts(): array
     {

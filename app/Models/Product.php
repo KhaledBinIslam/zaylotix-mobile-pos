@@ -223,6 +223,12 @@ class Product extends Model
         return $this->belongsTo(Brand::class);
     }
 
+    /** Part 1 (source_lines) — this VARIANTLESS product's own supplier/brand lots (a product WITH variants has its lines on each variant instead). */
+    public function sources()
+    {
+        return $this->hasMany(ProductSource::class)->whereNull('product_variant_id')->orderBy('id');
+    }
+
     public function supplier()
     {
         return $this->belongsTo(Supplier::class);

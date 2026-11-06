@@ -430,6 +430,35 @@ const editingCategory = computed(() => (props.categories || []).find((c) => c.id
 
 // --- SEAMAN Phase 3: named option axes + size sets + per-cell prices ---
 const hasVariantOptions = computed(() => features.value.includes('variant_options'));
+const hasSourceLines = computed(() => features.value.includes('source_lines'));
+
+// Part 1 — "add stock" sheet: supplier(+brand) + qty + buying price, one
+// screen, as few taps as possible. Remembers the last supplier picked on
+// THIS device (a per-viewer convenience, never shop-wide data) so the
+// cashier doesn't re-pick Manik every single time they restock from him.
+const SOURCE_SUPPLIER_KEY = 'zaylotix.lastSourceSupplier';
+const sourceSheet = ref(false);
+const sourceTarget = ref(null); // { kind: 'variant'|'product', id, label, lines }
+const sourceForm = useForm({ supplier_id: '', brand_id: '', qty: '', cost: '', price: '' });
+function openSourceStockIn(kind, target) {
+    sourceTarget.value = { kind, id: target.id, label: kind === 'variant' ? variantLabel(target) : target.name, lines: target.sources || [] };
+    sourceForm.reset();
+    sourceForm.clearErrors();
+    try {
+        sourceForm.supplier_id = localStorage.getItem(SOURCE_SUPPLIER_KEY) || '';
+    } catch { /* private-window/blocked storage — just starts blank */ }
+    sourceSheet.value = true;
+}
+function saveSourceStockIn() {
+    try {
+        if (sourceForm.supplier_id) localStorage.setItem(SOURCE_SUPPLIER_KEY, sourceForm.supplier_id);
+    } catch { /* per-viewer convenience only — never blocks the save */ }
+    const routeName = sourceTarget.value.kind === 'variant' ? 'app.productSources.stockInVariant' : 'app.productSources.stockInProduct';
+    sourceForm.post(route(routeName, sourceTarget.value.id), {
+        preserveScroll: true,
+        onSuccess: () => { sourceSheet.value = false; },
+    });
+}
 /** What this product calls its two axes — রং/সাইজ unless it renamed them. */
 const opt1Label = computed(() => editing.value?.option1_label || t('stock.color'));
 const opt2Label = computed(() => editing.value?.option2_label || t('stock.size'));
@@ -1123,6 +1152,18 @@ useKeyboardShortcuts({
                 </div>
                 <div class="field"><label>{{ t('stock.barcode') }}</label><input v-model="form.barcode"></div>
             </div>
+
+            <!-- Part 1 — a plain (no colour/size) product's own supplier/brand lots -->
+            <div v-if="editing && !editingHasVariants && hasSourceLines" class="field">
+                <label>{{ t('os.sourcesLabel') }}</label>
+                <div v-for="line in (editing.sources || [])" :key="line.id" style="font-size:12px;color:var(--mut);padding:3px 0">
+                    🚚 {{ line.supplier?.name || 'Nil' }}<template v-if="line.brand?.name"> · {{ line.brand.name }}</template>
+                    · {{ t('stock.costShort') }} {{ money(line.cost) }} · {{ money(line.price) }} · {{ line.stock }} {{ t('stock.pieces') }}
+                </div>
+                <div v-if="!(editing.sources || []).length" style="font-size:12px;color:var(--mut)">{{ t('os.noSourcesYet') }}</div>
+                <button class="btn sm ghost" style="margin-top:6px;width:auto" @click="openSourceStockIn('product', editing)">🚚 {{ t('os.addSourceStock') }}</button>
+            </div>
+
             <div class="field">
                 <label>{{ t('stock.discountPrice') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.discountPriceHint') }}</span></label>
                 <input v-model="form.discount_price" type="number">
@@ -1233,12 +1274,22 @@ useKeyboardShortcuts({
                                 <option value="">Brand: Nil</option>
                                 <option v-for="b in brands" :key="b.id" :value="b.id">{{ b.name }}</option>
                             </select>
+                            <!-- Part 1 — "one product, many sources": each
+                                 supplier/brand lot's own buy/sell/stock,
+                                 under this exact variant -->
+                            <div v-if="hasSourceLines && v.sources?.length" style="margin-top:6px;border-top:1px dashed var(--line);padding-top:6px">
+                                <div v-for="line in v.sources" :key="line.id" style="font-size:11.5px;color:var(--mut);padding:2px 0">
+                                    🚚 {{ line.supplier?.name || 'Nil' }}<template v-if="line.brand?.name"> · {{ line.brand.name }}</template>
+                                    · {{ t('stock.costShort') }} {{ money(line.cost) }} · {{ money(line.price) }} · {{ line.stock }} {{ t('stock.pieces') }}
+                                </div>
+                            </div>
                             <div style="display:flex;gap:6px;margin-top:6px">
                                 <input v-model="variantStockInQty[v.id]" type="number" :placeholder="t('stock.stockIn')" style="width:90px">
                                 <button class="btn sm ghost" @click="stockInVariant(v)">+</button>
                                 <!-- new stock just landed here — printing its label shouldn't need navigating away and re-searching for the same product by hand -->
                                 <Link :href="route('app.barcodeLabels.index') + '?q=' + encodeURIComponent(editing.name)" class="btn sm ghost" style="text-decoration:none">🏷️</Link>
                             </div>
+                            <button v-if="hasSourceLines" class="btn sm ghost" style="margin-top:6px;width:auto" @click="openSourceStockIn('variant', v)">🚚 {{ t('os.addSourceStock') }}</button>
                         </div>
                         <button class="btn sm rose" @click="removeVariant(v)">✕</button>
                     </div>
@@ -1479,6 +1530,45 @@ useKeyboardShortcuts({
 
             <button class="btn" :disabled="osSaving" @click="submitOpeningStock">{{ osSaving ? '...' : t('os.save') }}</button>
             <button class="btn ghost" style="margin-top:10px" @click="osOpen = false">{{ t('common.cancel') }}</button>
+        </Sheet>
+
+        <!-- Part 1 — one screen: supplier(+brand) + qty + buying price.
+             Merges into a matching lot or makes a new one; the sell price
+             defaults to the last lot's (editable before saving). -->
+        <Sheet v-model="sourceSheet" :title="'🚚 ' + t('os.addSourceStock') + (sourceTarget ? ' — ' + sourceTarget.label : '')">
+            <HowToHint :text="t('os.sourcesHowTo')" />
+            <div v-if="sourceTarget?.lines?.length" class="card" style="margin-bottom:12px;padding:8px 10px">
+                <div style="font-size:11.5px;color:var(--mut);margin-bottom:4px">{{ t('os.existingLines') }}</div>
+                <div v-for="line in sourceTarget.lines" :key="line.id" style="font-size:12px;padding:2px 0">
+                    🚚 {{ line.supplier?.name || 'Nil' }}<template v-if="line.brand?.name"> · {{ line.brand.name }}</template>
+                    · {{ t('stock.costShort') }} {{ money(line.cost) }} · {{ money(line.price) }} · {{ line.stock }} {{ t('stock.pieces') }}
+                </div>
+            </div>
+            <div class="field">
+                <label>{{ t('os.supplier') }}</label>
+                <select v-model="sourceForm.supplier_id">
+                    <option value="">Nil — {{ t('os.noSupplier') }}</option>
+                    <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+                </select>
+            </div>
+            <div v-if="brands" class="field">
+                <label>{{ t('brand.fieldLabel') }}</label>
+                <select v-model="sourceForm.brand_id">
+                    <option value="">Nil — {{ t('brand.noBrand') }}</option>
+                    <option v-for="b in brands" :key="b.id" :value="b.id">{{ b.name }}</option>
+                </select>
+            </div>
+            <div class="f2">
+                <div class="field"><label>{{ t('stock.howManyArrived') }}</label><input v-model="sourceForm.qty" type="number" min="1"></div>
+                <div class="field"><label>{{ t('stock.costShort') }} ({{ t('os.paidCost') }})</label><input v-model="sourceForm.cost" type="number" min="0"></div>
+            </div>
+            <div class="field">
+                <label>{{ t('os.sellPriceOptional') }}</label>
+                <input v-model="sourceForm.price" type="number" min="0">
+            </div>
+            <div v-if="sourceForm.errors.qty || sourceForm.errors.cost" style="color:var(--rose);font-size:12.5px;margin-bottom:10px">{{ sourceForm.errors.qty || sourceForm.errors.cost }}</div>
+            <button class="btn" :disabled="sourceForm.processing" @click="saveSourceStockIn">{{ sourceForm.processing ? '...' : t('os.save') }}</button>
+            <button class="btn ghost" style="margin-top:10px" @click="sourceSheet = false">{{ t('common.cancel') }}</button>
         </Sheet>
 
         <!-- Phase 6B — the fill-in-Excel bulk sheet, dry-run first always -->

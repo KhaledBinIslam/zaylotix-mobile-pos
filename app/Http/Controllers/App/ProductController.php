@@ -52,6 +52,12 @@ class ProductController extends Controller
         if (Tenancy::shop()?->hasFeature('batch_tracking')) {
             $with[] = 'nearestBatch';
         }
+        if (Tenancy::shop()?->hasFeature('source_lines')) {
+            // Part 1 — each variant's (and a plain product's own)
+            // supplier/brand lots, for the edit sheet's "sources" section
+            $with['variants.sources'] = fn ($q) => $q->with(['supplier:id,name', 'brand:id,name']);
+            $with['sources'] = fn ($q) => $q->with(['supplier:id,name', 'brand:id,name']);
+        }
         if (Tenancy::shop()?->hasFeature('wholesale_tiers')) {
             $with[] = 'priceTiers';
         }

@@ -162,6 +162,12 @@ class ProductVariant extends Model
         return $this->belongsTo(Brand::class);
     }
 
+    /** Part 1 (source_lines) — this variant's supplier/brand lots, each with its own cost/price/stock/barcode. */
+    public function sources()
+    {
+        return $this->hasMany(ProductSource::class, 'product_variant_id')->orderBy('id');
+    }
+
     public function effectiveCost(): float
     {
         return (float) ($this->cost ?? $this->product->cost);

@@ -55,6 +55,14 @@ class CheckoutRequest extends FormRequest
             // since a wildcard-to-wildcard wouldn't be expressible cleanly
             // as a single declarative rule here
             'items.*.product_variant_id' => ['nullable', 'integer', 'exists:product_variants,id'],
+            // Part 1 (source_lines) — which supplier/brand LOT this line
+            // actually came from, either because the cashier scanned that
+            // lot's own barcode or picked it from the tiny picker when
+            // more than one lot's sell price differs. Optional: a shop
+            // without the feature, or an item where it's unambiguous,
+            // simply omits it and PosController resolves/validates
+            // server-side exactly like every other field here.
+            'items.*.product_source_id' => ['nullable', 'integer', 'exists:product_sources,id'],
             // optional — the specific unit's IMEI, typed/scanned at
             // checkout; resolved (not trusted) server-side against that
             // exact product's in-stock serials

@@ -388,13 +388,19 @@ class Reports
             ->with([
                 'product' => fn ($q) => $q->withoutGlobalScopes()->select('id', 'brand_id'),
                 'variant' => fn ($q) => $q->withoutGlobalScopes()->select('id', 'brand_id'),
+                // Part 1 — the EXACT lot this sale actually depleted knows
+                // its own brand most precisely of all (a helmet sold from
+                // the 'Lotus' lot is a Lotus sale even if the variant/
+                // product itself carries no single brand) — null for any
+                // sale that predates the feature or wasn't lot-resolved
+                'source' => fn ($q) => $q->withoutGlobalScopes()->select('id', 'brand_id'),
             ])
-            ->get(['id', 'sale_id', 'product_id', 'product_variant_id', 'qty', 'price', 'discount', 'cost']);
+            ->get(['id', 'sale_id', 'product_id', 'product_variant_id', 'product_source_id', 'qty', 'price', 'discount', 'cost']);
 
         $brandNames = \App\Models\Brand::pluck('name', 'id');
 
         return $items->groupBy(function ($item) use ($brandNames) {
-            $brandId = $item->variant?->brand_id ?? $item->product?->brand_id;
+            $brandId = $item->source?->brand_id ?? $item->variant?->brand_id ?? $item->product?->brand_id;
 
             return $brandId ? ($brandNames[$brandId] ?? 'Nil') : 'Nil';
         })->map(fn ($g, $name) => [

@@ -446,7 +446,7 @@ class ProductVariantController extends Controller
             if (isset($data['cost'])) {
                 $oldStock = (float) $locked->stock;
                 $oldCost = (float) ($locked->cost ?? $locked->product->cost ?? 0);
-                $usesAverage = \App\Support\Tenancy::shop()?->hasFeature('weighted_average_costing');
+                $usesAverage = \App\Support\Tenancy::shop()?->usesWeightedAverageCosting();
                 $newCost = ($usesAverage && ($oldStock + $data['qty']) > 0 && $oldStock > 0)
                     ? round((($oldStock * $oldCost) + ($data['qty'] * (float) $data['cost'])) / ($oldStock + $data['qty']), 2)
                     : $data['cost'];

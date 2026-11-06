@@ -10,7 +10,7 @@ class SaleItem extends Model
     use BelongsToTenant;
 
     protected $fillable = [
-        'shop_id', 'sale_id', 'product_id', 'product_variant_id', 'product_serial_id', 'product_name',
+        'shop_id', 'sale_id', 'product_id', 'product_variant_id', 'product_source_id', 'product_serial_id', 'product_name',
         'unit_label', 'variant_label', 'unit_factor', 'qty', 'price', 'discount', 'cost', 'batch_allocations',
     ];
 
@@ -37,6 +37,12 @@ class SaleItem extends Model
     public function variant()
     {
         return $this->belongsTo(ProductVariant::class, 'product_variant_id');
+    }
+
+    /** Part 1 (source_lines) — which exact supplier/brand lot this sale actually depleted; null for any sale that predates the feature or wasn't lot-resolved. */
+    public function source()
+    {
+        return $this->belongsTo(\App\Models\ProductSource::class, 'product_source_id');
     }
 
     public function serial()
