@@ -5,6 +5,7 @@ namespace App\Http\Controllers\App;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Models\ProductSource;
 use App\Models\ProductVariant;
 use App\Models\Supplier;
 use App\Support\Activity;
@@ -121,11 +122,34 @@ class OpeningStockController extends Controller
                     }
                     $variant->applyStockDelta($qty);
                     $variant->save();
+                    // Khaled live: the grid picked a supplier for the
+                    // ledger but never touched a LINE, so that supplier
+                    // was invisible to the filter and the per-lot sticker
+                    // printer — "sujon er ki add korchi pacchina". Same
+                    // merge-or-create every other stock-in path uses;
+                    // brand is never set from this grid (Nil), same as a
+                    // cell here never had a brand picker of its own.
+                    if (Tenancy::shop()?->hasFeature('source_lines')) {
+                        ProductSource::upsertLine(
+                            Tenancy::id(), $lockedProduct->id, $variant->id,
+                            $supplierId, null, $qty,
+                            $paidCost ?? (float) ($variant->cost ?? $lockedProduct->cost ?? 0),
+                            $paidPrice, (float) $variant->price
+                        );
+                    }
                     IntakeLedger::record($lockedProduct, $variant, $qty, $paidCost, 'opening_stock', $supplierId);
                 } else {
                     // the plain, variantless product: one box, straight on
                     if ($paidPrice !== null) {
                         $lockedProduct->update(['price' => $paidPrice]);
+                    }
+                    if (Tenancy::shop()?->hasFeature('source_lines')) {
+                        ProductSource::upsertLine(
+                            Tenancy::id(), $lockedProduct->id, null,
+                            $supplierId, null, $qty,
+                            $paidCost ?? (float) ($lockedProduct->cost ?? 0),
+                            $paidPrice, (float) $lockedProduct->price
+                        );
                     }
                     IntakeLedger::record($lockedProduct, null, $qty, $paidCost, 'opening_stock', $supplierId);
                 }

@@ -119,6 +119,71 @@ class ProductSource extends Model
         // lot below zero to chase it
     }
 
+    /**
+     * Merge a receipt into the matching (supplier, brand) lot — creating
+     * one, with its own ZL{id} barcode, if this is the first time this
+     * exact combo has been stocked. Shared by every stock-in path that
+     * writes a line (the dedicated 🚚 sheet, ProductSourceController, and
+     * the opening-stock grid) so they can never drift apart on what
+     * "merge" or "a new lot's starting price" means.
+     *
+     * Khaled live: stock added from the grid at the product/variant level
+     * never created or touched a line at all, so a supplier picked there
+     * was invisible to the supplier filter and to the per-lot sticker
+     * printer — "sujon er ki add korchi pacchina". The grid now calls
+     * this too, whenever source_lines is on, so a bulk stock-in is just
+     * as traceable as the one-variant-at-a-time sheet.
+     *
+     * Cost always blends (the lot's own weighted average of its own
+     * receipts) — unconditional, independent of the shop's
+     * weighted_average_costing feature, which only ever governed
+     * cross-supplier blending on the mirror. Price is a straight
+     * overwrite when given, else left exactly alone on an existing lot,
+     * or defaulted (most recent line's price, else $fallbackPrice) on a
+     * brand-new one.
+     */
+    public static function upsertLine(
+        int $shopId, int $productId, ?int $variantId,
+        ?int $supplierId, ?int $brandId, float $qty, float $cost, ?float $price, float $fallbackPrice
+    ): self {
+        $query = static::where('product_id', $productId)->where('supplier_id', $supplierId)->where('brand_id', $brandId);
+        $query = $variantId ? $query->where('product_variant_id', $variantId) : $query->whereNull('product_variant_id');
+        $line = $query->lockForUpdate()->first();
+
+        if ($line) {
+            $oldStock = (float) $line->stock;
+            $oldCost = (float) $line->cost;
+            $newCost = ($oldStock + $qty) > 0
+                ? round((($oldStock * $oldCost) + ($qty * $cost)) / ($oldStock + $qty), 2)
+                : $cost;
+            $line->update([
+                'stock' => $oldStock + $qty,
+                'cost' => $newCost,
+                'price' => $price ?? $line->price,
+            ]);
+
+            return $line;
+        }
+
+        $lastPrice = static::where('product_id', $productId)
+            ->when($variantId, fn ($q) => $q->where('product_variant_id', $variantId), fn ($q) => $q->whereNull('product_variant_id'))
+            ->orderByDesc('id')->value('price');
+
+        $line = static::create([
+            'shop_id' => $shopId,
+            'product_id' => $productId,
+            'product_variant_id' => $variantId,
+            'supplier_id' => $supplierId,
+            'brand_id' => $brandId,
+            'cost' => $cost,
+            'price' => $price ?? ($lastPrice !== null ? (float) $lastPrice : $fallbackPrice),
+            'stock' => $qty,
+        ]);
+        $line->update(['barcode' => 'ZL'.$line->id]);
+
+        return $line;
+    }
+
     /** Human label for a picker row: "Manik · ৳1290 (4)" — brand folded in only when set. */
     public function pickerLabel(): string
     {

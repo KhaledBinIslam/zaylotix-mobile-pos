@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Product;
+use App\Models\ProductSource;
 use App\Models\ProductVariant;
 use App\Models\StockIntake;
 use App\Models\Supplier;
@@ -132,6 +133,103 @@ class OpeningStockTest extends TestCase
         ])->assertSessionHasNoErrors();
 
         $this->assertEquals(1090, (float) $m->fresh()->price);
+    }
+
+    /**
+     * Khaled live: "sujon supplier dia stock tullam ... filter korle kaj
+     * korchena" — the grid picked a supplier for the ledger but never
+     * touched a line, so the stock it added was invisible to the supplier
+     * filter and to the per-lot sticker printer. The grid now writes a
+     * line too, whenever source_lines is on, same as every other
+     * stock-in path.
+     */
+    public function test_the_grid_creates_a_source_line_when_source_lines_is_on(): void
+    {
+        [$shop, $owner] = $this->aGridShop();
+        $this->grantFeature($shop, 'source_lines');
+        $this->actingAs($owner, 'web');
+
+        $sujon = Supplier::create(['name' => 'Sujon']);
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Boiler Suit', 'cost' => 650, 'price' => 1090, 'stock' => 0]);
+        $m = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => 'M', 'stock' => 0, 'cost' => 650, 'price' => 1090]);
+
+        $this->post(route('app.products.openingStock', $product->id), [
+            'supplier_id' => $sujon->id,
+            'default_cost' => 700,
+            'cells' => [['variant_id' => $m->id, 'qty' => 4]],
+        ])->assertSessionHasNoErrors();
+
+        $line = ProductSource::where('product_variant_id', $m->id)->sole();
+        $this->assertSame($sujon->id, $line->supplier_id);
+        $this->assertEquals(4, (float) $line->stock);
+        $this->assertEquals(700, (float) $line->cost);
+        $this->assertNotNull($line->barcode); // printable immediately, same as every other line
+        $this->assertEquals(4, (float) $m->fresh()->stock); // the mirror still moved exactly as before
+    }
+
+    /** A second grid stock-in from the SAME supplier merges into the one line (blending its own cost) instead of creating a twin. */
+    public function test_the_grid_merges_a_second_delivery_from_the_same_supplier(): void
+    {
+        [$shop, $owner] = $this->aGridShop();
+        $this->grantFeature($shop, 'source_lines');
+        $this->actingAs($owner, 'web');
+
+        $sujon = Supplier::create(['name' => 'Sujon']);
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Boiler Suit', 'cost' => 650, 'price' => 1090, 'stock' => 0]);
+        $m = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => 'M', 'stock' => 0, 'cost' => 650, 'price' => 1090]);
+
+        $this->post(route('app.products.openingStock', $product->id), [
+            'supplier_id' => $sujon->id, 'default_cost' => 700,
+            'cells' => [['variant_id' => $m->id, 'qty' => 4]],
+        ])->assertSessionHasNoErrors();
+        $this->post(route('app.products.openingStock', $product->id), [
+            'supplier_id' => $sujon->id, 'default_cost' => 800,
+            'cells' => [['variant_id' => $m->id, 'qty' => 2]],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(1, ProductSource::where('product_variant_id', $m->id)->count()); // one lot, not two
+        $line = ProductSource::where('product_variant_id', $m->id)->sole();
+        $this->assertEquals(6, (float) $line->stock);
+        $this->assertEquals(733.33, round((float) $line->cost, 2)); // (4*700 + 2*800) / 6
+    }
+
+    /** A new cell born straight from the grid gets a line too, exactly like an existing one. */
+    public function test_a_new_cell_born_in_the_grid_also_gets_a_source_line(): void
+    {
+        [$shop, $owner] = $this->aGridShop();
+        $this->grantFeature($shop, 'source_lines');
+        $this->actingAs($owner, 'web');
+
+        $sujon = Supplier::create(['name' => 'Sujon']);
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Boiler Suit', 'cost' => 650, 'price' => 1090, 'stock' => 0]);
+
+        $this->post(route('app.products.openingStock', $product->id), [
+            'supplier_id' => $sujon->id,
+            'cells' => [['color' => 'Grey', 'size' => 'XXL', 'qty' => 6, 'cost' => 700, 'price' => 1090]],
+        ])->assertSessionHasNoErrors();
+
+        $grey = ProductVariant::where('product_id', $product->id)->where('color', 'Grey')->sole();
+        $line = ProductSource::where('product_variant_id', $grey->id)->sole();
+        $this->assertSame($sujon->id, $line->supplier_id);
+        $this->assertEquals(6, (float) $line->stock);
+    }
+
+    /** Regression guard: a shop without source_lines never gets a product_sources row from the grid — byte-identical to before this feature existed. */
+    public function test_the_grid_never_writes_a_line_without_source_lines(): void
+    {
+        [$shop, $owner] = $this->aGridShop(); // deliberately no source_lines grant
+        $this->actingAs($owner, 'web');
+
+        $supplier = Supplier::create(['name' => 'Jubilee']);
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Power X', 'cost' => 1600, 'price' => 2290, 'stock' => 0]);
+        $v = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => '42', 'stock' => 0, 'cost' => 1600]);
+
+        $this->post(route('app.products.openingStock', $product->id), [
+            'supplier_id' => $supplier->id, 'default_cost' => 1600,
+            'cells' => [['variant_id' => $v->id, 'qty' => 5]],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(0, ProductSource::where('shop_id', $shop->id)->count());
     }
 
     public function test_the_grid_is_refused_without_the_feature(): void

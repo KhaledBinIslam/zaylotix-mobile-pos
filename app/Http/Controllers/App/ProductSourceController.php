@@ -85,54 +85,13 @@ class ProductSourceController extends Controller
         $brandId = ! empty($data['brand_id']) ? Brand::find($data['brand_id'])?->id : null;
         $qty = (int) $data['qty'];
         $paidCost = (float) $data['cost'];
+        $paidPrice = isset($data['price']) ? (float) $data['price'] : null;
 
-        $query = ProductSource::where('product_id', $product->id)
-            ->where('supplier_id', $supplierId)->where('brand_id', $brandId);
-        $query = $variant ? $query->where('product_variant_id', $variant->id) : $query->whereNull('product_variant_id');
-        $line = $query->lockForUpdate()->first();
-
-        if ($line) {
-            // merging into an existing lot: ITS OWN cost blends (a second
-            // delivery from the same supplier at a new price) — this is
-            // unconditional, independent of the shop's variant-level
-            // weighted_average_costing setting, which only ever governed
-            // blending ACROSS different suppliers on the mirror
-            $oldStock = (float) $line->stock;
-            $oldCost = (float) $line->cost;
-            $newLineCost = ($oldStock + $qty) > 0
-                ? round((($oldStock * $oldCost) + ($qty * $paidCost)) / ($oldStock + $qty), 2)
-                : $paidCost;
-            $line->update([
-                'stock' => $oldStock + $qty,
-                'cost' => $newLineCost,
-                'price' => isset($data['price']) ? (float) $data['price'] : $line->price,
-            ]);
-        } else {
-            // a brand-new lot: the most recent line's sell price is the
-            // starting default (already editable before this request, via
-            // the "price" field the UI pre-fills and lets the owner change)
-            $lastPrice = ProductSource::where('product_id', $product->id)
-                ->when($variant, fn ($q) => $q->where('product_variant_id', $variant->id), fn ($q) => $q->whereNull('product_variant_id'))
-                ->orderByDesc('id')->value('price');
-
-            $price = isset($data['price']) ? (float) $data['price'] : ($lastPrice !== null ? (float) $lastPrice : (float) ($variant?->price ?? $product->price));
-
-            $line = ProductSource::create([
-                'shop_id' => Tenancy::id(),
-                'product_id' => $product->id,
-                'product_variant_id' => $variant?->id,
-                'supplier_id' => $supplierId,
-                'brand_id' => $brandId,
-                'cost' => $paidCost,
-                'price' => $price,
-                'stock' => $qty,
-            ]);
-            // printable immediately, same convention as every other
-            // auto-barcoded row in this app (ZV{variant id} for the
-            // variant itself; a line gets its own ZL{id} so a scanned
-            // sticker resolves straight to this exact lot)
-            $line->update(['barcode' => 'ZL'.$line->id]);
-        }
+        $line = ProductSource::upsertLine(
+            Tenancy::id(), $product->id, $variant?->id,
+            $supplierId, $brandId, $qty, $paidCost, $paidPrice,
+            (float) ($variant?->price ?? $product->price)
+        );
 
         // mirror: cost OVERWRITES to this line's new cost — never a
         // cross-supplier blend once lines are the real bookkeeping (see
