@@ -13,11 +13,13 @@ import { usePollingReload } from '@/composables/usePollingReload';
 import { useToast } from '@/composables/useToast';
 import { colorGroups } from '@/support/productDisplay';
 import { usePermissions } from '@/composables/usePermissions';
+import { reportClientError } from '@/support/reportClientError';
 
 const props = defineProps({
     products: Object, categories: Array, units: Array, stats: Object, q: String, categoryId: [Number, String],
     sizeSets: { type: Array, default: () => [] },
     brands: { type: Array, default: null }, // null = brands feature off, field hidden
+    suppliers: { type: Array, default: null }, // null = suppliers feature off, selects hidden
     company: String, genericName: String, companies: { type: Array, default: () => [] }, genericNames: { type: Array, default: () => [] },
     stockStatus: String,
     // which categories price by size group, and the groups themselves —
@@ -556,13 +558,136 @@ function uploadColorPhoto(color, event) {
     });
 }
 const variantStockInQty = ref({}); // { [variantId]: qty }
+// one supplier pick covers the quick +-boxes below it — Phase 6B closed
+// the Phase 4 gap where the server accepted supplier_id but no UI sent it
+const variantStockInSupplier = ref('');
 function stockInVariant(v) {
     const qty = variantStockInQty.value[v.id];
     if (!qty || qty <= 0) return;
-    router.post(route('app.productVariants.stockIn', v.id), { qty }, {
+    router.post(route('app.productVariants.stockIn', v.id), { qty, supplier_id: variantStockInSupplier.value || null }, {
         preserveScroll: true,
         onSuccess: () => (variantStockInQty.value[v.id] = ''),
     });
+}
+
+// --- SEAMAN Phase 6B: the opening-stock grid ("স্টক বসান") ---
+const hasOpeningStock = computed(() => features.value.includes('opening_stock'));
+const osOpen = ref(false);
+const osQty = ref({});   // 'v{id}' or 'n|color|size' or 'plain' → qty
+const osCost = ref({});  // same keys → optional per-cell cost override
+const osSupplier = ref('');
+const osDefaultCost = ref('');
+const osNewColors = ref([]);
+const osNewSizes = ref([]);
+const osNewColorInput = ref('');
+const osNewSizeInput = ref('');
+const osSaving = ref(false);
+const osVariantMap = computed(() => {
+    const map = {};
+    (editing.value?.variants || []).forEach((v) => { map[`${v.color ?? ''}|${v.size ?? ''}`] = v; });
+    return map;
+});
+const osColors = computed(() => {
+    const set = [];
+    (editing.value?.variants || []).forEach((v) => { const c = v.color ?? ''; if (!set.includes(c)) set.push(c); });
+    osNewColors.value.forEach((c) => { if (!set.includes(c)) set.push(c); });
+    return set.length ? set : [''];
+});
+const osSizes = computed(() => {
+    const set = [];
+    (editing.value?.variants || []).forEach((v) => { const s = v.size ?? ''; if (!set.includes(s)) set.push(s); });
+    osNewSizes.value.forEach((s) => { if (!set.includes(s)) set.push(s); });
+    return set.length ? set : [''];
+});
+function openOpeningStock() {
+    osQty.value = {}; osCost.value = {};
+    osSupplier.value = ''; osDefaultCost.value = editing.value?.cost ?? '';
+    osNewColors.value = []; osNewSizes.value = [];
+    osNewColorInput.value = ''; osNewSizeInput.value = '';
+    osOpen.value = true;
+}
+function osKey(c, s) {
+    const v = osVariantMap.value[`${c}|${s}`];
+    return v ? `v${v.id}` : `n|${c}|${s}`;
+}
+function osAddColor() {
+    const c = osNewColorInput.value.trim();
+    if (c && !osColors.value.includes(c)) osNewColors.value.push(c);
+    osNewColorInput.value = '';
+}
+function osAddSize() {
+    const s = osNewSizeInput.value.trim();
+    if (s && !osSizes.value.includes(s)) osNewSizes.value.push(s);
+    osNewSizeInput.value = '';
+}
+function submitOpeningStock() {
+    const cells = [];
+    const hasVariants = (editing.value?.variants || []).length > 0 || osNewColors.value.length || osNewSizes.value.length;
+    if (!hasVariants) {
+        const qty = Number(osQty.value.plain);
+        if (!qty || qty <= 0) return;
+        cells.push({ qty, cost: osCost.value.plain !== undefined && osCost.value.plain !== '' ? Number(osCost.value.plain) : null });
+    } else {
+        for (const c of osColors.value) {
+            for (const s of osSizes.value) {
+                const key = osKey(c, s);
+                const raw = osQty.value[key];
+                // empty cell = unchanged, NEVER zero (v-model leaves '')
+                if (raw === undefined || raw === '' || Number(raw) <= 0) continue;
+                const v = osVariantMap.value[`${c}|${s}`];
+                const cost = osCost.value[key] !== undefined && osCost.value[key] !== '' ? Number(osCost.value[key]) : null;
+                cells.push(v
+                    ? { variant_id: v.id, qty: Number(raw), cost }
+                    : { color: c || null, size: s || null, qty: Number(raw), cost });
+            }
+        }
+    }
+    if (!cells.length) { toast('⚠️ ' + t('os.nothingFilled')); return; }
+    osSaving.value = true;
+    router.post(route('app.products.openingStock', editing.value.id), {
+        supplier_id: osSupplier.value || null,
+        default_cost: osDefaultCost.value !== '' ? Number(osDefaultCost.value) : null,
+        cells,
+    }, {
+        preserveScroll: true,
+        onSuccess: () => { osOpen.value = false; productSheet.value = false; },
+        onFinish: () => (osSaving.value = false),
+    });
+}
+
+// --- Phase 6B: the fill-in-Excel bulk sheet ---
+const bulkOpen = ref(false);
+const bulkCategory = ref('');
+const bulkSupplier = ref('');
+const bulkFile = ref(null);
+const bulkPreview = ref(null);
+const bulkBusy = ref(false);
+const bulkSheetUrl = computed(() => route('app.openingStock.sheet') + (bulkCategory.value ? `?category_id=${bulkCategory.value}` : ''));
+function bulkUpload(dryRun) {
+    if (!bulkFile.value) { toast('⚠️ ' + t('os.pickFile')); return; }
+    bulkBusy.value = true;
+    const fd = new FormData();
+    fd.append('file', bulkFile.value);
+    fd.append('dry_run', dryRun ? '1' : '0');
+    if (bulkSupplier.value) fd.append('supplier_id', bulkSupplier.value);
+    fetch(route('app.openingStock.upload'), {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-XSRF-TOKEN': decodeURIComponent((document.cookie.match(/XSRF-TOKEN=([^;]+)/) || [])[1] || '') },
+        body: fd,
+    })
+        .then(async (r) => {
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || `upload responded ${r.status}`);
+            if (data.dry_run) {
+                bulkPreview.value = data;
+            } else {
+                toast('✅ ' + t('os.bulkApplied', { n: data.applied }));
+                bulkOpen.value = false; bulkPreview.value = null; bulkFile.value = null;
+                router.reload({ only: ['products', 'stats'] });
+            }
+        })
+        .catch((e) => { reportClientError(e, 'openingStock bulk'); toast('⚠️ ' + (e.message || t('os.bulkFailed'))); })
+        .finally(() => (bulkBusy.value = false));
 }
 function saveProduct() {
     if (editing.value) {
@@ -585,6 +710,7 @@ const stockInSheet = ref(false);
 const stockInProduct = ref(null);
 const stockInQty = ref('');
 const stockInCost = ref('');
+const stockInSupplier = ref(''); // Phase 6B — rides into the intake ledger (server accepted it since Phase 4)
 const stockInBatchNo = ref('');
 const stockInExpiryDate = ref('');
 const stockInImeis = ref('');
@@ -594,6 +720,7 @@ function openStockIn(p) {
     stockInProduct.value = p;
     stockInQty.value = '';
     stockInCost.value = '';
+    stockInSupplier.value = '';
     stockInBatchNo.value = '';
     stockInExpiryDate.value = '';
     stockInImeis.value = '';
@@ -604,7 +731,7 @@ function applyStockIn() {
     if (!stockInQty.value || stockInQty.value <= 0) return;
     stockInSubmitting.value = true;
     router.post(route('app.products.stockIn', stockInProduct.value.id), {
-        qty: stockInQty.value, cost: stockInCost.value,
+        qty: stockInQty.value, cost: stockInCost.value, supplier_id: stockInSupplier.value || null,
         batch_no: hasBatchTracking.value ? stockInBatchNo.value : '',
         expiry_date: hasBatchTracking.value ? stockInExpiryDate.value : '',
         imeis: hasSerialTracking.value && stockInProduct.value?.track_serial ? stockInImeis.value : '',
@@ -713,12 +840,21 @@ useKeyboardShortcuts({
             </div>
         </div>
 
+        <!-- Phase 6B — how much of the imported catalog still sits at zero;
+             taps straight into the existing out-of-stock filter -->
+        <div v-if="hasOpeningStock && outOfStockCount > 0" class="card" style="margin-bottom:10px;padding:10px 12px;display:flex;align-items:center;gap:8px;cursor:pointer" @click="router.get(route('app.stock'), { stock_status: 'out' }, { preserveState: false })">
+            <span style="font-size:18px">📦</span>
+            <span style="flex:1;font-size:13px">{{ t('os.nilCount', { n: outOfStockCount }) }}</span>
+            <span style="color:var(--mut)">›</span>
+        </div>
+
         <div class="tabbar">
             <button :class="{ on: cat === 'all' }" @click="setCategory('all')">{{ t('stock.allCategories') }} · {{ totalProducts }}</button>
             <!-- top-level only; for every shop without sub-categories this
                  list IS the whole list, rendering exactly as before -->
             <button v-for="c in topCategories" :key="c.id" :class="{ on: cat === c.id || childrenOf(c.id).some((s) => s.id === cat) }" @click="setCategory(c.id)">{{ c.emoji }} {{ c.name }} · {{ countWithChildren(c.id) }}</button>
             <button v-if="features.includes('sub_categories')" style="border-style:dashed" @click="router.visit(route('app.categories.index'))">⚙️ {{ t('cat.manage') }}</button>
+            <button v-if="hasOpeningStock" style="border-style:dashed" @click="bulkOpen = true; bulkPreview = null">📥 {{ t('os.bulkBtn') }}</button>
         </div>
         <!-- SEAMAN Phase 2: a selected parent's kinds, one more tap deep.
              Renders nothing when the category has no children. -->
@@ -1049,6 +1185,18 @@ useKeyboardShortcuts({
                 <b>⚠️ {{ t('stock.preExistingStockTitle') }}</b>
                 <div style="font-size:13px;margin-top:4px">{{ t('stock.preExistingStockHint', { qty: preExistingUnallocatedStock }) }}</div>
             </div>
+            <!-- Phase 6B — the opening-stock grid: the fast way to put real
+                 counts on an imported (all-zero) product -->
+            <button v-if="editing && hasOpeningStock" class="btn sm" style="width:100%;margin-bottom:10px" @click="openOpeningStock">
+                📦 {{ t('os.openBtn') }}
+            </button>
+            <div v-if="editing && hasProductVariants && suppliers && !osOpen" class="field">
+                <label>{{ t('os.quickSupplier') }}</label>
+                <select v-model="variantStockInSupplier">
+                    <option value="">Nil — {{ t('os.noSupplier') }}</option>
+                    <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+                </select>
+            </div>
             <div v-if="editing && hasProductVariants" class="field">
                 <label>{{ t('stock.variants') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.variantsHint') }}</span></label>
                 <div v-for="g in editingColorGroups()" :key="g.color ?? '_'" style="margin-bottom:10px">
@@ -1232,6 +1380,14 @@ useKeyboardShortcuts({
                 <div class="field"><label>{{ t('stock.howManyArrived') }} ({{ unitLabel(stockInProduct) }})</label><input v-model="stockInQty" type="number" :step="stockInProduct?.sold_by_weight ? 0.001 : 1"></div>
                 <div class="field"><label>{{ t('stock.costOptional') }}</label><input v-model="stockInCost" type="number" step="0.01"></div>
             </div>
+            <!-- Phase 6B — rides into the intake ledger; "Nil" allowed -->
+            <div v-if="suppliers" class="field">
+                <label>{{ t('os.supplier') }}</label>
+                <select v-model="stockInSupplier">
+                    <option value="">Nil — {{ t('os.noSupplier') }}</option>
+                    <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+                </select>
+            </div>
             <template v-if="hasBatchTracking">
                 <div class="field"><label>{{ t('stock.batchNo') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label><input v-model="stockInBatchNo"></div>
                 <!-- full width, not paired in .f2 like batchNo above it - a
@@ -1253,6 +1409,106 @@ useKeyboardShortcuts({
                 {{ stockInSubmitting ? '...' : t('stock.addToStock') }}
             </button>
             <button class="btn ghost" style="margin-top:10px" @click="stockInSheet = false">{{ t('common.cancel') }}</button>
+        </Sheet>
+
+        <!-- SEAMAN Phase 6B — the opening-stock grid: colours as rows,
+             sizes/options as columns, one box per real variant; an empty
+             box is UNCHANGED, never zero -->
+        <Sheet v-model="osOpen" :title="'📦 ' + t('os.openBtn') + (editing ? ' — ' + editing.name : '')">
+            <HowToHint :text="t('os.howTo')" />
+            <div class="f2">
+                <div v-if="suppliers" class="field">
+                    <label>{{ t('os.supplier') }}</label>
+                    <select v-model="osSupplier">
+                        <option value="">Nil — {{ t('os.noSupplier') }}</option>
+                        <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+                    </select>
+                </div>
+                <div class="field"><label>{{ t('os.defaultCost') }}</label><input v-model="osDefaultCost" type="number" step="0.01"></div>
+            </div>
+
+            <template v-if="(editing?.variants || []).length || osNewColors.length || osNewSizes.length">
+                <div style="overflow-x:auto;margin-bottom:10px">
+                    <table style="border-collapse:collapse;font-size:12px;min-width:100%">
+                        <thead>
+                            <tr>
+                                <th style="padding:4px 6px;text-align:left;color:var(--mut)">{{ opt1Label }} \ {{ opt2Label }}</th>
+                                <th v-for="s in osSizes" :key="s" style="padding:4px 6px;color:var(--mut);white-space:nowrap">{{ s === '' ? '—' : formatSize(s) }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="c in osColors" :key="c">
+                                <td style="padding:4px 6px;font-weight:600;white-space:nowrap">{{ c === '' ? '—' : c }}</td>
+                                <td v-for="s in osSizes" :key="s" style="padding:3px">
+                                    <template v-if="osVariantMap[`${c}|${s}`] || osNewColors.includes(c) || osNewSizes.includes(s)">
+                                        <input v-model="osQty[osKey(c, s)]" type="number" min="0" :placeholder="osVariantMap[`${c}|${s}`] ? String(0 + osVariantMap[`${c}|${s}`].stock) : t('os.newCell')" style="width:64px;padding:6px" :style="!osVariantMap[`${c}|${s}`] ? 'border-style:dashed' : ''">
+                                        <input v-model="osCost[osKey(c, s)]" type="number" min="0" :placeholder="t('stock.costShort')" style="width:64px;padding:6px;margin-top:2px;font-size:11px;display:block">
+                                    </template>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div style="font-size:11.5px;color:var(--mut);margin-bottom:8px">{{ t('os.cellHint') }}</div>
+                <div class="f2" style="margin-bottom:10px">
+                    <div style="display:flex;gap:6px">
+                        <input v-model="osNewColorInput" :placeholder="'+ ' + opt1Label" @keyup.enter="osAddColor">
+                        <button class="btn sm ghost" style="width:auto" @click="osAddColor">+</button>
+                    </div>
+                    <div style="display:flex;gap:6px">
+                        <input v-model="osNewSizeInput" :placeholder="'+ ' + opt2Label" @keyup.enter="osAddSize">
+                        <button class="btn sm ghost" style="width:auto" @click="osAddSize">+</button>
+                    </div>
+                </div>
+            </template>
+            <template v-else>
+                <div class="f2">
+                    <div class="field"><label>{{ t('os.plainQty') }}</label><input v-model="osQty.plain" type="number" min="0"></div>
+                    <div class="field"><label>{{ t('stock.costOptional') }}</label><input v-model="osCost.plain" type="number" min="0"></div>
+                </div>
+            </template>
+
+            <button class="btn" :disabled="osSaving" @click="submitOpeningStock">{{ osSaving ? '...' : t('os.save') }}</button>
+            <button class="btn ghost" style="margin-top:10px" @click="osOpen = false">{{ t('common.cancel') }}</button>
+        </Sheet>
+
+        <!-- Phase 6B — the fill-in-Excel bulk sheet, dry-run first always -->
+        <Sheet v-model="bulkOpen" :title="'📥 ' + t('os.bulkBtn')">
+            <HowToHint :text="t('os.bulkHowTo')" />
+            <div class="field">
+                <label>{{ t('stock.category') }}</label>
+                <select v-model="bulkCategory">
+                    <option value="">{{ t('stock.allCategories') }}</option>
+                    <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.parent_id ? '— ' : '' }}{{ c.name }}</option>
+                </select>
+            </div>
+            <a :href="bulkSheetUrl" class="btn ghost sm" style="margin-bottom:14px;display:inline-block;text-decoration:none">⬇️ {{ t('os.downloadSheet') }}</a>
+            <div v-if="suppliers" class="field">
+                <label>{{ t('os.supplier') }}</label>
+                <select v-model="bulkSupplier">
+                    <option value="">Nil — {{ t('os.noSupplier') }}</option>
+                    <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>{{ t('stock.chooseFile') }}</label>
+                <input type="file" accept=".csv,text/csv" @change="bulkFile = $event.target.files[0]; bulkPreview = null">
+            </div>
+            <template v-if="bulkPreview">
+                <div class="card" style="margin-bottom:10px;max-height:40vh;overflow:auto">
+                    <b style="font-size:13px">{{ t('os.previewTitle', { n: bulkPreview.changes.length }) }}</b>
+                    <div v-for="(ch, i) in bulkPreview.changes" :key="i" style="font-size:12px;padding:4px 0;border-top:1px solid var(--line)">
+                        {{ ch.label }} — {{ ch.current }} <b>+{{ ch.add }}</b><template v-if="ch.cost !== null"> @ {{ ch.cost }}</template>
+                    </div>
+                    <template v-if="bulkPreview.unmatched.length">
+                        <b style="font-size:12.5px;color:var(--rose);display:block;margin-top:8px">{{ t('os.unmatchedTitle', { n: bulkPreview.unmatched.length }) }}</b>
+                        <div v-for="(u, i) in bulkPreview.unmatched" :key="'u' + i" style="font-size:12px;color:var(--rose);padding:2px 0">{{ u }}</div>
+                    </template>
+                </div>
+                <button class="btn" :disabled="bulkBusy || !bulkPreview.changes.length" @click="bulkUpload(false)">{{ bulkBusy ? '...' : t('os.applyNow', { n: bulkPreview.changes.length }) }}</button>
+            </template>
+            <button v-else class="btn" :disabled="bulkBusy || !bulkFile" @click="bulkUpload(true)">{{ bulkBusy ? '...' : t('os.previewBtn') }}</button>
+            <button class="btn ghost" style="margin-top:10px" @click="bulkOpen = false">{{ t('common.cancel') }}</button>
         </Sheet>
 
         <Sheet v-model="importSheet" :title="t('stock.importCsv')" :subtitle="isRestaurant ? t('stock.importCsvSubRestaurant') : t('stock.importCsvSub')">

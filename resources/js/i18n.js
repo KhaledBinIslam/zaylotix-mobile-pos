@@ -1884,6 +1884,30 @@ export const translations = {
 
     'stock.internalNote': { bn: '📝 যাচাই-নোট (ঠিক করে এই ঘরটা খালি করে সংরক্ষণ দিলে দাগ উঠে যাবে)', en: '📝 Verify note (fix it, empty this box and save to clear the badge)' },
 
+    // SEAMAN Phase 6B — opening-stock grid + bulk sheet
+    'os.openBtn': { bn: 'স্টক বসান (গ্রিড)', en: 'Put in stock (grid)' },
+    'os.howTo': { bn: 'প্রতি ঘরে যতটা আছে লিখুন — খালি ঘর মানে অপরিবর্তিত, শূন্য লেখা হয় না। নতুন রং/সাইজ নিচের + ঘর দিয়ে যোগ করুন।', en: 'Type real counts per cell — an empty cell stays unchanged, never zero. Add a missing colour/size with the + boxes below.' },
+    'os.supplier': { bn: 'সাপ্লায়ার (খাতায় লিখা থাকবে)', en: 'Supplier (goes on the ledger)' },
+    'os.noSupplier': { bn: 'সাপ্লায়ার নেই', en: 'no supplier' },
+    'os.quickSupplier': { bn: '🚚 নিচের + স্টক-ইনগুলোর সাপ্লায়ার', en: '🚚 Supplier for the quick +boxes below' },
+    'os.defaultCost': { bn: 'কেনা দাম (সব ঘরের ডিফল্ট)', en: 'Purchase cost (default for all cells)' },
+    'os.cellHint': { bn: 'ঘরের নিচের ছোট ঘরটা = সেই ঘরের আলাদা কেনা দাম (দরকার হলে)', en: 'The small box under a cell = that cell’s own cost (if it differs)' },
+    'os.newCell': { bn: 'নতুন', en: 'new' },
+    'os.plainQty': { bn: 'কতটা আছে', en: 'How many on hand' },
+    'os.save': { bn: '📦 স্টক বসান', en: '📦 Save stock' },
+    'os.nothingFilled': { bn: 'কোনো ঘরে সংখ্যা বসাননি', en: 'No cell has a quantity' },
+    'os.bulkBtn': { bn: 'স্টক শিট', en: 'Stock sheet' },
+    'os.bulkHowTo': { bn: 'শিট নামান → Excel/Sheets-এ new_qty ভরুন → আপলোড করে আগে প্রিভিউ দেখুন। প্রিভিউতে সব ঠিক দেখলে তবেই বসবে।', en: 'Download the sheet → fill new_qty in Excel/Sheets → upload and PREVIEW first. Nothing is written until you apply.' },
+    'os.downloadSheet': { bn: 'শিট ডাউনলোড (CSV)', en: 'Download sheet (CSV)' },
+    'os.previewBtn': { bn: '🔍 প্রিভিউ দেখুন (কিছু লেখা হবে না)', en: '🔍 Preview (writes nothing)' },
+    'os.previewTitle': { bn: 'প্রিভিউ — {n} টি ঘর বসবে', en: 'Preview — {n} cells will apply' },
+    'os.unmatchedTitle': { bn: 'মেলেনি ({n}) — এগুলো বসবে না:', en: 'Unmatched ({n}) — these will NOT apply:' },
+    'os.applyNow': { bn: '✅ {n} টি ঘর বসান', en: '✅ Apply {n} cells' },
+    'os.bulkApplied': { bn: '{n} টি ঘরের স্টক বসানো হয়েছে', en: '{n} cells applied' },
+    'os.bulkFailed': { bn: 'আপলোড হয়নি — আবার চেষ্টা করুন', en: 'Upload failed — try again' },
+    'os.pickFile': { bn: 'আগে CSV ফাইলটা বেছে নিন', en: 'Pick the CSV file first' },
+    'os.nilCount': { bn: 'এখনো স্টক বসানো হয়নি: {n} টি — দেখতে চাপুন', en: 'Still at zero stock: {n} — tap to see them' },
+
     // SEAMAN Phase 5 — corporate parties & dues
     'party.title': { bn: 'কর্পোরেট পার্টি', en: 'Corporate Parties' },
     'party.subtitle': { bn: 'কোম্পানি/ব্যক্তি — বাকিতে কেনা, বিল-ওয়াইজ হিসাব, স্টেটমেন্ট', en: 'Companies/persons buying on credit — bill-wise dues & statements' },

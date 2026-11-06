@@ -333,6 +333,14 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
             Route::get('serials', [SerialLookupController::class, 'index'])->name('serials.index');
         });
 
+        // SEAMAN Phase 6B — "স্টক বসান": the opening-stock grid, and the
+        // fill-in-Excel bulk sheet with its dry-run preview
+        Route::middleware('feature:opening_stock')->group(function () {
+            Route::post('products/{product}/opening-stock', [App\Http\Controllers\App\OpeningStockController::class, 'store'])->name('products.openingStock');
+            Route::get('opening-stock/sheet', [App\Http\Controllers\App\OpeningStockController::class, 'sheet'])->name('openingStock.sheet');
+            Route::post('opening-stock/upload', [App\Http\Controllers\App\OpeningStockController::class, 'upload'])->name('openingStock.upload');
+        });
+
         // docs/ARTICLE_SERIES_PLAN.md §7 — one-screen new article entry
         Route::middleware('feature:article_series')->group(function () {
             Route::get('articles/create', [ArticleController::class, 'create'])->name('articles.create');

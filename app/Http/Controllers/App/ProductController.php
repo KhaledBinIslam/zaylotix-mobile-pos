@@ -132,6 +132,11 @@ class ProductController extends Controller
             'brands' => Tenancy::shop()?->hasFeature('brands')
                 ? \App\Models\Brand::orderBy('name')->get(['id', 'name'])
                 : null,
+            // Phase 6B — supplier pickers on stock-in and the opening-stock
+            // grid; same null-means-hidden contract as brands above
+            'suppliers' => Tenancy::shop()?->hasFeature('suppliers')
+                ? \App\Models\Supplier::orderBy('name')->get(['id', 'name'])
+                : null,
             'units' => Unit::orderBy('name')->get(),
             'stats' => $stats,
             'q' => $q,

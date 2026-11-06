@@ -64,6 +64,7 @@ class SetupSeamanShop extends Command
         'brands', // Phase 4 — brand per product/variant, Nil display, brand report
         'weighted_average_costing', // Phase 4 — variant stock-in averages cost instead of overwriting
         'parties', // Phase 5 — corporate parties, bill-wise dues, A4 statements + PDF + WhatsApp
+        'opening_stock', // Phase 6B — the stock-entry grid + bulk sheet
     ];
 
     /**
