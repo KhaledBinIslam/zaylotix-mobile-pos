@@ -13,7 +13,7 @@ class ProductVariant extends Model
 {
     use BelongsToTenant, SoftDeletes;
 
-    protected $fillable = ['shop_id', 'product_id', 'size', 'color', 'barcode', 'stock', 'reorder_point', 'price', 'cost', 'photo_path'];
+    protected $fillable = ['shop_id', 'product_id', 'brand_id', 'size', 'color', 'barcode', 'stock', 'reorder_point', 'price', 'cost', 'photo_path'];
 
     protected $appends = ['photo_url'];
 
@@ -133,6 +133,11 @@ class ProductVariant extends Model
     public function effectivePrice(): float
     {
         return (float) ($this->price ?? $this->product->price);
+    }
+
+    public function brand()
+    {
+        return $this->belongsTo(Brand::class);
     }
 
     public function effectiveCost(): float

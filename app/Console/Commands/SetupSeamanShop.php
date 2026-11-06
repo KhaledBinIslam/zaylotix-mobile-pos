@@ -61,6 +61,8 @@ class SetupSeamanShop extends Command
         'low_stock_alerts', 'shop_backup', 'cashier_management',
         'sub_categories', // Phase 2 — category → sub-category, this shop only
         'variant_options', // Phase 3 — named option axes + size sets, this shop only
+        'brands', // Phase 4 — brand per product/variant, Nil display, brand report
+        'weighted_average_costing', // Phase 4 — variant stock-in averages cost instead of overwriting
     ];
 
     /**

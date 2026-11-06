@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\Auth;
  */
 class IntakeLedger
 {
-    public static function record(Product $product, ?ProductVariant $variant, float $qty, ?float $unitCost, string $source): void
+    public static function record(Product $product, ?ProductVariant $variant, float $qty, ?float $unitCost, string $source, ?int $supplierId = null): void
     {
         if ($qty <= 0) {
             return; // nothing came in — a zero-qty grid cell, not an intake
@@ -34,6 +34,9 @@ class IntakeLedger
             'product_id' => $product->id,
             'product_variant_id' => $variant?->id,
             'user_id' => Auth::id(),
+            // FROM WHOM, alongside what and at which cost — the same Power X
+            // shoe really does arrive from two suppliers at two prices
+            'supplier_id' => $supplierId,
             'qty' => $qty,
             'unit_cost' => round($cost, 2),
             'total_cost' => round($qty * $cost, 2),

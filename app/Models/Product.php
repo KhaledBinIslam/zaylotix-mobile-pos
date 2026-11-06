@@ -15,7 +15,7 @@ class Product extends Model
     use BelongsToTenant, SoftDeletes;
 
     protected $fillable = [
-        'shop_id', 'master_product_id', 'supplier_id', 'category_id', 'unit_id', 'name', 'name_en', 'generic_name', 'company', 'shelf_location', 'requires_prescription', 'emoji', 'photo_path', 'barcode',
+        'shop_id', 'master_product_id', 'supplier_id', 'brand_id', 'category_id', 'unit_id', 'name', 'name_en', 'generic_name', 'company', 'shelf_location', 'requires_prescription', 'emoji', 'photo_path', 'barcode',
         'sold_by_weight', 'weight_unit', 'track_serial',
         'cost', 'price', 'wholesale_price', 'wholesale_moq', 'discount_price', 'stock', 'stock_mode', 'expiry_date', 'batch_no', 'size', 'color', 'imei',
         'option1_label', 'option2_label', // SEAMAN Phase 3 — what this product CALLS its colour/size axes (null = রং/সাইজ, every pre-existing product)
@@ -217,6 +217,11 @@ class Product extends Model
     }
 
     /** Which manufacturer/purchase source this article was bought from — docs/ARTICLE_SERIES_PLAN.md §1 (reuses Supplier, not a parallel model). */
+    public function brand()
+    {
+        return $this->belongsTo(Brand::class);
+    }
+
     public function supplier()
     {
         return $this->belongsTo(Supplier::class);

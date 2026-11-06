@@ -43,6 +43,12 @@ class ProductController extends Controller
     public function index(Request $request)
     {
         $with = ['category', 'unit', 'productUnits.unit', 'variants'];
+        if (Tenancy::shop()?->hasFeature('brands')) {
+            // Phase 4 — brand + supplier names for the list's Nil-or-name line
+            $with[] = 'brand:id,name';
+            $with[] = 'supplier:id,name';
+            $with[] = 'variants.brand:id,name';
+        }
         if (Tenancy::shop()?->hasFeature('batch_tracking')) {
             $with[] = 'nearestBatch';
         }
@@ -120,6 +126,12 @@ class ProductController extends Controller
             'categories' => ProductCategory::orderBy('name')->get(), // parent_id + size_set_id ride along for chips and grid prefill
             // Phase 3 — grid prefill: empty everywhere but SEAMAN today
             'sizeSets' => \App\Models\SizeSet::orderBy('name')->get(['id', 'name', 'sizes']),
+            // Phase 4 — the product form's brand picker; null (not even an
+            // empty array) for shops without the feature, so the field
+            // never renders there
+            'brands' => Tenancy::shop()?->hasFeature('brands')
+                ? \App\Models\Brand::orderBy('name')->get(['id', 'name'])
+                : null,
             'units' => Unit::orderBy('name')->get(),
             'stats' => $stats,
             'q' => $q,
@@ -201,6 +213,7 @@ class ProductController extends Controller
                 'option1_label' => $data['option1_label'] ?? null,
                 'option2_label' => $data['option2_label'] ?? null,
             ] : []),
+            ...$this->brandField($data),
         ]);
 
         $this->syncPriceTiers($product, $data['price_tiers'] ?? []);
@@ -284,6 +297,7 @@ class ProductController extends Controller
                 'option1_label' => $data['option1_label'] ?? null,
                 'option2_label' => $data['option2_label'] ?? null,
             ] : []),
+            ...$this->brandField($data),
         ];
 
         // for a variant product, `stock` is a live-maintained sum of
@@ -421,6 +435,25 @@ class ProductController extends Controller
     }
 
     /** Pick a product, add received qty ("stock in"). */
+    /**
+     * The brand field to persist — only for a shop with the feature, and
+     * only an id this shop actually owns (tenant-scoped find; a foreign
+     * id silently becomes "no brand" rather than an error, matching the
+     * owner's "missing shows Nil" rule).
+     *
+     * @return array<string, int|null>
+     */
+    private function brandField(array $data): array
+    {
+        if (! \App\Support\Tenancy::shop()?->hasFeature('brands')) {
+            return [];
+        }
+
+        $brandId = ! empty($data['brand_id']) ? \App\Models\Brand::find($data['brand_id'])?->id : null;
+
+        return ['brand_id' => $brandId];
+    }
+
     public function stockIn(Product $product)
     {
         $this->authorize('update', $product);
@@ -432,7 +465,10 @@ class ProductController extends Controller
             'expiry_date' => ['nullable', 'date'],
             'imeis' => ['nullable', 'string'],
             'warranty_expiry' => ['nullable', 'date'],
+            'supplier_id' => ['nullable', 'integer'], // Phase 4 — rides into the intake ledger
         ]);
+
+        $supplierId = ! empty($data['supplier_id']) ? \App\Models\Supplier::find($data['supplier_id'])?->id : null;
 
         if ($product->variants()->exists()) {
             abort(422, 'এটি ভ্যারিয়েন্ট পণ্য — প্রতিটি ভ্যারিয়েন্টের স্টক আলাদাভাবে যোগ করুন।');
@@ -444,7 +480,7 @@ class ProductController extends Controller
             return back()->withErrors(['imeis' => "IMEI সংখ্যা ({$given}) স্টকের পরিমাণের ({$data['qty']}) সাথে মিলছে না।"]);
         }
 
-        DB::transaction(function () use ($product, $data, $imeis) {
+        DB::transaction(function () use ($product, $data, $imeis, $supplierId) {
             // Product uses SoftDeletes — if it was deleted between the route
             // resolving $product and this re-fetch (double-submit, a second
             // tab), $locked would be null and StockIn::apply()'s strict
@@ -457,7 +493,7 @@ class ProductController extends Controller
             }
             \App\Support\StockIn::apply($locked, (float) $data['qty'], $data['cost'] ?? null);
             // the intake ledger ("কত টাকার মাল উঠেছে") — same transaction
-            \App\Support\IntakeLedger::record($locked, null, (float) $data['qty'], isset($data['cost']) ? (float) $data['cost'] : null, 'product_stock_in');
+            \App\Support\IntakeLedger::record($locked, null, (float) $data['qty'], isset($data['cost']) ? (float) $data['cost'] : null, 'product_stock_in', $supplierId);
 
             $shop = \App\Support\Tenancy::shop();
             // batch/FEFO tracking is an integer-quantity pharmacy layer — a

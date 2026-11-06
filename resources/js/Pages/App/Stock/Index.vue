@@ -17,6 +17,7 @@ import { usePermissions } from '@/composables/usePermissions';
 const props = defineProps({
     products: Object, categories: Array, units: Array, stats: Object, q: String, categoryId: [Number, String],
     sizeSets: { type: Array, default: () => [] },
+    brands: { type: Array, default: null }, // null = brands feature off, field hidden
     company: String, genericName: String, companies: { type: Array, default: () => [] }, genericNames: { type: Array, default: () => [] },
     stockStatus: String,
     // which categories price by size group, and the groups themselves —
@@ -220,7 +221,7 @@ const editingHasVariants = computed(() => (editing.value?.variants?.length ?? 0)
 const preExistingUnallocatedStock = computed(() => (!editingHasVariants.value && Number(editing.value?.stock) > 0) ? Number(editing.value.stock) : 0);
 const form = useForm({
     name: '', name_en: '', generic_name: '', company: '', shelf_location: '', requires_prescription: false, emoji: '📦', photo: null, remove_photo: false, category_id: '', new_category_name: '',
-    option1_label: '', option2_label: '',
+    option1_label: '', option2_label: '', brand_id: '',
     unit_id: '', new_unit_name: '', barcode: '', cost: '', price: '', wholesale_price: '', wholesale_moq: '', discount_price: '', stock: '',
     reorder_point: '', sold_by_weight: false, weight_unit: 'kg', track_serial: false,
     // restaurant-only (see isRestaurant) — 'tracked' everywhere else,
@@ -319,6 +320,7 @@ function openEdit(p) {
     form.generic_name = p.generic_name; form.company = p.company; form.shelf_location = p.shelf_location; form.requires_prescription = p.requires_prescription;
     form.category_id = p.category_id; form.unit_id = p.unit_id; form.barcode = p.barcode;
     form.option1_label = p.option1_label || ''; form.option2_label = p.option2_label || '';
+    form.brand_id = p.brand_id || '';
     form.cost = p.cost; form.price = p.price; form.wholesale_price = p.wholesale_price; form.wholesale_moq = p.wholesale_moq; form.discount_price = p.discount_price;
     form.price_tiers = (p.price_tiers || []).map(tier => ({ min_qty: tier.min_qty, price: tier.price }));
     // p.stock comes back from the server as a decimal-cast string ("124.000")
@@ -437,6 +439,13 @@ function defaultSizesFor(category) {
     const set = setId ? (props.sizeSets || []).find((s) => s.id === setId) : null;
     return set ? set.sizes.join(', ') : null;
 }
+/** Phase 4 — set one variant's brand (the helmet case) without touching anything else on it; size/color ride along because the endpoint's own at-least-one guard reads them. */
+function setVariantBrand(v, brandId) {
+    router.put(route('app.productVariants.update', v.id), {
+        size: v.size, color: v.color, brand_id: brandId || null,
+    }, { preserveScroll: true, preserveState: true });
+}
+
 // per-cell own price/cost (epaulettes: every Rank × Type sells at its own number)
 const gridPerCell = ref(false);
 const gridCellPrice = ref({});
@@ -727,6 +736,9 @@ useKeyboardShortcuts({
                 <b>{{ p.name }} <span v-if="p.requires_prescription" title="Rx" style="color:var(--rose)">℞</span></b>
                 <span>{{ p.category?.emoji }} {{ p.category?.name }} • {{ money(p.price) }}{{ p.sold_by_weight ? '/' + unitLabel(p) : '' }}</span>
                 <span v-if="p.generic_name || p.company" style="color:var(--mut)">💊 {{ p.generic_name }}<template v-if="p.company"> • 🏭 {{ p.company }}</template><template v-if="p.shelf_location"> • 📍 {{ p.shelf_location }}</template></span>
+                <!-- Phase 4 — "Nil", never blank: the owner's own rule for
+                     anything missing. Only with the brands feature. -->
+                <span v-if="brands" style="color:var(--mut)">🏭 {{ p.brand?.name || 'Nil' }} • 🚚 {{ p.supplier?.name || 'Nil' }}</span>
                 <!-- a batch can be tracked by batch_no alone with no expiry_date at
                      all (see ProductBatch::receive's own comment) — nearest_batch can
                      legitimately be non-null with a null expiry_date in that case, so
@@ -846,6 +858,19 @@ useKeyboardShortcuts({
                         <option :value="c.id">{{ c.emoji }} {{ c.name }}</option>
                         <option v-for="s in childrenOf(c.id)" :key="s.id" :value="s.id">&nbsp;&nbsp;— {{ s.emoji }} {{ s.name }}</option>
                     </template>
+                </select>
+            </div>
+
+            <!-- Phase 4 — only rendered when the shop has the brands
+                 feature (prop is null otherwise) -->
+            <div v-if="brands" class="field">
+                <label style="display:flex;justify-content:space-between;align-items:center">
+                    {{ t('brand.fieldLabel') }}
+                    <Link :href="route('app.brands.index')" style="font-size:11.5px;color:var(--brand)">⚙️ {{ t('brand.manage') }}</Link>
+                </label>
+                <select v-model="form.brand_id">
+                    <option :value="''">Nil — {{ t('brand.noBrand') }}</option>
+                    <option v-for="b in brands" :key="b.id" :value="b.id">{{ b.name }}</option>
                 </select>
                 <div v-if="form.errors.category_id" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.category_id }}</div>
             </div>
@@ -1043,6 +1068,11 @@ useKeyboardShortcuts({
                                 <template v-else-if="Number(v.reorder_point) > 0 && Number(v.stock) <= Number(v.reorder_point) "> ⚠ {{ t('stock.lowStock') }}</template>
                             </span>
                             <span><template v-if="v.price"> • {{ money(v.price) }}</template><template v-if="v.barcode"> • 🏷️ {{ v.barcode }}</template><template v-if="v.reorder_point"> • reorder: {{ v.reorder_point }}</template></span>
+                            <!-- Phase 4 — per-variant brand (helmet: four brands in one product); only with the feature -->
+                            <select v-if="brands" :value="v.brand_id || ''" style="margin-top:6px;font-size:12px;padding:5px 8px;width:auto" @change="setVariantBrand(v, $event.target.value)">
+                                <option value="">Brand: Nil</option>
+                                <option v-for="b in brands" :key="b.id" :value="b.id">{{ b.name }}</option>
+                            </select>
                             <div style="display:flex;gap:6px;margin-top:6px">
                                 <input v-model="variantStockInQty[v.id]" type="number" :placeholder="t('stock.stockIn')" style="width:90px">
                                 <button class="btn sm ghost" @click="stockInVariant(v)">+</button>

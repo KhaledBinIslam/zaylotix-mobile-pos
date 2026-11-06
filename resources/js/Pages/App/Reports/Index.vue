@@ -8,6 +8,7 @@ const props = defineProps({
     from: String, to: String, preset: String, stats: Object, sales: Array, topProducts: Array, bottomProducts: Array, productProfitReport: { type: Array, default: () => [] },
     expiringSoon: Array, cashierBreakdown: Array, restaurantBreakdown: Object, salesByType: Object, itemWisePurchases: Array,
     intakeReport: Object,
+    brandReport: { type: Array, default: null },
     batchWiseReport: { type: Array, default: () => [] },
     summary: Object, categoryReport: Object, discountReport: Object, wastageReport: Array, ratingReport: Object, heatmap: Object, consumptionReport: Array, complimentaryReport: Object, combinedStats: Object,
     variantInventory: Object,
@@ -246,6 +247,25 @@ function heatColor(count) {
                 </details>
             </div>
             <div v-else class="card" style="margin-bottom:14px;font-size:12.5px;color:var(--mut)">{{ t('rep.intakeEmpty') }}</div>
+            <!-- Phase 4 — the same ledger rolled up per supplier -->
+            <div v-if="intakeReport.suppliers?.length" class="card" style="padding:0;margin-bottom:14px">
+                <div style="padding:10px 14px;font-size:12px;font-weight:700;color:var(--mut);border-bottom:1px solid var(--line)">{{ t('rep.intakeSuppliers') }}</div>
+                <div v-for="(s, i) in intakeReport.suppliers" :key="i" class="row" style="cursor:default" :style="i > 0 ? 'border-top:1px solid var(--line)' : ''">
+                    <div class="mid"><b>{{ s.name }}</b><span>{{ s.qty }} {{ t('stock.pieces') }}</span></div>
+                    <div class="end"><b>{{ money(s.total_cost) }}</b></div>
+                </div>
+            </div>
+        </template>
+
+        <!-- Phase 4 — null for shops without the brands feature -->
+        <template v-if="brandReport?.length">
+            <div class="sechead"><h2>{{ t('rep.brandReport') }}</h2></div>
+            <div class="card" style="padding:0;margin-bottom:14px">
+                <div v-for="(b, i) in brandReport" :key="b.brand" class="row" style="cursor:default" :style="i > 0 ? 'border-top:1px solid var(--line)' : ''">
+                    <div class="mid"><b>{{ b.brand }}</b><span>{{ b.qty }} {{ t('stock.pieces') }} • {{ t('rep.profitShort') }} {{ money(b.profit) }}</span></div>
+                    <div class="end"><b>{{ money(b.revenue) }}</b></div>
+                </div>
+            </div>
         </template>
 
         <template v-if="itemWisePurchases?.length">

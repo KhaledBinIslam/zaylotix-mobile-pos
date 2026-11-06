@@ -332,6 +332,7 @@ class Reports
             ->whereIn('shop_id', $shopIds)
             ->with(['product' => fn ($q) => $q->withoutGlobalScopes()->select('id', 'name', 'name_en'),
                 'variant' => fn ($q) => $q->withoutGlobalScopes()->select('id', 'size', 'color'),
+                'supplier' => fn ($q) => $q->withoutGlobalScopes()->select('id', 'name'),
                 'user:id,name'])
             ->whereDate('created_at', '>=', $from)
             ->whereDate('created_at', '<=', $to)
@@ -352,6 +353,7 @@ class Reports
                 'qty' => (float) $r->qty,
                 'unit_cost' => (float) $r->unit_cost,
                 'total_cost' => (float) $r->total_cost,
+                'supplier' => $r->supplier?->name,
                 'by' => $r->user?->name,
             ])->values()->all(),
         ])->sortByDesc('total_cost')->values()->all();
@@ -360,7 +362,47 @@ class Reports
             'total_cost' => round((float) $rows->sum('total_cost'), 2),
             'total_qty' => (float) $rows->sum('qty'),
             'products' => $products,
+            // from WHOM, totalled — month-end questions come per supplier
+            // ("Jubilee theke e mashe koto taka-r mal"); "Nil" is the row
+            // for intakes recorded without one
+            'suppliers' => $rows->groupBy(fn ($r) => $r->supplier?->name ?? 'Nil')->map(fn ($g, $name) => [
+                'name' => $name,
+                'qty' => (float) $g->sum('qty'),
+                'total_cost' => round((float) $g->sum('total_cost'), 2),
+            ])->sortByDesc('total_cost')->values()->all(),
         ];
+    }
+
+    /**
+     * Sales by brand (feature: brands — SEAMAN Phase 4). The brand a sale
+     * answers to is the VARIANT's where set, else the product's — the
+     * helmet rule. Grouped in PHP off one eager-loaded pass over the
+     * period's sale items; "Nil" collects everything unbranded.
+     */
+    public static function brandReport(string $from, string $to): array
+    {
+        // same line math productStats() uses, so a brand's totals always
+        // reconcile with the product report over the same range
+        $items = SaleItem::query()
+            ->whereHas('sale', fn ($q) => $q->whereDate('date', '>=', $from)->whereDate('date', '<=', $to))
+            ->with([
+                'product' => fn ($q) => $q->withoutGlobalScopes()->select('id', 'brand_id'),
+                'variant' => fn ($q) => $q->withoutGlobalScopes()->select('id', 'brand_id'),
+            ])
+            ->get(['id', 'sale_id', 'product_id', 'product_variant_id', 'qty', 'price', 'discount', 'cost']);
+
+        $brandNames = \App\Models\Brand::pluck('name', 'id');
+
+        return $items->groupBy(function ($item) use ($brandNames) {
+            $brandId = $item->variant?->brand_id ?? $item->product?->brand_id;
+
+            return $brandId ? ($brandNames[$brandId] ?? 'Nil') : 'Nil';
+        })->map(fn ($g, $name) => [
+            'brand' => $name,
+            'qty' => (float) $g->sum('qty'),
+            'revenue' => round((float) $g->sum(fn ($i) => $i->qty * $i->price - $i->discount), 2),
+            'profit' => round((float) $g->sum(fn ($i) => ($i->price - $i->cost) * $i->qty - $i->discount), 2),
+        ])->sortByDesc('revenue')->values()->all();
     }
 
     /** Item-wise purchase totals — the purchase-side mirror of topProducts, since Khaled asked for "কী কিনলাম" to be as visible as "কী বিক্রি করলাম". Only purchases that actually named a product (a money-only purchase, e.g. paying a utility bill, has no product_id and is excluded). */

@@ -8,6 +8,7 @@ use App\Http\Controllers\App\AdSpendController;
 use App\Http\Controllers\App\ArticleController;
 use App\Http\Controllers\App\BarcodeLabelController;
 use App\Http\Controllers\App\BranchController;
+use App\Http\Controllers\App\BrandController;
 use App\Http\Controllers\App\CategoryController;
 use App\Http\Controllers\App\CourierController;
 use App\Http\Controllers\App\CsrfTokenController;
@@ -265,6 +266,15 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::post('categories', [CategoryController::class, 'store'])->name('categories.store');
         Route::patch('categories/{category}', [CategoryController::class, 'update'])->name('categories.update');
         Route::delete('categories/{category}', [CategoryController::class, 'destroy'])->name('categories.destroy');
+    });
+
+    // SEAMAN Phase 4 — brands (per product, overridable per variant)
+    Route::middleware(['perm:stock', 'feature:brands'])->group(function () {
+        Route::get('brands', [BrandController::class, 'index'])->name('brands.index');
+        Route::post('brands', [BrandController::class, 'store'])->name('brands.store');
+        Route::patch('brands/{brand}', [BrandController::class, 'update'])->name('brands.update');
+        Route::post('brands/{brand}/merge', [BrandController::class, 'merge'])->name('brands.merge');
+        Route::delete('brands/{brand}', [BrandController::class, 'destroy'])->name('brands.destroy');
     });
 
     // SEAMAN Phase 3 — reusable size sets (gated like the rest of the

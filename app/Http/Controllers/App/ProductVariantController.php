@@ -377,12 +377,23 @@ class ProductVariantController extends Controller
             'reorder_point' => ['nullable', 'integer', 'min:0'],
             'price' => ['nullable', 'numeric', 'min:0'],
             'cost' => ['nullable', 'numeric', 'min:0'],
+            'brand_id' => ['nullable', 'integer'], // Phase 4 — the helmet case: brand per variant
         ], [
             'barcode.unique' => 'এই বারকোড এই দোকানে আরেকটা ভ্যারিয়েন্টে আগেই ব্যবহার হয়েছে।',
         ]);
 
         if (empty($data['size']) && empty($data['color'])) {
             return back()->withErrors(['size' => 'সাইজ অথবা রং অন্তত একটা দিন।']);
+        }
+
+        // feature-gated + tenant-checked, same rule as the product's own
+        // brand field; absent key leaves the column exactly as it was
+        if (array_key_exists('brand_id', $data)) {
+            if (Tenancy::shop()?->hasFeature('brands')) {
+                $data['brand_id'] = ! empty($data['brand_id']) ? \App\Models\Brand::find($data['brand_id'])?->id : null;
+            } else {
+                unset($data['brand_id']);
+            }
         }
 
         $productVariant->update($data);
@@ -398,9 +409,14 @@ class ProductVariantController extends Controller
         $data = $request->validate([
             'qty' => ['required', 'integer', 'min:1'],
             'cost' => ['nullable', 'numeric', 'min:0'],
+            // Phase 4 — who it came from; tenant-scoped find below, a
+            // foreign id simply becomes "no supplier" (Nil)
+            'supplier_id' => ['nullable', 'integer'],
         ]);
 
-        DB::transaction(function () use ($productVariant, $data) {
+        $supplierId = ! empty($data['supplier_id']) ? \App\Models\Supplier::find($data['supplier_id'])?->id : null;
+
+        DB::transaction(function () use ($productVariant, $data, $supplierId) {
             // null if a concurrent destroy() already soft-deleted this
             // variant while this request was waiting on the row lock — a
             // 422 here, not a fatal error calling a method on null
@@ -409,13 +425,34 @@ class ProductVariantController extends Controller
                 abort(422, 'এই ভ্যারিয়েন্টটি ইতিমধ্যে মুছে ফেলা হয়েছে।');
             }
 
+            /*
+             * Cost on restock, two shops' two truths (Phase 4):
+             * weighted_average_costing blends the new cost into a moving
+             * average — the same formula StockIn::apply has always used
+             * for plain products — so 5 @1600 then 5 @1750 values the
+             * shelf at 1675. Without the feature the new cost OVERWRITES,
+             * exactly as before: Baby Park's stickers encode the cost, so
+             * their variant.cost must stay the whole number printed on
+             * the label, never a blended fraction.
+             */
+            $newCost = $locked->cost;
+            if (isset($data['cost'])) {
+                $oldStock = (float) $locked->stock;
+                $oldCost = (float) ($locked->cost ?? $locked->product->cost ?? 0);
+                $usesAverage = \App\Support\Tenancy::shop()?->hasFeature('weighted_average_costing');
+                $newCost = ($usesAverage && ($oldStock + $data['qty']) > 0 && $oldStock > 0)
+                    ? round((($oldStock * $oldCost) + ($data['qty'] * (float) $data['cost'])) / ($oldStock + $data['qty']), 2)
+                    : $data['cost'];
+            }
+
             $locked->applyStockDelta($data['qty']);
-            $locked->update(['cost' => $data['cost'] ?? $locked->cost]);
+            $locked->update(['cost' => $newCost]);
 
             $product = Product::whereKey($locked->product_id)->lockForUpdate()->first();
             $product?->applyStockDelta($data['qty']);
             if ($product) {
-                \App\Support\IntakeLedger::record($product, $locked, (float) $data['qty'], isset($data['cost']) ? (float) $data['cost'] : null, 'variant_stock_in');
+                // the ledger always records the price actually PAID, never the blended average
+                \App\Support\IntakeLedger::record($product, $locked, (float) $data['qty'], isset($data['cost']) ? (float) $data['cost'] : null, 'variant_stock_in', $supplierId);
             }
 
             Activity::log('product.variant.stockIn', "ভ্যারিয়েন্ট '{$locked->label()}'-এ {$data['qty']} স্টক যোগ করা হয়েছে।", $locked);

@@ -90,6 +90,9 @@ class StoreProductRequest extends FormRequest
             // variant_options feature (see ProductController)
             'option1_label' => ['nullable', 'string', 'max:50'],
             'option2_label' => ['nullable', 'string', 'max:50'],
+            // Phase 4 — tenant-checked in the controller (a foreign id is
+            // simply never found there)
+            'brand_id' => ['nullable', 'integer'],
             'imei' => ['nullable', 'string', 'max:50'],
             'reorder_point' => ['nullable', 'integer', 'min:0'],
         ];
