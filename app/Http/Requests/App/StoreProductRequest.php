@@ -89,6 +89,7 @@ class StoreProductRequest extends FormRequest
             // axes ("Rank"/"Type"); persisted only for shops with the
             // variant_options feature (see ProductController)
             'option1_label' => ['nullable', 'string', 'max:50'],
+            'internal_note' => ['nullable', 'string', 'max:4000'],
             'option2_label' => ['nullable', 'string', 'max:50'],
             // Phase 4 — tenant-checked in the controller (a foreign id is
             // simply never found there)

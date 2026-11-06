@@ -1882,6 +1882,8 @@ export const translations = {
     'brand.subtitle': { bn: 'পণ্যের বা আলাদা ভ্যারিয়েন্টের ব্র্যান্ড — না থাকলে সব জায়গায় Nil দেখাবে', en: 'Per product or per variant — missing shows Nil everywhere' },
     'brand.howTo': { bn: 'ব্র্যান্ড বানান, তারপর পণ্য এডিটে বেছে দিন। এক পণ্যে অনেক ব্র্যান্ড হলে (যেমন হেলমেট) ভ্যারিয়েন্টের পাশের ঘরে আলাদা করে দিন।', en: 'Create brands, then pick one in the product edit. If one product spans brands (helmets), set it per variant instead.' },
 
+    'stock.internalNote': { bn: '📝 যাচাই-নোট (ঠিক করে এই ঘরটা খালি করে সংরক্ষণ দিলে দাগ উঠে যাবে)', en: '📝 Verify note (fix it, empty this box and save to clear the badge)' },
+
     // SEAMAN Phase 5 — corporate parties & dues
     'party.title': { bn: 'কর্পোরেট পার্টি', en: 'Corporate Parties' },
     'party.subtitle': { bn: 'কোম্পানি/ব্যক্তি — বাকিতে কেনা, বিল-ওয়াইজ হিসাব, স্টেটমেন্ট', en: 'Companies/persons buying on credit — bill-wise dues & statements' },

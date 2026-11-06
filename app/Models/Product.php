@@ -20,6 +20,7 @@ class Product extends Model
         'cost', 'price', 'wholesale_price', 'wholesale_moq', 'discount_price', 'stock', 'stock_mode', 'expiry_date', 'batch_no', 'size', 'color', 'imei',
         'option1_label', 'option2_label', // SEAMAN Phase 3 — what this product CALLS its colour/size axes (null = রং/সাইজ, every pre-existing product)
         'reorder_point', 'show_in_catalog', 'search_keywords',
+        'internal_note', // SEAMAN Phase 6 — importer's VERIFY remarks; never shown on any customer-facing copy
     ];
 
     /** 'toggle' mode's stock column doesn't hold a real count — 1 means available, 0 means marked sold out today (see the add_stock_mode_to_products_table migration and TableOrderController). */

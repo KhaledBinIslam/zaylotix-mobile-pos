@@ -221,7 +221,7 @@ const editingHasVariants = computed(() => (editing.value?.variants?.length ?? 0)
 const preExistingUnallocatedStock = computed(() => (!editingHasVariants.value && Number(editing.value?.stock) > 0) ? Number(editing.value.stock) : 0);
 const form = useForm({
     name: '', name_en: '', generic_name: '', company: '', shelf_location: '', requires_prescription: false, emoji: '📦', photo: null, remove_photo: false, category_id: '', new_category_name: '',
-    option1_label: '', option2_label: '', brand_id: '',
+    option1_label: '', option2_label: '', brand_id: '', internal_note: '',
     unit_id: '', new_unit_name: '', barcode: '', cost: '', price: '', wholesale_price: '', wholesale_moq: '', discount_price: '', stock: '',
     reorder_point: '', sold_by_weight: false, weight_unit: 'kg', track_serial: false,
     // restaurant-only (see isRestaurant) — 'tracked' everywhere else,
@@ -320,7 +320,7 @@ function openEdit(p) {
     form.generic_name = p.generic_name; form.company = p.company; form.shelf_location = p.shelf_location; form.requires_prescription = p.requires_prescription;
     form.category_id = p.category_id; form.unit_id = p.unit_id; form.barcode = p.barcode;
     form.option1_label = p.option1_label || ''; form.option2_label = p.option2_label || '';
-    form.brand_id = p.brand_id || '';
+    form.brand_id = p.brand_id || ''; form.internal_note = p.internal_note || '';
     form.cost = p.cost; form.price = p.price; form.wholesale_price = p.wholesale_price; form.wholesale_moq = p.wholesale_moq; form.discount_price = p.discount_price;
     form.price_tiers = (p.price_tiers || []).map(tier => ({ min_qty: tier.min_qty, price: tier.price }));
     // p.stock comes back from the server as a decimal-cast string ("124.000")
@@ -739,6 +739,9 @@ useKeyboardShortcuts({
                 <!-- Phase 4 — "Nil", never blank: the owner's own rule for
                      anything missing. Only with the brands feature. -->
                 <span v-if="brands" style="color:var(--mut)">🏭 {{ p.brand?.name || 'Nil' }} • 🚚 {{ p.supplier?.name || 'Nil' }}</span>
+                <!-- Phase 6 — the importer's VERIFY remarks ride on the
+                     product until the owner fixes and clears them -->
+                <span v-if="p.internal_note" style="color:var(--amber,#b45309);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">📝 {{ p.internal_note.split('\n')[0] }}</span>
                 <!-- a batch can be tracked by batch_no alone with no expiry_date at
                      all (see ProductBatch::receive's own comment) — nearest_batch can
                      legitimately be non-null with a null expiry_date in that case, so
@@ -1176,6 +1179,14 @@ useKeyboardShortcuts({
                         <input v-model="form.option1_label" :placeholder="t('stock.option1Placeholder')">
                         <input v-model="form.option2_label" :placeholder="t('stock.option2Placeholder')">
                     </div>
+                </template>
+
+                <!-- Phase 6 — importer's VERIFY note: fix the product, then
+                     empty this box and save to clear the 📝 badge -->
+                <template v-if="form.internal_note || editing?.internal_note">
+                    <div class="hr"></div>
+                    <div style="font-size:12px;color:var(--dim);margin-bottom:6px">{{ t('stock.internalNote') }}</div>
+                    <textarea v-model="form.internal_note" rows="3" style="width:100%"></textarea>
                 </template>
 
                 <div class="hr"></div>

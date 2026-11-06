@@ -214,6 +214,7 @@ class ProductController extends Controller
                 'option2_label' => $data['option2_label'] ?? null,
             ] : []),
             ...$this->brandField($data),
+            ...(array_key_exists('internal_note', $data) ? ['internal_note' => ($data['internal_note'] ?? null) ?: null] : []),
         ]);
 
         $this->syncPriceTiers($product, $data['price_tiers'] ?? []);
@@ -298,6 +299,7 @@ class ProductController extends Controller
                 'option2_label' => $data['option2_label'] ?? null,
             ] : []),
             ...$this->brandField($data),
+            ...(array_key_exists('internal_note', $data) ? ['internal_note' => ($data['internal_note'] ?? null) ?: null] : []),
         ];
 
         // for a variant product, `stock` is a live-maintained sum of
