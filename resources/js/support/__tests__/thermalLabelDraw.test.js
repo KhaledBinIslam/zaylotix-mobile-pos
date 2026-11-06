@@ -236,3 +236,22 @@ describe('detailedBarcodeDots — the bars scale with the label', () => {
         expect(big.fits).toBe(true);
     });
 });
+
+describe('stock never touches label CONTENT', () => {
+    it('a 0-stock variant prints every line of the detailed sticker', () => {
+        const canvas = recordingCanvas(W, H);
+        drawThermalLabel(canvas, {
+            label: { barcode: 'ZV3571', price: 1890, name: 'Lotus Safety Shoe', brandName: 'Lotus', variantLabel: '42', stock: 0 },
+            settings: { show_shop_name: true, price_mode: 'single', template: 'detailed' },
+            headerText: 'seamanstore.com',
+            barcodeCanvas: { width: 280, height: 64 },
+        });
+        const texts = canvas.calls.filter((c) => c.op === 'fillText').map((c) => c.text);
+
+        expect(texts).toContain('seamanstore.com');
+        expect(texts).toContain('ZV3571');
+        expect(texts).toContain('Lotus Safety Shoe');
+        expect(texts).toContain('Lotus  |  Size: 42');
+        expect(texts).toContain('৳1890');
+    });
+});

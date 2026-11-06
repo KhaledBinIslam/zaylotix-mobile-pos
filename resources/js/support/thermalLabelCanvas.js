@@ -26,7 +26,7 @@
 export const DOTS_PER_CSS_PX = (25.4 * 8) / 96;
 
 /** Build identifier, so a screenshot of the on-screen log proves which bundle a phone is actually running. */
-export const DRAW_BUILD = 'direct-1';
+export const DRAW_BUILD = 'direct-2';
 
 const px = (cssPx) => cssPx * DOTS_PER_CSS_PX;
 

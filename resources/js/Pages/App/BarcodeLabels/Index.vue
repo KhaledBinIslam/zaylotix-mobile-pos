@@ -494,6 +494,10 @@ async function buildSheetDirectly(targetW, targetH, JsBarcode) {
     if (!distinct.length) return null;
 
     say(t('bc.logDirectDrew', { n: distinct.length, build: DRAW_BUILD }));
+    // which template/size THIS device actually rendered with — a
+    // screenshot of this line has settled template-vs-stale-bundle
+    // questions faster than any guess (printer-helper discipline)
+    say(`template: ${settings.value.template === 'detailed' ? 'detailed' : 'classic'} • label ${sizeMm.value.width}x${sizeMm.value.height}mm`);
 
     return stackIntoSheet(distinct, targetW, targetH);
 }
