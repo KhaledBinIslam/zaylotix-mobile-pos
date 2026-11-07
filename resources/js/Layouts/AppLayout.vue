@@ -730,14 +730,14 @@ const mobileNavSlots = computed(() => {
 
                 <div id="view">
                     <button v-if="impersonating" class="expiry-banner urgent" style="width:100%;text-align:left;cursor:pointer" @click="stopImpersonating">
-                        🕵️ {{ t('impersonate.banner', { admin: impersonating.adminName || 'Admin' }) }}
+                        🕵 {{ t('impersonate.banner', { admin: impersonating.adminName || 'Admin' }) }}
                     </button>
                     <div v-if="!offlineSync.isOnline.value" class="expiry-banner urgent">
                         📴 {{ t('offline.banner') }}
                         <span v-if="lastOnlineText">{{ t('offline.lastSyncedAt', { time: lastOnlineText }) }}</span>
                     </div>
                     <div v-if="versionCheck.newVersionAvailable.value && !versionCheck.dismissed.value" class="expiry-banner" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-                        <span>⬆️ {{ t('version.newBuild') }}</span>
+                        <span>⬆ {{ t('version.newBuild') }}</span>
                         <span style="display:flex;gap:6px">
                             <button type="button" class="btn sm" style="width:auto;padding:4px 12px" @click="reloadForNewVersion">{{ t('version.refresh') }}</button>
                             <button type="button" class="btn sm ghost" style="width:auto;padding:4px 10px" @click="versionCheck.dismissed.value = true">✕</button>
@@ -754,7 +754,7 @@ const mobileNavSlots = computed(() => {
                     </div>
                     <button v-if="offlineSync.pendingCount.value || offlineSync.failedCount.value" class="expiry-banner" :class="{ urgent: failedBannerUrgent }" style="width:100%;text-align:left;cursor:pointer" @click="offlineSync.pendingSheetOpen.value = true">
                         <template v-if="offlineSync.failedCount.value">
-                            ⚠️ {{ t('offline.failedCount', { n: offlineSync.failedCount.value }) }}<span v-if="latestFailedReason" style="display:block;font-size:11.5px;font-weight:400;opacity:.85">{{ latestFailedReason }}</span>
+                            ⚠ {{ t('offline.failedCount', { n: offlineSync.failedCount.value }) }}<span v-if="latestFailedReason" style="display:block;font-size:11.5px;font-weight:400;opacity:.85">{{ latestFailedReason }}</span>
                             <span v-if="failedBannerUrgent" style="display:block;font-size:11.5px;font-weight:700">{{ t('offline.stuckLong', { n: oldestFailedDays }) }}</span>
                         </template>
                         <template v-else>🔄 {{ t('offline.pendingCount', { n: offlineSync.pendingCount.value }) }}</template>
@@ -824,14 +824,14 @@ const mobileNavSlots = computed(() => {
     </template>
 
     <Sheet v-model="offlineSync.pendingSheetOpen.value" :title="t('offline.pendingSalesTitle')">
-        <div v-if="shop?.offline_sync_mode === 'review'" style="font-size:12.5px;color:var(--mut);margin-bottom:10px">ℹ️ {{ t('offline.reviewModeHint') }}</div>
+        <div v-if="shop?.offline_sync_mode === 'review'" style="font-size:12.5px;color:var(--mut);margin-bottom:10px">ℹ {{ t('offline.reviewModeHint') }}</div>
         <div v-if="!offlineSync.queue.value.length" class="empty"><div class="big">✅</div>{{ t('offline.nothingPending') }}</div>
         <button v-if="offlineSync.queue.value.length" class="btn sm" style="width:100%;margin-bottom:10px" :disabled="offlineSync.syncing.value" @click="offlineSync.syncAll()">
             {{ offlineSync.syncing.value ? '...' : t('offline.syncAll') }}
         </button>
         <div v-for="entry in offlineSync.queue.value" :key="entry.id" class="card" style="margin-bottom:10px">
             <div class="row" style="cursor:default;padding:0 0 8px">
-                <div class="ava pill" :class="entry.status === 'pending' ? 'sky' : 'rose'" style="border-radius:12px;padding:0;width:42px;height:42px;font-size:18px">{{ entry.status === 'pending' ? '🔄' : '⚠️' }}</div>
+                <div class="ava pill" :class="entry.status === 'pending' ? 'sky' : 'rose'" style="border-radius:12px;padding:0;width:42px;height:42px;font-size:18px">{{ entry.status === 'pending' ? '🔄' : '⚠' }}</div>
                 <div class="mid">
                     <b>{{ t('offline.saleQueuedAt', { time: new Date(entry.queuedAt).toLocaleString() }) }}{{ entry.queuedByUserName ? t('offline.queuedBy', { name: entry.queuedByUserName }) : '' }}</b>
                     <span v-if="entry.error">{{ entry.error }}</span>

@@ -35,7 +35,7 @@ function setTab(type) {
         <!-- damage: one row per write-off -->
         <template v-if="type === 'damage'">
             <div v-for="r in records.data" :key="r.id" class="row" style="cursor:default">
-                <div class="ava">{{ r.product?.emoji || '🗑️' }}</div>
+                <div class="ava">{{ r.product?.emoji || '🗑' }}</div>
                 <div class="mid">
                     <b>{{ r.product?.name || '—' }}{{ variantSuffix(r) }} × {{ r.qty }}</b>
                     <span>{{ r.reason || '—' }} • {{ fmt(r.created_at) }}</span>
@@ -61,7 +61,7 @@ function setTab(type) {
         <!-- sales return: one row per return -->
         <template v-else>
             <div v-for="r in records.data" :key="r.id" class="row" style="cursor:default">
-                <div class="ava">{{ r.product?.emoji || '↩️' }}</div>
+                <div class="ava">{{ r.product?.emoji || '↩' }}</div>
                 <div class="mid">
                     <b>{{ r.product?.name || '—' }}{{ variantSuffix(r) }} × {{ r.qty }}</b>
                     <span>{{ r.user?.name || '—' }} • {{ fmt(r.created_at) }}{{ r.phone ? ' • ' + r.phone : '' }}</span>

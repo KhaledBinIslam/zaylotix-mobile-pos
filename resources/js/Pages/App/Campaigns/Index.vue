@@ -149,7 +149,7 @@ function sendCampaign(c) {
                     </div>
                 </div>
                 <div class="btnrow" style="margin-top:10px">
-                    <button class="btn sm" style="flex:1" @click="launch(c)">▶️ {{ t('campaign.launch') }}</button>
+                    <button class="btn sm" style="flex:1" @click="launch(c)">▶ {{ t('campaign.launch') }}</button>
                     <button class="btn wa sm" style="flex:1" @click="sendCampaign(c)">💬 {{ t('campaign.sendWhatsapp') }}</button>
                 </div>
             </div>
@@ -170,7 +170,7 @@ function sendCampaign(c) {
                     </div>
                 </div>
                 <div class="btnrow" style="margin-top:10px">
-                    <button class="btn sm" style="flex:1" @click="launch(c)">▶️ {{ t('campaign.launch') }}</button>
+                    <button class="btn sm" style="flex:1" @click="launch(c)">▶ {{ t('campaign.launch') }}</button>
                     <button class="btn wa sm" style="flex:1" @click="sendCampaign(c)">💬 {{ t('campaign.sendWhatsapp') }}</button>
                 </div>
             </div>
@@ -241,7 +241,7 @@ function sendCampaign(c) {
                 {{ t('customerList.queueSkippedInvalid', { n: wa.skippedInvalid.value.length }) }}
             </div>
             <div class="card" style="margin-bottom:12px;font-size:12.5px;color:var(--mut)">{{ t('customerList.queueSpamWarning') }}</div>
-            <div v-if="wa.showPauseReminder.value" class="card" style="margin-bottom:12px;background:var(--goldSoft);font-size:12.5px">⏸️ {{ t('customerList.queuePauseReminder') }}</div>
+            <div v-if="wa.showPauseReminder.value" class="card" style="margin-bottom:12px;background:var(--goldSoft);font-size:12.5px">⏸ {{ t('customerList.queuePauseReminder') }}</div>
             <div style="font-size:13px;color:var(--mut);margin-bottom:10px">{{ t('customerList.queueProgress', { sent: wa.sent.value, total: wa.total.value }) }}</div>
             <template v-if="!wa.done.value">
                 <div class="card" style="margin-bottom:14px">
@@ -260,7 +260,7 @@ function sendCampaign(c) {
             <div v-else class="card" style="margin-bottom:14px;background:var(--goldSoft)">
                 ✅ {{ t('customerList.queueDoneSummary', { sent: wa.sent.value, skipped: wa.skipped.value }) }}
             </div>
-            <button v-if="wa.lastConfirmedId.value" class="btn ghost sm" style="margin-bottom:8px" @click="wa.undoLastConfirm()">↩️ {{ t('customerList.queueUndoLastSent') }}</button>
+            <button v-if="wa.lastConfirmedId.value" class="btn ghost sm" style="margin-bottom:8px" @click="wa.undoLastConfirm()">↩ {{ t('customerList.queueUndoLastSent') }}</button>
             <button class="btn ghost" @click="wa.close()">{{ wa.done.value ? t('common.close') : t('customerList.queueStop') }}</button>
         </Sheet>
     </AppLayout>

@@ -50,7 +50,7 @@ const settingsSheet = ref(false);
 // screen (see TableOrderController::assignTable). This nudge is here so a
 // tap on a free table doesn't feel like it silently did nothing.
 function freeTableTapped() {
-    toast('🍽️ ' + t('restaurant.useNewOrderHint'));
+    toast('🍽 ' + t('restaurant.useNewOrderHint'));
 }
 function goToOrder(tbl) {
     if (tbl.open_order_id) router.visit(route('app.restaurant.orders.show', tbl.open_order_id));
@@ -96,7 +96,7 @@ onBeforeUnmount(() => clearInterval(pollTimer));
                 <div class="pgttl">{{ t('restaurant.tablesTitle') }}</div>
                 <div class="pgsub">{{ t('restaurant.tablesSubtitle') }}</div>
             </div>
-            <button v-if="isOwner" class="btn ghost sm" style="width:auto;padding:8px 14px;flex:0 0 auto" @click="settingsSheet = true">⚙️ {{ t('common.settings') }}</button>
+            <button v-if="isOwner" class="btn ghost sm" style="width:auto;padding:8px 14px;flex:0 0 auto" @click="settingsSheet = true">⚙ {{ t('common.settings') }}</button>
         </div>
 
         <!-- food-first, per Khaled's explicit request: build the cart first,
@@ -104,7 +104,7 @@ onBeforeUnmount(() => clearInterval(pollTimer));
              screen itself — this is now the primary, most prominent action
              on this page instead of tapping a table being the only way in -->
         <button class="btn" style="margin-bottom:8px;background:var(--gold)" @click="startNewOrder">
-            🍽️ {{ t('restaurant.newOrder') }}
+            🍽 {{ t('restaurant.newOrder') }}
         </button>
         <!-- kept as a one-tap shortcut for a customer who's clearly not
              sitting down at all — skips even the order-type step -->
@@ -115,7 +115,7 @@ onBeforeUnmount(() => clearInterval(pollTimer));
         <div v-if="takeawayOrders.length" style="margin-bottom:14px">
             <div class="sechead"><h2>{{ t('restaurant.activeTakeaway') }}</h2></div>
             <div v-for="o in takeawayOrders" :key="o.id" class="row" @click="router.visit(route('app.restaurant.orders.show', o.id))">
-                <div class="ava">{{ o.order_source === 'delivery' ? '🛵' : o.order_source === 'takeaway' ? '🥡' : '🍽️' }}</div>
+                <div class="ava">{{ o.order_source === 'delivery' ? '🛵' : o.order_source === 'takeaway' ? '🥡' : '🍽' }}</div>
                 <div class="mid">
                     <!-- no order #id shown — an internal row number means nothing to a
                          cashier and is one more thing to misread/mix up; the item count
@@ -127,7 +127,7 @@ onBeforeUnmount(() => clearInterval(pollTimer));
                         <template v-else>{{ t('restaurant.newOrder') }}</template>
                     </b>
                     <span>{{ o.item_count }} {{ t('restaurant.items') }} • {{ o.opened_at }}</span>
-                    <span v-if="o.order_source === 'dine_in'" style="color:var(--gold2)">⚠️ {{ t('restaurant.tableNotAssigned') }}</span>
+                    <span v-if="o.order_source === 'dine_in'" style="color:var(--gold2)">⚠ {{ t('restaurant.tableNotAssigned') }}</span>
                 </div>
                 <div class="end"><b>{{ money(o.total) }}</b></div>
             </div>
@@ -153,7 +153,7 @@ onBeforeUnmount(() => clearInterval(pollTimer));
                 @click="tb.status === 'occupied' ? goToOrder(tb) : freeTableTapped()"
             >
                 <button class="pcard-main" style="cursor:pointer">
-                    <div class="em">{{ tb.status === 'occupied' ? '🍽️' : '🪑' }}</div>
+                    <div class="em">{{ tb.status === 'occupied' ? '🍽' : '🪑' }}</div>
                     <div class="pn">{{ tb.name }}</div>
                     <div v-if="tb.status === 'occupied'" class="pp">{{ money(tb.total) }} <span style="color:var(--dim);font-weight:500">/ {{ tb.item_count }} {{ t('restaurant.items') }}</span></div>
                     <div class="ps">
@@ -170,7 +170,7 @@ onBeforeUnmount(() => clearInterval(pollTimer));
                 <button v-if="tb.status !== 'occupied'" class="btn sm ghost" style="margin-top:6px" @click.stop="removeTable(tb)">{{ t('common.delete') }}</button>
             </div>
         </div>
-        <div v-if="!tables.length" class="empty"><div class="big">🍽️</div>{{ t('restaurant.noTables') }}</div>
+        <div v-if="!tables.length" class="empty"><div class="big">🍽</div>{{ t('restaurant.noTables') }}</div>
 
         <Sheet v-model="addSheet" :title="t('restaurant.addTable')">
             <div class="field">

@@ -9,7 +9,7 @@ const props = defineProps({ channels: Array, couriers: { type: Array, default: (
 const { t } = useI18n();
 
 const PLATFORM_TYPES = ['facebook', 'website', 'daraz', 'whatsapp', 'catalog', 'other'];
-const platformEmoji = { facebook: '📘', website: '🌐', daraz: '🛍️', whatsapp: '💬', catalog: '📒', other: '🏷️' };
+const platformEmoji = { facebook: '📘', website: '🌐', daraz: '🛍', whatsapp: '💬', catalog: '📒', other: '🏷' };
 const platformLabel = (p) => t('channel.platform.' + p);
 
 const sheet = ref(false);
@@ -76,7 +76,7 @@ function destroy(c) {
             <div style="display:flex;align-items:center;gap:10px">
                 <div class="ava" style="font-size:20px">
                     <img v-if="c.logo_url" :src="c.logo_url" style="width:100%;height:100%;object-fit:cover;border-radius:50%">
-                    <template v-else>{{ platformEmoji[c.platform_type] || '🏷️' }}</template>
+                    <template v-else>{{ platformEmoji[c.platform_type] || '🏷' }}</template>
                 </div>
                 <div style="flex:1">
                     <b>{{ c.name }}</b>
@@ -90,7 +90,7 @@ function destroy(c) {
             <div class="btnrow" style="margin-top:10px">
                 <button class="btn sm ghost" style="flex:1" @click="openEdit(c)">{{ t('channel.edit') }}</button>
                 <Link :href="route('app.channels.prices', c.id)" class="btn sm ghost" style="flex:1;text-align:center">{{ t('channel.prices') }}</Link>
-                <button class="btn sm rose" @click="destroy(c)">🗑️</button>
+                <button class="btn sm rose" @click="destroy(c)">🗑</button>
             </div>
         </div>
 

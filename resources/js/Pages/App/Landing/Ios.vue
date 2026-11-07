@@ -20,7 +20,7 @@ import ZaylotixMark from '@/Components/ZaylotixMark.vue';
 // (his feedback: "client jabe, ora porbe, oder jettuk lagbe ettuk").
 const steps = [
     { icon: '🧭', title: 'পেজটি Safari-তে খুলুন', detail: 'Chrome বা অন্য অ্যাপের ভেতরের ব্রাউজারে এই সুবিধা নেই।' },
-    { icon: '⬆️', title: 'Share আইকনে ট্যাপ করুন', detail: 'স্ক্রিনের নিচে, চারকোনা বাক্স থেকে তীর ওঠা আইকন।' },
+    { icon: '⬆', title: 'Share আইকনে ট্যাপ করুন', detail: 'স্ক্রিনের নিচে, চারকোনা বাক্স থেকে তীর ওঠা আইকন।' },
     { icon: '➕', title: '"Add to Home Screen" নির্বাচন করুন', detail: 'তারপর উপরে ডানদিকে "Add" চাপুন।' },
     { icon: '✅', title: 'ইনস্টল সম্পন্ন', detail: 'হোম স্ক্রিনের Zaylotix POS আইকন থেকে অ্যাপটি ব্যবহার করুন।' },
 ];

@@ -45,7 +45,7 @@ function save() {
         <Link :href="route('app.articles.create')" class="btn ghost sm" style="margin-bottom:16px;display:inline-block;text-decoration:none">← নতুন আর্টিকেলে ফিরুন</Link>
 
         <div v-if="colorsNeedingCode.length" class="card" style="border:1px solid var(--gold2);margin-bottom:14px">
-            <b>⚠️ এই রংগুলোর কোড দিতে হবে</b>
+            <b>⚠ এই রংগুলোর কোড দিতে হবে</b>
             <div style="font-size:13px;color:var(--mut);margin-top:6px;line-height:1.6">
                 বারকোড শুধু ইংরেজি অক্ষর আর সংখ্যা বইতে পারে। কোড না দেওয়া পর্যন্ত
                 <b>{{ colorsNeedingCode.join(', ') }}</b> — এই রঙের জুতাগুলোর স্টিকারে কোনো বারকোড বসানো যাচ্ছে না।

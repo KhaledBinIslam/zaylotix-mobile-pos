@@ -53,12 +53,12 @@ function sendNotification() {
                 <h1 class="text-2xl font-bold">{{ shop.name }} <span class="text-sm font-normal text-gray-400">shop audit &amp; support tools</span></h1>
             </div>
             <div class="flex gap-2">
-                <Link :href="route('admin.shops.edit', shop.id)" class="px-4 py-2 rounded-lg border text-sm font-semibold">✏️ Edit</Link>
+                <Link :href="route('admin.shops.edit', shop.id)" class="px-4 py-2 rounded-lg border text-sm font-semibold">✏ Edit</Link>
                 <a :href="route('admin.shops.export', shop.id)" class="px-4 py-2 rounded-lg bg-brand-purple text-white text-sm font-semibold">
                     📤 Export Excel
                 </a>
                 <a :href="route('admin.shops.exportSql', shop.id)" class="px-4 py-2 rounded-lg bg-gray-800 text-white text-sm font-semibold" title="Portable SQL dump — importable into a fresh install for self-hosting or migration">
-                    🗄️ Export SQL
+                    🗄 Export SQL
                 </a>
             </div>
         </div>
@@ -85,7 +85,7 @@ function sendNotification() {
                 </div>
                 <div class="flex items-center gap-3">
                     <div class="font-semibold">{{ money(s.total) }}</div>
-                    <button class="text-rose-600 hover:text-rose-800 text-xs font-semibold" @click="deleteSale(s)">🗑️ Delete</button>
+                    <button class="text-rose-600 hover:text-rose-800 text-xs font-semibold" @click="deleteSale(s)">🗑 Delete</button>
                 </div>
             </div>
             <div v-if="!recentSales.length" class="text-sm text-gray-400">No sales yet.</div>
@@ -97,7 +97,7 @@ function sendNotification() {
                 <div class="max-h-80 overflow-y-auto">
                     <div v-for="p in products" :key="p.id" class="flex justify-between items-center py-1.5 border-b last:border-0 text-sm">
                         <div class="truncate pr-2">{{ p.name }} <span class="text-xs text-gray-400">— stock {{ p.stock }}</span></div>
-                        <button class="text-rose-600 hover:text-rose-800 text-xs font-semibold shrink-0" @click="deleteProduct(p)">🗑️</button>
+                        <button class="text-rose-600 hover:text-rose-800 text-xs font-semibold shrink-0" @click="deleteProduct(p)">🗑</button>
                     </div>
                     <div v-if="!products.length" class="text-sm text-gray-400">No products yet.</div>
                 </div>
@@ -107,7 +107,7 @@ function sendNotification() {
                 <div class="max-h-80 overflow-y-auto">
                     <div v-for="c in customers" :key="c.id" class="flex justify-between items-center py-1.5 border-b last:border-0 text-sm">
                         <div class="truncate pr-2">{{ c.name }} <span class="text-xs text-gray-400">— {{ c.phone || 'no phone' }}</span></div>
-                        <button class="text-rose-600 hover:text-rose-800 text-xs font-semibold shrink-0" @click="deleteCustomer(c)">🗑️</button>
+                        <button class="text-rose-600 hover:text-rose-800 text-xs font-semibold shrink-0" @click="deleteCustomer(c)">🗑</button>
                     </div>
                     <div v-if="!customers.length" class="text-sm text-gray-400">No customers yet.</div>
                 </div>
@@ -129,7 +129,7 @@ function sendNotification() {
         </div>
 
         <div class="bg-rose-50 border border-rose-200 rounded-xl p-5">
-            <div class="font-bold text-rose-700 mb-1">⚠️ Danger zone</div>
+            <div class="font-bold text-rose-700 mb-1">⚠ Danger zone</div>
             <p class="text-sm text-rose-700 mb-3">Permanently deletes this shop and every product, sale, customer, and record it has — irreversible. Only use this when a shop is truly being shut down, not for cleaning up a mistake (use the delete buttons above for that).</p>
 
             <button v-if="!dangerOpen" class="px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold" @click="dangerOpen = true">

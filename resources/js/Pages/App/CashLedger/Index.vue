@@ -12,8 +12,8 @@ const { t } = useI18n();
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 
 const TYPE_META = {
-    deposit: { icon: '⬇️', cls: 'mint' },
-    withdraw: { icon: '⬆️', cls: 'rose' },
+    deposit: { icon: '⬇', cls: 'mint' },
+    withdraw: { icon: '⬆', cls: 'rose' },
     cash_to_bank: { icon: '🏦', cls: 'sky' },
     bank_to_cash: { icon: '💵', cls: 'sky' },
     bank_to_bank: { icon: '🔁', cls: 'mut' },

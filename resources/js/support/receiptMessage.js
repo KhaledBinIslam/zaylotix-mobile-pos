@@ -10,7 +10,7 @@ export function buildReceiptWhatsAppText(shop, sale, t) {
 
     const headerLines = [`*${shop?.name || 'Zaylotix POS'}*`];
     if (shop?.phone) headerLines.push(`📞 ${shop.phone}${shop?.area ? ' • ' + shop.area : ''}`);
-    if (settings.show_email && shop?.email) headerLines.push(`✉️ ${shop.email}`);
+    if (settings.show_email && shop?.email) headerLines.push(`✉ ${shop.email}`);
     if (settings.show_website && shop?.website) headerLines.push(`🌐 ${shop.website}`);
     if (settings.show_bin && shop?.bin_no && sale.vat > 0) headerLines.push(`BIN: ${shop.bin_no}`);
     if (settings.show_trade_license && shop?.trade_license_no) headerLines.push(`Trade License: ${shop.trade_license_no}`);

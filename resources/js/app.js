@@ -85,7 +85,7 @@ router.on('exception', (event) => {
 window.addEventListener('unhandledrejection', (event) => {
     reportClientError(event.reason, 'unhandledrejection');
     const { toast } = useToast();
-    toast('⚠️ কিছু একটা ভুল হয়েছে — আবার চেষ্টা করুন। সমস্যা থাকলে পেজ রিলোড করুন।');
+    toast('⚠ কিছু একটা ভুল হয়েছে — আবার চেষ্টা করুন। সমস্যা থাকলে পেজ রিলোড করুন।');
 });
 
 // Real gap, reported live with a screenshot (docs/FIX_PLAN.md Phase 12):

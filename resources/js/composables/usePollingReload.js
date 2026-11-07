@@ -51,7 +51,7 @@ export function usePollingReload() {
             onError: (...args) => {
                 consecutiveFailures++;
                 if (consecutiveFailures === FAILURES_BEFORE_WARNING) {
-                    toast('⚠️ ' + t('common.connectionUnstable'));
+                    toast('⚠ ' + t('common.connectionUnstable'));
                 }
                 onError?.(...args);
             },

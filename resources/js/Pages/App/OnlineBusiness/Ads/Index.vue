@@ -199,7 +199,7 @@ const totalRevenue = computed(() => props.channelEconomics?.total_revenue ?? 0);
                 <div style="display:flex;gap:6px">
                     <input v-if="splitMode === 'percent'" v-model.number="s.percent" type="number" min="0" max="100" step="0.01" style="flex:1">
                     <input v-else v-model.number="s.amount" type="number" min="0" step="0.01" style="flex:1">
-                    <button v-if="form.splits.length > 1" type="button" class="btn sm rose" @click="removeSplitRow(i)">🗑️</button>
+                    <button v-if="form.splits.length > 1" type="button" class="btn sm rose" @click="removeSplitRow(i)">🗑</button>
                 </div>
             </div>
             <div v-if="form.errors.splits" style="color:var(--rose);font-size:12px;margin-bottom:8px">{{ form.errors.splits }}</div>

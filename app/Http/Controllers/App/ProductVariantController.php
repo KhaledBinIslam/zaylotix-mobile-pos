@@ -653,4 +653,150 @@ class ProductVariantController extends Controller
 
         return back()->with('success', 'ভ্যারিয়েন্ট মুছে ফেলা হয়েছে।');
     }
+
+    /**
+     * Baby Park live: "If someone typed 1 extra piece by mistake, they
+     * cannot remove just that 1" — the only existing way to take stock
+     * OFF a variant was the ✕ button, which removes the whole row. This
+     * corrects a quantity in place instead: never below zero, always a
+     * reason, and a 'damaged'/'lost' reason writes the SAME Damage record
+     * every other write-off path in this app already writes (so reports
+     * that read Damage stay complete). A line-tracked shop's own lots are
+     * decremented oldest-first — a correction doesn't know WHICH lot was
+     * over-counted, so the oldest is the same honest guess
+     * ProductSource::applyFifoDelta()'s own docblock already uses for a
+     * stock-count adjustment.
+     *
+     * Permission: an owner always may; a cashier needs the separate
+     * `stock_decrease` grant — taking stock OFF is a different risk than
+     * adding it, so it isn't folded into the plain `stock` permission
+     * every cashier here already has (same owner-overrides-everything,
+     * else-check-one-more-key shape as ReturnController's return-window
+     * override).
+     */
+    public function decreaseStock(Request $request, ProductVariant $productVariant)
+    {
+        $this->authorize('update', $productVariant->product);
+        $user = $request->user();
+        abort_unless($user?->isOwner() || $user?->hasPermission('stock_decrease'), 403, 'শুধু মালিক অথবা অনুমতিপ্রাপ্ত স্টাফ স্টক কমাতে পারবেন।');
+
+        $data = $request->validate([
+            'qty' => ['required', 'integer', 'min:1'],
+            'reason' => ['required', Rule::in(['wrong_entry', 'damaged', 'lost', 'other'])],
+            'note' => ['nullable', 'string', 'max:255', 'required_if:reason,other'],
+        ]);
+
+        DB::transaction(function () use ($productVariant, $data) {
+            $locked = ProductVariant::whereKey($productVariant->id)->lockForUpdate()->first();
+            abort_unless($locked, 422, 'এই ভ্যারিয়েন্টটি ইতিমধ্যে মুছে ফেলা হয়েছে।');
+
+            $qty = (int) $data['qty'];
+            $before = (float) $locked->stock;
+            if ($qty > $before) {
+                throw ValidationException::withMessages([
+                    'qty' => "এই ভ্যারিয়েন্টে আছে {$before} পিস — তার বেশি কমানো যাবে না।",
+                ]);
+            }
+
+            $product = Product::whereKey($locked->product_id)->lockForUpdate()->first();
+            $this->applyVerifiedDecrease($locked, $product, $qty, $data['reason'], $data['note'] ?? null);
+        });
+
+        return back()->with('success', 'স্টক কমানো হয়েছে।');
+    }
+
+    /** @param ProductVariant $variant already locked. @param Product $product already locked. */
+    private function applyVerifiedDecrease(ProductVariant $variant, Product $product, int $qty, string $reason, ?string $note): void
+    {
+        $before = (float) $variant->stock;
+        $variant->applyStockDelta(-$qty);
+        $product->applyStockDelta(-$qty);
+
+        if (Tenancy::shop()?->hasFeature('source_lines')) {
+            $lines = ProductSource::where('product_variant_id', $variant->id)->orderBy('id')->lockForUpdate()->get();
+            ProductSource::applyFifoDelta($lines, -$qty);
+        }
+
+        if (in_array($reason, ['damaged', 'lost'], true)) {
+            Damage::create([
+                'product_id' => $product->id,
+                'product_variant_id' => $variant->id,
+                'qty' => $qty,
+                'reason' => ($reason === 'damaged' ? 'স্টক সংশোধন — নষ্ট' : 'স্টক সংশোধন — হারিয়ে গেছে').($note ? " ({$note})" : ''),
+                'loss' => $qty * (float) ($variant->cost ?? $product->cost ?? 0),
+                'date' => now()->toDateString(),
+            ]);
+        }
+
+        $reasonLabel = ['wrong_entry' => 'ভুল এন্ট্রি', 'damaged' => 'নষ্ট', 'lost' => 'হারিয়ে গেছে', 'other' => 'অন্যান্য', 'correction' => 'রিকাউন্ট/সংশোধন'][$reason] ?? $reason;
+        Activity::log(
+            'product.variant.stockDecrease',
+            "'{$product->name}' ({$variant->label()}) থেকে {$qty} স্টক কমানো হয়েছে — {$reasonLabel}".($note ? " ({$note})" : '')." (আগে {$before}, এখন ".($before - $qty).')।',
+            $variant,
+            ['qty' => -$qty, 'reason' => $reason, 'note' => $note, 'before' => $before, 'after' => $before - $qty]
+        );
+    }
+
+    /**
+     * "Set exact stock" — a recount, not a stock-in or a damage event: the
+     * owner typed the number the shelf actually shows. A negative delta
+     * reuses the exact same decrease machinery (lots, Activity log) so
+     * the two tools can never disagree about what a correction means; a
+     * positive delta is a plain top-up with no supplier implied (same
+     * reasoning as this app's "untracked stock" design elsewhere — it can
+     * be filed under a supplier afterwards via the existing claim tool).
+     */
+    public function setExactStock(Request $request, ProductVariant $productVariant)
+    {
+        $this->authorize('update', $productVariant->product);
+        $user = $request->user();
+
+        $data = $request->validate(['stock' => ['required', 'integer', 'min:0']]);
+
+        DB::transaction(function () use ($productVariant, $data, $user) {
+            $locked = ProductVariant::whereKey($productVariant->id)->lockForUpdate()->first();
+            abort_unless($locked, 422, 'এই ভ্যারিয়েন্টটি ইতিমধ্যে মুছে ফেলা হয়েছে।');
+
+            $before = (float) $locked->stock;
+            $delta = (int) $data['stock'] - (int) $before;
+            if ($delta === 0) {
+                return;
+            }
+
+            $product = Product::whereKey($locked->product_id)->lockForUpdate()->first();
+
+            if ($delta < 0) {
+                abort_unless($user?->isOwner() || $user?->hasPermission('stock_decrease'), 403, 'শুধু মালিক অথবা অনুমতিপ্রাপ্ত স্টাফ স্টক কমাতে পারবেন।');
+                $this->applyVerifiedDecrease($locked, $product, abs($delta), 'correction', null);
+
+                return;
+            }
+
+            $locked->applyStockDelta($delta);
+            $product->applyStockDelta($delta);
+            Activity::log(
+                'product.variant.setExactStock',
+                "'{$product->name}' ({$locked->label()}) স্টক সরাসরি {$data['stock']}-এ বসানো হয়েছে (আগে {$before})।",
+                $locked,
+                ['qty' => $delta, 'reason' => 'correction', 'before' => $before, 'after' => (float) $data['stock']]
+            );
+        });
+
+        return back()->with('success', 'স্টক ঠিক করা হয়েছে।');
+    }
+
+    /** Read-only trail for one variant — every Stock +/−/set-exact event, newest first. Same `Activity` log every other mutation in this app already writes to. */
+    public function history(ProductVariant $productVariant)
+    {
+        $this->authorize('view', $productVariant->product);
+
+        $rows = \App\Models\ActivityLog::where('subject_type', ProductVariant::class)
+            ->where('subject_id', $productVariant->id)
+            ->orderByDesc('id')
+            ->limit(100)
+            ->with('user:id,name')
+            ->get(['id', 'action', 'description', 'meta', 'user_id', 'created_at']);
+
+        return response()->json(['rows' => $rows]);
+    }
 }

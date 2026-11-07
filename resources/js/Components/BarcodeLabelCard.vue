@@ -191,8 +191,8 @@ watch(() => [props.shop?.resolved_label_header, props.shop?.name, props.settings
         <!-- Phase 41 — never shrink a too-long barcode silently: say so.
              Screen-only (no-print): the preview is a mandatory tap before
              printing, so the warning is always seen before paper is used. -->
-        <div v-if="thermal && barcodeWarn === 'overflow'" class="label-warn no-print">⚠️ বারকোডটি এই লেবেলের জন্য খুব লম্বা — ছাপা হয়নি</div>
-        <div v-else-if="thermal && barcodeWarn === 'onedot'" class="label-warn no-print">⚠️ লম্বা বারকোড — সরু বারে ছাপা হবে, স্ক্যান টেস্ট করে নিন</div>
+        <div v-if="thermal && barcodeWarn === 'overflow'" class="label-warn no-print">⚠ বারকোডটি এই লেবেলের জন্য খুব লম্বা — ছাপা হয়নি</div>
+        <div v-else-if="thermal && barcodeWarn === 'onedot'" class="label-warn no-print">⚠ লম্বা বারকোড — সরু বারে ছাপা হবে, স্ক্যান টেস্ট করে নিন</div>
         <svg :id="domId"></svg>
         <template v-if="isDetailed">
             <div class="label-name">{{ label.name }}</div>

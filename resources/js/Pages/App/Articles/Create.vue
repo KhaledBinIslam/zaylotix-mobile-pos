@@ -375,10 +375,10 @@ function save() {
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
             <Link :href="route('app.stock')" class="btn ghost sm" style="text-decoration:none">← স্টকে ফিরুন</Link>
             <div style="display:flex;gap:8px">
-                <Link :href="route('app.articles.colorCodeSettings.edit')" class="btn ghost sm" style="text-decoration:none">⚙️ রং-কোড সেটিংস</Link>
-                <Link :href="route('app.articles.sizeGroupSettings.edit')" class="btn ghost sm" style="text-decoration:none">⚙️ সাইজ-গ্রুপ সেটিংস</Link>
-                <Link :href="route('app.articles.costCodeSettings.edit')" class="btn ghost sm" style="text-decoration:none">⚙️ কস্ট-কোড সেটিংস</Link>
-                <Link :href="route('app.articles.serialSettings.edit')" class="btn ghost sm" style="text-decoration:none">⚙️ সিরিয়াল রেঞ্জ</Link>
+                <Link :href="route('app.articles.colorCodeSettings.edit')" class="btn ghost sm" style="text-decoration:none">⚙ রং-কোড সেটিংস</Link>
+                <Link :href="route('app.articles.sizeGroupSettings.edit')" class="btn ghost sm" style="text-decoration:none">⚙ সাইজ-গ্রুপ সেটিংস</Link>
+                <Link :href="route('app.articles.costCodeSettings.edit')" class="btn ghost sm" style="text-decoration:none">⚙ কস্ট-কোড সেটিংস</Link>
+                <Link :href="route('app.articles.serialSettings.edit')" class="btn ghost sm" style="text-decoration:none">⚙ সিরিয়াল রেঞ্জ</Link>
             </div>
         </div>
 
@@ -583,7 +583,7 @@ function save() {
         </div>
 
         <div v-if="saveStalled" class="card" style="border:1px solid var(--rose);margin-bottom:12px;color:var(--rose)">
-            <b>⚠️ {{ saveStalled }}</b>
+            <b>⚠ {{ saveStalled }}</b>
         </div>
 
         <div v-if="errorList.length" ref="errorBox" class="card" style="border:1px solid var(--rose);margin-bottom:12px">

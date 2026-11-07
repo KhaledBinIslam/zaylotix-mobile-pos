@@ -86,7 +86,7 @@ function impersonate(shop) {
                             </span>
                         </td>
                         <td class="px-4 py-3 text-right space-x-2 whitespace-nowrap">
-                            <button class="inline-block text-xs font-semibold px-2.5 py-1 rounded-md bg-brand-purple-50 text-brand-purple-700" title="Log in as this shop's owner for support" @click="impersonate(s)">🕵️ View as</button>
+                            <button class="inline-block text-xs font-semibold px-2.5 py-1 rounded-md bg-brand-purple-50 text-brand-purple-700" title="Log in as this shop's owner for support" @click="impersonate(s)">🕵 View as</button>
                             <Link :href="route('admin.shops.show', s.id)" class="inline-block text-xs font-semibold px-2.5 py-1 rounded-md bg-sky-50 text-sky-700" title="Export data (Excel/SQL) or delete records">📊 Data</Link>
                             <Link :href="route('admin.shops.edit', s.id)" class="text-xs font-semibold text-gray-600">Edit</Link>
                             <button class="text-xs font-semibold" :class="s.status === 'active' ? 'text-rose-600' : 'text-emerald-600'" @click="toggle(s)">

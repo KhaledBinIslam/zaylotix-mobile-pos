@@ -10,7 +10,9 @@ import { usePermissions } from '@/composables/usePermissions';
 import { buildVoidPreview } from '@/support/saleVoidPreview';
 import { canBluetoothPrintMemo, printMemoViaBluetooth } from '@/support/bluetoothMemoPrint';
 
-const props = defineProps({ sale: Object, collectedTotal: Number, hasReturn: Boolean, returned: Object });
+const props = defineProps({ sale: Object, collectedTotal: Number, hasReturn: Boolean, returned: Object, returns: { type: Array, default: () => [] } });
+
+const conditionLabel = (c) => ({ resalable: t('returns.conditionGood'), damaged: t('returns.conditionDamaged'), lost: t('returns.conditionLost') }[c] || c);
 const { toast } = useToast();
 const { hasPerm } = usePermissions();
 
@@ -108,7 +110,7 @@ function sendMemoWA() {
 
     const headerLines = [`*${shop.value?.name || 'Zaylotix POS'}*`];
     if (shop.value?.phone) headerLines.push(`📞 ${shop.value.phone}${shop.value?.area ? ' • ' + shop.value.area : ''}`);
-    if (settings.show_email && shop.value?.email) headerLines.push(`✉️ ${shop.value.email}`);
+    if (settings.show_email && shop.value?.email) headerLines.push(`✉ ${shop.value.email}`);
     if (settings.show_website && shop.value?.website) headerLines.push(`🌐 ${shop.value.website}`);
     if (settings.show_bin && shop.value?.bin_no && s.vat > 0) headerLines.push(`BIN: ${shop.value.bin_no}`);
     if (settings.show_trade_license && shop.value?.trade_license_no) headerLines.push(`Trade License: ${shop.value.trade_license_no}`);
@@ -259,7 +261,7 @@ const justBilled = ref(false);
         </div>
         <div class="no-print btnrow" style="margin-top:16px">
             <button v-if="features.includes('memo_whatsapp')" class="btn wa" style="flex:1" @click="sendMemoWA">📤 WhatsApp</button>
-            <button v-if="features.includes('memo_print')" :class="justBilled ? 'btn' : 'btn ghost'" style="flex:1" @click="printMemo">🖨️ {{ t('pos.print') }}{{ tableOrder ? ' (' + t('restaurant.kotTitle') + ' + ' + t('sales.memoLabel') + ')' : '' }}</button>
+            <button v-if="features.includes('memo_print')" :class="justBilled ? 'btn' : 'btn ghost'" style="flex:1" @click="printMemo">🖨 {{ t('pos.print') }}{{ tableOrder ? ' (' + t('restaurant.kotTitle') + ' + ' + t('sales.memoLabel') + ')' : '' }}</button>
             <button v-if="features.includes('memo_print') && showBluetoothMemo" class="btn ghost" style="flex:1" :disabled="btMemoPrinting" @click="printMemoBluetooth">📱 {{ btMemoPrinting ? t('bc.bluetoothPreparing') : t('bc.bluetoothPrint') }}</button>
         </div>
         <button v-if="tableOrder && kitchenWaNumber" class="no-print btn wa" style="margin-top:10px" @click="sendKotWA">📤 {{ t('restaurant.kotWa') }}</button>
@@ -284,8 +286,20 @@ const justBilled = ref(false);
             <div style="font-size:13px;white-space:pre-wrap">{{ sale.prescription_note }}</div>
         </div>
 
+        <!-- Baby Park live: the invoice view never showed a return/exchange
+             already made against it — only a button to start a new one.
+             The data already existed (ReturnController::process()); this
+             just reads it. -->
+        <div v-if="returns.length" class="no-print card" style="margin-top:16px">
+            <b style="font-size:13px">{{ t('sales.priorReturnsTitle') }}</b>
+            <div v-for="r in returns" :key="r.id" style="padding:6px 0;border-top:1px dashed var(--line);font-size:12.5px">
+                <div>{{ r.sale_item?.product_name }}<span v-if="r.sale_item?.variant_label"> ({{ r.sale_item.variant_label }})</span> — {{ r.qty }} {{ t('stock.pieces') }} • {{ conditionLabel(r.condition) }}</div>
+                <div style="color:var(--mut)">{{ r.date }} • {{ money(r.refund) }}<template v-if="r.exchange_sale"> • {{ t('sales.exchangedFor') }} {{ r.exchange_sale.invoice_no }} ({{ money(r.exchange_sale.total) }})</template></div>
+            </div>
+        </div>
+
         <Link v-if="hasPerm('returns') && features.includes('returns') && !sale.voided_at" :href="route('app.returns.index', { sale_id: sale.id })" class="no-print btn ghost" style="margin-top:16px;display:block;text-align:center">
-            ↩️ {{ t('sales.returnExchangeButton') }}
+            ↩ {{ t('sales.returnExchangeButton') }}
         </Link>
 
         <Link v-if="sale.installment_plan" :href="route('app.installments.show', sale.installment_plan.id)" class="no-print btn ghost" style="margin-top:16px;display:block;text-align:center">
@@ -329,10 +343,10 @@ const justBilled = ref(false);
             </div>
 
             <div v-if="hasReturn" style="font-size:12.5px;color:var(--rose);font-weight:600;margin-bottom:10px">
-                ⚠️ {{ t('sales.voidBlockedReturn') }}
+                ⚠ {{ t('sales.voidBlockedReturn') }}
             </div>
             <div v-else-if="voidPreview.returnedRefund > 0" style="font-size:12.5px;color:var(--mut);font-weight:600;margin-bottom:10px">
-                ℹ️ {{ t('sales.voidPartialReturnNote').replace('{amount}', money(voidPreview.returnedRefund)) }}
+                ℹ {{ t('sales.voidPartialReturnNote').replace('{amount}', money(voidPreview.returnedRefund)) }}
             </div>
             <button class="btn" style="background:var(--rose)" :disabled="hasReturn || !voidReasonValid || voidSubmitting" @click="submitVoid">
                 {{ voidSubmitting ? '...' : t('sales.voidConfirmButton') }}

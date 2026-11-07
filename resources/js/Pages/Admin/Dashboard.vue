@@ -42,7 +42,7 @@ function sendBroadcast() {
 
         <div class="grid md:grid-cols-2 gap-6 mb-6">
             <div class="bg-white border rounded-xl p-5">
-                <div class="font-bold mb-3">⚠️ Not paid this month</div>
+                <div class="font-bold mb-3">⚠ Not paid this month</div>
                 <div v-if="!unpaidShops.length" class="text-sm text-gray-400">Everyone active has paid.</div>
                 <div v-for="s in unpaidShops" :key="s.id" class="flex justify-between items-center py-2 border-b last:border-0">
                     <div>

@@ -113,7 +113,7 @@ function confirmMerge() {
 
         <!-- why a delete was refused — stays visible, never a fading toast -->
         <div v-if="page.props.errors?.supplier" class="card" style="margin-bottom:12px;background:var(--roseSoft);color:var(--rose);font-size:13px">
-            ⚠️ {{ page.props.errors.supplier }}
+            ⚠ {{ page.props.errors.supplier }}
         </div>
 
         <input v-model="q" :placeholder="t('supplier.searchPlaceholder')" style="margin-bottom:10px">
@@ -153,7 +153,7 @@ function confirmMerge() {
                     <button v-if="suppliers.length > 1" class="btn sm ghost" style="width:auto;padding:6px 10px" @click.prevent.stop="openMerge(s)">{{ t('supplier.merge') }}</button>
                     <!-- duplicate/typo rows only — the server refuses any
                          supplier with real history, so this stays safe -->
-                    <button class="btn sm ghost rose" style="width:auto;padding:6px 10px" :disabled="deleting" @click.prevent.stop="destroySupplier(s)">🗑️</button>
+                    <button class="btn sm ghost rose" style="width:auto;padding:6px 10px" :disabled="deleting" @click.prevent.stop="destroySupplier(s)">🗑</button>
                 </div>
             </Link>
         </template>

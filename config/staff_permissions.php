@@ -20,6 +20,10 @@ return [
     'online_business' => ['label_bn' => 'অনলাইন বিজনেস (চ্যানেল/অর্ডার)', 'label_en' => 'Online business (channels/orders)', 'category' => 'বিক্রি'],
 
     'stock' => ['label_bn' => 'স্টক দেখা ও পণ্য যোগ', 'label_en' => 'View stock & add products', 'category' => 'স্টক'],
+    // Baby Park live — taking stock OFF (correction/damage/lost) is a
+    // different risk than adding it, so it's its own grant, defaulting
+    // closed for every existing cashier exactly like sales_void above.
+    'stock_decrease' => ['label_bn' => 'স্টক কমানো/সংশোধন', 'label_en' => 'Decrease/correct stock', 'category' => 'স্টক'],
     'purchases' => ['label_bn' => 'ক্রয়/স্টক কেনা', 'label_en' => 'Purchases', 'category' => 'স্টক'],
     'damages' => ['label_bn' => 'ক্ষতি/নষ্ট পণ্য', 'label_en' => 'Damage/wastage', 'category' => 'স্টক'],
     'returns' => ['label_bn' => 'বিক্রয় ফেরত', 'label_en' => 'Sales returns', 'category' => 'স্টক'],

@@ -14,7 +14,7 @@ const { t } = useI18n();
 const STYLES = {
     'sale.void': { icon: '❌', cls: 'rose' },
     'restaurant.cancel': { icon: '❌', cls: 'rose' },
-    'restaurant.bill': { icon: '🍽️', cls: 'mint' },
+    'restaurant.bill': { icon: '🍽', cls: 'mint' },
     'purchase.record': { icon: '🛒', cls: 'gold' },
     'supplier.payment': { icon: '🚚', cls: 'gold' },
 };

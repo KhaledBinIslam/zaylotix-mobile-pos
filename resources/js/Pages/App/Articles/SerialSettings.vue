@@ -66,7 +66,7 @@ function save() {
         </div>
 
         <div v-if="clashes.length" class="card" style="margin-bottom:14px;border-left:3px solid var(--gold2);background:var(--goldSoft);font-size:13px;line-height:1.6">
-            ⚠️ একই কোডের দুটো রেঞ্জ খুব কাছাকাছি — কিছুদিন পর নম্বর একটার সাথে আরেকটা লেগে যেতে পারে:
+            ⚠ একই কোডের দুটো রেঞ্জ খুব কাছাকাছি — কিছুদিন পর নম্বর একটার সাথে আরেকটা লেগে যেতে পারে:
             <div v-for="c in clashes" :key="c" style="margin-top:6px"><b>{{ c }}</b></div>
             <div style="margin-top:8px;color:var(--mut)">সমস্যা হবে না যদি দুটোর মাঝে অন্তত ১০০০ ফাঁক রাখেন। চাইলে এভাবেই রাখতে পারেন — সেভ আটকাবে না।</div>
         </div>

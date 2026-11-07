@@ -94,8 +94,8 @@ function saveVariantDefaults() {
         <div class="row"><div class="ava">📊</div><div class="mid"><b>{{ t('acc.retainedProfit') }}</b></div><div class="end"><b>{{ money(retained) }}</b></div></div>
 
         <div class="sechead"><h2>{{ t('acc.damageReturn') }}</h2></div>
-        <div class="row"><div class="ava">🗑️</div><div class="mid"><b>{{ t('acc.damage') }}</b></div><div class="end"><b style="color:var(--rose)">{{ money(totalDamage) }}</b></div></div>
-        <div class="row"><div class="ava">↩️</div><div class="mid"><b>{{ t('acc.returns') }}</b></div><div class="end"><b style="color:var(--rose)">{{ money(totalReturns) }}</b></div></div>
+        <div class="row"><div class="ava">🗑</div><div class="mid"><b>{{ t('acc.damage') }}</b></div><div class="end"><b style="color:var(--rose)">{{ money(totalDamage) }}</b></div></div>
+        <div class="row"><div class="ava">↩</div><div class="mid"><b>{{ t('acc.returns') }}</b></div><div class="end"><b style="color:var(--rose)">{{ money(totalReturns) }}</b></div></div>
 
         <template v-if="features.includes('vat')">
             <div class="sechead"><h2>{{ t('acc.vatSection') }}</h2></div>

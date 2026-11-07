@@ -309,7 +309,7 @@ function printMemo() {
     window.print();
 }
 
-const conditionEmoji = (condition) => ({ resalable: '✅', damaged: '🗑️', lost: '📭' })[condition] || '🗑️';
+const conditionEmoji = (condition) => ({ resalable: '✅', damaged: '🗑', lost: '📭' })[condition] || '🗑';
 
 function sendMemoWA() {
     const r = resultSummary.value;

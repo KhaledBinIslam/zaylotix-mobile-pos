@@ -281,7 +281,7 @@ const bleScan = useBluetoothPrinterScan();
                         <button type="button" class="btn sm ghost" :disabled="bleScan.scanning.value" @click="bleScan.scan">
                             {{ bleScan.scanning.value ? 'খোঁজা হচ্ছে...' : '🔵 Bluetooth প্রিন্টার যাচাই করুন' }}
                         </button>
-                        <div v-if="bleScan.error.value" style="color:var(--rose);font-size:12.5px;margin-top:8px">⚠️ {{ bleScan.error.value }}</div>
+                        <div v-if="bleScan.error.value" style="color:var(--rose);font-size:12.5px;margin-top:8px">⚠ {{ bleScan.error.value }}</div>
                         <div v-if="bleScan.result.value" class="card" style="margin-top:10px;font-size:12.5px">
                             <div style="font-weight:700;margin-bottom:6px">📟 {{ bleScan.result.value.deviceName }}</div>
                             <template v-if="bleScan.result.value.services.length">
@@ -329,7 +329,7 @@ const bleScan = useBluetoothPrinterScan();
             <div v-if="calibrating" id="calib-overlay" style="position:fixed;inset:0;background:#fff;z-index:200;overflow-y:auto">
                 <component :is="'style'" v-html="calibCss"></component>
                 <div class="no-print" style="padding:12px;display:flex;gap:10px;align-items:center;background:var(--panel);border-bottom:1px solid var(--line)">
-                    <button class="btn sm" style="width:auto" @click="printCalibration">🖨️ প্রিন্ট</button>
+                    <button class="btn sm" style="width:auto" @click="printCalibration">🖨 প্রিন্ট</button>
                     <button class="btn sm ghost" style="width:auto" @click="calibrating = false">বন্ধ</button>
                     <span style="font-size:12px;color:var(--mut)">প্রিন্ট ডায়ালগে: Scale 100%, Margins: None, Headers/footers বন্ধ, Paper size {{ calibSize.width }}×{{ calibSize.height }}</span>
                 </div>

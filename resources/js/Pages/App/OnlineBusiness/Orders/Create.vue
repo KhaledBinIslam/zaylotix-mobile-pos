@@ -256,7 +256,7 @@ function save() {
                 <input v-model="form.customer_phone" inputmode="tel" placeholder="01XXXXXXXXX">
                 <div v-if="form.errors.customer_phone" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.customer_phone }}</div>
                 <div v-if="risk?.found && risk.cancelled_or_returned > 0" style="color:var(--rose);font-size:12px;margin-top:6px">
-                    ⚠️ {{ t('onlineOrder.riskWarning', { cancelled: risk.cancelled_or_returned, delivered: risk.delivered }) }}
+                    ⚠ {{ t('onlineOrder.riskWarning', { cancelled: risk.cancelled_or_returned, delivered: risk.delivered }) }}
                 </div>
             </div>
             <div class="field">

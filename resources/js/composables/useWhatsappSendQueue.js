@@ -85,7 +85,7 @@ export function useWhatsappSendQueue(scopeKey) {
         if (saved && sameTargetSet(saved.items, built.targets) && saved.items.some((i) => i.status === 'pending')) {
             state.value = stateFromItems(saved.items);
             if (saved.template) template = saved.template;
-            toast('↩️ ' + t('customerList.resumedQueue'));
+            toast('↩ ' + t('customerList.resumedQueue'));
         } else {
             state.value = initQueueState(built.targets);
         }

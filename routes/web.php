@@ -326,6 +326,12 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
             Route::post('products/{product}/variants/color-photo', [ProductVariantController::class, 'updateColorPhoto'])->name('productVariants.updateColorPhoto');
             Route::put('product-variants/{productVariant}', [ProductVariantController::class, 'update'])->name('productVariants.update');
             Route::post('product-variants/{productVariant}/stock-in', [ProductVariantController::class, 'stockIn'])->name('productVariants.stockIn');
+            // Baby Park live: "can't remove just 1 piece without deleting
+            // the whole variant" — a qty-and-reason correction tool, plus a
+            // recount ("set exact") and its own read-only history trail
+            Route::post('product-variants/{productVariant}/stock-decrease', [ProductVariantController::class, 'decreaseStock'])->name('productVariants.decreaseStock');
+            Route::post('product-variants/{productVariant}/set-exact-stock', [ProductVariantController::class, 'setExactStock'])->name('productVariants.setExactStock');
+            Route::get('product-variants/{productVariant}/history', [ProductVariantController::class, 'history'])->name('productVariants.history');
             Route::delete('product-variants/{productVariant}', [ProductVariantController::class, 'destroy'])->name('productVariants.destroy');
         });
 

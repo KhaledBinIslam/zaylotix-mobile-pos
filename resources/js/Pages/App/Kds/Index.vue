@@ -47,7 +47,7 @@ onBeforeUnmount(() => clearInterval(pollTimer));
         <template v-if="tab === 'open'">
             <div v-for="o in openOrders" :key="o.id" class="card ticket" style="margin-bottom:14px">
                 <div class="ticket-head">
-                    <b>{{ SOURCE_ICON[o.order_source] || '🍽️' }} {{ o.table_name || t('restaurant.takeawayLabel') }}</b>
+                    <b>{{ SOURCE_ICON[o.order_source] || '🍽' }} {{ o.table_name || t('restaurant.takeawayLabel') }}</b>
                     <span class="pill rose">{{ o.opened_at }}</span>
                 </div>
                 <div v-for="it in o.items" :key="it.id" class="ticket-row">
@@ -61,7 +61,7 @@ onBeforeUnmount(() => clearInterval(pollTimer));
 
         <template v-else>
             <div v-for="o in cookedOrders" :key="o.id" class="card ticket done" style="margin-bottom:14px">
-                <div class="ticket-head"><b>{{ SOURCE_ICON[o.order_source] || '🍽️' }} {{ o.table_name || t('restaurant.takeawayLabel') }}</b></div>
+                <div class="ticket-head"><b>{{ SOURCE_ICON[o.order_source] || '🍽' }} {{ o.table_name || t('restaurant.takeawayLabel') }}</b></div>
                 <div v-for="it in o.items" :key="it.id" class="ticket-row" style="font-size:13.5px">
                     <span><b>{{ it.qty }}×</b> {{ it.product_name }}</span>
                     <span class="pill mint">✓ {{ it.cooked_at }}</span>

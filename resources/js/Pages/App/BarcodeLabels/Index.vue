@@ -19,7 +19,7 @@ const props = defineProps({
     // barcode -> { last, copies }: which stickers have already been
     // printed, so a delivery can be finished rather than re-done
     printed: { type: Object, default: () => ({}) },
-    // arriving from Stock's 🏷️ button: open on this article alone,
+    // arriving from Stock's 🏷 button: open on this article alone,
     // already ticked
     openFor: { type: Number, default: null },
     // with openFor: tick only THIS supplier's lot rows (Stock's
@@ -41,7 +41,7 @@ const showBluetoothPrint = computed(() => settings.value.print_mode === 'thermal
 const q = ref(new URLSearchParams(window.location.search).get('q') || '');
 
 /*
- * Opened from Stock's 🏷️ button: show that article alone and tick
+ * Opened from Stock's 🏷 button: show that article alone and tick
  * everything it prints, so the owner lands one press from paper.
  *
  * Deliberately not auto-printing — paper gets used, and the copies are
@@ -415,7 +415,7 @@ async function buildLabelSheet() {
         await expandAll();
         if (!await waitForAllRendered()) {
             // say so rather than printing a half-drawn batch silently
-            toast('⚠️ ' + t('bc.bluetoothSlowRender'));
+            toast('⚠ ' + t('bc.bluetoothSlowRender'));
         }
         await nextTick();
         const { default: html2canvas } = await import('html2canvas');
@@ -918,11 +918,11 @@ const printCss = computed(() => {
 <template>
     <Head :title="t('nav.barcode')" />
     <AppLayout active="more">
-        <div class="pgttl">🏷️ {{ t('nav.barcode') }}</div>
+        <div class="pgttl">🏷 {{ t('nav.barcode') }}</div>
         <div class="pgsub">{{ t('bc.subtitle') }}</div>
 
         <Link :href="route('app.settings.receiptLabel')" class="no-print" style="display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--gold2);margin-bottom:10px">
-            ⚙️ {{ t('bc.labelSettingsLink') }} ({{ sizeMm.width }}×{{ sizeMm.height }}mm, {{ settings.per_row || 2 }}/{{ t('bc.perRow') }})
+            ⚙ {{ t('bc.labelSettingsLink') }} ({{ sizeMm.width }}×{{ sizeMm.height }}mm, {{ settings.per_row || 2 }}/{{ t('bc.perRow') }})
         </Link>
 
         <input v-model="q" :placeholder="t('bc.searchPlaceholder')" style="margin-bottom:8px"
@@ -1024,7 +1024,7 @@ const printCss = computed(() => {
                      feature flag or not — this wrapper is the fix for both. -->
                 <template v-for="v in p.variants" :key="v.id">
                     <div class="row" style="border-top:1px solid var(--line);padding-left:20px" :class="{ incart: isSelected('v:' + v.id) }" :style="isSelected('v:' + v.id) ? 'background:var(--goldSoft)' : ''" @click="toggleVariant(v)">
-                        <div class="ava" style="font-size:16px">🏷️</div>
+                        <div class="ava" style="font-size:16px">🏷</div>
                         <div class="mid">
                             <b>{{ variantLabel(v) }}</b>
                             <span v-if="v.barcode">{{ v.barcode }} • {{ money(v.price ?? p.price) }}</span>
@@ -1067,7 +1067,7 @@ const printCss = computed(() => {
                 </template>
             </template>
         </div>
-        <div v-if="!filtered.length" class="empty"><div class="big">🏷️</div>{{ t('bc.noProducts') }}</div>
+        <div v-if="!filtered.length" class="empty"><div class="big">🏷</div>{{ t('bc.noProducts') }}</div>
 
         <div style="height:78px"></div>
         <div class="posbar">
@@ -1094,7 +1094,7 @@ const printCss = computed(() => {
             <div v-if="printing" id="label-print-overlay">
                 <component :is="'style'" v-html="printCss"></component>
                 <div class="no-print" style="padding:12px;display:flex;gap:10px;flex-wrap:wrap;background:var(--panel);border-bottom:1px solid var(--line)">
-                    <button class="btn sm" @click="doPrint">🖨️ {{ t('bc.print') }}</button>
+                    <button class="btn sm" @click="doPrint">🖨 {{ t('bc.print') }}</button>
                     <!-- Phase 43 (docs/BT_PRINT_PLAN.md বিকল্প ক) — Zaylotix
                          Printer Helper (ছোট আলাদা অ্যাপ) ইনস্টল থাকলে এই
                          বাটনে সরাসরি Bluetooth-এ পাঠানো যাবে, কোনো PC লাগবে না -->
@@ -1106,7 +1106,7 @@ const printCss = computed(() => {
                 <!-- "do not print ৳0" — the labels print "Price: Nil", and
                      this says HOW MANY, before any paper is used -->
                 <div v-if="noPriceCount > 0" class="no-print" style="padding:8px 12px;background:#fff7ed;color:#b45309;font-size:13px;border-bottom:1px solid var(--line)">
-                    ⚠️ {{ t('bc.noPriceWarn', { n: noPriceCount }) }}
+                    ⚠ {{ t('bc.noPriceWarn', { n: noPriceCount }) }}
                 </div>
                 <!--
                     What actually happened, kept ON SCREEN.

@@ -175,7 +175,7 @@ function openHistory(c) {
         .then((data) => { historyPayments.value = data.payments; })
         .catch((e) => {
             reportClientError(e, 'openHistory');
-            toast('⚠️ ' + t('due.historyLoadFailed'));
+            toast('⚠ ' + t('due.historyLoadFailed'));
         })
         .finally(() => (historyLoading.value = false));
 }
@@ -271,7 +271,7 @@ function closeQueue() {
                     <button class="btn sm" style="flex:1" @click="openCollect(c)">{{ t('due.collectMoney') }}</button>
                     <button class="btn wa sm" style="flex:1" @click="remindWA(c)">{{ t('due.waReminder') }}</button>
                     <button v-if="hasCreditLimit" class="btn ghost sm" @click="openCreditLimit(c)">💳</button>
-                    <button v-if="hasWholesalePricing" class="btn ghost sm" @click="toggleWholesale(c)">{{ c.is_wholesale ? '🏷️✅' : '🏷️' }}</button>
+                    <button v-if="hasWholesalePricing" class="btn ghost sm" @click="toggleWholesale(c)">{{ c.is_wholesale ? '🏷✅' : '🏷' }}</button>
                 </div>
             </div>
         </template>
@@ -285,7 +285,7 @@ function closeQueue() {
                     <div class="end"><span class="pill mint">{{ t('due.paid') }}</span></div>
                 </div>
                 <div v-if="!selectMode && hasWholesalePricing" class="btnrow" style="margin:-4px 0 12px 0;padding-left:54px">
-                    <button class="btn ghost sm" @click="toggleWholesale(c)">{{ c.is_wholesale ? '🏷️✅ ' + t('due.isWholesale') : '🏷️ ' + t('due.isWholesale') }}</button>
+                    <button class="btn ghost sm" @click="toggleWholesale(c)">{{ c.is_wholesale ? '🏷✅ ' + t('due.isWholesale') : '🏷 ' + t('due.isWholesale') }}</button>
                 </div>
             </div>
         </template>
@@ -430,7 +430,7 @@ function closeQueue() {
             <div class="card" style="margin-bottom:12px;font-size:12.5px;color:var(--mut)">{{ t('customerList.queueSpamWarning') }}</div>
 
             <div v-if="wa.showPauseReminder.value" class="card" style="margin-bottom:12px;background:var(--goldSoft);font-size:12.5px">
-                ⏸️ {{ t('customerList.queuePauseReminder') }}
+                ⏸ {{ t('customerList.queuePauseReminder') }}
             </div>
 
             <div style="font-size:13px;color:var(--mut);margin-bottom:10px">{{ t('customerList.queueProgress', { sent: wa.sent.value, total: wa.total.value }) }}</div>
@@ -453,7 +453,7 @@ function closeQueue() {
                 ✅ {{ t('customerList.queueDoneSummary', { sent: wa.sent.value, skipped: wa.skipped.value }) }}
             </div>
 
-            <button v-if="wa.lastConfirmedId.value" class="btn ghost sm" style="margin-bottom:8px" @click="wa.undoLastConfirm()">↩️ {{ t('customerList.queueUndoLastSent') }}</button>
+            <button v-if="wa.lastConfirmedId.value" class="btn ghost sm" style="margin-bottom:8px" @click="wa.undoLastConfirm()">↩ {{ t('customerList.queueUndoLastSent') }}</button>
 
             <button class="btn ghost" @click="closeQueue">{{ wa.done.value ? t('common.close') : t('customerList.queueStop') }}</button>
         </Sheet>

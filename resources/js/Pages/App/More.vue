@@ -79,7 +79,7 @@ const activeWorkPeriod = computed(() => page.props.activeWorkPeriod);
 const quickLinks = computed(() => [
     {
         show: hasPerm('barcode_labels') && features.value.includes('barcode_printing'),
-        icon: '🏷️', label: t('nav.barcode'), href: route('app.barcodeLabels.index'),
+        icon: '🏷', label: t('nav.barcode'), href: route('app.barcodeLabels.index'),
     },
     {
         show: hasPerm('stock') && features.value.includes('article_series'),
@@ -129,7 +129,7 @@ function openRenewalSheet() {
         .then((data) => { renewalInfo.value = data; })
         .catch((e) => {
             reportClientError(e, 'openRenewalSheet');
-            toast('⚠️ ' + t('more.renewalLoadFailed'));
+            toast('⚠ ' + t('more.renewalLoadFailed'));
         });
 }
 async function payRenewal(provider) {
@@ -275,7 +275,7 @@ function openGatewaySheet() {
         .then((data) => { gatewayProviders.value = data.providers; gatewayConfigured.value = data.configured; })
         .catch((e) => {
             reportClientError(e, 'openGatewaySheet');
-            toast('⚠️ ' + t('more.gatewayLoadFailed'));
+            toast('⚠ ' + t('more.gatewayLoadFailed'));
         });
 }
 function selectGatewayTab(provider) {
@@ -323,7 +323,7 @@ function openWaSheet() {
         .then((data) => { waConfigured.value = data.configured; })
         .catch((e) => {
             reportClientError(e, 'openWaSheet');
-            toast('⚠️ ' + t('more.whatsappLoadFailed'));
+            toast('⚠ ' + t('more.whatsappLoadFailed'));
         });
 }
 function saveWa() {
@@ -487,7 +487,7 @@ onMounted(() => {
         <template v-if="hasPerm('sales_history') || (hasPerm('barcode_labels') && features.includes('barcode_printing')) || (hasPerm('pos') && isRestaurant) || (hasPerm('promotions') && features.includes('promotions')) || (hasPerm('pos') && features.includes('quotations')) || hasPerm('pos') || isMainShopWithBranches || (isOwner && branches) || (hasPerm('service_billing') && features.includes('service_billing')) || (hasPerm('installments') && features.includes('installment_sales'))">
             <div class="sechead"><h2>{{ t('more.sectionSales') }}</h2></div>
             <Link v-if="hasPerm('pos') && isRestaurant" :href="route('app.restaurant.tables.index')" class="row">
-                <div class="ava">🍽️</div><div class="mid"><b>{{ t('nav.restaurant') }}</b><span>{{ t('restaurant.tablesSubtitle') }}</span></div><div class="end">›</div>
+                <div class="ava">🍽</div><div class="mid"><b>{{ t('nav.restaurant') }}</b><span>{{ t('restaurant.tablesSubtitle') }}</span></div><div class="end">›</div>
             </Link>
             <Link v-if="hasPerm('pos') && isRestaurant" :href="route('app.reservations.index')" class="row">
                 <div class="ava">📅</div><div class="mid"><b>{{ t('nav.reservations') }}</b><span>{{ t('reservation.subtitle') }}</span></div><div class="end">›</div>
@@ -496,7 +496,7 @@ onMounted(() => {
                 <div class="ava">🍳</div><div class="mid"><b>{{ t('nav.kds') }}</b><span>{{ t('kds.subtitle') }}</span></div><div class="end">›</div>
             </Link>
             <Link v-if="hasPerm('pos') && isRestaurant" :href="route('app.cds.index')" class="row">
-                <div class="ava">🖥️</div><div class="mid"><b>{{ t('nav.cds') }}</b><span>{{ t('cds.subtitle') }}</span></div><div class="end">›</div>
+                <div class="ava">🖥</div><div class="mid"><b>{{ t('nav.cds') }}</b><span>{{ t('cds.subtitle') }}</span></div><div class="end">›</div>
             </Link>
             <button v-if="hasPerm('pos') && !activeWorkPeriod" class="row" style="width:100%;text-align:left;border:none;background:none;cursor:pointer" @click="workPeriodSheet = true">
                 <div class="ava">🕒</div><div class="mid"><b>{{ t('workPeriod.startPrompt') }}</b><span>{{ t('workPeriod.startPromptSub') }}</span></div><div class="end">›</div>
@@ -511,7 +511,7 @@ onMounted(() => {
                 <div class="ava">🚚</div><div class="mid"><b>{{ t('more.stockTransfer') }}</b><span>{{ t('more.stockTransferSub') }}</span></div><div class="end">›</div>
             </Link>
             <Link v-if="hasPerm('service_billing') && features.includes('service_billing')" :href="route('app.serviceTickets.index')" class="row">
-                <div class="ava">🛠️</div><div class="mid"><b>{{ t('nav.serviceTickets') }}</b><span>{{ t('more.serviceTicketsSub') }}</span></div><div class="end">›</div>
+                <div class="ava">🛠</div><div class="mid"><b>{{ t('nav.serviceTickets') }}</b><span>{{ t('more.serviceTicketsSub') }}</span></div><div class="end">›</div>
             </Link>
             <Link v-if="hasPerm('installments') && features.includes('installment_sales')" :href="route('app.installments.index')" class="row">
                 <div class="ava">📅</div><div class="mid"><b>{{ t('nav.installments') }}</b><span>{{ t('more.installmentsSub') }}</span></div><div class="end">›</div>
@@ -523,7 +523,7 @@ onMounted(() => {
                 <div class="ava">🧾</div><div class="mid"><b>{{ t('nav.salesHistory') }}</b><span>{{ t('more.salesHistorySub') }}</span></div><div class="end">›</div>
             </Link>
             <Link v-if="hasPerm('barcode_labels') && features.includes('barcode_printing')" :href="route('app.barcodeLabels.index')" class="row">
-                <div class="ava">🏷️</div><div class="mid"><b>{{ t('nav.barcode') }}</b><span>{{ t('more.barcodeSub') }}</span></div><div class="end">›</div>
+                <div class="ava">🏷</div><div class="mid"><b>{{ t('nav.barcode') }}</b><span>{{ t('more.barcodeSub') }}</span></div><div class="end">›</div>
             </Link>
             <Link v-if="hasPerm('settings')" :href="route('app.settings.receiptLabel')" class="row">
                 <div class="ava">🧾</div><div class="mid"><b>{{ t('nav.receiptLabelSettings') }}</b><span>{{ t('more.receiptLabelSettingsSub') }}</span></div><div class="end">›</div>
@@ -599,7 +599,7 @@ onMounted(() => {
             </div>
         </div>
         <div class="row" style="cursor:default">
-            <div class="ava">{{ theme === 'dark' ? '🌙' : '☀️' }}</div>
+            <div class="ava">{{ theme === 'dark' ? '🌙' : '☀' }}</div>
             <div class="mid"><b>{{ t('more.theme') }}</b><span>{{ t('more.themeSub') }}</span></div>
             <div class="end">
                 <div class="seg" style="margin:0">
@@ -619,7 +619,7 @@ onMounted(() => {
             </div>
         </div>
         <div v-if="isOwner" class="row" style="cursor:default">
-            <div class="ava">🗑️</div>
+            <div class="ava">🗑</div>
             <div class="mid"><b>{{ t('more.voidTimeLimit') }}</b><span>{{ t('more.voidTimeLimitSub') }}</span></div>
             <div class="end" style="display:flex;gap:6px;align-items:center">
                 <input v-model="voidLimitInput" type="number" inputmode="numeric" min="1" max="365" :placeholder="t('more.voidTimeLimitOff')" style="width:72px;margin:0;padding:6px 8px;font-size:13px">
@@ -627,7 +627,7 @@ onMounted(() => {
             </div>
         </div>
         <button v-if="hasPerm('settings')" class="row" style="width:100%;text-align:left" @click="logoSheet = true">
-            <div class="ava">{{ shop?.logo_url ? '🖼️' : '➕' }}</div>
+            <div class="ava">{{ shop?.logo_url ? '🖼' : '➕' }}</div>
             <div class="mid"><b>{{ t('more.shopLogo') }}</b><span>{{ t('more.shopLogoSub') }}</span></div><div class="end">›</div>
         </button>
         <button v-if="hasPerm('settings')" class="row lg:hidden" style="width:100%;text-align:left" @click="openMobileNavSheet">
@@ -664,7 +664,7 @@ onMounted(() => {
             <div class="ava">📋</div><div class="mid"><b>{{ t('nav.activity') }}</b><span>{{ t('activity.subtitle') }}</span></div><div class="end">›</div>
         </Link>
         <Link v-if="isOwner && features.includes('shop_backup')" :href="route('app.shopBackups.index')" class="row">
-            <div class="ava">🗄️</div><div class="mid"><b>{{ t('backup.title') }}</b><span>{{ t('backup.subtitle') }}</span></div><div class="end">›</div>
+            <div class="ava">🗄</div><div class="mid"><b>{{ t('backup.title') }}</b><span>{{ t('backup.subtitle') }}</span></div><div class="end">›</div>
         </Link>
         <Link :href="route('app.help')" class="row">
             <div class="ava">❓</div><div class="mid"><b>{{ t('nav.help') }}</b><span>{{ t('more.helpSub') }}</span></div><div class="end">›</div>
@@ -686,7 +686,7 @@ onMounted(() => {
             </Link>
             <!--
                 The article screens used to hang off the Stock page alone:
-                Stock → নতুন আর্টিকেল → ⚙️ সেটিংস, three taps deep with no
+                Stock → নতুন আর্টিকেল → ⚙ সেটিংস, three taps deep with no
                 entry here at all. Khaled went looking in More three
                 separate times ("more eo gia kono option paini") before we
                 worked out it was never there, so each one gets its own row.
@@ -716,13 +716,13 @@ onMounted(() => {
                 <div class="ava">📱</div><div class="mid"><b>{{ t('nav.serials') }}</b><span>{{ t('serial.subtitle') }}</span></div><div class="end">›</div>
             </Link>
             <button v-if="hasPerm('damages') && features.includes('damages')" class="row" style="width:100%;text-align:left" @click="damageSheet = true">
-                <div class="ava">🗑️</div><div class="mid"><b>{{ t('more.damageTitle') }}</b><span>{{ t('more.damageSub') }}</span></div><div class="end">›</div>
+                <div class="ava">🗑</div><div class="mid"><b>{{ t('more.damageTitle') }}</b><span>{{ t('more.damageSub') }}</span></div><div class="end">›</div>
             </button>
             <Link v-if="hasPerm('returns') && features.includes('returns')" :href="route('app.returns.index')" class="row">
                 <div class="ava">🔁</div><div class="mid"><b>{{ t('more.returnInvoiceTitle') }}</b><span>{{ t('more.returnInvoiceSub') }}</span></div><div class="end">›</div>
             </Link>
             <button v-if="hasPerm('returns') && features.includes('returns')" class="row" style="width:100%;text-align:left" @click="returnSheet = true">
-                <div class="ava">↩️</div><div class="mid"><b>{{ t('more.returnTitle') }}</b><span>{{ t('more.returnSub') }}</span></div><div class="end">›</div>
+                <div class="ava">↩</div><div class="mid"><b>{{ t('more.returnTitle') }}</b><span>{{ t('more.returnSub') }}</span></div><div class="end">›</div>
             </button>
             <button v-if="hasPerm('purchases') && features.includes('suppliers')" class="row" style="width:100%;text-align:left" @click="supplierReturnSheet = true">
                 <div class="ava">📦</div><div class="mid"><b>{{ t('more.supplierReturnTitle') }}</b><span>{{ t('more.supplierReturnSub') }}</span></div><div class="end">›</div>
@@ -1119,7 +1119,7 @@ onMounted(() => {
         <Sheet v-model="exportSheet" :title="t('export.sheetTitle')">
             <button class="btn" style="width:100%;margin-bottom:4px" @click="downloadAll">{{ t('export.downloadAll') }}</button>
             <div style="font-size:12px;color:var(--mut);margin-bottom:14px">{{ t('export.downloadAllSub') }}</div>
-            <div v-for="[kind, labelKey, em] in [['sales','export.sales','🧾'],['stock','export.stock','📦'],['due','export.due','🧳'],['exp','export.exp','💸'],['damage','export.damage','🗑️'],['return','export.return','↩️'],['pl','export.pl','📊']]" :key="kind" class="row" style="box-shadow:none">
+            <div v-for="[kind, labelKey, em] in [['sales','export.sales','🧾'],['stock','export.stock','📦'],['due','export.due','🧳'],['exp','export.exp','💸'],['damage','export.damage','🗑'],['return','export.return','↩'],['pl','export.pl','📊']]" :key="kind" class="row" style="box-shadow:none">
                 <div class="ava">{{ em }}</div>
                 <div class="mid"><b>{{ t(labelKey) }}</b></div>
                 <button class="btn sm" @click="download(kind, 'xlsx')">Excel</button>

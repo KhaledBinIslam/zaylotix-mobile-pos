@@ -305,7 +305,7 @@ function onSmartScanDetected(fields) {
 }
 function onSmartScanBarcodeFound({ barcode, product }) {
     form.barcode = barcode;
-    toast('ℹ️ ' + t('smartScan.alreadyExistsToast', { name: product.name + (product.variant_label ? ` (${product.variant_label})` : '') }));
+    toast('ℹ ' + t('smartScan.alreadyExistsToast', { name: product.name + (product.variant_label ? ` (${product.variant_label})` : '') }));
 }
 
 function openNew() {
@@ -566,6 +566,65 @@ function saveFix() {
     fixForm.post(url, { preserveScroll: true, onSuccess: () => { fixSheet.value = false; } });
 }
 
+// Baby Park live: "can't remove just 1 piece without deleting the whole
+// variant" — Stock −/Set exact, both backed by one server-side correction
+// path (ProductVariantController::decreaseStock/setExactStock) so they can
+// never disagree about what a correction means.
+const decreaseSheet = ref(false);
+const decreaseTarget = ref(null); // { variant, label }
+const decreaseForm = useForm({ qty: '', reason: 'wrong_entry', note: '' });
+function openDecrease(v) {
+    decreaseTarget.value = { variant: v, label: variantLabel(v) };
+    decreaseForm.reset();
+    decreaseForm.clearErrors();
+    decreaseSheet.value = true;
+}
+function saveDecrease() {
+    decreaseForm.post(route('app.productVariants.decreaseStock', decreaseTarget.value.variant.id), {
+        preserveScroll: true,
+        onSuccess: () => { decreaseSheet.value = false; },
+    });
+}
+
+const exactSheet = ref(false);
+const exactTarget = ref(null);
+const exactForm = useForm({ stock: '' });
+function openExact(v) {
+    exactTarget.value = { variant: v, label: variantLabel(v) };
+    exactForm.reset();
+    exactForm.clearErrors();
+    exactForm.stock = String(Math.floor(Number(v.stock)) || 0);
+    exactSheet.value = true;
+}
+function saveExact() {
+    exactForm.post(route('app.productVariants.setExactStock', exactTarget.value.variant.id), {
+        preserveScroll: true,
+        onSuccess: () => { exactSheet.value = false; },
+    });
+}
+
+// per-variant history — fetched on open, not preloaded with the page
+const historySheet = ref(false);
+const historyTarget = ref(null);
+const historyRows = ref([]);
+const historyLoading = ref(false);
+async function openHistory(v) {
+    historyTarget.value = { label: variantLabel(v) };
+    historyRows.value = [];
+    historySheet.value = true;
+    historyLoading.value = true;
+    try {
+        const res = await fetch(route('app.productVariants.history', v.id), { headers: { Accept: 'application/json' } });
+        const data = await res.json();
+        historyRows.value = data.rows || [];
+    } catch (e) { /* the sheet just stays empty — not worth a toast for a read-only peek */ }
+    finally { historyLoading.value = false; }
+}
+function historyWhen(iso) {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('bn-BD', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
 /** What this product calls its two axes — রং/সাইজ unless it renamed them. */
 const opt1Label = computed(() => editing.value?.option1_label || t('stock.color'));
 const opt2Label = computed(() => editing.value?.option2_label || t('stock.size'));
@@ -695,7 +754,11 @@ function submitGrid() {
     });
 }
 function removeVariant(v) {
-    if (!confirm(`"${variantLabel(v)}" ${t('stock.removeVariantConfirm')}`)) return;
+    // Baby Park live: "must never silently wipe the stock" — the delete
+    // already correctly folds this variant's stock out of the product's
+    // own total (not a silent wipe), but nobody could SEE that count
+    // before confirming. Now they can.
+    if (!confirm(`"${variantLabel(v)}" — ${t('stock.pieces')}: ${v.stock}. ${t('stock.removeVariantConfirm')}`)) return;
     router.delete(route('app.productVariants.destroy', v.id), { preserveScroll: true });
 }
 
@@ -814,7 +877,7 @@ function submitOpeningStock() {
             }
         }
     }
-    if (!cells.length) { toast('⚠️ ' + t('os.nothingFilled')); return; }
+    if (!cells.length) { toast('⚠ ' + t('os.nothingFilled')); return; }
     osSaving.value = true;
     router.post(route('app.products.openingStock', editing.value.id), {
         supplier_id: osSupplier.value || null,
@@ -838,7 +901,7 @@ const bulkPreview = ref(null);
 const bulkBusy = ref(false);
 const bulkSheetUrl = computed(() => route('app.openingStock.sheet') + (bulkCategory.value ? `?category_id=${bulkCategory.value}` : ''));
 function bulkUpload(dryRun) {
-    if (!bulkFile.value) { toast('⚠️ ' + t('os.pickFile')); return; }
+    if (!bulkFile.value) { toast('⚠ ' + t('os.pickFile')); return; }
     bulkBusy.value = true;
     const fd = new FormData();
     fd.append('file', bulkFile.value);
@@ -860,7 +923,7 @@ function bulkUpload(dryRun) {
                 router.reload({ only: ['products', 'stats'] });
             }
         })
-        .catch((e) => { reportClientError(e, 'openingStock bulk'); toast('⚠️ ' + (e.message || t('os.bulkFailed'))); })
+        .catch((e) => { reportClientError(e, 'openingStock bulk'); toast('⚠ ' + (e.message || t('os.bulkFailed'))); })
         .finally(() => (bulkBusy.value = false));
 }
 function saveProduct() {
@@ -1057,7 +1120,7 @@ useKeyboardShortcuts({
             <!-- top-level only; for every shop without sub-categories this
                  list IS the whole list, rendering exactly as before -->
             <button v-for="c in topCategories" :key="c.id" :class="{ on: cat === c.id || childrenOf(c.id).some((s) => s.id === cat) }" @click="setCategory(c.id)">{{ c.emoji }} {{ c.name }} · {{ countWithChildren(c.id) }}</button>
-            <button v-if="features.includes('sub_categories')" style="border-style:dashed" @click="router.visit(route('app.categories.index'))">⚙️ {{ t('cat.manage') }}</button>
+            <button v-if="features.includes('sub_categories')" style="border-style:dashed" @click="router.visit(route('app.categories.index'))">⚙ {{ t('cat.manage') }}</button>
             <button v-if="hasOpeningStock" style="border-style:dashed" @click="bulkOpen = true; bulkPreview = null">📥 {{ t('os.bulkBtn') }}</button>
         </div>
         <!-- SEAMAN Phase 2: a selected parent's kinds, one more tap deep.
@@ -1104,7 +1167,7 @@ useKeyboardShortcuts({
                     :href="route('app.barcodeLabels.index', { product: p.id })"
                     class="btn sm ghost" style="margin-top:6px;text-decoration:none" :title="t('stock.printLabels')"
                     @click.stop
-                >🏷️</Link>
+                >🏷</Link>
             </div>
         </div>
         <div v-if="!filtered.length" class="empty"><div class="big">📦</div>{{ isRestaurant ? t('stock.noProductsRestaurant') : t('stock.noProducts') }}</div>
@@ -1216,7 +1279,7 @@ useKeyboardShortcuts({
             <div v-if="brands" class="field">
                 <label style="display:flex;justify-content:space-between;align-items:center">
                     {{ t('brand.fieldLabel') }}
-                    <Link :href="route('app.brands.index')" style="font-size:11.5px;color:var(--brand)">⚙️ {{ t('brand.manage') }}</Link>
+                    <Link :href="route('app.brands.index')" style="font-size:11.5px;color:var(--brand)">⚙ {{ t('brand.manage') }}</Link>
                 </label>
                 <select v-model="form.brand_id">
                     <option :value="''">Nil — {{ t('brand.noBrand') }}</option>
@@ -1419,7 +1482,7 @@ useKeyboardShortcuts({
 
             <div v-if="editing && hasProductVariants" class="hr"></div>
             <div v-if="editing && hasProductVariants && preExistingUnallocatedStock > 0" class="card" style="background:var(--goldSoft);border-color:var(--gold2);margin-bottom:10px">
-                <b>⚠️ {{ t('stock.preExistingStockTitle') }}</b>
+                <b>⚠ {{ t('stock.preExistingStockTitle') }}</b>
                 <div style="font-size:13px;margin-top:4px">{{ t('stock.preExistingStockHint', { qty: preExistingUnallocatedStock }) }}</div>
             </div>
             <!-- "kon supplier koi ta product" — whose goods this product
@@ -1429,7 +1492,7 @@ useKeyboardShortcuts({
                 <b style="font-size:13px">🚚 {{ t('os.breakdownTitle') }}</b>
                 <div v-for="s in supplierBreakdown(editing)" :key="s.id ?? 'nil'" style="display:flex;align-items:center;gap:8px;font-size:12.5px;padding:4px 0;border-bottom:1px dashed var(--line)">
                     <span style="flex:1"><b>{{ s.name }}</b> — {{ s.qty }} {{ t('stock.pieces') }}</span>
-                    <Link :href="route('app.barcodeLabels.index') + '?product=' + editing.id + (s.id ? '&supplier=' + s.id : '')" class="btn sm ghost" style="text-decoration:none;width:auto;padding:4px 10px">🏷️ {{ t('os.printStickers') }}</Link>
+                    <Link :href="route('app.barcodeLabels.index') + '?product=' + editing.id + (s.id ? '&supplier=' + s.id : '')" class="btn sm ghost" style="text-decoration:none;width:auto;padding:4px 10px">🏷 {{ t('os.printStickers') }}</Link>
                 </div>
                 <div v-if="productUntracked(editing) > 0" style="font-size:12px;color:var(--gold2);padding-top:6px">
                     ⚠ {{ t('os.untracked', { n: productUntracked(editing) }) }} — {{ t('os.untrackedWhere') }}
@@ -1468,7 +1531,7 @@ useKeyboardShortcuts({
                                 <template v-if="Number(v.stock) <= 0"> — {{ t('stock.outOfStock') }}</template>
                                 <template v-else-if="Number(v.reorder_point) > 0 && Number(v.stock) <= Number(v.reorder_point) "> ⚠ {{ t('stock.lowStock') }}</template>
                             </span>
-                            <span><template v-if="v.price"> • {{ money(v.price) }}</template><template v-if="v.barcode"> • 🏷️ {{ v.barcode }}</template><template v-if="v.reorder_point"> • reorder: {{ v.reorder_point }}</template></span>
+                            <span><template v-if="v.price"> • {{ money(v.price) }}</template><template v-if="v.barcode"> • 🏷 {{ v.barcode }}</template><template v-if="v.reorder_point"> • reorder: {{ v.reorder_point }}</template></span>
                             <!-- Phase 4 — per-variant brand (helmet: four brands in one product); only with the feature -->
                             <select v-if="brands" :value="v.brand_id || ''" style="margin-top:6px;font-size:12px;padding:5px 8px;width:auto" @change="setVariantBrand(v, $event.target.value)">
                                 <option value="">Brand: Nil</option>
@@ -1488,11 +1551,16 @@ useKeyboardShortcuts({
                                 ⚠ {{ t('os.untracked', { n: untrackedQty(v) }) }}
                                 <button class="btn sm ghost" style="padding:2px 8px;font-size:11px;margin-left:6px" @click="openClaim('variant', v, variantLabel(v))">{{ t('os.claimBtn') }}</button>
                             </div>
-                            <div style="display:flex;gap:6px;margin-top:6px">
+                            <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
                                 <input v-model="variantStockInQty[v.id]" type="number" :placeholder="t('stock.stockIn')" style="width:90px">
                                 <button class="btn sm ghost" @click="stockInVariant(v)">+</button>
+                                <button v-if="Number(v.stock) > 0" class="btn sm ghost" @click="openDecrease(v)">{{ t('stock.decreaseBtn') }}</button>
                                 <!-- new stock just landed here — printing its label shouldn't need navigating away and re-searching for the same product by hand -->
-                                <Link :href="route('app.barcodeLabels.index') + '?q=' + encodeURIComponent(editing.name)" class="btn sm ghost" style="text-decoration:none">🏷️</Link>
+                                <Link :href="route('app.barcodeLabels.index') + '?q=' + encodeURIComponent(editing.name)" class="btn sm ghost" style="text-decoration:none">🏷</Link>
+                            </div>
+                            <div style="display:flex;gap:10px;margin-top:4px">
+                                <button class="btn sm ghost" style="width:auto;padding:2px 0;border:none;background:none;color:var(--sky);font-size:11px" @click="openExact(v)">{{ t('stock.setExactBtn') }}</button>
+                                <button class="btn sm ghost" style="width:auto;padding:2px 0;border:none;background:none;color:var(--mut);font-size:11px" @click="openHistory(v)">{{ t('stock.historyBtn') }}</button>
                             </div>
                             <button v-if="hasSourceLines" class="btn sm ghost" style="margin-top:6px;width:auto" @click="openSourceStockIn('variant', v)">🚚 {{ t('os.addSourceStock') }}</button>
                         </div>
@@ -1865,6 +1933,48 @@ useKeyboardShortcuts({
             <button class="btn ghost" style="margin-top:10px" @click="fixSheet = false">{{ t('common.cancel') }}</button>
         </Sheet>
 
+        <!-- Stock − : take a WRONG qty off a variant, with a reason — never a silent wipe -->
+        <Sheet v-model="decreaseSheet" :title="t('stock.decreaseTitle') + (decreaseTarget ? ' — ' + decreaseTarget.label : '')">
+            <HowToHint :text="t('stock.decreaseHowTo')" />
+            <div class="field"><label>{{ t('os.howManyPieces') }}</label><input v-model="decreaseForm.qty" type="number" min="1"></div>
+            <div class="field">
+                <label>{{ t('stock.decreaseReason') }}</label>
+                <select v-model="decreaseForm.reason">
+                    <option value="wrong_entry">{{ t('stock.reasonWrongEntry') }}</option>
+                    <option value="damaged">{{ t('stock.reasonDamaged') }}</option>
+                    <option value="lost">{{ t('stock.reasonLost') }}</option>
+                    <option value="other">{{ t('stock.reasonOther') }}</option>
+                </select>
+            </div>
+            <div v-if="decreaseForm.reason === 'other'" class="field">
+                <label>{{ t('stock.decreaseNote') }}</label>
+                <input v-model="decreaseForm.note">
+            </div>
+            <div v-if="decreaseForm.errors.qty || decreaseForm.errors.note" style="color:var(--rose);font-size:12.5px;margin-bottom:10px">{{ decreaseForm.errors.qty || decreaseForm.errors.note }}</div>
+            <button class="btn" :disabled="decreaseForm.processing" @click="saveDecrease">{{ decreaseForm.processing ? '...' : t('os.save') }}</button>
+            <button class="btn ghost" style="margin-top:10px" @click="decreaseSheet = false">{{ t('common.cancel') }}</button>
+        </Sheet>
+
+        <!-- Set exact stock : a recount, not a stock-in/damage event -->
+        <Sheet v-model="exactSheet" :title="t('stock.setExactTitle') + (exactTarget ? ' — ' + exactTarget.label : '')">
+            <HowToHint :text="t('stock.setExactHowTo')" />
+            <div class="field"><label>{{ t('stock.setExactLabel') }}</label><input v-model="exactForm.stock" type="number" min="0"></div>
+            <div v-if="exactForm.errors.stock" style="color:var(--rose);font-size:12.5px;margin-bottom:10px">{{ exactForm.errors.stock }}</div>
+            <button class="btn" :disabled="exactForm.processing" @click="saveExact">{{ exactForm.processing ? '...' : t('os.save') }}</button>
+            <button class="btn ghost" style="margin-top:10px" @click="exactSheet = false">{{ t('common.cancel') }}</button>
+        </Sheet>
+
+        <!-- per-variant history — read-only -->
+        <Sheet v-model="historySheet" :title="t('stock.historyTitle') + (historyTarget ? ' — ' + historyTarget.label : '')">
+            <div v-if="historyLoading" style="text-align:center;color:var(--mut);padding:20px 0">...</div>
+            <div v-else-if="!historyRows.length" style="text-align:center;color:var(--mut);padding:20px 0">{{ t('stock.historyEmpty') }}</div>
+            <div v-for="r in historyRows" :key="r.id" style="padding:8px 0;border-bottom:1px solid var(--line)">
+                <div style="font-size:13px">{{ r.description }}</div>
+                <div style="font-size:11px;color:var(--mut);margin-top:2px">{{ r.user?.name || 'System' }} • {{ historyWhen(r.created_at) }}</div>
+            </div>
+            <button class="btn ghost" style="margin-top:14px" @click="historySheet = false">{{ t('common.close') }}</button>
+        </Sheet>
+
         <!-- Phase 6B — the fill-in-Excel bulk sheet, dry-run first always -->
         <Sheet v-model="bulkOpen" :title="'📥 ' + t('os.bulkBtn')">
             <HowToHint :text="t('os.bulkHowTo')" />
@@ -1875,7 +1985,7 @@ useKeyboardShortcuts({
                     <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.parent_id ? '— ' : '' }}{{ c.name }}</option>
                 </select>
             </div>
-            <a :href="bulkSheetUrl" class="btn ghost sm" style="margin-bottom:14px;display:inline-block;text-decoration:none">⬇️ {{ t('os.downloadSheet') }}</a>
+            <a :href="bulkSheetUrl" class="btn ghost sm" style="margin-bottom:14px;display:inline-block;text-decoration:none">⬇ {{ t('os.downloadSheet') }}</a>
             <div v-if="suppliers" class="field">
                 <label>{{ t('os.supplier') }}</label>
                 <select v-model="bulkSupplier">

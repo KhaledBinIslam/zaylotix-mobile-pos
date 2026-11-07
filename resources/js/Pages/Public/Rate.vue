@@ -47,7 +47,7 @@ const page = usePage();
         <div class="login-inner">
             <div class="login-brand">
                 <img v-if="sale.shop_logo_url" :src="sale.shop_logo_url" style="max-width:64px;border-radius:12px">
-                <div v-else style="font-size:40px">🍽️</div>
+                <div v-else style="font-size:40px">🍽</div>
             </div>
 
             <div class="login-card" style="text-align:center">

@@ -97,14 +97,14 @@ const ingredientUnit = (id) => props.ingredients.find((i) => i.id === id)?.unit 
         <template v-else>
             <div style="font-size:12.5px;color:var(--mut);margin-bottom:12px">{{ t('ingredient.recipeHint') }}</div>
             <div v-for="p in products" :key="p.id" class="row" @click="openRecipe(p)">
-                <div class="ava">{{ p.emoji || '🍽️' }}</div>
+                <div class="ava">{{ p.emoji || '🍽' }}</div>
                 <div class="mid">
                     <b>{{ p.name }}</b>
                     <span>{{ (recipes[p.id] || []).length }} {{ t('ingredient.ingredientsCount') }}</span>
                 </div>
                 <div class="end">›</div>
             </div>
-            <div v-if="!products.length" class="empty"><div class="big">🍽️</div>{{ t('ingredient.noProducts') }}</div>
+            <div v-if="!products.length" class="empty"><div class="big">🍽</div>{{ t('ingredient.noProducts') }}</div>
         </template>
 
         <Sheet v-model="sheet" :title="editing ? t('common.edit') : t('ingredient.addIngredient')">

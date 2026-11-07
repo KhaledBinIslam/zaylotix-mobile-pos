@@ -116,7 +116,7 @@ function summary(p) {
         <button class="btn ghost" style="margin-bottom:16px" @click="openNew">{{ t('promotion.add') }}</button>
 
         <div v-for="p in promotions" :key="p.id" class="row" @click="openEdit(p)">
-            <div class="ava">{{ p.type === 'coupon' ? '🎟️' : '🎁' }}</div>
+            <div class="ava">{{ p.type === 'coupon' ? '🎟' : '🎁' }}</div>
             <div class="mid">
                 <b>{{ p.name }}</b>
                 <span>{{ summary(p) }}</span>

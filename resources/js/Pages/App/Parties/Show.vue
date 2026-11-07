@@ -62,7 +62,7 @@ function loadStatement() {
     fetch(route('app.parties.statement', props.party.id) + `?from=${from.value}&to=${to.value}`, { headers: { Accept: 'application/json' } })
         .then((r) => { if (!r.ok) throw new Error(`statement responded ${r.status}`); return r.json(); })
         .then((data) => { stmt.value = data; })
-        .catch((e) => { reportClientError(e, 'party statement'); toast('⚠️ ' + t('party.stmtFailed')); })
+        .catch((e) => { reportClientError(e, 'party statement'); toast('⚠ ' + t('party.stmtFailed')); })
         .finally(() => (stmtLoading.value = false));
 }
 onMounted(loadStatement);
@@ -105,7 +105,7 @@ async function shareWhatsApp() {
         window.open('https://wa.me/' + (props.party.phone ? num : '') + '?text=' + encodeURIComponent(msg), '_blank');
     } catch (e) {
         reportClientError(e, 'party WhatsApp share');
-        toast('⚠️ ' + t('party.shareFailed'));
+        toast('⚠ ' + t('party.shareFailed'));
     } finally {
         sharing.value = false;
     }

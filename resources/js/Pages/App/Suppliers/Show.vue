@@ -118,7 +118,7 @@ const methodLabel = { cash: 'pay.cash', bkash: 'pay.bkash', nagad: 'pay.nagad' }
         </div>
 
         <div class="sechead"><h2>{{ t('supplier.returnHistory') }}</h2></div>
-        <div v-if="!returns.length" class="empty" style="padding:16px 0"><div class="big">↩️</div>{{ t('supplier.noReturnsYet') }}</div>
+        <div v-if="!returns.length" class="empty" style="padding:16px 0"><div class="big">↩</div>{{ t('supplier.noReturnsYet') }}</div>
         <div v-for="r in returns" :key="r.id" class="row" style="cursor:default">
             <div class="ava">{{ r.product?.emoji || '📦' }}</div>
             <div class="mid">

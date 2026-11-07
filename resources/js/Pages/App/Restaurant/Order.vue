@@ -296,7 +296,7 @@ async function postItem(productId, qty) {
                 only: ['order'], preserveScroll: true, preserveState: true,
                 onError: () => pollReload({
                     only: ['order'], preserveScroll: true, preserveState: true,
-                    onError: () => toast('⚠️ ' + t('restaurant.cartSyncFailed')),
+                    onError: () => toast('⚠ ' + t('restaurant.cartSyncFailed')),
                 }),
             });
         } else {
@@ -741,7 +741,7 @@ onBeforeUnmount(() => {
                             <button class="btn sm ghost" @click="toggleServed(it)">↩ {{ t('restaurant.undoServed') }}</button>
                         </div>
                     </div>
-                    <div v-else class="empty" style="padding:20px 0"><div class="big">🍽️</div>{{ t('restaurant.noItemsYet') }}</div>
+                    <div v-else class="empty" style="padding:20px 0"><div class="big">🍽</div>{{ t('restaurant.noItemsYet') }}</div>
                 </div>
 
                 <!-- order type / table / kitchen note / waiter — moved above the
@@ -766,7 +766,7 @@ onBeforeUnmount(() => {
                             <button class="btn sm" style="width:auto;padding:0 16px" :disabled="!tableToAssign || assignTableForm.processing" @click="assignTable">{{ assignTableForm.processing ? '...' : t('restaurant.seatTable') }}</button>
                         </div>
                     </div>
-                    <div v-else-if="!order.table_id && metaForm.order_source === 'dine_in'" style="font-size:12px;color:var(--dim);margin-bottom:10px">⚠️ {{ t('restaurant.tableNotAssigned') }}</div>
+                    <div v-else-if="!order.table_id && metaForm.order_source === 'dine_in'" style="font-size:12px;color:var(--dim);margin-bottom:10px">⚠ {{ t('restaurant.tableNotAssigned') }}</div>
 
                     <div class="field" style="margin-bottom:8px">
                         <label>{{ t('restaurant.orderSource') }}</label>

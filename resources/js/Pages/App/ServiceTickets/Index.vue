@@ -47,7 +47,7 @@ function save() {
 <template>
     <Head :title="t('service.title')" />
     <AppLayout active="more">
-        <div class="pgttl">🛠️ {{ t('service.title') }}</div>
+        <div class="pgttl">🛠 {{ t('service.title') }}</div>
         <div class="pgsub">{{ t('service.subtitle') }}</div>
 
         <button class="btn" style="margin-bottom:14px" @click="openCreate">+ {{ t('service.newTicket') }}</button>
@@ -60,7 +60,7 @@ function save() {
         </div>
 
         <Link v-for="ticket in tickets.data" :key="ticket.id" :href="route('app.serviceTickets.show', ticket.id)" class="row">
-            <div class="ava">🛠️</div>
+            <div class="ava">🛠</div>
             <div class="mid">
                 <b>#{{ ticket.id }} {{ ticket.device_label }}</b>
                 <span>{{ ticket.customer?.name || t('service.noCustomer') }} • {{ fmt(ticket.received_at) }}</span>
@@ -70,7 +70,7 @@ function save() {
                 <div style="font-size:12px;color:var(--mut)">{{ money(ticketTotal(ticket)) }}</div>
             </div>
         </Link>
-        <div v-if="!tickets.data.length" class="empty"><div class="big">🛠️</div>{{ t('service.noTickets') }}</div>
+        <div v-if="!tickets.data.length" class="empty"><div class="big">🛠</div>{{ t('service.noTickets') }}</div>
         <Pagination :links="tickets.links" />
 
         <Sheet v-model="createSheet" :title="t('service.newTicket')">

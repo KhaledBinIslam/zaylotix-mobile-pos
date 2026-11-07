@@ -61,7 +61,7 @@ function submit() {
                                 :aria-label="t(showPassword ? 'login.hidePassword' : 'login.showPassword')"
                                 style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;font-size:18px;line-height:1;padding:6px;cursor:pointer"
                                 @click="showPassword = !showPassword"
-                            >{{ showPassword ? '🙈' : '👁️' }}</button>
+                            >{{ showPassword ? '🙈' : '👁' }}</button>
                         </div>
                     </div>
                     <div v-if="form.errors.login" style="color:var(--rose);font-size:12.5px;margin-bottom:10px">{{ form.errors.login }}</div>

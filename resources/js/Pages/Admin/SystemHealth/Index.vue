@@ -29,7 +29,7 @@ defineProps({
             <div class="bg-white border rounded-xl p-4 shadow-sm">
                 <div class="text-xs text-gray-500">App environment</div>
                 <div class="text-lg font-extrabold mt-1">{{ app_env }}</div>
-                <div class="text-xs" :class="app_debug ? 'text-rose-500' : 'text-gray-400'">debug: {{ app_debug ? 'ON ⚠️' : 'off' }}</div>
+                <div class="text-xs" :class="app_debug ? 'text-rose-500' : 'text-gray-400'">debug: {{ app_debug ? 'ON ⚠' : 'off' }}</div>
             </div>
             <div class="bg-white border rounded-xl p-4 shadow-sm">
                 <div class="text-xs text-gray-500">Versions</div>

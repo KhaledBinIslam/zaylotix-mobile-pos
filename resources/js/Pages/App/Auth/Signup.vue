@@ -9,7 +9,7 @@ const { t } = useI18n();
 
 const TYPE_ICONS = {
     supershop: '🏬', grocery: '🛒', clothing: '👕', pharmacy: '💊',
-    mobile: '📱', cosmetics: '💄', general: '📦', restaurant: '🍽️',
+    mobile: '📱', cosmetics: '💄', general: '📦', restaurant: '🍽',
 };
 
 // see docs/FIX_PLAN.md's "অ্যাম্বাসেডর টুলস" design note — a hidden

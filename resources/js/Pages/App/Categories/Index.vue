@@ -93,7 +93,7 @@ function destinations() {
 <template>
     <Head :title="t('cat.title')" />
     <AppLayout active="stock">
-        <div class="pgttl">🗂️ {{ t('cat.title') }}</div>
+        <div class="pgttl">🗂 {{ t('cat.title') }}</div>
         <div class="pgsub">{{ t('cat.subtitle') }}</div>
 
         <HowToHint :text="t('cat.howTo')" />
@@ -108,7 +108,7 @@ function destinations() {
                     <div style="font-size:12px;color:var(--mut)">{{ t('cat.productCount', { n: p.products_count }) }}<span v-if="p.children.length"> · {{ t('cat.subCount', { n: p.children.length }) }}</span></div>
                 </div>
                 <button class="btn sm ghost" style="width:auto;padding:6px 10px;font-size:12px" @click="openEdit(p, null)">{{ t('emp.edit') }}</button>
-                <button class="btn sm ghost rose" style="width:auto;padding:6px 10px;font-size:12px" @click="openDelete(p)">🗑️</button>
+                <button class="btn sm ghost rose" style="width:auto;padding:6px 10px;font-size:12px" @click="openDelete(p)">🗑</button>
             </div>
             <div v-for="c in p.children" :key="c.id" style="display:flex;align-items:center;gap:10px;margin-top:8px;padding:8px 0 0 30px;border-top:1px dashed var(--line)">
                 <div>{{ c.emoji }}</div>
@@ -117,11 +117,11 @@ function destinations() {
                     <span style="font-size:12px;color:var(--mut)"> · {{ t('cat.productCount', { n: c.products_count }) }}</span>
                 </div>
                 <button class="btn sm ghost" style="width:auto;padding:5px 9px;font-size:12px" @click="openEdit(c, p.id)">{{ t('emp.edit') }}</button>
-                <button class="btn sm ghost rose" style="width:auto;padding:5px 9px;font-size:12px" @click="openDelete(c)">🗑️</button>
+                <button class="btn sm ghost rose" style="width:auto;padding:5px 9px;font-size:12px" @click="openDelete(c)">🗑</button>
             </div>
             <button class="btn ghost sm" style="width:auto;padding:6px 12px;margin:10px 0 0 30px;font-size:12px" @click="openNew(p.id)">+ {{ t('cat.newSub', { name: p.name }) }}</button>
         </div>
-        <div v-if="!tree.length" class="empty"><div class="big">🗂️</div>{{ t('cat.none') }}</div>
+        <div v-if="!tree.length" class="empty"><div class="big">🗂</div>{{ t('cat.none') }}</div>
 
         <!-- size sets: the lists the variant grid prefills from; a
              category names its default in its own edit sheet above -->
@@ -133,7 +133,7 @@ function destinations() {
                 <div style="font-size:12px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.sizes.join(', ') }}</div>
             </div>
             <button class="btn sm ghost" style="width:auto;padding:6px 10px;font-size:12px" @click="openSetEdit(s)">{{ t('emp.edit') }}</button>
-            <button class="btn sm ghost rose" style="width:auto;padding:6px 10px;font-size:12px" @click="deleteSet(s)">🗑️</button>
+            <button class="btn sm ghost rose" style="width:auto;padding:6px 10px;font-size:12px" @click="deleteSet(s)">🗑</button>
         </div>
         <button class="btn ghost sm" style="width:auto;padding:8px 14px" @click="openSetNew">+ {{ t('cat.newSizeSet') }}</button>
 

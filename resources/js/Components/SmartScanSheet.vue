@@ -121,7 +121,7 @@ function applyOcrGuess() {
             <p style="font-size:13px;color:var(--mut);margin-bottom:14px">{{ t('smartScan.chooseHint') }}</p>
             <button class="btn" style="margin-bottom:10px" @click="startBarcodeScan">📷 {{ t('smartScan.scanBarcode') }}</button>
             <label class="btn ghost" style="display:block;text-align:center;cursor:pointer">
-                🖼️ {{ t('smartScan.scanLabel') }}
+                🖼 {{ t('smartScan.scanLabel') }}
                 <input type="file" accept="image/*" capture="environment" style="display:none" @change="runOcr">
             </label>
         </template>
@@ -141,7 +141,7 @@ function applyOcrGuess() {
 
         <template v-else-if="mode === 'ocr-review'">
             <div class="card" style="background:var(--goldSoft);border-color:var(--gold2);margin-bottom:14px;font-size:12px">
-                ⚠️ {{ t('smartScan.verifyWarning') }}
+                ⚠ {{ t('smartScan.verifyWarning') }}
             </div>
             <div class="field"><label>{{ t('stock.productName') }}</label><input v-model="guess.name"></div>
             <div class="field"><label>{{ t('stock.genericName') }}</label><input v-model="guess.generic_name"></div>

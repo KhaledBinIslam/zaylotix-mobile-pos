@@ -217,7 +217,7 @@ function exportSelected(fmt) {
             <div class="card" style="margin-bottom:12px;font-size:12.5px;color:var(--mut)">{{ t('customerList.queueSpamWarning') }}</div>
 
             <div v-if="wa.showPauseReminder.value" class="card" style="margin-bottom:12px;background:var(--goldSoft);font-size:12.5px">
-                ⏸️ {{ t('customerList.queuePauseReminder') }}
+                ⏸ {{ t('customerList.queuePauseReminder') }}
             </div>
 
             <div style="font-size:13px;color:var(--mut);margin-bottom:10px">{{ t('customerList.queueProgress', { sent: wa.sent.value, total: wa.total.value }) }}</div>
@@ -240,7 +240,7 @@ function exportSelected(fmt) {
                 ✅ {{ t('customerList.queueDoneSummary', { sent: wa.sent.value, skipped: wa.skipped.value }) }}
             </div>
 
-            <button v-if="wa.lastConfirmedId.value" class="btn ghost sm" style="margin-bottom:8px" @click="wa.undoLastConfirm()">↩️ {{ t('customerList.queueUndoLastSent') }}</button>
+            <button v-if="wa.lastConfirmedId.value" class="btn ghost sm" style="margin-bottom:8px" @click="wa.undoLastConfirm()">↩ {{ t('customerList.queueUndoLastSent') }}</button>
 
             <button class="btn ghost" @click="closeQueue">{{ wa.done.value ? t('common.close') : t('customerList.queueStop') }}</button>
         </Sheet>

@@ -81,6 +81,15 @@ class SalesController extends Controller
                     ->selectRaw('sale_item_id, SUM(qty) as qty')
                     ->pluck('qty', 'sale_item_id'),
             ],
+            // Baby Park live: the only trace of a prior return/exchange on
+            // this invoice used to be the aggregate numbers above — nothing
+            // actually LISTED what came back and when. The data
+            // (ReturnController::process()) already exists; this just reads it.
+            'returns' => \App\Models\SalesReturn::withoutGlobalScopes()
+                ->where('sale_id', $saleModel->id)
+                ->with(['saleItem:id,product_name,variant_label', 'exchangeSale:id,invoice_no,total'])
+                ->orderByDesc('id')
+                ->get(['id', 'sale_item_id', 'qty', 'condition', 'refund', 'reason', 'date', 'type', 'exchange_sale_id']),
         ]);
     }
 

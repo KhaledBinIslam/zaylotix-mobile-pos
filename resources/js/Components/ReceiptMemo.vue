@@ -84,7 +84,7 @@ watch(() => [props.sale.id, props.sale.invoice_no, settings.value.show_shop_qr, 
         <h3>{{ shop?.name || 'Zaylotix POS' }}</h3>
         <div class="rc-sub">
             📞 {{ shop?.phone }}<template v-if="shop?.area"> • {{ shop.area }}</template>
-            <template v-if="settings.show_email && shop?.email"><br>✉️ {{ shop.email }}</template>
+            <template v-if="settings.show_email && shop?.email"><br>✉ {{ shop.email }}</template>
             <template v-if="settings.show_website && shop?.website"><br>🌐 {{ shop.website }}</template>
             <template v-if="settings.show_bin && shop?.bin_no && sale.vat > 0"><br>BIN: {{ shop.bin_no }}</template>
             <template v-if="settings.show_trade_license && shop?.trade_license_no"><br>Trade License: {{ shop.trade_license_no }}</template>

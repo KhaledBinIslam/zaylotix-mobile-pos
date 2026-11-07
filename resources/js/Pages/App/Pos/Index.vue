@@ -1968,7 +1968,7 @@ useKeyboardShortcuts({
                                 <datalist :id="'imei-list-' + l.product_id + ':' + (l.product_unit_id || l.product_variant_id || 'base')">
                                     <option v-for="s in availableImeis(l)" :key="s.id" :value="s.imei" />
                                 </datalist>
-                                <div v-if="imeiWarranty(l)" style="font-size:11px;color:var(--green);margin-top:3px">🛡️ {{ t('pos.imeiWarrantyUntil', { date: imeiWarranty(l) }) }}</div>
+                                <div v-if="imeiWarranty(l)" style="font-size:11px;color:var(--green);margin-top:3px">🛡 {{ t('pos.imeiWarrantyUntil', { date: imeiWarranty(l) }) }}</div>
                                 <div v-else-if="availableImeis(l).length" style="font-size:11px;color:var(--dim);margin-top:3px">{{ t('pos.imeiInStockCount', { n: availableImeis(l).length }) }}</div>
                             </div>
                         </div>
@@ -2146,7 +2146,7 @@ useKeyboardShortcuts({
                         {{ submitting ? t('pos.processing') : `${t('pos.checkoutButton')} ${money(total)}` }}
                     </button>
                     <button class="btn ghost" style="margin-top:10px" :disabled="submitting" @click="holdCart">
-                        ⏸️ {{ t('pos.holdCart') }}
+                        ⏸ {{ t('pos.holdCart') }}
                     </button>
                 </div>
             </div>
@@ -2156,7 +2156,7 @@ useKeyboardShortcuts({
         <!-- held carts picker -->
         <Sheet v-model="heldSheet" :title="t('pos.heldCarts')">
             <div v-for="h in heldCarts" :key="h.id" class="row" style="cursor:pointer" @click="resumeHeldCart(h.id)">
-                <div class="ava">⏸️</div>
+                <div class="ava">⏸</div>
                 <div class="mid">
                     <b>{{ h.label || t('pos.heldCartDefaultLabel', { id: h.id }) }}</b>
                     <span>{{ h.created_at }}</span>

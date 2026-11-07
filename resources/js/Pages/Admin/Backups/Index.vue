@@ -84,7 +84,7 @@ function submitRestore() {
         <!-- restore confirmation -->
         <div v-if="restoreTarget" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50" @click.self="restoreTarget = null">
             <div class="bg-white rounded-xl p-6 max-w-md w-full mx-4">
-                <h2 class="font-bold text-lg text-rose-700 mb-2">⚠️ Restore the whole database?</h2>
+                <h2 class="font-bold text-lg text-rose-700 mb-2">⚠ Restore the whole database?</h2>
                 <p class="text-sm text-gray-600 mb-4">
                     This overwrites <b>every shop's</b> current data with the contents of <span class="font-mono text-xs">{{ restoreTarget }}</span>.
                     A fresh safety backup of the current state is taken automatically first, but this is still highly destructive.

@@ -20,7 +20,7 @@ watch(() => page.props.flash?.success, (msg) => { if (msg) toast(msg); });
 // watched flash.success, never flash.error, so the failure was completely
 // silent. Looked exactly like "I keep picking Grocery and hitting save,
 // it just won't take" with no error shown anywhere to explain why.
-watch(() => page.props.flash?.error, (msg) => { if (msg) toast('⚠️ ' + msg); });
+watch(() => page.props.flash?.error, (msg) => { if (msg) toast('⚠ ' + msg); });
 
 const mobileOpen = ref(false);
 
@@ -34,13 +34,13 @@ const nav = computed(() => [
     { key: 'shops', label: 'Shops', icon: '🏬', route: 'admin.shops.index', show: true },
     { key: 'analytics', label: 'Analytics', icon: '📈', route: 'admin.analytics.index', show: true },
     { key: 'subscriptions', label: 'Subscriptions', icon: '💳', route: 'admin.subscriptions.index', show: true },
-    { key: 'businessTypes', label: 'Business Types', icon: '🗂️', route: 'admin.businessTypes.index', show: isSuperAdmin.value },
+    { key: 'businessTypes', label: 'Business Types', icon: '🗂', route: 'admin.businessTypes.index', show: isSuperAdmin.value },
     { key: 'features', label: 'Features', icon: '🧩', route: 'admin.features.index', show: isSuperAdmin.value },
     { key: 'activityLog', label: 'Activity Log', icon: '📋', route: 'admin.activityLog.index', show: true },
     { key: 'systemHealth', label: 'System Health', icon: '🩺', route: 'admin.systemHealth.index', show: true },
     { key: 'admins', label: 'Admin Accounts', icon: '🔑', route: 'admin.admins.index', show: isSuperAdmin.value },
     { key: 'ambassadors', label: 'Ambassadors', icon: '🤝', route: 'admin.ambassadors.index', show: isSuperAdmin.value },
-    { key: 'siteSettings', label: 'Site Settings', icon: '🖼️', route: 'admin.siteSettings.edit', show: isSuperAdmin.value },
+    { key: 'siteSettings', label: 'Site Settings', icon: '🖼', route: 'admin.siteSettings.edit', show: isSuperAdmin.value },
     { key: 'faqs', label: 'FAQs', icon: '❓', route: 'admin.faqs.index', show: isSuperAdmin.value },
     { key: 'screenGuides', label: 'Screen Guides', icon: '📖', route: 'admin.screenGuides.index', show: isSuperAdmin.value },
     { key: 'platformGateway', label: 'Platform Payment Gateway', icon: '💳', route: 'admin.platformGateway.index', show: isSuperAdmin.value },

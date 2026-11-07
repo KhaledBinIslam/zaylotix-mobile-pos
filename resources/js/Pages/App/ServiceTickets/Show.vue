@@ -81,7 +81,7 @@ function submitBill() {
 <template>
     <Head :title="`#${ticket.id} ${ticket.device_label}`" />
     <AppLayout active="more">
-        <div class="pgttl">🛠️ #{{ ticket.id }} {{ ticket.device_label }}</div>
+        <div class="pgttl">🛠 #{{ ticket.id }} {{ ticket.device_label }}</div>
         <div class="pgsub"><b :style="{ color: statusColor(ticket.status) }">{{ statusLabel(ticket.status) }}</b></div>
 
         <div class="card" style="margin-bottom:14px">
@@ -95,7 +95,7 @@ function submitBill() {
             <div v-if="ticket.serial" style="margin-bottom:8px"><b>IMEI</b> {{ ticket.serial.imei }}</div>
             <div v-if="ticket.problem_description" style="margin-bottom:8px"><b>{{ t('service.problem') }}</b> {{ ticket.problem_description }}</div>
             <div style="font-size:12px;color:var(--mut)">{{ t('service.receivedAt') }} {{ fmt(ticket.received_at) }}</div>
-            <div v-if="ticket.is_warranty_claim" style="margin-top:6px;color:var(--gold2);font-weight:700">🛡️ {{ t('service.isWarrantyClaim') }}</div>
+            <div v-if="ticket.is_warranty_claim" style="margin-top:6px;color:var(--gold2);font-weight:700">🛡 {{ t('service.isWarrantyClaim') }}</div>
             <div v-if="ticket.sale" style="margin-top:8px"><Link :href="route('app.sales.show', ticket.sale.id)">🧾 {{ ticket.sale.invoice_no }}</Link></div>
         </div>
 
@@ -167,7 +167,7 @@ function submitBill() {
         <template v-if="history.length">
             <div class="sechead"><h2>{{ t('service.history') }}</h2></div>
             <Link v-for="h in history" :key="h.id" :href="route('app.serviceTickets.show', h.id)" class="row">
-                <div class="ava">🛠️</div>
+                <div class="ava">🛠</div>
                 <div class="mid"><b>#{{ h.id }} {{ h.device_label }}</b><span>{{ h.customer?.name }} • {{ fmt(h.received_at) }}</span></div>
                 <div class="end"><b :style="{ color: statusColor(h.status) }">{{ statusLabel(h.status) }}</b></div>
             </Link>

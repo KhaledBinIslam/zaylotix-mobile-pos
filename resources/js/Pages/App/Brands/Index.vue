@@ -70,7 +70,7 @@ function destroy(b) {
             </div>
             <button class="btn sm ghost" style="width:auto;padding:6px 10px;font-size:12px" @click="openEdit(b)">{{ t('emp.edit') }}</button>
             <button v-if="brands.length > 1" class="btn sm ghost" style="width:auto;padding:6px 10px;font-size:12px" @click="openMerge(b)">{{ t('brand.merge') }}</button>
-            <button class="btn sm ghost rose" style="width:auto;padding:6px 10px;font-size:12px" @click="destroy(b)">🗑️</button>
+            <button class="btn sm ghost rose" style="width:auto;padding:6px 10px;font-size:12px" @click="destroy(b)">🗑</button>
         </div>
         <div v-if="!brands.length" class="empty"><div class="big">🏭</div>{{ t('brand.none') }}</div>
 

@@ -53,7 +53,7 @@ onBeforeUnmount(() => clearInterval(pollTimer));
                         </div>
                     </div>
                 </div>
-                <div v-if="!filtered.length" class="empty"><div class="big">🍽️</div>{{ t('pos.notFound') }}</div>
+                <div v-if="!filtered.length" class="empty"><div class="big">🍽</div>{{ t('pos.notFound') }}</div>
             </div>
 
             <aside class="lg:order-2 lg:w-80 lg:shrink-0">
@@ -65,7 +65,7 @@ onBeforeUnmount(() => clearInterval(pollTimer));
                         <span class="pill" :class="STATUS_PILL[it.status]">{{ t(STATUS_LABEL[it.status]) }}</span>
                     </div>
                 </div>
-                <div v-if="!todaysOrders.length" class="empty"><div class="big">🍽️</div>{{ t('cds.noOrdersToday') }}</div>
+                <div v-if="!todaysOrders.length" class="empty"><div class="big">🍽</div>{{ t('cds.noOrdersToday') }}</div>
             </aside>
         </div>
     </AppLayout>
