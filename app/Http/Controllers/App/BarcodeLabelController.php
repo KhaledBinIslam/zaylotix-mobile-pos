@@ -132,7 +132,7 @@ class BarcodeLabelController extends Controller
             // Khaled live: "supplier filter option lagbe barcode print e" —
             // null-means-hidden, same contract as Stock page's own suppliers prop
             'suppliers' => $shop?->hasFeature('suppliers')
-                ? \App\Models\Supplier::orderBy('name')->get(['id', 'name'])
+                ? \App\Models\Supplier::pickerList()
                 : null,
         ]);
     }

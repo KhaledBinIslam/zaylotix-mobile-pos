@@ -142,6 +142,53 @@ class SupplierController extends Controller
     }
 
     /**
+     * Khaled live: "Sujon" and "Sujon 3rd party" — two real, separate
+     * rows that turned out to be the same supplier. Same shape as
+     * BrandController::merge() (manual survivor pick, no name-matching —
+     * the owner decides, never guessed at): every row across every
+     * table that names a supplier gets repointed to the survivor BEFORE
+     * the loser is deleted. This matters more here than for brands —
+     * supplier_payments and purchase_orders CASCADE on delete, so
+     * skipping either one would silently erase real payment/order
+     * history instead of just leaving a product's brand as "Nil". The
+     * survivor's payable becomes the SUM of both (two rows owed money
+     * for the same real supplier is one total owed, not two).
+     */
+    public function merge(Request $request, Supplier $supplier)
+    {
+        $this->authorize('update', $supplier);
+
+        $data = $request->validate(['into' => ['required', 'integer']]);
+
+        $survivor = Supplier::find($data['into']); // tenant-scoped
+        if (! $survivor || $survivor->id === $supplier->id) {
+            return back()->withErrors(['into' => 'যে সাপ্লায়ারে মেশাতে বলা হয়েছে সেটা পাওয়া যায়নি।']);
+        }
+
+        DB::transaction(function () use ($supplier, $survivor) {
+            Product::where('supplier_id', $supplier->id)->update(['supplier_id' => $survivor->id]);
+            \App\Models\ProductSource::where('supplier_id', $supplier->id)->update(['supplier_id' => $survivor->id]);
+            Purchase::where('supplier_id', $supplier->id)->update(['supplier_id' => $survivor->id]);
+            SupplierReturn::where('supplier_id', $supplier->id)->update(['supplier_id' => $survivor->id]);
+            \App\Models\ProductBatch::where('supplier_id', $supplier->id)->update(['supplier_id' => $survivor->id]);
+            \App\Models\StockIntake::where('supplier_id', $supplier->id)->update(['supplier_id' => $survivor->id]);
+            // these two CASCADE on delete — repointing is mandatory, not
+            // just tidy, or the loser's delete() below would take this
+            // history down with it
+            \App\Models\SupplierPayment::where('supplier_id', $supplier->id)->update(['supplier_id' => $survivor->id]);
+            \App\Models\PurchaseOrder::where('supplier_id', $supplier->id)->update(['supplier_id' => $survivor->id]);
+
+            $survivor->increment('payable', (float) $supplier->payable);
+
+            $supplier->delete();
+        });
+
+        Activity::log('supplier.merge', "সাপ্লায়ার '{$supplier->name}' মিশে গেল '{$survivor->name}'-এ।", $survivor);
+
+        return back()->with('success', "'{$supplier->name}' মিশে গেছে '{$survivor->name}'-এ।");
+    }
+
+    /**
      * Delete a supplier — meant for a just-created duplicate/typo row.
      * Refused the moment ANY history hangs off it: a payable balance,
      * purchases, payments (they cascade-delete!) or intake-ledger rows —

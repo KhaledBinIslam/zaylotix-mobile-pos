@@ -41,6 +41,10 @@ class OpeningStockController extends Controller
             'supplier_id' => ['nullable', 'integer'],
             'default_cost' => ['nullable', 'numeric', 'min:0'],
             'default_price' => ['nullable', 'numeric', 'min:0'],
+            // Khaled live: "koto tk pay korche ... koto due ache show
+            // hobe" — one choice for the whole grid submission (one
+            // supplier, one visit), not per cell — see SupplierPayable.
+            'payment_method' => ['nullable', 'in:cash,bank,credit'],
             'cells' => ['required', 'array', 'min:1'],
             'cells.*.variant_id' => ['nullable', 'integer'],
             'cells.*.color' => ['nullable', 'string', 'max:100'],
@@ -66,6 +70,7 @@ class OpeningStockController extends Controller
             abort_unless($lockedProduct, 422, 'পণ্যটি ইতিমধ্যে মুছে ফেলা হয়েছে।');
 
             $totalDelta = 0.0;
+            $totalPaid = 0.0;
 
             foreach ($data['cells'] as $cell) {
                 $qty = (float) $cell['qty'];
@@ -129,29 +134,31 @@ class OpeningStockController extends Controller
                     // merge-or-create every other stock-in path uses;
                     // brand is never set from this grid (Nil), same as a
                     // cell here never had a brand picker of its own.
+                    $lineCost = $paidCost ?? (float) ($variant->cost ?? $lockedProduct->cost ?? 0);
                     if (Tenancy::shop()?->hasFeature('source_lines')) {
                         ProductSource::upsertLine(
                             Tenancy::id(), $lockedProduct->id, $variant->id,
-                            $supplierId, null, $qty,
-                            $paidCost ?? (float) ($variant->cost ?? $lockedProduct->cost ?? 0),
+                            $supplierId, null, $qty, $lineCost,
                             $paidPrice, (float) $variant->price
                         );
                     }
                     IntakeLedger::record($lockedProduct, $variant, $qty, $paidCost, 'opening_stock', $supplierId);
+                    $totalPaid += $qty * $lineCost;
                 } else {
                     // the plain, variantless product: one box, straight on
                     if ($paidPrice !== null) {
                         $lockedProduct->update(['price' => $paidPrice]);
                     }
+                    $lineCost = $paidCost ?? (float) ($lockedProduct->cost ?? 0);
                     if (Tenancy::shop()?->hasFeature('source_lines')) {
                         ProductSource::upsertLine(
                             Tenancy::id(), $lockedProduct->id, null,
-                            $supplierId, null, $qty,
-                            $paidCost ?? (float) ($lockedProduct->cost ?? 0),
+                            $supplierId, null, $qty, $lineCost,
                             $paidPrice, (float) $lockedProduct->price
                         );
                     }
                     IntakeLedger::record($lockedProduct, null, $qty, $paidCost, 'opening_stock', $supplierId);
+                    $totalPaid += $qty * $lineCost;
                 }
 
                 $totalDelta += $qty;
@@ -161,6 +168,7 @@ class OpeningStockController extends Controller
             if ($supplierId && ! $lockedProduct->supplier_id) {
                 $lockedProduct->update(['supplier_id' => $supplierId]);
             }
+            \App\Support\SupplierPayable::apply($supplierId, $data['payment_method'] ?? null, $totalPaid);
 
             Activity::log('product.openingStock', "'{$lockedProduct->name}'-এ ওপেনিং স্টক বসানো হয়েছে (মোট {$totalDelta})।", $lockedProduct);
         });

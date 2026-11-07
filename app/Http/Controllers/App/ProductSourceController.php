@@ -75,6 +75,9 @@ class ProductSourceController extends Controller
             'qty' => ['required', 'integer', 'min:1'],
             'cost' => ['required', 'numeric', 'min:0'],
             'price' => ['nullable', 'numeric', 'min:0'],
+            // Khaled live: "koto tk pay korche ... koto due ache show
+            // hobe" — see SupplierPayable.
+            'payment_method' => ['nullable', 'in:cash,bank,credit'],
         ]);
     }
 
@@ -106,6 +109,7 @@ class ProductSourceController extends Controller
         }
 
         IntakeLedger::record($product, $variant, $qty, $paidCost, $variant ? 'variant_stock_in' : 'product_stock_in', $supplierId, $line->id);
+        \App\Support\SupplierPayable::apply($supplierId, $data['payment_method'] ?? null, $paidCost * $qty);
 
         Activity::log(
             'product.source.stockIn',

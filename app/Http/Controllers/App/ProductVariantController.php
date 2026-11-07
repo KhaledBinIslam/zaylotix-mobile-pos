@@ -419,6 +419,13 @@ class ProductVariantController extends Controller
             // Phase 4 — who it came from; tenant-scoped find below, a
             // foreign id simply becomes "no supplier" (Nil)
             'supplier_id' => ['nullable', 'integer'],
+            // Khaled live: a supplier picked here never affected what's
+            // owed to them — only the separate Purchases module tracked
+            // that. 'cash'/'bank' settles it on the spot (decrements the
+            // shop's own balance, same as Purchases); 'credit' adds to
+            // the supplier's payable. Absent (no supplier, or an owner
+            // who hasn't touched this yet) is a no-op — see SupplierPayable.
+            'payment_method' => ['nullable', 'in:cash,bank,credit'],
         ]);
 
         $supplierId = ! empty($data['supplier_id']) ? \App\Models\Supplier::find($data['supplier_id'])?->id : null;
@@ -461,6 +468,9 @@ class ProductVariantController extends Controller
                 // the ledger always records the price actually PAID, never the blended average
                 \App\Support\IntakeLedger::record($product, $locked, (float) $data['qty'], isset($data['cost']) ? (float) $data['cost'] : null, 'variant_stock_in', $supplierId);
             }
+
+            $paidCost = isset($data['cost']) ? (float) $data['cost'] : (float) $locked->cost;
+            \App\Support\SupplierPayable::apply($supplierId, $data['payment_method'] ?? null, $paidCost * $data['qty']);
 
             Activity::log('product.variant.stockIn', "ভ্যারিয়েন্ট '{$locked->label()}'-এ {$data['qty']} স্টক যোগ করা হয়েছে।", $locked);
         });

@@ -152,11 +152,26 @@ class ProductController extends Controller
                 ? \App\Models\Brand::orderBy('name')->get(['id', 'name'])
                 : null,
             // Phase 6B — supplier pickers on stock-in and the opening-stock
-            // grid; same null-means-hidden contract as brands above
+            // grid; same null-means-hidden contract as brands above.
+            // pickerList() carries each supplier's usage count too — see
+            // Supplier::pickerList()'s own docblock (the Sujon/Sujon 3rd
+            // party mix-up this fixes).
             'suppliers' => Tenancy::shop()?->hasFeature('suppliers')
-                ? \App\Models\Supplier::orderBy('name')->get(['id', 'name'])
+                ? \App\Models\Supplier::pickerList()
                 : null,
             'units' => Unit::orderBy('name')->get(),
+            // Khaled live: "color size eshb add kora aro easy koro ekbar
+            // korle pore jate use kora jai" — every colour/size typed
+            // once anywhere in this shop becomes a suggestion everywhere
+            // else, so a cashier re-adding "Navy Blue" sees it offered
+            // instead of retyping it (and risking the exact typo that
+            // caused INV-1001's twin-variant bug in the first place).
+            // Derived live from what's actually on variants — no
+            // separate table to keep in sync, never goes stale.
+            'knownColors' => \App\Models\ProductVariant::whereNotNull('color')->where('color', '!=', '')
+                ->distinct()->orderBy('color')->pluck('color'),
+            'knownSizes' => \App\Models\ProductVariant::whereNotNull('size')->where('size', '!=', '')
+                ->distinct()->orderBy('size')->pluck('size'),
             'stats' => $stats,
             'q' => $q,
             'categoryId' => $categoryId,
@@ -513,6 +528,7 @@ class ProductController extends Controller
             'imeis' => ['nullable', 'string'],
             'warranty_expiry' => ['nullable', 'date'],
             'supplier_id' => ['nullable', 'integer'], // Phase 4 — rides into the intake ledger
+            'payment_method' => ['nullable', 'in:cash,bank,credit'], // see SupplierPayable
         ]);
 
         $supplierId = ! empty($data['supplier_id']) ? \App\Models\Supplier::find($data['supplier_id'])?->id : null;
@@ -541,6 +557,9 @@ class ProductController extends Controller
             \App\Support\StockIn::apply($locked, (float) $data['qty'], $data['cost'] ?? null);
             // the intake ledger ("কত টাকার মাল উঠেছে") — same transaction
             \App\Support\IntakeLedger::record($locked, null, (float) $data['qty'], isset($data['cost']) ? (float) $data['cost'] : null, 'product_stock_in', $supplierId);
+
+            $paidCost = isset($data['cost']) ? (float) $data['cost'] : (float) $locked->cost;
+            \App\Support\SupplierPayable::apply($supplierId, $data['payment_method'] ?? null, $paidCost * (float) $data['qty']);
 
             $shop = \App\Support\Tenancy::shop();
             // batch/FEFO tracking is an integer-quantity pharmacy layer — a

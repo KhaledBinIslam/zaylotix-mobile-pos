@@ -23,6 +23,8 @@ const props = defineProps({
     company: String, genericName: String, companies: { type: Array, default: () => [] }, genericNames: { type: Array, default: () => [] },
     stockStatus: String,
     supplierId: [Number, String],
+    knownColors: { type: Array, default: () => [] },
+    knownSizes: { type: Array, default: () => [] },
     // which categories price by size group, and the groups themselves —
     // so adding a size to an article later offers the SAME price boxes
     // the article form offered when it was created
@@ -471,11 +473,14 @@ function productSupplierSummary(p) {
 const SOURCE_SUPPLIER_KEY = 'zaylotix.lastSourceSupplier';
 const sourceSheet = ref(false);
 const sourceTarget = ref(null); // { kind: 'variant'|'product', id, label, lines }
-const sourceForm = useForm({ supplier_id: '', brand_id: '', qty: '', cost: '', price: '' });
+// Khaled live: "koto tk pay korche ... koto due ache show hobe" — same
+// 3-way choice as every other stock-in screen now has
+const sourceForm = useForm({ supplier_id: '', brand_id: '', qty: '', cost: '', price: '', payment_method: 'cash' });
 function openSourceStockIn(kind, target) {
     sourceTarget.value = { kind, id: target.id, label: kind === 'variant' ? variantLabel(target) : target.name, lines: target.sources || [] };
     sourceForm.reset();
     sourceForm.clearErrors();
+    sourceForm.payment_method = 'cash';
     try {
         sourceForm.supplier_id = localStorage.getItem(SOURCE_SUPPLIER_KEY) || '';
     } catch { /* private-window/blocked storage — just starts blank */ }
@@ -638,6 +643,10 @@ const osQty = ref({});   // 'v{id}' or 'n|color|size' or 'plain' → qty
 const osCost = ref({});  // same keys → optional per-cell cost override
 const osPrice = ref({}); // same keys → optional per-cell sell-price override
 const osSupplier = ref('');
+// Khaled live: "koto tk pay korche ... koto due ache show hobe" — one
+// choice for the whole grid submit (one supplier, one visit), same 3-way
+// choice the Purchases screen and the other stock-in sheets now share.
+const osPaymentMethod = ref('cash');
 const osDefaultCost = ref('');
 // Khaled live: stock came in from a new supplier at a new sell price, but
 // this grid only ever let him price a brand-new cell, never an EXISTING
@@ -669,7 +678,7 @@ const osSizes = computed(() => {
 });
 function openOpeningStock() {
     osQty.value = {}; osCost.value = {}; osPrice.value = {};
-    osSupplier.value = ''; osDefaultCost.value = editing.value?.cost ?? '';
+    osSupplier.value = ''; osPaymentMethod.value = 'cash'; osDefaultCost.value = editing.value?.cost ?? '';
     // blank, not pre-filled like cost — a stock-in always HAS a cost, but
     // price should only change when the owner actually types a new one
     osDefaultPrice.value = '';
@@ -722,6 +731,7 @@ function submitOpeningStock() {
     osSaving.value = true;
     router.post(route('app.products.openingStock', editing.value.id), {
         supplier_id: osSupplier.value || null,
+        payment_method: osSupplier.value ? osPaymentMethod.value : null,
         default_cost: osDefaultCost.value !== '' ? Number(osDefaultCost.value) : null,
         default_price: osDefaultPrice.value !== '' ? Number(osDefaultPrice.value) : null,
         cells,
@@ -788,16 +798,33 @@ const stockInProduct = ref(null);
 const stockInQty = ref('');
 const stockInCost = ref('');
 const stockInSupplier = ref(''); // Phase 6B — rides into the intake ledger (server accepted it since Phase 4)
+// Khaled live: a supplier picked here never affected what's owed to
+// them. 'cash'/'bank' settles it on the spot, 'credit' adds to the
+// supplier's payable — same 3-way choice the Purchases module already
+// uses (More.vue's purchaseForm.method), so it's never a new idea to
+// someone who's used that screen. Blank (no choice made) stays a no-op,
+// same as before this existed — only shown at all once a supplier is picked.
+const stockInPaymentMethod = ref('cash');
 const stockInBatchNo = ref('');
 const stockInExpiryDate = ref('');
 const stockInImeis = ref('');
 const stockInWarrantyExpiry = ref('');
 const stockInSubmitting = ref(false);
 function openStockIn(p) {
+    // Khaled live: a plain product under source_lines had TWO different
+    // "add stock" buttons (this quick one, and the 🚚 sheet inside the
+    // edit sheet) that silently disagreed — this one never wrote a
+    // line, so stock added here was invisible to the supplier filter.
+    // Routing it straight to the 🚚 sheet leaves exactly one correct way.
+    if (hasSourceLines.value) {
+        openSourceStockIn('product', p);
+        return;
+    }
     stockInProduct.value = p;
     stockInQty.value = '';
     stockInCost.value = '';
     stockInSupplier.value = '';
+    stockInPaymentMethod.value = 'cash';
     stockInBatchNo.value = '';
     stockInExpiryDate.value = '';
     stockInImeis.value = '';
@@ -809,6 +836,7 @@ function applyStockIn() {
     stockInSubmitting.value = true;
     router.post(route('app.products.stockIn', stockInProduct.value.id), {
         qty: stockInQty.value, cost: stockInCost.value, supplier_id: stockInSupplier.value || null,
+        payment_method: stockInSupplier.value ? stockInPaymentMethod.value : null,
         batch_no: hasBatchTracking.value ? stockInBatchNo.value : '',
         expiry_date: hasBatchTracking.value ? stockInExpiryDate.value : '',
         imeis: hasSerialTracking.value && stockInProduct.value?.track_serial ? stockInImeis.value : '',
@@ -1051,6 +1079,13 @@ useKeyboardShortcuts({
                 <label>{{ t('stock.company') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
                 <input v-model="form.company" :placeholder="t('stock.companyPlaceholder')" list="company-options">
                 <datalist id="company-options"><option v-for="c in companies" :key="c" :value="c" /></datalist>
+                <!-- Khaled live: "color size eshb add kora aro easy koro
+                     ekbar korle pore jate use kora jai" — every colour/size
+                     this shop has ever typed, suggested wherever a new one
+                     is typed (osNewColorInput/osNewSizeInput, the single
+                     add-variant form below) -->
+                <datalist id="known-colors"><option v-for="c in knownColors" :key="c" :value="c" /></datalist>
+                <datalist id="known-sizes"><option v-for="s in knownSizes" :key="s" :value="s" /></datalist>
                 <div v-if="form.errors.company" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.company }}</div>
             </div>
             <div v-if="hasBatchTracking" class="field">
@@ -1460,8 +1495,8 @@ useKeyboardShortcuts({
                 <div class="hr"></div>
                 <div style="font-size:12px;color:var(--dim);margin-bottom:6px">{{ t('stock.addVariantSingle') }}</div>
                 <div class="f2">
-                    <input v-model="variantForm.size" :placeholder="opt2Label">
-                    <input v-model="variantForm.color" :placeholder="opt1Label">
+                    <input v-model="variantForm.size" list="known-sizes" :placeholder="opt2Label">
+                    <input v-model="variantForm.color" list="known-colors" :placeholder="opt1Label">
                 </div>
                 <div class="f2" style="margin-top:8px">
                     <input v-model="variantForm.stock" type="number" :placeholder="t('stock.startingStock')">
@@ -1505,7 +1540,19 @@ useKeyboardShortcuts({
                 <label>{{ t('os.supplier') }}</label>
                 <select v-model="stockInSupplier">
                     <option value="">Nil — {{ t('os.noSupplier') }}</option>
-                    <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+                    <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }} ({{ s.count }})</option>
+                </select>
+            </div>
+            <!-- Khaled live: "koto tk pay korche add korte parbe koto due
+                 ache show hobe" — only asked once a supplier is actually
+                 picked (Nil has no one to owe); same 3-way choice the
+                 Purchases screen already uses -->
+            <div v-if="stockInSupplier" class="field">
+                <label>{{ t('purchase.method') }}</label>
+                <select v-model="stockInPaymentMethod">
+                    <option value="cash">{{ t('pay.cash') }}</option>
+                    <option value="bank">{{ t('purchase.methodBank') }}</option>
+                    <option value="credit">{{ t('pay.credit') }}</option>
                 </select>
             </div>
             <template v-if="hasBatchTracking">
@@ -1541,11 +1588,21 @@ useKeyboardShortcuts({
                     <label>{{ t('os.supplier') }}</label>
                     <select v-model="osSupplier">
                         <option value="">Nil — {{ t('os.noSupplier') }}</option>
-                        <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+                        <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }} ({{ s.count }})</option>
                     </select>
                 </div>
                 <div class="field"><label>{{ t('os.defaultCost') }}</label><input v-model="osDefaultCost" type="number" step="0.01"></div>
                 <div class="field"><label>{{ t('os.defaultPrice') }}</label><input v-model="osDefaultPrice" type="number" step="0.01"></div>
+                <!-- Khaled live: "koto tk pay korche ... koto due ache
+                     show hobe" — one choice for the whole submit -->
+                <div v-if="osSupplier" class="field">
+                    <label>{{ t('purchase.method') }}</label>
+                    <select v-model="osPaymentMethod">
+                        <option value="cash">{{ t('pay.cash') }}</option>
+                        <option value="bank">{{ t('purchase.methodBank') }}</option>
+                        <option value="credit">{{ t('pay.credit') }}</option>
+                    </select>
+                </div>
             </div>
 
             <template v-if="(editing?.variants || []).length || osNewColors.length || osNewSizes.length">
@@ -1574,11 +1631,11 @@ useKeyboardShortcuts({
                 <div style="font-size:11.5px;color:var(--mut);margin-bottom:8px">{{ t('os.cellHint') }}</div>
                 <div class="f2" style="margin-bottom:10px">
                     <div style="display:flex;gap:6px">
-                        <input v-model="osNewColorInput" :placeholder="'+ ' + opt1Label" @keyup.enter="osAddColor">
+                        <input v-model="osNewColorInput" list="known-colors" :placeholder="'+ ' + opt1Label" @keyup.enter="osAddColor">
                         <button class="btn sm ghost" style="width:auto" @click="osAddColor">+</button>
                     </div>
                     <div style="display:flex;gap:6px">
-                        <input v-model="osNewSizeInput" :placeholder="'+ ' + opt2Label" @keyup.enter="osAddSize">
+                        <input v-model="osNewSizeInput" list="known-sizes" :placeholder="'+ ' + opt2Label" @keyup.enter="osAddSize">
                         <button class="btn sm ghost" style="width:auto" @click="osAddSize">+</button>
                     </div>
                 </div>
@@ -1611,7 +1668,7 @@ useKeyboardShortcuts({
                 <label>{{ t('os.supplier') }}</label>
                 <select v-model="sourceForm.supplier_id">
                     <option value="">Nil — {{ t('os.noSupplier') }}</option>
-                    <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+                    <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }} ({{ s.count }})</option>
                 </select>
             </div>
             <div v-if="brands" class="field">
@@ -1628,6 +1685,15 @@ useKeyboardShortcuts({
             <div class="field">
                 <label>{{ t('os.sellPriceOptional') }}</label>
                 <input v-model="sourceForm.price" type="number" min="0">
+            </div>
+            <!-- Khaled live: "koto tk pay korche ... koto due ache show hobe" -->
+            <div v-if="sourceForm.supplier_id" class="field">
+                <label>{{ t('purchase.method') }}</label>
+                <select v-model="sourceForm.payment_method">
+                    <option value="cash">{{ t('pay.cash') }}</option>
+                    <option value="bank">{{ t('purchase.methodBank') }}</option>
+                    <option value="credit">{{ t('pay.credit') }}</option>
+                </select>
             </div>
             <div v-if="sourceForm.errors.qty || sourceForm.errors.cost" style="color:var(--rose);font-size:12.5px;margin-bottom:10px">{{ sourceForm.errors.qty || sourceForm.errors.cost }}</div>
             <button class="btn" :disabled="sourceForm.processing" @click="saveSourceStockIn">{{ sourceForm.processing ? '...' : t('os.save') }}</button>

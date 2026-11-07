@@ -735,6 +735,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::get('suppliers/{supplier}', [SupplierController::class, 'show'])->name('suppliers.show');
         Route::post('suppliers/{supplier}/payments', [SupplierPaymentController::class, 'store'])->name('suppliers.payments.store');
         Route::post('suppliers/{supplier}/due', [SupplierController::class, 'addDue'])->name('suppliers.due');
+        Route::post('suppliers/{supplier}/merge', [SupplierController::class, 'merge'])->name('suppliers.merge');
         Route::post('supplier-returns', [SupplierReturnController::class, 'store'])->name('supplierReturns.store');
     });
 });

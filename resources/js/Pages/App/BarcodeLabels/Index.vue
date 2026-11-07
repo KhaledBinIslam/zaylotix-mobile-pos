@@ -859,7 +859,7 @@ const printCss = computed(() => {
         <div v-if="suppliers && suppliers.length" class="field" style="margin-bottom:8px">
             <select v-model="supplierFilter">
                 <option value="">{{ t('stock.allSuppliers') }}</option>
-                <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+                <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }} ({{ s.count }})</option>
             </select>
         </div>
         <div v-if="(q || supplierFilter) && !filtered.length" class="card" style="margin-bottom:12px;text-align:center;color:var(--mut);font-size:13px">

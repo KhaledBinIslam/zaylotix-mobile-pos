@@ -4,6 +4,7 @@ import { ref, computed } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import { useI18n } from '@/composables/useI18n';
+import { findSimilarNames } from '@/support/similarNames';
 
 const props = defineProps({ suppliers: Array });
 const { t } = useI18n();
@@ -38,6 +39,14 @@ function statsLine(s) {
 const addSheet = ref(false);
 const addForm = useForm({ name: '', phone: '', address: '' });
 function saveSupplier() {
+    // Khaled live: "Sujon" and "Sujon 3rd party" — two real, separate
+    // suppliers with zero warning either was close to the other. A soft,
+    // skippable check (the server's own guard still hard-blocks an exact
+    // twin) — never silently blocks, just names what it found and asks.
+    const similar = findSimilarNames(addForm.name, props.suppliers.map((s) => s.name));
+    if (similar.length && !confirm(t('supplier.similarNameConfirm', { name: addForm.name, similar: similar.join(', ') }))) {
+        return;
+    }
     addForm.post(route('app.suppliers.store'), { onSuccess: () => { addSheet.value = false; addForm.reset(); } });
 }
 
@@ -67,6 +76,24 @@ function openPay(s) {
 function pay() {
     payForm.post(route('app.suppliers.payments.store', paying.value.id), {
         onSuccess: () => (paySheet.value = false),
+    });
+}
+
+// Khaled live: "Sujon" and "Sujon 3rd party" turned out to be the same
+// real supplier. Same shape as Brand's own merge (manual survivor pick,
+// never auto-matched) — everything repoints to the survivor, including
+// the payable (summed, never silently dropped), see SupplierController::merge().
+const mergeSheet = ref(false);
+const merging = ref(null);
+const mergeInto = ref('');
+function openMerge(s) {
+    merging.value = s;
+    mergeInto.value = '';
+    mergeSheet.value = true;
+}
+function confirmMerge() {
+    router.post(route('app.suppliers.merge', merging.value.id), { into: mergeInto.value }, {
+        onSuccess: () => { mergeSheet.value = false; },
     });
 }
 </script>
@@ -107,6 +134,7 @@ function pay() {
                 <div class="btnrow" style="margin:-4px 0 12px 0;padding-left:54px">
                     <button class="btn sm" style="flex:1" @click="openPay(s)">{{ t('supplier.pay') }}</button>
                     <Link :href="route('app.suppliers.show', s.id)" class="btn sm ghost" style="flex:1;text-align:center">{{ t('supplier.viewLedger') }}</Link>
+                    <button v-if="suppliers.length > 1" class="btn sm ghost" style="flex:0 0 auto;width:auto;padding:6px 10px" @click="openMerge(s)">{{ t('supplier.merge') }}</button>
                 </div>
             </div>
         </template>
@@ -122,6 +150,7 @@ function pay() {
                 </div>
                 <div class="end" style="display:flex;align-items:center;gap:8px">
                     <span class="pill mint">{{ t('supplier.settled') }}</span>
+                    <button v-if="suppliers.length > 1" class="btn sm ghost" style="width:auto;padding:6px 10px" @click.prevent.stop="openMerge(s)">{{ t('supplier.merge') }}</button>
                     <!-- duplicate/typo rows only — the server refuses any
                          supplier with real history, so this stays safe -->
                     <button class="btn sm ghost rose" style="width:auto;padding:6px 10px" :disabled="deleting" @click.prevent.stop="destroySupplier(s)">🗑️</button>
@@ -170,6 +199,19 @@ function pay() {
             <button class="btn" :disabled="payForm.processing" @click="pay">
                 {{ payForm.processing ? '...' : t('supplier.paySubmit') }}
             </button>
+        </Sheet>
+
+        <Sheet v-model="mergeSheet" :title="t('supplier.mergeTitle', { name: merging?.name || '' })">
+            <div style="font-size:13px;color:var(--mut);margin-bottom:12px">{{ t('supplier.mergeHint') }}</div>
+            <div class="field">
+                <label>{{ t('supplier.mergeInto') }}</label>
+                <select v-model="mergeInto">
+                    <option value="" disabled>{{ t('stock.selectPlaceholder') }}</option>
+                    <option v-for="s in suppliers.filter((x) => x.id !== merging?.id)" :key="s.id" :value="s.id">{{ s.name }} ({{ s.stats?.products || 0 }})</option>
+                </select>
+            </div>
+            <button class="btn" :disabled="!mergeInto" @click="confirmMerge">{{ t('supplier.mergeDo') }}</button>
+            <button class="btn ghost" style="margin-top:10px" @click="mergeSheet = false">{{ t('common.cancel') }}</button>
         </Sheet>
     </AppLayout>
 </template>
