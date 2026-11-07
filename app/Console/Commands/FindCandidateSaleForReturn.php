@@ -44,7 +44,17 @@ class FindCandidateSaleForReturn extends Command
             ->whereIn('shop_id', $shops->pluck('id'))
             ->where('product_name', 'like', "%{$product}%")
             ->when($size, fn ($q) => $q->where('variant_label', 'like', "%{$size}%"))
-            ->with(['sale:id,shop_id,invoice_no,date,customer_id', 'sale.customer:id,name,phone'])
+            // the `sale`/`sale.customer` relations still carry Sale's own
+            // TenantScope when eager-loaded by name — unscoped explicitly,
+            // same gotcha ReturnController::lookup() already guards against
+            // (see its own comment on this exact trap). Without this, an
+            // artisan run with no "current shop" context silently loaded
+            // nothing, so invoice_no/date printed blank even though the
+            // sale_item row itself was found.
+            ->with([
+                'sale' => fn ($q) => $q->withoutGlobalScopes(),
+                'sale.customer' => fn ($q) => $q->withoutGlobalScopes(),
+            ])
             ->orderByDesc('id')
             ->limit(30)
             ->get();
