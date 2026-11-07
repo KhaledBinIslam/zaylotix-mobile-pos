@@ -220,6 +220,25 @@ const filtered = computed(() => {
     return bySearch.filter((p) => productHasSupplier(p, Number(supplierFilter.value)));
 });
 
+// Khaled: "product slect hole pashe supplier nam asbe na?" — whose goods
+// a product holds, right on its name row
+function supplierNamesOf(p) {
+    const names = [];
+    const take = (line) => { if (line.supplier_name && !names.includes(line.supplier_name)) names.push(line.supplier_name); };
+    (p.sources || []).forEach(take);
+    (p.variants || []).forEach((v) => (v.sources || []).forEach(take));
+
+    return names.join(', ');
+}
+// Khaled: "supplier filter korle shudu ey filter dekhanor kotha" — with a
+// supplier picked, only THAT supplier's lot rows show inside a product
+function visibleLines(v) {
+    const lines = v.sources || [];
+    if (!supplierFilter.value) return lines;
+
+    return lines.filter((l) => l.supplier_id === Number(supplierFilter.value));
+}
+
 // a search narrowed down to one product opens it by itself — the common
 // "scan/type the article, print its stickers" flow stays one motion
 watch(() => (filtered.value.length === 1 ? filtered.value[0].id : null), (id) => {
@@ -762,7 +781,10 @@ function buildAndPreview() {
                 const lineCopies = selected.value['l:' + line.id];
                 if (!lineCopies) continue;
                 for (let i = 0; i < lineCopies; i++) {
-                    list.push({ name: p.name, variantLabel: variantLabel(v), barcode: line.barcode, scanCode: line.scan_code, price: line.price, discount_price: null, brandName: line.supplier_name ? (t('os.supplier') + ': ' + line.supplier_name) : (v.brand_name || null) });
+                    // Khaled: "barcode e supplier nam asbena" — the lot
+                    // sticker looks exactly like a normal one (name, size,
+                    // price); only the code itself resolves to the lot
+                    list.push({ name: p.name, variantLabel: variantLabel(v), barcode: line.barcode, scanCode: line.scan_code, price: line.price, discount_price: null, brandName: v.brand_name || null });
                 }
             }
         }
@@ -946,6 +968,7 @@ const printCss = computed(() => {
                     <div class="mid">
                         <b>{{ p.name }}</b>
                         <span>{{ t('bc.variantCount', { n: p.variants.length }) }} • {{ t('bc.totalStock', { n: totalStock(p) }) }}</span>
+                        <span v-if="supplierNamesOf(p)" style="color:var(--sky)">🚚 {{ supplierNamesOf(p) }}</span>
                     </div>
                     <div class="end" @click.stop>
                         <button class="btn sm ghost" style="width:auto;padding:6px 10px" @click="selectAllVariants(p)">{{ t('bc.selectAllVariants') }}</button>
@@ -1015,7 +1038,7 @@ const printCss = computed(() => {
                     <!-- Part 1 — print a sticker PER SUPPLIER/BRAND LOT, at
                          that lot's own sell price; scanning it resolves to
                          that exact lot on the sell screen, no guessing -->
-                    <div v-for="line in v.sources || []" :key="'l' + line.id" class="row" style="border-top:1px solid var(--line);padding-left:36px" :class="{ incart: isSelected('l:' + line.id) }" :style="isSelected('l:' + line.id) ? 'background:var(--goldSoft)' : ''" @click="toggleSourceLine(line)">
+                    <div v-for="line in visibleLines(v)" :key="'l' + line.id" class="row" style="border-top:1px solid var(--line);padding-left:36px" :class="{ incart: isSelected('l:' + line.id) }" :style="isSelected('l:' + line.id) ? 'background:var(--goldSoft)' : ''" @click="toggleSourceLine(line)">
                         <div class="ava" style="font-size:14px">🚚</div>
                         <div class="mid">
                             <b style="font-size:12.5px">{{ line.supplier_name || 'Nil' }}</b>

@@ -225,13 +225,17 @@ class ArticleVariantAddedLaterTest extends TestCase
         $this->assertSame('SMS-L-10001-NSXXZ-SILVER', ProductColorBarcode::where('product_id', $product->id)->value('barcode'));
     }
 
-    public function test_a_plain_product_still_gets_variants_with_no_barcode(): void
+    public function test_a_plain_products_grid_variant_gets_a_printable_zv_code_not_an_article_one(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();
         $this->grantFeature($shop, 'product_variants');
         // a supplier's own EAN, not an article barcode — minting
         // "5901234123457-RED-M" off the back of it would invent a code
-        // that nothing has ever printed
+        // that nothing has ever printed. But born with NO barcode at all
+        // meant unprintable stickers (Seaman live, "No barcode" on every
+        // grid-born variant) — so a plain product now mints the same
+        // fresh ZV{id} the opening-stock grid always has, never a code
+        // derived from the EAN.
         $product = Product::create([
             'shop_id' => $shop->id, 'name' => 'Shirt', 'barcode' => '5901234123457',
             'cost' => 200, 'price' => 400, 'stock' => 0,
@@ -241,7 +245,8 @@ class ArticleVariantAddedLaterTest extends TestCase
             'variants' => [['color' => 'RED', 'size' => 'M', 'stock' => 4]],
         ])->assertSessionHasNoErrors();
 
-        $this->assertNull(ProductVariant::where('product_id', $product->id)->value('barcode'));
+        $v = ProductVariant::where('product_id', $product->id)->first();
+        $this->assertSame('ZV'.$v->id, $v->barcode);
     }
 
     public function test_the_backfill_command_fills_in_variants_that_went_in_without_one(): void

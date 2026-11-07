@@ -320,23 +320,27 @@ class ProductVariantTest extends TestCase
         $this->assertEquals(25, $product->fresh()->stock);
     }
 
-    public function test_bulk_grid_skips_cells_that_already_exist_without_erroring_the_whole_submit(): void
+    public function test_bulk_grid_tops_up_cells_that_already_exist_instead_of_skipping_them(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();
         $this->grantFeature($shop, 'product_variants');
         $product = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 200, 'price' => 400, 'stock' => 10]);
-        ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => 'M', 'color' => 'Blue', 'stock' => 10]);
+        $existing = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => 'M', 'color' => 'Blue', 'stock' => 10]);
 
+        // Khaled live (Seaman, "4 ta add korar somoy utlo 2 ... baki
+        // product koi"): an existing cell's qty used to be thrown away
+        // silently — now it's a stock-in on that cell, never a dupe
         $response = $this->actingAs($owner, 'web')->post("/app/products/{$product->id}/variants/bulk", [
             'variants' => [
-                ['color' => 'Blue', 'size' => 'M', 'stock' => 99], // duplicate — skipped
+                ['color' => 'Blue', 'size' => 'M', 'stock' => 99], // existing — topped up
                 ['color' => 'Blue', 'size' => 'L', 'stock' => 8], // new
             ],
         ]);
 
         $response->assertRedirect();
-        $this->assertSame(2, ProductVariant::count()); // one existing + one new, not three
-        $this->assertEquals(18, $product->fresh()->stock); // 10 existing + 8 new only
+        $this->assertSame(2, ProductVariant::count()); // one existing + one new, never a duplicate cell
+        $this->assertEquals(109, $existing->fresh()->stock); // 10 + 99, not lost
+        $this->assertEquals(117, $product->fresh()->stock); // 10 + 99 + 8
     }
 
     /**

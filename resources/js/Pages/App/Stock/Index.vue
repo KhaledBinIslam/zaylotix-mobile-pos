@@ -529,6 +529,14 @@ function productUntracked(p) {
     const tracked = supplierBreakdown(p).reduce((s, x) => s + x.qty, 0);
     return Math.max(0, Math.round(((Number(p.stock) || 0) - tracked) * 1000) / 1000);
 }
+// Khaled: "supplier filter korle shudu ey filter dekhanor kotha" — with a
+// supplier picked up top, the edit sheet shows only that supplier's lines
+function editVisibleLines(target) {
+    const lines = target.sources || [];
+    if (!supplierFilter.value) return lines;
+
+    return lines.filter((l) => (l.supplier?.id ?? l.supplier_id) === Number(supplierFilter.value));
+}
 const fixSheet = ref(false);
 const fixMode = ref('move'); // 'move' (re-file a lot) | 'claim' (untracked stock)
 const fixTarget = ref(null);
@@ -1330,7 +1338,7 @@ useKeyboardShortcuts({
             <!-- Part 1 — a plain (no colour/size) product's own supplier/brand lots -->
             <div v-if="editing && !editingHasVariants && hasSourceLines" class="field">
                 <label>{{ t('os.sourcesLabel') }}</label>
-                <div v-for="line in (editing.sources || [])" :key="line.id" style="font-size:12px;color:var(--mut);padding:3px 0;display:flex;align-items:center;gap:6px">
+                <div v-for="line in editVisibleLines(editing)" :key="line.id" style="font-size:12px;color:var(--mut);padding:3px 0;display:flex;align-items:center;gap:6px">
                     <span style="flex:1">🚚 {{ line.supplier?.name || 'Nil' }}<template v-if="line.brand?.name"> · {{ line.brand.name }}</template>
                     · {{ t('stock.costShort') }} {{ money(line.cost) }} · {{ money(line.price) }} · {{ line.stock }} {{ t('stock.pieces') }}</span>
                     <button v-if="Number(line.stock) > 0" class="btn sm ghost" style="padding:2px 8px;font-size:11px" @click="openMoveLine(line, editing.name)">↪</button>
@@ -1469,8 +1477,8 @@ useKeyboardShortcuts({
                             <!-- Part 1 — "one product, many sources": each
                                  supplier/brand lot's own buy/sell/stock,
                                  under this exact variant -->
-                            <div v-if="hasSourceLines && v.sources?.length" style="margin-top:6px;border-top:1px dashed var(--line);padding-top:6px">
-                                <div v-for="line in v.sources" :key="line.id" style="font-size:11.5px;color:var(--mut);padding:2px 0;display:flex;align-items:center;gap:6px">
+                            <div v-if="hasSourceLines && editVisibleLines(v).length" style="margin-top:6px;border-top:1px dashed var(--line);padding-top:6px">
+                                <div v-for="line in editVisibleLines(v)" :key="line.id" style="font-size:11.5px;color:var(--mut);padding:2px 0;display:flex;align-items:center;gap:6px">
                                     <span style="flex:1">🚚 {{ line.supplier?.name || 'Nil' }}<template v-if="line.brand?.name"> · {{ line.brand.name }}</template>
                                     · {{ t('stock.costShort') }} {{ money(line.cost) }} · {{ money(line.price) }} · {{ line.stock }} {{ t('stock.pieces') }}</span>
                                     <button v-if="Number(line.stock) > 0" class="btn sm ghost" style="padding:2px 8px;font-size:11px" @click="openMoveLine(line, variantLabel(v))">↪</button>

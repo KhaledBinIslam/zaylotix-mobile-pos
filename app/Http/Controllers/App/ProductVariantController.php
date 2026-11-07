@@ -96,6 +96,15 @@ class ProductVariantController extends Controller
                 'price' => $data['price'] ?? null,
                 'cost' => $data['cost'] ?? null,
             ]);
+            // non-article product: freeBarcodeFor gave nothing — mint the
+            // same printable ZV{id} the opening-stock grid does, so a new
+            // size is never born unprintable ("No barcode"). An ARTICLE
+            // stays null on purpose: its barcode encodes the colour code,
+            // and articles:regenerate-barcodes fills it in once the owner
+            // maps that colour — a ZV here would block that.
+            if (! $variant->barcode && ! ArticleVariant::isArticle($product)) {
+                $variant->update(['barcode' => 'ZV'.$variant->id]);
+            }
             // a line-tracked shop files a variant born WITH stock under the
             // product's default supplier (same convention as SeedSourceLines)
             // — otherwise it starts life untracked and invisible to the
@@ -176,10 +185,12 @@ class ProductVariantController extends Controller
 
         // case/whitespace-insensitive keys — 'Navy Blue' must never twin
         // 'Navy blue' (Seaman INV-1001); values are stored trimmed too
-        $existingKeys = ProductVariant::where('product_id', $product->id)->get(['size', 'color'])
-            ->map(fn ($v) => ProductVariant::cellKey($v->color, $v->size))->all();
+        $existingByKey = ProductVariant::where('product_id', $product->id)->get()
+            ->keyBy(fn ($v) => ProductVariant::cellKey($v->color, $v->size));
 
         $toCreate = [];
+        $toTopUp = []; // [variant id => row]
+        $seenKeys = [];
         foreach ($data['variants'] as $row) {
             $row['size'] = isset($row['size']) ? (trim((string) $row['size']) ?: null) : null;
             $row['color'] = isset($row['color']) ? (trim((string) $row['color']) ?: null) : null;
@@ -187,15 +198,27 @@ class ProductVariantController extends Controller
                 continue;
             }
             $key = ProductVariant::cellKey($row['color'], $row['size']);
-            if (in_array($key, $existingKeys, true)) {
+            if (in_array($key, $seenKeys, true)) {
+                continue; // a duplicate row within this same grid submit
+            }
+            $seenKeys[] = $key;
+            // Khaled live: a cell that already existed was SKIPPED silently
+            // and its qty thrown away — "4 ta add korar somoy utlo 2 ...
+            // baki product koi". An existing cell is now a stock-in on that
+            // variant instead: one grid, whichever cells are new get
+            // created, whichever exist get topped up — never silently lost.
+            if ($existingByKey->has($key)) {
+                if ((int) $row['stock'] > 0) {
+                    $toTopUp[$existingByKey->get($key)->id] = $row;
+                }
+
                 continue;
             }
-            $existingKeys[] = $key; // guards against a duplicate row within this same grid submit too
             $toCreate[] = $row;
         }
 
-        if (! $toCreate) {
-            return back()->withErrors(['size' => 'নতুন কোনো ভ্যারিয়েন্ট পাওয়া যায়নি — সবগুলো খালি অথবা আগে থেকেই আছে।']);
+        if (! $toCreate && ! $toTopUp) {
+            return back()->withErrors(['size' => 'কোনো ঘরে সংখ্যা পাওয়া যায়নি — অন্তত একটা ঘরে স্টক দিন।']);
         }
 
         $shop = Tenancy::shop();
@@ -212,7 +235,7 @@ class ProductVariantController extends Controller
         // guessing — nothing downstream can tell a guess from a decision.
         if ($shop && ($groupPrices || $groupCosts)) {
             $ungrouped = [];
-            foreach ($toCreate as $row) {
+            foreach (array_merge($toCreate, array_values($toTopUp)) as $row) {
                 $size = (string) ($row['size'] ?? '');
                 if ($size !== '' && SizeGroupPricing::groupForSize($shop, $size) === null) {
                     $ungrouped[$size] = true;
@@ -225,24 +248,27 @@ class ProductVariantController extends Controller
             }
         }
 
-        $created = DB::transaction(function () use ($shop, $product, $toCreate, $data, $groupPrices, $groupCosts, $pickedSupplierId, $pickedBrandId) {
+        [$created, $topped] = DB::transaction(function () use ($shop, $product, $toCreate, $toTopUp, $data, $groupPrices, $groupCosts, $pickedSupplierId, $pickedBrandId) {
             $lockedProduct = Product::whereKey($product->id)->lockForUpdate()->first();
             $isFirstVariant = ! ProductVariant::where('product_id', $lockedProduct->id)->exists();
+
+            // a cell's own number beats every broader rule — the owner
+            // typed it for exactly this row (SEAMAN Phase 3)
+            $resolve = function (array $row, string $which) use ($shop, $groupPrices, $groupCosts, $data) {
+                $size = (string) ($row['size'] ?? '');
+                $groups = $which === 'price' ? $groupPrices : $groupCosts;
+
+                return $row[$which]
+                    ?? ($groups && $shop
+                        ? SizeGroupPricing::priceForSize($shop, $size, $groups)
+                        : ($data[$which] ?? null));
+            };
 
             $totalStock = 0;
             $totalPaid = 0.0;
             foreach ($toCreate as $row) {
-                $size = (string) ($row['size'] ?? '');
-                // a cell's own number beats every broader rule — the owner
-                // typed it for exactly this row (SEAMAN Phase 3)
-                $rowPrice = $row['price']
-                    ?? ($groupPrices && $shop
-                        ? SizeGroupPricing::priceForSize($shop, $size, $groupPrices)
-                        : ($data['price'] ?? null));
-                $rowCost = $row['cost']
-                    ?? ($groupCosts && $shop
-                        ? SizeGroupPricing::priceForSize($shop, $size, $groupCosts)
-                        : ($data['cost'] ?? null));
+                $rowPrice = $resolve($row, 'price');
+                $rowCost = $resolve($row, 'cost');
 
                 $newVariant = ProductVariant::create([
                     'product_id' => $product->id,
@@ -257,6 +283,14 @@ class ProductVariantController extends Controller
                     'price' => $rowPrice,
                     'cost' => $rowCost,
                 ]);
+                // Khaled live ("No barcode" on every grid-born variant):
+                // a non-article product gets no code from freeBarcodeFor —
+                // fall back to the same printable ZV{id} the opening-stock
+                // grid has always minted. An article stays null on purpose
+                // (see store() — regenerate-barcodes fills it in later).
+                if (! $newVariant->barcode && ! ArticleVariant::isArticle($product)) {
+                    $newVariant->update(['barcode' => 'ZV'.$newVariant->id]);
+                }
                 // a grid cell born with stock goes under the supplier/brand
                 // picked ON the grid, falling back to the product's own
                 // default — "stock tulle kar nam e uthb" always has an answer
@@ -276,6 +310,48 @@ class ProductVariantController extends Controller
                 $totalPaid += (int) $row['stock'] * $lineCost;
             }
 
+            // existing cells: a stock-in on that variant, same math as the
+            // dedicated stock-in endpoints — never a silent skip
+            foreach ($toTopUp as $variantId => $row) {
+                $locked = ProductVariant::whereKey($variantId)->lockForUpdate()->first();
+                if (! $locked) {
+                    continue; // deleted between read and lock — nothing to top up
+                }
+                $qty = (int) $row['stock'];
+                $rowPrice = $resolve($row, 'price');
+                $rowCost = $resolve($row, 'cost');
+                $lineCost = $rowCost !== null ? (float) $rowCost : (float) ($locked->cost ?? $lockedProduct->cost ?? 0);
+
+                $line = null;
+                if ($shop?->hasFeature('source_lines')) {
+                    $line = ProductSource::upsertLine(
+                        Tenancy::id(), $lockedProduct->id, $locked->id,
+                        $pickedSupplierId ?? $lockedProduct->supplier_id,
+                        $pickedBrandId ?? $lockedProduct->brand_id,
+                        (float) $qty, $lineCost,
+                        $rowPrice !== null ? (float) $rowPrice : null,
+                        (float) ($locked->price ?? $lockedProduct->price ?? 0)
+                    );
+                    $locked->cost = $line->cost; // mirror rides the line, same as every stock-in
+                } elseif ($rowCost !== null) {
+                    // same blend-or-overwrite the "+" button uses
+                    $oldStock = (float) $locked->stock;
+                    $oldCost = (float) ($locked->cost ?? $lockedProduct->cost ?? 0);
+                    $usesAverage = $shop?->usesWeightedAverageCosting();
+                    $locked->cost = ($usesAverage && ($oldStock + $qty) > 0 && $oldStock > 0)
+                        ? round((($oldStock * $oldCost) + ($qty * (float) $rowCost)) / ($oldStock + $qty), 2)
+                        : $rowCost;
+                }
+                if ($rowPrice !== null) {
+                    $locked->price = $rowPrice;
+                }
+                $locked->applyStockDelta($qty);
+                $locked->save();
+                \App\Support\IntakeLedger::record($lockedProduct, $locked, (float) $qty, $rowCost !== null ? (float) $rowCost : null, 'variant_stock_in', $pickedSupplierId, $line?->id);
+                $totalStock += $qty;
+                $totalPaid += $qty * $lineCost;
+            }
+
             if ($isFirstVariant) {
                 $this->reconcilePreExistingStock($lockedProduct, (float) $totalStock, (bool) ($data['write_off_rest'] ?? false));
             } else {
@@ -286,15 +362,20 @@ class ProductVariantController extends Controller
             // cash/bank settles now, credit grows the supplier's payable
             \App\Support\SupplierPayable::apply($pickedSupplierId, $data['payment_method'] ?? null, $totalPaid);
 
-            Activity::log('product.variant.bulkCreate', "'{$product->name}'-এ গ্রিড থেকে ".count($toCreate).'টা নতুন ভ্যারিয়েন্ট যোগ করা হয়েছে।', $product);
+            Activity::log('product.variant.bulkCreate', "'{$product->name}'-এ গ্রিড থেকে ".count($toCreate).'টা নতুন ভ্যারিয়েন্ট, '.count($toTopUp).'টা আগের ঘরে স্টক যোগ হয়েছে।', $product);
 
-            return count($toCreate);
+            return [count($toCreate), count($toTopUp)];
         });
 
         $this->mintColorBarcodes($shop, $product, array_column($toCreate, 'color'));
         $this->shareWithTheBusiness($shop, $product);
 
-        return back()->with('success', "{$created}টা ভ্যারিয়েন্ট যোগ হয়েছে।");
+        $msg = $created ? "{$created}টা নতুন ভ্যারিয়েন্ট যোগ হয়েছে" : '';
+        if ($topped) {
+            $msg .= ($msg ? ', ' : '')."{$topped}টা আগের ঘরে স্টক যোগ হয়েছে";
+        }
+
+        return back()->with('success', $msg.'।');
     }
 
     /**

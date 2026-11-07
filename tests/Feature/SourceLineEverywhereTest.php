@@ -145,6 +145,35 @@ class SourceLineEverywhereTest extends TestCase
         $this->assertEquals(6 * 950, (float) $sujon->fresh()->payable);
     }
 
+    public function test_bulk_grid_tops_up_an_existing_cell_instead_of_silently_skipping_it(): void
+    {
+        [$shop] = $this->lineShop();
+        $sujon = Supplier::create(['name' => 'Sujon']);
+        $p = Product::create(['shop_id' => $shop->id, 'name' => 'Boiler Suit', 'cost' => 650, 'price' => 1090, 'stock' => 5]);
+        $existing = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $p->id, 'color' => 'Navy Blue', 'size' => 'L', 'stock' => 5]);
+
+        // "4 ta add korar somoy utlo 2 ... baki product koi" — L existed, so
+        // its 4 pcs used to vanish; now it's a stock-in on that cell
+        $this->post(route('app.productVariants.bulkStore', $p->id), [
+            'variants' => [
+                ['color' => 'Navy Blue', 'size' => 'M', 'stock' => 14],
+                ['color' => 'Navy Blue', 'size' => 'L', 'stock' => 4],
+            ],
+            'cost' => 650, 'price' => 1090,
+            'supplier_id' => $sujon->id, 'payment_method' => 'credit',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertEquals(9.0, (float) $existing->fresh()->stock); // 5 + 4, not lost
+        $m = ProductVariant::where('product_id', $p->id)->where('size', 'M')->first();
+        $this->assertNotNull($m);
+        $this->assertEquals(14.0, (float) $m->stock);
+        $this->assertNotNull($m->barcode); // never born unprintable
+        $this->assertEquals(23.0, (float) $p->fresh()->stock); // 5 + 14 + 4
+        // both cells filed under Sujon
+        $this->assertSame(2, ProductSource::where('product_id', $p->id)->where('supplier_id', $sujon->id)->count());
+        $this->assertEquals(18 * 650, (float) $sujon->fresh()->payable);
+    }
+
     public function test_csv_bulk_opening_stock_writes_lines(): void
     {
         [$shop] = $this->lineShop();
