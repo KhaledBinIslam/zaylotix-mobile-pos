@@ -264,6 +264,18 @@ class ProductController extends Controller
         // a brand-new product that arrives WITH stock is goods walking in
         // the door, same as any stock-in — the intake ledger counts it
         if ((float) $product->stock > 0) {
+            // a line-tracked shop files it under the default supplier
+            // picked on the form (or Nil) — otherwise a product born with
+            // stock starts life as "untracked" and has to be claimed by
+            // hand later, which is exactly the hole Khaled kept falling in
+            if (\App\Support\Tenancy::shop()?->hasFeature('source_lines') && ! $product->sold_by_weight) {
+                \App\Models\ProductSource::upsertLine(
+                    \App\Support\Tenancy::id(), $product->id, null,
+                    $product->supplier_id, $product->brand_id ?? null,
+                    (float) $product->stock, (float) $data['cost'],
+                    (float) $data['price'], (float) $data['price']
+                );
+            }
             \App\Support\IntakeLedger::record($product, null, (float) $product->stock, (float) $data['cost'], 'product_create');
         }
 
@@ -554,9 +566,30 @@ class ProductController extends Controller
             if (! $locked) {
                 abort(422, 'এই পণ্যটি মুছে ফেলা হয়েছে।');
             }
-            \App\Support\StockIn::apply($locked, (float) $data['qty'], $data['cost'] ?? null);
+
+            // Khaled live: this quick stock-in never wrote a LINE, so on a
+            // line-tracked shop the supplier picked here was invisible to
+            // the supplier filter/search and the per-lot display — same
+            // gap the grid and the variant "+" button had. A weighed
+            // product can't have lines at all (ProductSourceController
+            // refuses them too), and a shop without source_lines keeps
+            // StockIn::apply exactly as before.
+            $line = null;
+            if (\App\Support\Tenancy::shop()?->hasFeature('source_lines') && ! $locked->sold_by_weight) {
+                $paidCostForLine = isset($data['cost']) ? (float) $data['cost'] : (float) ($locked->cost ?? 0);
+                $line = \App\Models\ProductSource::upsertLine(
+                    \App\Support\Tenancy::id(), $locked->id, null,
+                    $supplierId, null, (float) $data['qty'], $paidCostForLine, null,
+                    (float) $locked->price
+                );
+                $locked->applyStockDelta((float) $data['qty']);
+                // mirror cost rides the line's cost — never a cross-supplier blend (see ProductSource)
+                $locked->update(['cost' => $line->cost]);
+            } else {
+                \App\Support\StockIn::apply($locked, (float) $data['qty'], $data['cost'] ?? null);
+            }
             // the intake ledger ("কত টাকার মাল উঠেছে") — same transaction
-            \App\Support\IntakeLedger::record($locked, null, (float) $data['qty'], isset($data['cost']) ? (float) $data['cost'] : null, 'product_stock_in', $supplierId);
+            \App\Support\IntakeLedger::record($locked, null, (float) $data['qty'], isset($data['cost']) ? (float) $data['cost'] : null, 'product_stock_in', $supplierId, $line?->id);
 
             $paidCost = isset($data['cost']) ? (float) $data['cost'] : (float) $locked->cost;
             \App\Support\SupplierPayable::apply($supplierId, $data['payment_method'] ?? null, $paidCost * (float) $data['qty']);

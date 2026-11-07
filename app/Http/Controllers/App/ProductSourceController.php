@@ -67,6 +67,152 @@ class ProductSourceController extends Controller
         return back()->with('success', 'স্টক যোগ হয়েছে।');
     }
 
+    /**
+     * Correction tool, not a stock-in — "pore kono ta stock tulte vul
+     * hole ... tik [kora]". Moves qty from THIS line to another
+     * supplier(+brand) line on the same product/variant: the wrong lot
+     * shrinks, the right one grows (created if needed, at this lot's own
+     * cost). Total stock is unchanged, so the mirror, the supplier's
+     * payable and the intake ledger are all deliberately untouched —
+     * nothing new arrived, it was just filed under the wrong name.
+     */
+    public function move(Request $request, ProductSource $productSource)
+    {
+        $this->authorize('update', $productSource->product);
+        abort_unless(Tenancy::shop()?->hasFeature('source_lines'), 403);
+
+        $data = $request->validate([
+            'supplier_id' => ['nullable', 'integer'],
+            'brand_id' => ['nullable', 'integer'],
+            'qty' => ['required', 'integer', 'min:1'],
+        ]);
+
+        $supplierId = ! empty($data['supplier_id']) ? Supplier::find($data['supplier_id'])?->id : null;
+        $brandId = ! empty($data['brand_id']) ? Brand::find($data['brand_id'])?->id : null;
+
+        $sameSupplier = ($supplierId ?? 0) === (int) ($productSource->supplier_id ?? 0);
+        $sameBrand = ($brandId ?? 0) === (int) ($productSource->brand_id ?? 0);
+        if ($sameSupplier && $sameBrand) {
+            return back()->withErrors(['supplier_id' => 'এই স্টক এখনই এই সাপ্লায়ার/ব্র্যান্ডের ঘরে আছে — অন্যটা বাছুন।']);
+        }
+
+        DB::transaction(function () use ($productSource, $data, $supplierId, $brandId) {
+            $from = ProductSource::whereKey($productSource->id)->lockForUpdate()->first();
+            abort_unless($from, 422, 'এই লাইনটি ইতিমধ্যে মুছে ফেলা হয়েছে।');
+
+            $qty = (int) $data['qty'];
+            if ($qty > (float) $from->stock) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'qty' => "এই লাইনে আছে {$from->stock} পিস — তার বেশি সরানো যাবে না।",
+                ]);
+            }
+
+            $to = ProductSource::upsertLine(
+                Tenancy::id(), $from->product_id, $from->product_variant_id,
+                $supplierId, $brandId, $qty, (float) $from->cost, null, (float) $from->price
+            );
+            $from->applyStockDelta(-$qty);
+
+            Activity::log(
+                'product.source.move',
+                "'{$from->product->name}' — {$qty} পিস '{$from->pickerLabel()}' থেকে '{$to->pickerLabel()}'-এর ঘরে সরানো হয়েছে (ভুল এন্ট্রি সংশোধন)।",
+                $to
+            );
+        });
+
+        return back()->with('success', 'স্টক সঠিক সাপ্লায়ারের ঘরে সরানো হয়েছে।');
+    }
+
+    /**
+     * The other half of the correction story: stock that predates line
+     * tracking (or came in through a path that didn't write lines before
+     * it was fixed) sits in the mirror with NO line at all —
+     * sum(lines.stock) < variant/product stock. This claims (part of)
+     * that untracked remainder for a supplier(+brand) line. The mirror
+     * already counts these units, so it is not touched; nothing was
+     * bought today, so payable and the intake ledger aren't either.
+     */
+    public function claimUntrackedProduct(Request $request, Product $product)
+    {
+        $this->authorize('update', $product);
+        abort_unless(Tenancy::shop()?->hasFeature('source_lines'), 403);
+        abort_if($product->sold_by_weight, 422, 'ওজন/লিটার হিসেবে বিক্রি হওয়া পণ্যে একাধিক সোর্স লাইন সাপোর্ট করে না।');
+        abort_if($product->variants()->exists(), 422, 'এই পণ্যের ভ্যারিয়েন্ট আছে — প্রতিটা ভ্যারিয়েন্টেই আলাদা করে ঠিক করুন।');
+
+        $data = $this->claimValidated($request);
+
+        DB::transaction(function () use ($product, $data) {
+            $locked = Product::whereKey($product->id)->lockForUpdate()->first();
+            abort_unless($locked, 422, 'এই পণ্যটি মুছে ফেলা হয়েছে।');
+            $this->applyClaim($locked, null, $data);
+        });
+
+        return back()->with('success', 'স্টক সাপ্লায়ারের ঘরে তোলা হয়েছে।');
+    }
+
+    public function claimUntrackedVariant(Request $request, ProductVariant $productVariant)
+    {
+        $this->authorize('update', $productVariant->product);
+        abort_unless(Tenancy::shop()?->hasFeature('source_lines'), 403);
+
+        $data = $this->claimValidated($request);
+
+        DB::transaction(function () use ($productVariant, $data) {
+            $locked = ProductVariant::whereKey($productVariant->id)->lockForUpdate()->first();
+            abort_unless($locked, 422, 'এই ভ্যারিয়েন্টটি ইতিমধ্যে মুছে ফেলা হয়েছে।');
+            $lockedProduct = Product::whereKey($locked->product_id)->lockForUpdate()->first();
+            $this->applyClaim($lockedProduct, $locked, $data);
+        });
+
+        return back()->with('success', 'স্টক সাপ্লায়ারের ঘরে তোলা হয়েছে।');
+    }
+
+    private function claimValidated(Request $request): array
+    {
+        return $request->validate([
+            'supplier_id' => ['nullable', 'integer'],
+            'brand_id' => ['nullable', 'integer'],
+            'qty' => ['required', 'integer', 'min:1'],
+            'cost' => ['nullable', 'numeric', 'min:0'],
+            'price' => ['nullable', 'numeric', 'min:0'],
+        ]);
+    }
+
+    /** @param Product $product already locked. @param ProductVariant|null $variant already locked, or null for a plain product. */
+    private function applyClaim(Product $product, ?ProductVariant $variant, array $data): void
+    {
+        $supplierId = ! empty($data['supplier_id']) ? Supplier::find($data['supplier_id'])?->id : null;
+        $brandId = ! empty($data['brand_id']) ? Brand::find($data['brand_id'])?->id : null;
+        $qty = (int) $data['qty'];
+
+        $linesQuery = ProductSource::where('product_id', $product->id);
+        $linesQuery = $variant ? $linesQuery->where('product_variant_id', $variant->id) : $linesQuery->whereNull('product_variant_id');
+        $tracked = (float) $linesQuery->lockForUpdate()->get()->sum('stock');
+        $mirror = (float) ($variant?->stock ?? $product->stock);
+        $untracked = round($mirror - $tracked, 3);
+
+        if ($qty > $untracked) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'qty' => "ট্র্যাক-না-হওয়া স্টক আছে {$untracked} পিস — তার বেশি ভাগ করা যাবে না।",
+            ]);
+        }
+
+        $cost = isset($data['cost']) ? (float) $data['cost'] : (float) ($variant?->cost ?? $product->cost ?? 0);
+        $price = isset($data['price']) ? (float) $data['price'] : null;
+
+        $line = ProductSource::upsertLine(
+            Tenancy::id(), $product->id, $variant?->id,
+            $supplierId, $brandId, $qty, $cost, $price,
+            (float) ($variant?->price ?? $product->price)
+        );
+
+        Activity::log(
+            'product.source.claim',
+            "'{$product->name}'".($variant ? " ({$variant->label()})" : '')." — ট্র্যাক-না-হওয়া {$qty} পিস '{$line->pickerLabel()}'-এর ঘরে তোলা হয়েছে।",
+            $line
+        );
+    }
+
     private function validated(Request $request): array
     {
         return $request->validate([

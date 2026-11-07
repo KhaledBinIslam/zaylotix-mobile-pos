@@ -22,6 +22,9 @@ const props = defineProps({
     // arriving from Stock's 🏷️ button: open on this article alone,
     // already ticked
     openFor: { type: Number, default: null },
+    // with openFor: tick only THIS supplier's lot rows (Stock's
+    // supplier-breakdown print button)
+    openForSupplier: { type: Number, default: null },
     suppliers: { type: Array, default: null }, // null = suppliers feature off, filter hidden
 });
 const { t } = useI18n();
@@ -51,9 +54,36 @@ onMounted(() => {
     if (!product) return;
 
     q.value = product.name;
-    printableRowsOf(product).forEach((r) => { selected.value[r.key] = r.copies; });
+    expanded.value[product.id] = true;
+    if (props.openForSupplier) {
+        // only that one supplier's lots — the breakdown's print button
+        if (product.variants?.length) {
+            (product.variants || []).forEach((v) => (v.sources || []).forEach((line) => {
+                if (line.supplier_id === props.openForSupplier && line.barcode) {
+                    selected.value['l:' + line.id] = Math.max(1, Number(line.stock) || 1);
+                }
+            }));
+        } else if (product.barcode) {
+            // a plain product has no per-lot rows on this page — its own
+            // sticker, with copies = that supplier's lot stock
+            const lot = (product.sources || []).find((l) => l.supplier_id === props.openForSupplier);
+            selected.value['p:' + product.id] = Math.max(1, Number(lot?.stock) || 1);
+        }
+    } else {
+        printableRowsOf(product).forEach((r) => { selected.value[r.key] = r.copies; });
+    }
 });
 const selected = ref({}); // { key: copies }
+
+// Khaled live: "shuru te nam gula show hobe ... select korle full list
+// show hobe print er jonno" — a variant product starts as ONE name row;
+// tapping it opens its sizes/colours/lots. A search that lands on exactly
+// one product opens it by itself, so scan → search → print stays the
+// same number of taps as before.
+const expanded = ref({}); // { productId: true }
+function toggleExpand(p) {
+    expanded.value[p.id] = !expanded.value[p.id];
+}
 
 function variantLabel(v) {
     return [v.size, v.color].filter(Boolean).join(', ');
@@ -111,6 +141,8 @@ function toggleSourceLine(line) {
 function selectAllVariants(p) {
     const rows = printableRowsOf(p);
     if (!rows.length) return;
+
+    expanded.value[p.id] = true; // show what just got ticked
 
     const allSelected = rows.every((r) => isSelected(r.key));
     rows.forEach((r) => {
@@ -188,6 +220,12 @@ const filtered = computed(() => {
     return bySearch.filter((p) => productHasSupplier(p, Number(supplierFilter.value)));
 });
 
+// a search narrowed down to one product opens it by itself — the common
+// "scan/type the article, print its stickers" flow stays one motion
+watch(() => (filtered.value.length === 1 ? filtered.value[0].id : null), (id) => {
+    if (id) expanded.value[id] = true;
+});
+
 // ↑/↓ walks the results, Enter focuses the highlighted product's first
 // qty box — works for the keyboard and for a hardware scanner's Enter
 const activeIdx = ref(-1);
@@ -200,6 +238,7 @@ function moveActive(step) {
 function focusActive() {
     const p = filtered.value[activeIdx.value];
     if (!p) return;
+    if (p.variants?.length) expanded.value[p.id] = true; // Enter opens it like a tap
     const el = document.getElementById('bc-prod-' + p.id);
     el?.scrollIntoView({ block: 'nearest' });
     // a plain product (no variants) with its own barcode: Enter ticks it
@@ -900,7 +939,9 @@ const printCss = computed(() => {
             </div>
 
             <template v-else>
-                <div class="row" style="border:none;background:var(--surface2, var(--card))">
+                <!-- the name row IS the open/close switch — a shop with 600
+                     products was one endless wall of size rows before -->
+                <div class="row" style="border:none;background:var(--surface2, var(--card));cursor:pointer" @click="toggleExpand(p)">
                     <div class="ava">{{ p.emoji }}</div>
                     <div class="mid">
                         <b>{{ p.name }}</b>
@@ -908,8 +949,10 @@ const printCss = computed(() => {
                     </div>
                     <div class="end" @click.stop>
                         <button class="btn sm ghost" style="width:auto;padding:6px 10px" @click="selectAllVariants(p)">{{ t('bc.selectAllVariants') }}</button>
+                        <span style="color:var(--mut);font-size:13px;padding:0 4px;cursor:pointer" @click="toggleExpand(p)">{{ expanded[p.id] ? '▲' : '▼' }}</span>
                     </div>
                 </div>
+                <template v-if="expanded[p.id]">
                 <!-- docs/ARTICLE_SERIES_PLAN.md §9 — one label per color (every size shares it), an alternative to picking each size below when the shop hasn't turned "include size in barcode" on -->
                 <div v-if="p.color_barcodes?.length" style="padding:8px 12px 2px 20px;font-size:11px;color:var(--mut)">{{ t('bc.colorLabelsHint') }}</div>
                 <div v-for="cb in p.color_barcodes" :key="'c' + cb.id" class="row" style="border-top:1px solid var(--line);padding-left:20px" :class="{ incart: isSelected('c:' + cb.id) }" :style="isSelected('c:' + cb.id) ? 'background:var(--goldSoft)' : ''" @click="toggleColorBarcode(cb)">
@@ -986,6 +1029,7 @@ const printCss = computed(() => {
                             </div>
                         </div>
                     </div>
+                </template>
                 </template>
             </template>
         </div>

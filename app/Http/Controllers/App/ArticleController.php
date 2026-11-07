@@ -331,6 +331,19 @@ class ArticleController extends Controller
                     'price' => $variantPrice,
                     'cost' => $variantCost,
                 ]);
+                // a line-tracked shop files each size's starting stock
+                // under the article's own supplier (resolved from the
+                // manufacturer code) — same reason as every other create path
+                if ((int) $row['qty'] > 0 && $shop->hasFeature('source_lines')) {
+                    \App\Models\ProductSource::upsertLine(
+                        $shop->id, $product->id, $variant->id,
+                        $product->supplier_id, $product->brand_id,
+                        (float) $row['qty'],
+                        $variantCost !== null ? (float) $variantCost : (float) $articleCost,
+                        $variantPrice !== null ? (float) $variantPrice : null,
+                        (float) ($variantPrice ?? $basePrice ?? 0)
+                    );
+                }
                 // the intake ledger ("কত টাকার মাল উঠেছে") — same
                 // transaction, priced at this size's own buying cost
                 \App\Support\IntakeLedger::record($product, $variant, (float) $row['qty'], $variantCost !== null ? (float) $variantCost : (float) $articleCost, 'article_create');

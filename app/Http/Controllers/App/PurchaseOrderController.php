@@ -161,11 +161,27 @@ class PurchaseOrderController extends Controller
                         $variant->update(['cost' => $item->cost]);
                         $product = Product::whereKey($item->product_id)->lockForUpdate()->first();
                         $product?->applyStockDelta($qty);
+                        // line-tracked shop: PO receipt is a receipt from
+                        // THIS supplier, same as every other stock-in path
+                        if ($product && \App\Support\Tenancy::shop()?->hasFeature('source_lines')) {
+                            \App\Models\ProductSource::upsertLine(
+                                \App\Support\Tenancy::id(), $product->id, $variant->id,
+                                $lockedPo->supplier_id, null, $qty, (float) $item->cost,
+                                null, (float) ($variant->price ?? $product->price ?? 0)
+                            );
+                        }
                     }
                 } elseif ($item->product_id) {
                     $product = Product::whereKey($item->product_id)->lockForUpdate()->first();
                     if ($product) {
                         StockIn::apply($product, $qty, (float) $item->cost);
+                        if (! $product->sold_by_weight && \App\Support\Tenancy::shop()?->hasFeature('source_lines')) {
+                            \App\Models\ProductSource::upsertLine(
+                                \App\Support\Tenancy::id(), $product->id, null,
+                                $lockedPo->supplier_id, null, $qty, (float) $item->cost,
+                                null, (float) ($product->price ?? 0)
+                            );
+                        }
                     }
                 }
 

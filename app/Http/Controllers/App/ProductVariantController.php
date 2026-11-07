@@ -5,6 +5,7 @@ namespace App\Http\Controllers\App;
 use App\Http\Controllers\Controller;
 use App\Models\Damage;
 use App\Models\Product;
+use App\Models\ProductSource;
 use App\Models\ProductVariant;
 use App\Models\Shop;
 use App\Support\Activity;
@@ -95,6 +96,19 @@ class ProductVariantController extends Controller
                 'price' => $data['price'] ?? null,
                 'cost' => $data['cost'] ?? null,
             ]);
+            // a line-tracked shop files a variant born WITH stock under the
+            // product's default supplier (same convention as SeedSourceLines)
+            // — otherwise it starts life untracked and invisible to the
+            // supplier filter until someone claims it by hand
+            if ((int) $data['stock'] > 0 && Tenancy::shop()?->hasFeature('source_lines')) {
+                ProductSource::upsertLine(
+                    Tenancy::id(), $lockedProduct->id, $variant->id,
+                    $lockedProduct->supplier_id, $lockedProduct->brand_id,
+                    (float) $data['stock'],
+                    isset($data['cost']) ? (float) $data['cost'] : (float) ($lockedProduct->cost ?? 0),
+                    $data['price'] ?? null, (float) ($data['price'] ?? $lockedProduct->price ?? 0)
+                );
+            }
             \App\Support\IntakeLedger::record($lockedProduct, $variant, (float) $data['stock'], isset($data['cost']) ? (float) $data['cost'] : null, 'variant_add');
 
             if ($isFirstVariant) {
@@ -147,6 +161,13 @@ class ProductVariantController extends Controller
             'group_prices.*' => ['nullable', 'numeric', 'min:0'],
             'group_costs' => ['nullable', 'array'],
             'group_costs.*' => ['nullable', 'numeric', 'min:0'],
+            // Khaled live: "diffrent color size asle ami kotteke tulbo?
+            // ... stock tulle kar nam e uthb?" — the bulk grid now says
+            // whose goods these are, instead of silently inheriting the
+            // product's default; cash/bank/credit same as every stock-in
+            'supplier_id' => ['nullable', 'integer'],
+            'brand_id' => ['nullable', 'integer'],
+            'payment_method' => ['nullable', 'in:cash,bank,credit'],
         ]);
 
         if ($product->sold_by_weight) {
@@ -180,6 +201,10 @@ class ProductVariantController extends Controller
         $shop = Tenancy::shop();
         $groupPrices = array_filter($data['group_prices'] ?? []);
         $groupCosts = array_filter($data['group_costs'] ?? []);
+        // tenant-scoped find: a foreign id simply becomes null, same as
+        // every other supplier/brand field in the app
+        $pickedSupplierId = ! empty($data['supplier_id']) ? \App\Models\Supplier::find($data['supplier_id'])?->id : null;
+        $pickedBrandId = ! empty($data['brand_id']) ? \App\Models\Brand::find($data['brand_id'])?->id : null;
 
         // Same refusal as the article form: a size that falls in no
         // group would quietly inherit the article's headline price, and
@@ -200,11 +225,12 @@ class ProductVariantController extends Controller
             }
         }
 
-        $created = DB::transaction(function () use ($shop, $product, $toCreate, $data, $groupPrices, $groupCosts) {
+        $created = DB::transaction(function () use ($shop, $product, $toCreate, $data, $groupPrices, $groupCosts, $pickedSupplierId, $pickedBrandId) {
             $lockedProduct = Product::whereKey($product->id)->lockForUpdate()->first();
             $isFirstVariant = ! ProductVariant::where('product_id', $lockedProduct->id)->exists();
 
             $totalStock = 0;
+            $totalPaid = 0.0;
             foreach ($toCreate as $row) {
                 $size = (string) ($row['size'] ?? '');
                 // a cell's own number beats every broader rule — the owner
@@ -231,8 +257,23 @@ class ProductVariantController extends Controller
                     'price' => $rowPrice,
                     'cost' => $rowCost,
                 ]);
-                \App\Support\IntakeLedger::record($lockedProduct, $newVariant, (float) $row['stock'], $rowCost !== null ? (float) $rowCost : null, 'variant_add');
+                // a grid cell born with stock goes under the supplier/brand
+                // picked ON the grid, falling back to the product's own
+                // default — "stock tulle kar nam e uthb" always has an answer
+                $lineCost = $rowCost !== null ? (float) $rowCost : (float) ($lockedProduct->cost ?? 0);
+                if ((int) $row['stock'] > 0 && $shop?->hasFeature('source_lines')) {
+                    ProductSource::upsertLine(
+                        Tenancy::id(), $lockedProduct->id, $newVariant->id,
+                        $pickedSupplierId ?? $lockedProduct->supplier_id,
+                        $pickedBrandId ?? $lockedProduct->brand_id,
+                        (float) $row['stock'], $lineCost,
+                        $rowPrice !== null ? (float) $rowPrice : null,
+                        (float) ($rowPrice ?? $lockedProduct->price ?? 0)
+                    );
+                }
+                \App\Support\IntakeLedger::record($lockedProduct, $newVariant, (float) $row['stock'], $rowCost !== null ? (float) $rowCost : null, 'variant_add', $pickedSupplierId);
                 $totalStock += (int) $row['stock'];
+                $totalPaid += (int) $row['stock'] * $lineCost;
             }
 
             if ($isFirstVariant) {
@@ -240,6 +281,10 @@ class ProductVariantController extends Controller
             } else {
                 $lockedProduct->applyStockDelta($totalStock);
             }
+
+            // same convention as every other stock-in with a supplier picked:
+            // cash/bank settles now, credit grows the supplier's payable
+            \App\Support\SupplierPayable::apply($pickedSupplierId, $data['payment_method'] ?? null, $totalPaid);
 
             Activity::log('product.variant.bulkCreate', "'{$product->name}'-এ গ্রিড থেকে ".count($toCreate).'টা নতুন ভ্যারিয়েন্ট যোগ করা হয়েছে।', $product);
 
@@ -439,24 +484,45 @@ class ProductVariantController extends Controller
                 abort(422, 'এই ভ্যারিয়েন্টটি ইতিমধ্যে মুছে ফেলা হয়েছে।');
             }
 
-            /*
-             * Cost on restock, two shops' two truths (Phase 4):
-             * weighted_average_costing blends the new cost into a moving
-             * average — the same formula StockIn::apply has always used
-             * for plain products — so 5 @1600 then 5 @1750 values the
-             * shelf at 1675. Without the feature the new cost OVERWRITES,
-             * exactly as before: Baby Park's stickers encode the cost, so
-             * their variant.cost must stay the whole number printed on
-             * the label, never a blended fraction.
-             */
-            $newCost = $locked->cost;
-            if (isset($data['cost'])) {
-                $oldStock = (float) $locked->stock;
-                $oldCost = (float) ($locked->cost ?? $locked->product->cost ?? 0);
-                $usesAverage = \App\Support\Tenancy::shop()?->usesWeightedAverageCosting();
-                $newCost = ($usesAverage && ($oldStock + $data['qty']) > 0 && $oldStock > 0)
-                    ? round((($oldStock * $oldCost) + ($data['qty'] * (float) $data['cost'])) / ($oldStock + $data['qty']), 2)
-                    : $data['cost'];
+            // Khaled live: this quick "+" button (with the "quick supplier"
+            // picker above the variant list) updated stock, the ledger and
+            // SupplierPayable, but never wrote a LINE — so on a line-tracked
+            // shop, stock added this way was invisible to the supplier
+            // filter/search and the per-lot display ("alda supllier dia
+            // product tulchi but track hoini"). Same shape as
+            // ProductSourceController::applyStockIn(): the line blends its
+            // own cost, and the mirror cost OVERWRITES to the line's cost
+            // (never a cross-supplier blend). A shop without source_lines
+            // keeps the pre-existing logic below, completely untouched.
+            $line = null;
+            if (\App\Support\Tenancy::shop()?->hasFeature('source_lines')) {
+                $paidCostForLine = isset($data['cost']) ? (float) $data['cost'] : (float) ($locked->cost ?? $locked->product->cost ?? 0);
+                $line = ProductSource::upsertLine(
+                    \App\Support\Tenancy::id(), $locked->product_id, $locked->id,
+                    $supplierId, null, (float) $data['qty'], $paidCostForLine, null,
+                    (float) ($locked->price ?? $locked->product->price ?? 0)
+                );
+                $newCost = $line->cost;
+            } else {
+                /*
+                 * Cost on restock, two shops' two truths (Phase 4):
+                 * weighted_average_costing blends the new cost into a moving
+                 * average — the same formula StockIn::apply has always used
+                 * for plain products — so 5 @1600 then 5 @1750 values the
+                 * shelf at 1675. Without the feature the new cost OVERWRITES,
+                 * exactly as before: Baby Park's stickers encode the cost, so
+                 * their variant.cost must stay the whole number printed on
+                 * the label, never a blended fraction.
+                 */
+                $newCost = $locked->cost;
+                if (isset($data['cost'])) {
+                    $oldStock = (float) $locked->stock;
+                    $oldCost = (float) ($locked->cost ?? $locked->product->cost ?? 0);
+                    $usesAverage = \App\Support\Tenancy::shop()?->usesWeightedAverageCosting();
+                    $newCost = ($usesAverage && ($oldStock + $data['qty']) > 0 && $oldStock > 0)
+                        ? round((($oldStock * $oldCost) + ($data['qty'] * (float) $data['cost'])) / ($oldStock + $data['qty']), 2)
+                        : $data['cost'];
+                }
             }
 
             $locked->applyStockDelta($data['qty']);
@@ -464,9 +530,14 @@ class ProductVariantController extends Controller
 
             $product = Product::whereKey($locked->product_id)->lockForUpdate()->first();
             $product?->applyStockDelta($data['qty']);
+            if ($line && $product) {
+                // mirror cost rides the line's cost on a line-tracked shop,
+                // same as the dedicated 🚚 stock-in does
+                $product->update(['cost' => $line->cost]);
+            }
             if ($product) {
                 // the ledger always records the price actually PAID, never the blended average
-                \App\Support\IntakeLedger::record($product, $locked, (float) $data['qty'], isset($data['cost']) ? (float) $data['cost'] : null, 'variant_stock_in', $supplierId);
+                \App\Support\IntakeLedger::record($product, $locked, (float) $data['qty'], isset($data['cost']) ? (float) $data['cost'] : null, 'variant_stock_in', $supplierId, $line?->id);
             }
 
             $paidCost = isset($data['cost']) ? (float) $data['cost'] : (float) $locked->cost;

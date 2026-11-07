@@ -318,8 +318,28 @@ class OpeningStockController extends Controller
                         }
                         $variant->applyStockDelta($row['add']);
                         $variant->save();
+                        // same gap the grid had — a supplier picked on the
+                        // bulk sheet never reached a LINE (see upsertLine's
+                        // own docblock); payable is deliberately NOT touched
+                        // here: this sheet has no cash/bank/credit choice
+                        if (Tenancy::shop()?->hasFeature('source_lines')) {
+                            ProductSource::upsertLine(
+                                Tenancy::id(), $lockedProduct->id, $variant->id,
+                                $supplierId, null, (float) $row['add'],
+                                $row['cost'] ?? (float) ($variant->cost ?? $lockedProduct->cost ?? 0),
+                                null, (float) ($variant->price ?? $lockedProduct->price ?? 0)
+                            );
+                        }
                         IntakeLedger::record($lockedProduct, $variant, $row['add'], $row['cost'], 'opening_stock', $supplierId);
                     } else {
+                        if (Tenancy::shop()?->hasFeature('source_lines') && ! $lockedProduct->sold_by_weight) {
+                            ProductSource::upsertLine(
+                                Tenancy::id(), $lockedProduct->id, null,
+                                $supplierId, null, (float) $row['add'],
+                                $row['cost'] ?? (float) ($lockedProduct->cost ?? 0),
+                                null, (float) ($lockedProduct->price ?? 0)
+                            );
+                        }
                         IntakeLedger::record($lockedProduct, null, $row['add'], $row['cost'], 'opening_stock', $supplierId);
                     }
                     $totalDelta += $row['add'];

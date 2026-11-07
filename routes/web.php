@@ -346,6 +346,11 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::middleware('feature:source_lines')->group(function () {
             Route::post('products/{product}/sources/stock-in', [App\Http\Controllers\App\ProductSourceController::class, 'stockInProduct'])->name('productSources.stockInProduct');
             Route::post('product-variants/{productVariant}/sources/stock-in', [App\Http\Controllers\App\ProductSourceController::class, 'stockInVariant'])->name('productSources.stockInVariant');
+            // correction tools — a wrongly-filed lot moved to the right
+            // supplier, and pre-fix untracked stock claimed for one
+            Route::post('product-sources/{productSource}/move', [App\Http\Controllers\App\ProductSourceController::class, 'move'])->name('productSources.move');
+            Route::post('products/{product}/sources/claim', [App\Http\Controllers\App\ProductSourceController::class, 'claimUntrackedProduct'])->name('productSources.claimProduct');
+            Route::post('product-variants/{productVariant}/sources/claim', [App\Http\Controllers\App\ProductSourceController::class, 'claimUntrackedVariant'])->name('productSources.claimVariant');
         });
 
         // docs/ARTICLE_SERIES_PLAN.md §7 — one-screen new article entry

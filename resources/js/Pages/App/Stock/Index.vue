@@ -496,6 +496,68 @@ function saveSourceStockIn() {
         onSuccess: () => { sourceSheet.value = false; },
     });
 }
+// Correction tools — "pore kono ta stock tulte vul hole ... tik [kora]":
+// a wrongly-filed lot moved to the right supplier(+brand), and stock that
+// predates line tracking (mirror stock > sum of lines — e.g. Sujon pieces
+// added through the quick "+" before it wrote lines) claimed for one.
+// Neither is a stock-in: total stock, payable and the ledger don't move.
+function untrackedQty(target) {
+    const mirror = Number(target.stock) || 0;
+    const tracked = (target.sources || []).reduce((s, l) => s + (Number(l.stock) || 0), 0);
+    return Math.max(0, Math.round((mirror - tracked) * 1000) / 1000);
+}
+
+// Khaled live: "ek product e kon supplier koi ta product total dekha jai
+// ebong oikhan tekhe selct kore easily barcode print" — one glance at
+// whose goods a product holds, and that supplier's stickers one tap away.
+// Also what makes a WRONG entry jump out ("vul stock tulle easily dhora").
+function supplierBreakdown(p) {
+    const map = new Map();
+    const add = (line) => {
+        const qty = Number(line.stock) || 0;
+        if (qty <= 0) return;
+        const id = line.supplier?.id ?? line.supplier_id ?? 0;
+        const cur = map.get(id) || { id: id || null, name: line.supplier?.name || 'Nil', qty: 0 };
+        cur.qty += qty;
+        map.set(id, cur);
+    };
+    (p.sources || []).forEach(add);
+    (p.variants || []).forEach((v) => (v.sources || []).forEach(add));
+    return [...map.values()];
+}
+function productUntracked(p) {
+    const tracked = supplierBreakdown(p).reduce((s, x) => s + x.qty, 0);
+    return Math.max(0, Math.round(((Number(p.stock) || 0) - tracked) * 1000) / 1000);
+}
+const fixSheet = ref(false);
+const fixMode = ref('move'); // 'move' (re-file a lot) | 'claim' (untracked stock)
+const fixTarget = ref(null);
+const fixForm = useForm({ supplier_id: '', brand_id: '', qty: '', cost: '', price: '' });
+function openMoveLine(line, label) {
+    fixMode.value = 'move';
+    fixTarget.value = { line, label };
+    fixForm.reset();
+    fixForm.clearErrors();
+    fixForm.qty = String(Math.floor(Number(line.stock)) || '');
+    fixSheet.value = true;
+}
+function openClaim(kind, target, label) {
+    fixMode.value = 'claim';
+    fixTarget.value = { kind, id: target.id, label };
+    fixForm.reset();
+    fixForm.clearErrors();
+    fixForm.qty = String(untrackedQty(target) || '');
+    fixForm.cost = target.cost ?? editing.value?.cost ?? '';
+    fixForm.price = target.price ?? editing.value?.price ?? '';
+    fixSheet.value = true;
+}
+function saveFix() {
+    const url = fixMode.value === 'move'
+        ? route('app.productSources.move', fixTarget.value.line.id)
+        : route(fixTarget.value.kind === 'variant' ? 'app.productSources.claimVariant' : 'app.productSources.claimProduct', fixTarget.value.id);
+    fixForm.post(url, { preserveScroll: true, onSuccess: () => { fixSheet.value = false; } });
+}
+
 /** What this product calls its two axes — রং/সাইজ unless it renamed them. */
 const opt1Label = computed(() => editing.value?.option1_label || t('stock.color'));
 const opt2Label = computed(() => editing.value?.option2_label || t('stock.size'));
@@ -513,6 +575,12 @@ function setVariantBrand(v, brandId) {
         size: v.size, color: v.color, brand_id: brandId || null,
     }, { preserveScroll: true, preserveState: true });
 }
+
+// Khaled live: "diffrent color size asle ami kotteke tulbo? ... stock
+// tulle kar nam e uthb?" — the bulk grid says whose goods these are
+const gridSupplier = ref('');
+const gridBrand = ref('');
+const gridPaymentMethod = ref('cash');
 
 // per-cell own price/cost (epaulettes: every Rank × Type sells at its own number)
 const gridPerCell = ref(false);
@@ -538,6 +606,11 @@ function openGrid() {
     gridPerCell.value = false;
     gridCellPrice.value = {};
     gridCellCost.value = {};
+    // starts on the product's own default supplier — visible and changeable,
+    // so "kar nam e uthbe" is never a silent guess
+    gridSupplier.value = editing.value?.supplier_id || '';
+    gridBrand.value = editing.value?.brand_id || '';
+    gridPaymentMethod.value = 'cash';
     // Pre-fill from the shop's saved defaults (Accounts page) only when the
     // owner hasn't already typed something this session — never overwrite
     // an in-progress edit. The category's size set (sub overrides parent)
@@ -580,7 +653,13 @@ function submitGrid() {
 
     // only the shape that applies is sent; the other stays empty so the
     // server never has to guess which one the owner meant
-    const payload = { variants, write_off_rest: gridWriteOffRest.value };
+    const payload = {
+        variants,
+        write_off_rest: gridWriteOffRest.value,
+        supplier_id: gridSupplier.value || null,
+        brand_id: gridBrand.value || null,
+        payment_method: gridSupplier.value ? gridPaymentMethod.value : null,
+    };
     if (editingUsesSizeGroups.value) {
         payload.group_prices = { ...gridGroupPrices.value };
         payload.group_costs = { ...gridGroupCosts.value };
@@ -1251,11 +1330,16 @@ useKeyboardShortcuts({
             <!-- Part 1 — a plain (no colour/size) product's own supplier/brand lots -->
             <div v-if="editing && !editingHasVariants && hasSourceLines" class="field">
                 <label>{{ t('os.sourcesLabel') }}</label>
-                <div v-for="line in (editing.sources || [])" :key="line.id" style="font-size:12px;color:var(--mut);padding:3px 0">
-                    🚚 {{ line.supplier?.name || 'Nil' }}<template v-if="line.brand?.name"> · {{ line.brand.name }}</template>
-                    · {{ t('stock.costShort') }} {{ money(line.cost) }} · {{ money(line.price) }} · {{ line.stock }} {{ t('stock.pieces') }}
+                <div v-for="line in (editing.sources || [])" :key="line.id" style="font-size:12px;color:var(--mut);padding:3px 0;display:flex;align-items:center;gap:6px">
+                    <span style="flex:1">🚚 {{ line.supplier?.name || 'Nil' }}<template v-if="line.brand?.name"> · {{ line.brand.name }}</template>
+                    · {{ t('stock.costShort') }} {{ money(line.cost) }} · {{ money(line.price) }} · {{ line.stock }} {{ t('stock.pieces') }}</span>
+                    <button v-if="Number(line.stock) > 0" class="btn sm ghost" style="padding:2px 8px;font-size:11px" @click="openMoveLine(line, editing.name)">↪</button>
                 </div>
                 <div v-if="!(editing.sources || []).length" style="font-size:12px;color:var(--mut)">{{ t('os.noSourcesYet') }}</div>
+                <div v-if="untrackedQty(editing) > 0" style="font-size:12px;color:var(--gold2);margin-top:4px">
+                    ⚠ {{ t('os.untracked', { n: untrackedQty(editing) }) }}
+                    <button class="btn sm ghost" style="padding:2px 8px;font-size:11px;margin-left:6px" @click="openClaim('product', editing, editing.name)">{{ t('os.claimBtn') }}</button>
+                </div>
                 <button class="btn sm ghost" style="margin-top:6px;width:auto" @click="openSourceStockIn('product', editing)">🚚 {{ t('os.addSourceStock') }}</button>
             </div>
 
@@ -1330,6 +1414,19 @@ useKeyboardShortcuts({
                 <b>⚠️ {{ t('stock.preExistingStockTitle') }}</b>
                 <div style="font-size:13px;margin-top:4px">{{ t('stock.preExistingStockHint', { qty: preExistingUnallocatedStock }) }}</div>
             </div>
+            <!-- "kon supplier koi ta product" — whose goods this product
+                 holds, totalled across every variant's lots, with that
+                 supplier's stickers one tap away -->
+            <div v-if="editing && hasSourceLines && supplierBreakdown(editing).length" class="card" style="margin-bottom:10px;padding:10px">
+                <b style="font-size:13px">🚚 {{ t('os.breakdownTitle') }}</b>
+                <div v-for="s in supplierBreakdown(editing)" :key="s.id ?? 'nil'" style="display:flex;align-items:center;gap:8px;font-size:12.5px;padding:4px 0;border-bottom:1px dashed var(--line)">
+                    <span style="flex:1"><b>{{ s.name }}</b> — {{ s.qty }} {{ t('stock.pieces') }}</span>
+                    <Link :href="route('app.barcodeLabels.index') + '?product=' + editing.id + (s.id ? '&supplier=' + s.id : '')" class="btn sm ghost" style="text-decoration:none;width:auto;padding:4px 10px">🏷️ {{ t('os.printStickers') }}</Link>
+                </div>
+                <div v-if="productUntracked(editing) > 0" style="font-size:12px;color:var(--gold2);padding-top:6px">
+                    ⚠ {{ t('os.untracked', { n: productUntracked(editing) }) }} — {{ t('os.untrackedWhere') }}
+                </div>
+            </div>
             <!-- Phase 6B — the opening-stock grid: the fast way to put real
                  counts on an imported (all-zero) product -->
             <button v-if="editing && hasOpeningStock" class="btn sm" style="width:100%;margin-bottom:10px" @click="openOpeningStock">
@@ -1373,10 +1470,15 @@ useKeyboardShortcuts({
                                  supplier/brand lot's own buy/sell/stock,
                                  under this exact variant -->
                             <div v-if="hasSourceLines && v.sources?.length" style="margin-top:6px;border-top:1px dashed var(--line);padding-top:6px">
-                                <div v-for="line in v.sources" :key="line.id" style="font-size:11.5px;color:var(--mut);padding:2px 0">
-                                    🚚 {{ line.supplier?.name || 'Nil' }}<template v-if="line.brand?.name"> · {{ line.brand.name }}</template>
-                                    · {{ t('stock.costShort') }} {{ money(line.cost) }} · {{ money(line.price) }} · {{ line.stock }} {{ t('stock.pieces') }}
+                                <div v-for="line in v.sources" :key="line.id" style="font-size:11.5px;color:var(--mut);padding:2px 0;display:flex;align-items:center;gap:6px">
+                                    <span style="flex:1">🚚 {{ line.supplier?.name || 'Nil' }}<template v-if="line.brand?.name"> · {{ line.brand.name }}</template>
+                                    · {{ t('stock.costShort') }} {{ money(line.cost) }} · {{ money(line.price) }} · {{ line.stock }} {{ t('stock.pieces') }}</span>
+                                    <button v-if="Number(line.stock) > 0" class="btn sm ghost" style="padding:2px 8px;font-size:11px" @click="openMoveLine(line, variantLabel(v))">↪</button>
                                 </div>
+                            </div>
+                            <div v-if="hasSourceLines && untrackedQty(v) > 0" style="font-size:11.5px;color:var(--gold2);margin-top:4px">
+                                ⚠ {{ t('os.untracked', { n: untrackedQty(v) }) }}
+                                <button class="btn sm ghost" style="padding:2px 8px;font-size:11px;margin-left:6px" @click="openClaim('variant', v, variantLabel(v))">{{ t('os.claimBtn') }}</button>
                             </div>
                             <div style="display:flex;gap:6px;margin-top:6px">
                                 <input v-model="variantStockInQty[v.id]" type="number" :placeholder="t('stock.stockIn')" style="width:90px">
@@ -1395,6 +1497,30 @@ useKeyboardShortcuts({
 
                 <div v-if="gridOpen" style="margin-top:10px;padding:10px;border:1px dashed var(--line);border-radius:var(--radius-sm)">
                     <div style="font-size:12px;color:var(--mut);margin-bottom:8px">{{ t('stock.gridHint') }}</div>
+                    <!-- whose goods these are — starts on the product's
+                         default, changeable per delivery ("kar nam e uthb") -->
+                    <div v-if="suppliers" class="field" style="margin-bottom:8px">
+                        <label>{{ t('os.supplier') }}</label>
+                        <select v-model="gridSupplier">
+                            <option value="">Nil — {{ t('os.noSupplier') }}</option>
+                            <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }} ({{ s.count }})</option>
+                        </select>
+                    </div>
+                    <div v-if="brands" class="field" style="margin-bottom:8px">
+                        <label>{{ t('brand.fieldLabel') }}</label>
+                        <select v-model="gridBrand">
+                            <option value="">Nil — {{ t('brand.noBrand') }}</option>
+                            <option v-for="b in brands" :key="b.id" :value="b.id">{{ b.name }}</option>
+                        </select>
+                    </div>
+                    <div v-if="suppliers && gridSupplier" class="field" style="margin-bottom:8px">
+                        <label>{{ t('purchase.method') }}</label>
+                        <select v-model="gridPaymentMethod">
+                            <option value="cash">{{ t('pay.cash') }}</option>
+                            <option value="bank">{{ t('purchase.methodBank') }}</option>
+                            <option value="credit">{{ t('pay.credit') }}</option>
+                        </select>
+                    </div>
                     <div class="f2">
                         <input v-model="gridColorsInput" :placeholder="editing?.option1_label ? opt1Label + ' — ' + t('stock.commaSeparated') : t('stock.gridColorsPlaceholder')">
                         <input v-model="gridSizesInput" :placeholder="editing?.option2_label ? opt2Label + ' — ' + t('stock.commaSeparated') : t('stock.gridSizesPlaceholder')">
@@ -1698,6 +1824,37 @@ useKeyboardShortcuts({
             <div v-if="sourceForm.errors.qty || sourceForm.errors.cost" style="color:var(--rose);font-size:12.5px;margin-bottom:10px">{{ sourceForm.errors.qty || sourceForm.errors.cost }}</div>
             <button class="btn" :disabled="sourceForm.processing" @click="saveSourceStockIn">{{ sourceForm.processing ? '...' : t('os.save') }}</button>
             <button class="btn ghost" style="margin-top:10px" @click="sourceSheet = false">{{ t('common.cancel') }}</button>
+        </Sheet>
+
+        <!-- correction sheet — re-file a wrongly-tagged lot, or claim untracked stock for a supplier; never a stock-in -->
+        <Sheet v-model="fixSheet" :title="(fixMode === 'move' ? '↪ ' + t('os.moveTitle') : '⚠ ' + t('os.claimTitle')) + (fixTarget?.label ? ' — ' + fixTarget.label : '')">
+            <HowToHint :text="fixMode === 'move' ? t('os.moveHowTo') : t('os.claimHowTo')" />
+            <div v-if="fixMode === 'move' && fixTarget?.line" class="card" style="margin-bottom:12px;padding:8px 10px;font-size:12px">
+                🚚 {{ fixTarget.line.supplier?.name || 'Nil' }}<template v-if="fixTarget.line.brand?.name"> · {{ fixTarget.line.brand.name }}</template>
+                · {{ fixTarget.line.stock }} {{ t('stock.pieces') }}
+            </div>
+            <div class="field">
+                <label>{{ t('os.moveToSupplier') }}</label>
+                <select v-model="fixForm.supplier_id">
+                    <option value="">Nil — {{ t('os.noSupplier') }}</option>
+                    <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }} ({{ s.count }})</option>
+                </select>
+            </div>
+            <div v-if="brands" class="field">
+                <label>{{ t('brand.fieldLabel') }}</label>
+                <select v-model="fixForm.brand_id">
+                    <option value="">Nil — {{ t('brand.noBrand') }}</option>
+                    <option v-for="b in brands" :key="b.id" :value="b.id">{{ b.name }}</option>
+                </select>
+            </div>
+            <div class="field"><label>{{ t('os.howManyPieces') }}</label><input v-model="fixForm.qty" type="number" min="1"></div>
+            <div v-if="fixMode === 'claim'" class="f2">
+                <div class="field"><label>{{ t('stock.costShort') }}</label><input v-model="fixForm.cost" type="number" min="0"></div>
+                <div class="field"><label>{{ t('os.sellPriceOptional') }}</label><input v-model="fixForm.price" type="number" min="0"></div>
+            </div>
+            <div v-if="fixForm.errors.qty || fixForm.errors.supplier_id" style="color:var(--rose);font-size:12.5px;margin-bottom:10px">{{ fixForm.errors.qty || fixForm.errors.supplier_id }}</div>
+            <button class="btn" :disabled="fixForm.processing" @click="saveFix">{{ fixForm.processing ? '...' : t('os.save') }}</button>
+            <button class="btn ghost" style="margin-top:10px" @click="fixSheet = false">{{ t('common.cancel') }}</button>
         </Sheet>
 
         <!-- Phase 6B — the fill-in-Excel bulk sheet, dry-run first always -->

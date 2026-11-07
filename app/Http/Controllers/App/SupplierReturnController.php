@@ -65,6 +65,21 @@ class SupplierReturnController extends Controller
 
             $product->applyStockDelta(-$data['qty']);
 
+            // line-tracked shop: the returned units leave THIS supplier's
+            // own lot first (that's whose goods went back), spilling
+            // oldest-first across the rest only if theirs runs out —
+            // otherwise the lines drift above the mirror forever
+            if (Tenancy::shop()?->hasFeature('source_lines')) {
+                $supplierIdForLines = $data['supplier_id'] ?? null;
+                $lines = \App\Models\ProductSource::where('product_id', $product->id)
+                    ->whereNull('product_variant_id')->orderBy('id')->lockForUpdate()->get()
+                    ->sortBy([
+                        fn ($a, $b) => (int) ($b->supplier_id === $supplierIdForLines) <=> (int) ($a->supplier_id === $supplierIdForLines),
+                        fn ($a, $b) => $a->id <=> $b->id,
+                    ])->values();
+                \App\Models\ProductSource::applyFifoDelta($lines, -(float) $data['qty']);
+            }
+
             SupplierReturn::create([
                 'supplier_id' => $data['supplier_id'] ?? null,
                 'supplier' => $data['supplier'] ?? null,

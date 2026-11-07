@@ -211,6 +211,20 @@ class PurchaseController extends Controller
                 $lockedVariant->update(['cost' => $data['cost'] ?? $lockedVariant->cost]);
                 $lockedProduct->applyStockDelta($data['qty']);
 
+                // a line-tracked shop's purchase is a receipt from THIS
+                // supplier — the same merge-or-create every other stock-in
+                // path uses, or the supplier filter/per-lot sticker never
+                // learns about purchase-received stock (see ProductSource)
+                if (Tenancy::shop()?->hasFeature('source_lines')) {
+                    \App\Models\ProductSource::upsertLine(
+                        Tenancy::id(), $lockedProduct->id, $lockedVariant->id,
+                        ! empty($data['supplier_id']) ? (int) $data['supplier_id'] : null, null,
+                        (float) $data['qty'],
+                        isset($data['cost']) ? (float) $data['cost'] : (float) ($lockedVariant->cost ?? $lockedProduct->cost ?? 0),
+                        null, (float) ($lockedVariant->price ?? $lockedProduct->price ?? 0)
+                    );
+                }
+
                 return;
             }
 
@@ -219,6 +233,15 @@ class PurchaseController extends Controller
             }
 
             StockIn::apply($lockedProduct, (float) $data['qty'], $data['cost'] ?? null);
+            if (Tenancy::shop()?->hasFeature('source_lines') && ! $lockedProduct->sold_by_weight) {
+                \App\Models\ProductSource::upsertLine(
+                    Tenancy::id(), $lockedProduct->id, null,
+                    ! empty($data['supplier_id']) ? (int) $data['supplier_id'] : null, null,
+                    (float) $data['qty'],
+                    isset($data['cost']) ? (float) $data['cost'] : (float) ($lockedProduct->cost ?? 0),
+                    null, (float) ($lockedProduct->price ?? 0)
+                );
+            }
 
             $shop = Tenancy::shop();
             if ($shop?->hasFeature('batch_tracking') && ! $lockedProduct->sold_by_weight) {
