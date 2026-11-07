@@ -1934,6 +1934,7 @@ export const translations = {
     'os.moveHowTo': { bn: 'ভুল সাপ্লায়ারের ঘরে উঠে গেলে এখান থেকে সঠিক সাপ্লায়ার(+ব্র্যান্ড)-এ সরান। মোট স্টক, বাকি-টাকা কিছুই বদলাবে না।', en: 'Filed under the wrong supplier? Move it to the right supplier(+brand) here. Total stock and dues do not change.' },
     'os.moveToSupplier': { bn: 'কোন সাপ্লায়ারের ঘরে যাবে', en: 'Move to which supplier' },
     'os.howManyPieces': { bn: 'কত পিস', en: 'How many pcs' },
+    'os.moveBtn': { bn: '↪ ভুল সাপ্লায়ার? সরান', en: '↪ Wrong supplier? Move' },
     'os.breakdownTitle': { bn: 'কোন সাপ্লায়ারের কত পিস', en: 'Whose goods, how many' },
     'os.printStickers': { bn: 'স্টিকার', en: 'Stickers' },
     'os.untrackedWhere': { bn: 'নিচে ভ্যারিয়েন্টের পাশে "সাপ্লায়ার ঠিক করুন" চাপুন', en: 'tap "File under a supplier" next to the variant below' },

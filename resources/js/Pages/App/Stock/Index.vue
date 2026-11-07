@@ -1341,7 +1341,7 @@ useKeyboardShortcuts({
                 <div v-for="line in editVisibleLines(editing)" :key="line.id" style="font-size:12px;color:var(--mut);padding:3px 0;display:flex;align-items:center;gap:6px">
                     <span style="flex:1">🚚 {{ line.supplier?.name || 'Nil' }}<template v-if="line.brand?.name"> · {{ line.brand.name }}</template>
                     · {{ t('stock.costShort') }} {{ money(line.cost) }} · {{ money(line.price) }} · {{ line.stock }} {{ t('stock.pieces') }}</span>
-                    <button v-if="Number(line.stock) > 0" class="btn sm ghost" style="padding:2px 8px;font-size:11px" @click="openMoveLine(line, editing.name)">↪</button>
+                    <button v-if="Number(line.stock) > 0" class="btn sm ghost" style="padding:2px 8px;font-size:11px;white-space:nowrap" @click="openMoveLine(line, editing.name)">{{ t('os.moveBtn') }}</button>
                 </div>
                 <div v-if="!(editing.sources || []).length" style="font-size:12px;color:var(--mut)">{{ t('os.noSourcesYet') }}</div>
                 <div v-if="untrackedQty(editing) > 0" style="font-size:12px;color:var(--gold2);margin-top:4px">
@@ -1481,7 +1481,7 @@ useKeyboardShortcuts({
                                 <div v-for="line in editVisibleLines(v)" :key="line.id" style="font-size:11.5px;color:var(--mut);padding:2px 0;display:flex;align-items:center;gap:6px">
                                     <span style="flex:1">🚚 {{ line.supplier?.name || 'Nil' }}<template v-if="line.brand?.name"> · {{ line.brand.name }}</template>
                                     · {{ t('stock.costShort') }} {{ money(line.cost) }} · {{ money(line.price) }} · {{ line.stock }} {{ t('stock.pieces') }}</span>
-                                    <button v-if="Number(line.stock) > 0" class="btn sm ghost" style="padding:2px 8px;font-size:11px" @click="openMoveLine(line, variantLabel(v))">↪</button>
+                                    <button v-if="Number(line.stock) > 0" class="btn sm ghost" style="padding:2px 8px;font-size:11px;white-space:nowrap" @click="openMoveLine(line, variantLabel(v))">{{ t('os.moveBtn') }}</button>
                                 </div>
                             </div>
                             <div v-if="hasSourceLines && untrackedQty(v) > 0" style="font-size:11.5px;color:var(--gold2);margin-top:4px">

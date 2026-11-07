@@ -169,6 +169,11 @@ function selectEverythingShown() {
         if (allSelected) delete selected.value[r.key];
         else selected.value[r.key] = r.copies;
     });
+    // Khaled live: with products collapsed by default, a batch tick left
+    // every ticked row hidden inside a still-closed name row — it looked
+    // like nothing happened. Opening every product that got a tick shows
+    // the batch immediately, same as a single product's own select-all does.
+    if (!allSelected) filtered.value.forEach((p) => { if (p.variants?.length) expanded.value[p.id] = true; });
 }
 
 /**
@@ -183,7 +188,7 @@ const neverPrintedRows = computed(() => filtered.value.flatMap((p) => printableR
     const cb = (p.color_barcodes || []).find((x) => 'c:' + x.id === r.key);
     const barcode = v?.barcode ?? cb?.barcode ?? (r.key.startsWith('p:') ? p.barcode : null);
 
-    return { ...r, barcode };
+    return { ...r, barcode, productId: p.id };
 }).filter((r) => r.barcode && !printedInfo(r.barcode))));
 
 function selectNeverPrinted() {
@@ -195,6 +200,12 @@ function selectNeverPrinted() {
         if (allSelected) delete selected.value[r.key];
         else selected.value[r.key] = r.copies;
     });
+    // same reason as selectEverythingShown — show which rows this just
+    // ticked instead of leaving them hidden behind a collapsed name
+    if (!allSelected) {
+        const ids = new Set(rows.map((r) => r.productId));
+        filtered.value.forEach((p) => { if (ids.has(p.id)) expanded.value[p.id] = true; });
+    }
 }
 
 /** Stock across every size of a product, for the header row of a variant product. */
