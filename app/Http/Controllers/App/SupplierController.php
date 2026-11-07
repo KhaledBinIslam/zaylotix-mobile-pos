@@ -228,29 +228,74 @@ class SupplierController extends Controller
      * total on the list page. total_purchased only counts 'received'
      * purchases (a 'pending' order hasn't actually happened yet).
      */
-    public function show(Supplier $supplier)
+    public function show(Request $request, Supplier $supplier)
     {
         $this->authorize('view', $supplier);
 
+        // Khaled: "customsed date diao purchase price diqa ber kora jabe" —
+        // an optional date range narrows purchases/returns/payments AND the
+        // new price-breakdown section below. Omitted entirely (the common
+        // case, just checking a supplier) behaves exactly as before.
+        $from = $request->get('from');
+        $to = $request->get('to');
+
         $purchases = $supplier->purchases()
             ->with('product:id,name,emoji')
+            ->when($from, fn ($q) => $q->whereDate('date', '>=', $from))
+            ->when($to, fn ($q) => $q->whereDate('date', '<=', $to))
             ->orderByDesc('date')->orderByDesc('id')
             ->get(['id', 'supplier_id', 'amount', 'method', 'status', 'date', 'product_id', 'qty', 'memo']);
 
         $returns = SupplierReturn::where('supplier_id', $supplier->id)
             ->with('product:id,name,emoji')
+            ->when($from, fn ($q) => $q->whereDate('date', '>=', $from))
+            ->when($to, fn ($q) => $q->whereDate('date', '<=', $to))
             ->orderByDesc('date')->orderByDesc('id')
             ->get(['id', 'supplier_id', 'product_id', 'qty', 'amount', 'settlement_method', 'reason', 'date']);
 
         $payments = $supplier->supplierPayments()
             ->with('user:id,name')
+            ->when($from, fn ($q) => $q->whereDate('date', '>=', $from))
+            ->when($to, fn ($q) => $q->whereDate('date', '<=', $to))
             ->orderByDesc('date')->orderByDesc('id')
             ->get(['id', 'supplier_id', 'user_id', 'amount', 'payable_before', 'payable_after', 'method', 'date']);
+
+        // Khaled: "koto tk er product niche koto tk pay korche" — every
+        // stock-in path (grid, 🚚 sheet, purchases, PO receive, +button)
+        // already writes one StockIntake row each (App\Support\IntakeLedger
+        // — "the MONEY walking in the door" per that migration's own
+        // docblock), so this is the one place that sees ALL of them, not
+        // just the ones that happened to go through the Purchases module.
+        $intakeQuery = \App\Models\StockIntake::where('supplier_id', $supplier->id)
+            ->when($from, fn ($q) => $q->whereDate('created_at', '>=', $from))
+            ->when($to, fn ($q) => $q->whereDate('created_at', '<=', $to));
+
+        $priceBreakdown = (clone $intakeQuery)
+            ->with('product:id,name,emoji')
+            ->groupBy('product_id', 'unit_cost')
+            ->selectRaw('product_id, unit_cost, COUNT(*) as entries, COALESCE(SUM(qty), 0) as qty, COALESCE(SUM(total_cost), 0) as total')
+            ->orderByDesc('product_id')->orderByDesc('unit_cost')
+            ->get();
+
+        $rangeTotals = (clone $intakeQuery)
+            ->selectRaw('COUNT(*) as entries, COALESCE(SUM(qty), 0) as qty, COALESCE(SUM(total_cost), 0) as intake_value, COUNT(DISTINCT product_id) as products')
+            ->first();
 
         // Phase 47 — the supplier's own products (auto-linked at article
         // entry via products.supplier_id), each with lifetime sold figures:
         // "oi supplier theke ki ki product in hocche" with zero manual entry.
-        $products = Product::where('supplier_id', $supplier->id)
+        // Khaled live ("ekhon sob Bulu dekhacche"): a source_lines shop can
+        // have a product linked to this supplier via a LINE only, never
+        // products.supplier_id itself — folded in here the same way
+        // Supplier::pickerList() already counts them, or this list quietly
+        // missed every product this supplier only ever appears on a lot of.
+        $productIds = Product::where('supplier_id', $supplier->id)->pluck('id');
+        if (Tenancy::shop()?->hasFeature('source_lines')) {
+            $productIds = $productIds->merge(
+                \App\Models\ProductSource::where('supplier_id', $supplier->id)->pluck('product_id')
+            )->unique();
+        }
+        $products = Product::whereIn('id', $productIds)
             ->orderByDesc('id')
             ->limit(500)
             ->get(['id', 'name', 'emoji', 'barcode', 'cost', 'price', 'stock', 'created_at']);
@@ -285,6 +330,23 @@ class SupplierController extends Controller
             'returns' => $returns,
             'payments' => $payments,
             'products' => $productRows,
+            'dateRange' => ['from' => $from, 'to' => $to],
+            'priceBreakdown' => $priceBreakdown->map(fn ($row) => [
+                'product_id' => $row->product_id,
+                'product_name' => $row->product?->name,
+                'product_emoji' => $row->product?->emoji,
+                'unit_cost' => (float) $row->unit_cost,
+                'qty' => (float) $row->qty,
+                'entries' => (int) $row->entries,
+                'total' => (float) $row->total,
+            ]),
+            'rangeTotals' => [
+                'entries' => (int) ($rangeTotals->entries ?? 0),
+                'qty' => (float) ($rangeTotals->qty ?? 0),
+                'intake_value' => (float) ($rangeTotals->intake_value ?? 0),
+                'products' => (int) ($rangeTotals->products ?? 0),
+                'paid' => (float) $payments->sum('amount'),
+            ],
             'totals' => [
                 'purchased' => (float) $purchases->where('status', 'received')->sum('amount'),
                 'returned' => (float) $returns->sum('amount'),

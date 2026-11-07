@@ -1,11 +1,16 @@
 <script setup>
-import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import { useI18n } from '@/composables/useI18n';
 
-const props = defineProps({ supplier: Object, purchases: Array, returns: Array, payments: Array, totals: Object, products: Array });
+const props = defineProps({
+    supplier: Object, purchases: Array, returns: Array, payments: Array, totals: Object, products: Array,
+    dateRange: { type: Object, default: () => ({ from: null, to: null }) },
+    priceBreakdown: { type: Array, default: () => [] },
+    rangeTotals: { type: Object, default: () => ({ entries: 0, qty: 0, intake_value: 0, products: 0, paid: 0 }) },
+});
 const { t } = useI18n();
 const page = usePage();
 const isOwner = computed(() => page.props.auth?.user?.role === 'owner');
@@ -36,6 +41,22 @@ const productTotals = computed(() => ({
 }));
 
 const methodLabel = { cash: 'pay.cash', bkash: 'pay.bkash', nagad: 'pay.nagad' };
+
+// Khaled: "customsed date diao purchase price diqa ber kora jabe" — the
+// whole page (purchase/return/payment history + the price breakdown below)
+// narrows to this range; omitted entirely, nothing changes from before.
+const rangeFrom = ref(props.dateRange.from || '');
+const rangeTo = ref(props.dateRange.to || '');
+function applyRange() {
+    router.get(route('app.suppliers.show', props.supplier.id), {
+        from: rangeFrom.value || undefined, to: rangeTo.value || undefined,
+    }, { preserveState: true, preserveScroll: true });
+}
+function clearRange() {
+    rangeFrom.value = '';
+    rangeTo.value = '';
+    router.get(route('app.suppliers.show', props.supplier.id), {}, { preserveState: true, preserveScroll: true });
+}
 </script>
 
 <template>
@@ -104,6 +125,35 @@ const methodLabel = { cash: 'pay.cash', bkash: 'pay.bkash', nagad: 'pay.nagad' }
                 <span>{{ p.added_on }} • {{ t('supplier.productStock', { stock: p.stock }) }} • {{ t('supplier.intakeApprox', { amount: money(p.intake_value) }) }}</span>
                 <span style="color:var(--green);font-size:11.5px">{{ t('supplier.productSold', { units: Math.round(p.sold_units), revenue: money(p.sold_revenue) }) }}</span>
             </div>
+        </div>
+
+        <div class="sechead"><h2>{{ t('supplier.reportTitle') }}</h2></div>
+        <div class="card" style="margin-bottom:12px">
+            <div class="f2">
+                <div class="field"><label>{{ t('supplier.rangeFrom') }}</label><input v-model="rangeFrom" type="date"></div>
+                <div class="field"><label>{{ t('supplier.rangeTo') }}</label><input v-model="rangeTo" type="date"></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+                <button class="btn sm" style="width:auto;padding:6px 14px" @click="applyRange">{{ t('supplier.rangeApply') }}</button>
+                <button v-if="dateRange.from || dateRange.to" class="btn sm ghost" style="width:auto;padding:6px 14px" @click="clearRange">{{ t('supplier.rangeClear') }}</button>
+            </div>
+            <div v-if="dateRange.from || dateRange.to" style="margin-top:10px;font-size:12.5px;color:var(--mut)">
+                {{ t('supplier.rangeHint') }}
+            </div>
+            <div style="display:flex;justify-content:space-around;text-align:center;margin-top:12px;padding-top:10px;border-top:1px dashed var(--line)">
+                <div><div style="font-size:11px;color:var(--mut)">{{ t('supplier.rangeIntake') }}</div><b>{{ money(rangeTotals.intake_value) }}</b><div style="font-size:11px;color:var(--mut)">{{ Math.round(rangeTotals.qty) }} {{ t('stock.pieces') }} • {{ rangeTotals.products }} {{ t('supplier.rangeProducts') }}</div></div>
+                <div><div style="font-size:11px;color:var(--mut)">{{ t('supplier.totalPaid') }}</div><b style="color:var(--green)">{{ money(rangeTotals.paid) }}</b></div>
+            </div>
+        </div>
+
+        <div v-if="priceBreakdown.length" class="sechead"><h2>{{ t('supplier.priceBreakdownTitle') }}</h2></div>
+        <div v-for="row in priceBreakdown" :key="row.product_id + ':' + row.unit_cost" class="row" style="cursor:default">
+            <div class="ava">{{ row.product_emoji || '📦' }}</div>
+            <div class="mid">
+                <b>{{ row.product_name }}</b>
+                <span>{{ t('supplier.priceBreakdownLine', { price: money(row.unit_cost), qty: Math.round(row.qty), entries: row.entries }) }}</span>
+            </div>
+            <div class="end"><b>{{ money(row.total) }}</b></div>
         </div>
 
         <div class="sechead"><h2>{{ t('supplier.purchaseHistory') }}</h2></div>
