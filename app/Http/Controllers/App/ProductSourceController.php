@@ -213,6 +213,91 @@ class ProductSourceController extends Controller
         );
     }
 
+    /**
+     * SEAMAN: "vul kore ... buy and sell price vul dichi eta update korar
+     * option nai" — a typo at stock-in on one specific supplier's lot,
+     * fixed in place. Only this line's own cost/price change; qty/stock
+     * are untouched (that's stockIn/move's job). Deliberately does NOT push
+     * the correction up to the variant/product mirror — that mirror may
+     * have already moved on to a DIFFERENT, later lot's cost since this one
+     * was filed, and silently rewinding it would be its own surprise. Any
+     * sale that resolves to THIS exact lot (PosController's source-line
+     * resolution) picks up the corrected price immediately either way.
+     */
+    public function update(Request $request, ProductSource $productSource)
+    {
+        $this->authorize('update', $productSource->product);
+        abort_unless(Tenancy::shop()?->hasFeature('source_lines'), 403);
+
+        $data = $request->validate([
+            'cost' => ['required', 'numeric', 'min:0'],
+            'price' => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        $locked = ProductSource::whereKey($productSource->id)->lockForUpdate()->first();
+        abort_unless($locked, 422, 'এই লাইনটি ইতিমধ্যে মুছে ফেলা হয়েছে।');
+
+        $before = ['cost' => (float) $locked->cost, 'price' => (float) $locked->price];
+        $locked->update([
+            'cost' => (float) $data['cost'],
+            'price' => $data['price'] ?? $locked->price,
+        ]);
+
+        Activity::log(
+            'product.source.priceCorrected',
+            "'{$locked->product->name}' — {$locked->pickerLabel()}-এর ক্রয়/বিক্রয় মূল্য সংশোধন করা হয়েছে (ক্রয় ৳{$before['cost']} → ৳{$locked->cost}, বিক্রয় ৳{$before['price']} → ৳{$locked->price})।",
+            $locked
+        );
+
+        return back()->with('success', 'দাম ঠিক করা হয়েছে।');
+    }
+
+    /**
+     * SEAMAN: "ekta product delete korte hole full product delete korte
+     * hocche, ami caile kon supplier er delete korte cacchi" — removes just
+     * ONE supplier/brand lot, not the whole product/variant. Soft-deletes
+     * the line (same "never a hard delete" convention as every other
+     * delete in this app — keeps history, see
+     * ProductVariantController::destroy()'s identical reasoning) and, if it
+     * still carries real stock, takes that stock OUT of the variant/product
+     * mirror with it — the same invariant a variant's own delete already
+     * protects (see this session's ZV3905 fix: a deleted row must never
+     * leave the mirror counting stock nothing backs any more).
+     */
+    public function destroy(ProductSource $productSource)
+    {
+        $this->authorize('update', $productSource->product);
+        abort_unless(Tenancy::shop()?->hasFeature('source_lines'), 403);
+
+        DB::transaction(function () use ($productSource) {
+            $locked = ProductSource::whereKey($productSource->id)->lockForUpdate()->first();
+            abort_unless($locked, 422, 'এই লাইনটি ইতিমধ্যে মুছে ফেলা হয়েছে।');
+
+            $stock = (float) $locked->stock;
+            $label = $locked->pickerLabel();
+            $productName = $locked->product->name;
+
+            if ($stock > 0) {
+                if ($locked->product_variant_id) {
+                    $variant = ProductVariant::whereKey($locked->product_variant_id)->lockForUpdate()->first();
+                    $variant?->applyStockDelta(-$stock);
+                }
+                $product = Product::whereKey($locked->product_id)->lockForUpdate()->first();
+                $product?->applyStockDelta(-$stock);
+            }
+
+            Activity::log(
+                'product.source.delete',
+                "'{$productName}' — {$label}-এর লাইনটি মুছে ফেলা হয়েছে".($stock > 0 ? " ({$stock} পিস স্টক থেকেও বাদ গেছে)।" : '।'),
+                $locked
+            );
+
+            $locked->delete();
+        });
+
+        return back()->with('success', 'সাপ্লায়ারের লাইনটি মুছে ফেলা হয়েছে।');
+    }
+
     private function validated(Request $request): array
     {
         return $request->validate([

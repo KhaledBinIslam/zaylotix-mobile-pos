@@ -573,6 +573,40 @@ function saveFix() {
     fixForm.post(url, { preserveScroll: true, onSuccess: () => { fixSheet.value = false; } });
 }
 
+// SEAMAN: "buy and sell price vul dichi eta update korar option nai" —
+// fix a mistyped cost/price on one supplier's own lot, in place. Reuses
+// the exact same supplier-filtered rows Khaled already narrows to (see
+// editVisibleLines()'s own comment) — select a supplier up top, open the
+// product, every size/colour's line for THAT supplier is what's on screen.
+const editSourceSheet = ref(false);
+const editSourceTarget = ref(null); // { line, label }
+const editSourceForm = useForm({ cost: '', price: '' });
+function openEditSource(line, label) {
+    editSourceTarget.value = { line, label };
+    editSourceForm.reset();
+    editSourceForm.clearErrors();
+    editSourceForm.cost = String(line.cost ?? '');
+    editSourceForm.price = String(line.price ?? '');
+    editSourceSheet.value = true;
+}
+function saveEditSource() {
+    editSourceForm.patch(route('app.productSources.update', editSourceTarget.value.line.id), {
+        preserveScroll: true,
+        onSuccess: () => { editSourceSheet.value = false; },
+    });
+}
+
+// SEAMAN: "ekta product delete korte hole full product delete korte
+// hocche, ami caile kon supplier er delete korte cacchi" — remove just
+// this one supplier's lot, not the whole product/variant.
+function deleteSource(line) {
+    const msg = Number(line.stock) > 0
+        ? t('os.deleteLineConfirm', { stock: line.stock })
+        : t('os.deleteLineConfirmEmpty');
+    if (!confirm(msg)) return;
+    router.delete(route('app.productSources.destroy', line.id), { preserveScroll: true });
+}
+
 // Baby Park live: "can't remove just 1 piece without deleting the whole
 // variant" — Stock −/Set exact, both backed by one server-side correction
 // path (ProductVariantController::decreaseStock/setExactStock) so they can
@@ -1411,7 +1445,9 @@ useKeyboardShortcuts({
                 <div v-for="line in editVisibleLines(editing)" :key="line.id" style="font-size:12px;color:var(--mut);padding:3px 0;display:flex;align-items:center;gap:6px">
                     <span style="flex:1">🚚 {{ line.supplier?.name || 'Nil' }}<template v-if="line.brand?.name"> · {{ line.brand.name }}</template>
                     · {{ t('stock.costShort') }} {{ money(line.cost) }} · {{ money(line.price) }} · {{ line.stock }} {{ t('stock.pieces') }}</span>
+                    <button class="btn sm ghost" style="padding:2px 8px;font-size:11px;white-space:nowrap" @click="openEditSource(line, editing.name)">{{ t('os.editPriceBtn') }}</button>
                     <button v-if="Number(line.stock) > 0" class="btn sm ghost" style="padding:2px 8px;font-size:11px;white-space:nowrap" @click="openMoveLine(line, editing.name)">{{ t('os.moveBtn') }}</button>
+                    <button class="btn sm rose" style="padding:2px 8px;font-size:11px" @click="deleteSource(line)">{{ t('os.deleteLineBtn') }}</button>
                 </div>
                 <div v-if="!(editing.sources || []).length" style="font-size:12px;color:var(--mut)">{{ t('os.noSourcesYet') }}</div>
                 <div v-if="untrackedQty(editing) > 0" style="font-size:12px;color:var(--gold2);margin-top:4px">
@@ -1551,7 +1587,9 @@ useKeyboardShortcuts({
                                 <div v-for="line in editVisibleLines(v)" :key="line.id" style="font-size:11.5px;color:var(--mut);padding:2px 0;display:flex;align-items:center;gap:6px">
                                     <span style="flex:1">🚚 {{ line.supplier?.name || 'Nil' }}<template v-if="line.brand?.name"> · {{ line.brand.name }}</template>
                                     · {{ t('stock.costShort') }} {{ money(line.cost) }} · {{ money(line.price) }} · {{ line.stock }} {{ t('stock.pieces') }}</span>
+                                    <button class="btn sm ghost" style="padding:2px 8px;font-size:11px;white-space:nowrap" @click="openEditSource(line, variantLabel(v))">{{ t('os.editPriceBtn') }}</button>
                                     <button v-if="Number(line.stock) > 0" class="btn sm ghost" style="padding:2px 8px;font-size:11px;white-space:nowrap" @click="openMoveLine(line, variantLabel(v))">{{ t('os.moveBtn') }}</button>
+                                    <button class="btn sm rose" style="padding:2px 8px;font-size:11px" @click="deleteSource(line)">{{ t('os.deleteLineBtn') }}</button>
                                 </div>
                             </div>
                             <div v-if="hasSourceLines && untrackedQty(v) > 0" style="font-size:11.5px;color:var(--gold2);margin-top:4px">
@@ -1938,6 +1976,21 @@ useKeyboardShortcuts({
             <div v-if="fixForm.errors.qty || fixForm.errors.supplier_id" style="color:var(--rose);font-size:12.5px;margin-bottom:10px">{{ fixForm.errors.qty || fixForm.errors.supplier_id }}</div>
             <button class="btn" :disabled="fixForm.processing" @click="saveFix">{{ fixForm.processing ? '...' : t('os.save') }}</button>
             <button class="btn ghost" style="margin-top:10px" @click="fixSheet = false">{{ t('common.cancel') }}</button>
+        </Sheet>
+
+        <!-- SEAMAN: fix a mistyped buy/sell price on one supplier's lot -->
+        <Sheet v-model="editSourceSheet" :title="'✏️ ' + t('os.editPriceTitle') + (editSourceTarget?.label ? ' — ' + editSourceTarget.label : '')">
+            <div v-if="editSourceTarget?.line" class="card" style="margin-bottom:12px;padding:8px 10px;font-size:12px">
+                🚚 {{ editSourceTarget.line.supplier?.name || 'Nil' }}<template v-if="editSourceTarget.line.brand?.name"> · {{ editSourceTarget.line.brand.name }}</template>
+                · {{ editSourceTarget.line.stock }} {{ t('stock.pieces') }}
+            </div>
+            <div class="f2">
+                <div class="field"><label>{{ t('stock.costShort') }}</label><input v-model="editSourceForm.cost" type="number" min="0"></div>
+                <div class="field"><label>{{ t('os.sellPriceOptional') }}</label><input v-model="editSourceForm.price" type="number" min="0"></div>
+            </div>
+            <div v-if="editSourceForm.errors.cost || editSourceForm.errors.price" style="color:var(--rose);font-size:12.5px;margin-bottom:10px">{{ editSourceForm.errors.cost || editSourceForm.errors.price }}</div>
+            <button class="btn" :disabled="editSourceForm.processing" @click="saveEditSource">{{ editSourceForm.processing ? '...' : t('os.editPriceSave') }}</button>
+            <button class="btn ghost" style="margin-top:10px" @click="editSourceSheet = false">{{ t('common.cancel') }}</button>
         </Sheet>
 
         <!-- Stock − : take a WRONG qty off a variant, with a reason — never a silent wipe -->

@@ -364,6 +364,10 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
             Route::post('product-sources/{productSource}/move', [App\Http\Controllers\App\ProductSourceController::class, 'move'])->name('productSources.move');
             Route::post('products/{product}/sources/claim', [App\Http\Controllers\App\ProductSourceController::class, 'claimUntrackedProduct'])->name('productSources.claimProduct');
             Route::post('product-variants/{productVariant}/sources/claim', [App\Http\Controllers\App\ProductSourceController::class, 'claimUntrackedVariant'])->name('productSources.claimVariant');
+            // SEAMAN: fix a mistyped buy/sell price on one lot, or remove
+            // just that one supplier's lot instead of the whole product
+            Route::patch('product-sources/{productSource}', [App\Http\Controllers\App\ProductSourceController::class, 'update'])->name('productSources.update');
+            Route::delete('product-sources/{productSource}', [App\Http\Controllers\App\ProductSourceController::class, 'destroy'])->name('productSources.destroy');
         });
 
         // docs/ARTICLE_SERIES_PLAN.md §7 — one-screen new article entry
