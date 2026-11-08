@@ -366,6 +366,17 @@ class PosController extends Controller
         $userId = Auth::guard('web')->id() ?? Auth::guard('sanctum')->id();
         $data = $request->validated();
 
+        // owner-only stock override (see CheckoutRequest's own comment on
+        // allow_oversell) — stripped here, before performCheckout ever sees
+        // it, for anyone not logged in as the owner, so a tampered cart
+        // payload from a cashier session can never force an oversell.
+        if (! (Auth::guard('web')->user()?->isOwner())) {
+            foreach ($data['items'] as &$item) {
+                unset($item['allow_oversell']);
+            }
+            unset($item);
+        }
+
         // Real bug: an offline sale queued under one shop (classic
         // trigger — an admin reusing one browser across impersonation
         // sessions for different shops) could sit in the browser's
@@ -482,6 +493,53 @@ class PosController extends Controller
         );
 
         return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Baby Park: "sell korte caile kono product na thakleo product sell
+     * korar bebosta koro, product tule article tule" — a one-off item that
+     * isn't in the catalog yet, sold by typing its name and price on the
+     * spot instead of leaving POS to build it in Stock first. This is a
+     * REAL product, created through the exact same model every other
+     * product uses (not a bypass of checkout's stock/pricing machinery) —
+     * stock is set to exactly the quantity being sold, so the normal
+     * checkout flow right after this simply sells it down to zero, same as
+     * any other item, and it's left behind in Stock afterward if more of it
+     * ever comes in. Gated the same as creating any other product
+     * (`perm:stock`, see routes/web.php) — never reachable by a cashier
+     * who couldn't already add a product from the Stock page.
+     */
+    public function quickItem(Request $request)
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'price' => ['required', 'numeric', 'min:0'],
+            'qty' => ['nullable', 'numeric', 'min:0.001'],
+        ]);
+        $qty = $data['qty'] ?? 1;
+
+        $product = Product::create([
+            'shop_id' => Tenancy::id(),
+            'name' => $data['name'],
+            'name_en' => $data['name'],
+            'emoji' => '📦',
+            // cost unknown for a never-catalogued item — left equal to
+            // price (zero profit shown) rather than guessed, same as the
+            // honest default Khaled already corrects by hand in Stock
+            // whenever a real cost becomes known
+            'cost' => $data['price'],
+            'price' => $data['price'],
+            'stock' => $qty,
+        ]);
+
+        Activity::log(
+            'pos.quickItemCreated',
+            "POS থেকে সরাসরি নতুন আইটেম তৈরি হয়েছে: {$product->name} (৳{$data['price']})",
+            $product,
+            ['price' => $data['price'], 'qty' => $qty],
+        );
+
+        return response()->json(['product' => self::hideCost(collect([$product]))->first()]);
     }
 
     /**
@@ -866,14 +924,22 @@ class PosController extends Controller
 
                 $baseQtyNeeded = $item['qty'] * $factor;
 
+                // Baby Park: "stock na thakleo sell korar bebosta" — the
+                // owner confirmed this exact line past its stock; skip only
+                // the three shortfall ABORTs below, nothing else about this
+                // line's pricing/stock-pool math changes, and stock is
+                // simply allowed to go negative (see CheckoutRequest's own
+                // comment on allow_oversell for why this can be trusted here).
+                $oversellAllowed = ! empty($item['allow_oversell']);
+
                 if ($variant) {
-                    if ($variantStockRemaining[$variant->id] < $item['qty']) {
+                    if (! $oversellAllowed && $variantStockRemaining[$variant->id] < $item['qty']) {
                         abort(422, "পর্যাপ্ত স্টক নেই: {$product->name} ({$variantLabel}) (আছে {$variantStockRemaining[$variant->id]}, লাগবে {$item['qty']})।");
                     }
                     $variantStockRemaining[$variant->id] -= $item['qty'];
-                } elseif ($stockRemaining[$product->id] < $baseQtyNeeded) {
+                } elseif (! $oversellAllowed && $stockRemaining[$product->id] < $baseQtyNeeded) {
                     abort(422, "পর্যাপ্ত স্টক নেই: {$product->name} (আছে {$stockRemaining[$product->id]}, লাগবে {$baseQtyNeeded})।");
-                } elseif ($batchTrackingOn && $sellableRemaining[$product->id] < $baseQtyNeeded) {
+                } elseif (! $oversellAllowed && $batchTrackingOn && $sellableRemaining[$product->id] < $baseQtyNeeded) {
                     // real stock exists, but not enough of it outside an
                     // expired batch — reject outright rather than letting
                     // deduct() silently under-cover the allocation the way

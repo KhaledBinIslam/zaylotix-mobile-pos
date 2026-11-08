@@ -25,6 +25,11 @@ class BarcodeLabelController extends Controller
         // then only THAT supplier's lot rows arrive pre-ticked, so printing
         // one delivery's stickers is a single tap from the edit sheet
         $openForSupplier = $request->integer('supplier') ?: null;
+        // Baby Park: "size hisabe barcode print korte gele onk shomoi lage,
+        // khuje pawa jaina" — Stock's per-size 🏷 button links here with
+        // ?variant= too, so only THAT one size arrives pre-ticked instead
+        // of landing on the whole product and having to find it by hand
+        $openForVariant = $request->integer('variant') ?: null;
         // Once a shop has turned "বারকোডে সাইজও যোগ করুন" on, a scan must
         // always resolve straight to one exact size+color — never leave the
         // ambiguous "one sticker per color" choice sitting next to it, or a
@@ -134,6 +139,7 @@ class BarcodeLabelController extends Controller
             'printed' => LabelPrint::summaryFor(Tenancy::businessShopIds($shop?->id)),
             'openFor' => $openFor,
             'openForSupplier' => $openForSupplier,
+            'openForVariant' => $openForVariant,
             // Khaled live: "supplier filter option lagbe barcode print e" —
             // null-means-hidden, same contract as Stock page's own suppliers prop
             'suppliers' => $shop?->hasFeature('suppliers')

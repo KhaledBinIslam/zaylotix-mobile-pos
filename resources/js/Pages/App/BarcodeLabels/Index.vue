@@ -25,6 +25,9 @@ const props = defineProps({
     // with openFor: tick only THIS supplier's lot rows (Stock's
     // supplier-breakdown print button)
     openForSupplier: { type: Number, default: null },
+    // with openFor: tick only THIS one size/color, not the whole product —
+    // Stock's per-variant 🏷 button (direct print for just that size)
+    openForVariant: { type: Number, default: null },
     suppliers: { type: Array, default: null }, // null = suppliers feature off, filter hidden
 });
 const { t } = useI18n();
@@ -55,7 +58,16 @@ onMounted(() => {
 
     q.value = product.name;
     expanded.value[product.id] = true;
-    if (props.openForSupplier) {
+    if (props.openForVariant) {
+        // Baby Park: "size hisabe print korte gele onk shomoi lage, khuje
+        // pawa jaina" — tick only the one size that was tapped in Stock,
+        // not every size of the product, so this lands one tap from paper
+        const v = (product.variants || []).find((x) => x.id === props.openForVariant);
+        if (v && v.barcode) {
+            selected.value['v:' + v.id] = Math.max(1, Math.floor(Number(v.stock)) || 1);
+            nextTick(() => document.getElementById('bc-var-' + v.id)?.scrollIntoView({ block: 'center' }));
+        }
+    } else if (props.openForSupplier) {
         // only that one supplier's lots — the breakdown's print button
         if (product.variants?.length) {
             (product.variants || []).forEach((v) => (v.sources || []).forEach((line) => {
@@ -1023,7 +1035,7 @@ const printCss = computed(() => {
                      properties of undefined (reading 'sources')"),
                      feature flag or not — this wrapper is the fix for both. -->
                 <template v-for="v in p.variants" :key="v.id">
-                    <div class="row" style="border-top:1px solid var(--line);padding-left:20px" :class="{ incart: isSelected('v:' + v.id) }" :style="isSelected('v:' + v.id) ? 'background:var(--goldSoft)' : ''" @click="toggleVariant(v)">
+                    <div :id="'bc-var-' + v.id" class="row" style="border-top:1px solid var(--line);padding-left:20px" :class="{ incart: isSelected('v:' + v.id) }" :style="isSelected('v:' + v.id) ? 'background:var(--goldSoft)' : ''" @click="toggleVariant(v)">
                         <div class="ava" style="font-size:16px">🏷</div>
                         <div class="mid">
                             <b>{{ variantLabel(v) }}</b>

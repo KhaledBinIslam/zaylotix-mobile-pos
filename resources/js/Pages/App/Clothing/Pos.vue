@@ -247,7 +247,18 @@ function addToCart(productId, productVariantId) {
         if (!v) return;
         const alreadyInCart = cart.value.reduce((s, l) => s + (l.product_variant_id === productVariantId ? l.qty : 0), 0);
         if (v.stock <= alreadyInCart) {
-            toast('❌ ' + t('pos.notEnoughStock') + ' ' + product.name + ' (' + variantLabel(v) + ')');
+            // Baby Park: "stock na thakleo product sell korar bebosta" —
+            // owner-only, confirmed every time (never silent), and the
+            // server independently re-checks the role before honoring it
+            // (see CheckoutRequest/PosController::checkout's own comments)
+            if (!isOwner.value || !confirm(t('pos.oversellConfirm'))) {
+                toast('❌ ' + t('pos.notEnoughStock') + ' ' + product.name + ' (' + variantLabel(v) + ')');
+                return;
+            }
+            const line = cart.value.find((l) => l.product_variant_id === productVariantId);
+            if (line) { line.qty++; line.allow_oversell = true; }
+            else cart.value.push({ product_id: productId, product_variant_id: productVariantId, qty: 1, discount: 0, allow_oversell: true });
+            toast(t('pos.oversellSold') + ' ' + product.name + ' (' + variantLabel(v) + ')');
             return;
         }
         const line = cart.value.find((l) => l.product_variant_id === productVariantId);
@@ -259,7 +270,14 @@ function addToCart(productId, productVariantId) {
 
     const alreadyInCartBase = cart.value.reduce((s, l) => s + (!l.product_variant_id && l.product_id === productId ? l.qty : 0), 0);
     if (product.stock <= alreadyInCartBase) {
-        toast('❌ ' + t('pos.notEnoughStock') + ' ' + product.name);
+        if (!isOwner.value || !confirm(t('pos.oversellConfirm'))) {
+            toast('❌ ' + t('pos.notEnoughStock') + ' ' + product.name);
+            return;
+        }
+        const line = cart.value.find((l) => l.product_id === productId && !l.product_variant_id);
+        if (line) { line.qty++; line.allow_oversell = true; }
+        else cart.value.push({ product_id: productId, product_variant_id: null, qty: 1, discount: 0, allow_oversell: true });
+        toast(t('pos.oversellSold') + ' ' + product.name);
         return;
     }
     const line = cart.value.find((l) => l.product_id === productId && !l.product_variant_id);
@@ -285,6 +303,23 @@ function lineUnitPrice(l) {
 }
 function lineTotal(l) {
     return Math.max(0, lineUnitPrice(l) * l.qty - (l.discount || 0));
+}
+// Seaman: same product in several cart lines (different sizes/colors,
+// usually qty 1 each) — "50 tk kore discount dile eksoty 3 ta tekhe discount
+// hoi jabe 150". A line's own discount box still means exactly what it
+// always has (a flat taka amount off THAT line, unchanged for the common
+// single-line sale), but once typed, its PER-UNIT value spreads to every
+// other line of the same product, scaled to that line's own qty — so two
+// qty-1 lines at 50 each total 100, and a qty-2 sibling gets 100, not 50.
+// A product sold alone (the overwhelming majority of carts) has no sibling
+// to spread to, so this is a no-op there — zero behavior change.
+function propagateDiscount(line) {
+    const perUnit = line.qty > 0 ? (Number(line.discount) || 0) / line.qty : 0;
+    cart.value.forEach((l) => {
+        if (l !== line && l.product_id === line.product_id) {
+            l.discount = Math.round(perUnit * l.qty * 100) / 100;
+        }
+    });
 }
 function incrementLine(l) {
     addToCart(l.product_id, l.product_variant_id);
@@ -416,6 +451,49 @@ function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]')?.content || '';
 }
 
+// Baby Park: "product na thakleo product sell korar bebosta koro" — sell a
+// one-off item that isn't in the catalog yet by typing its name/price here.
+// Creates a REAL product (server-side, PosController::quickItem) with stock
+// set to exactly the qty being sold, then drops straight into the normal
+// addToCart()/checkout path — no separate "off-catalog" cart concept to keep
+// in sync with pricing/stock rules everywhere else on this screen.
+const quickItemOpen = ref(false);
+const quickItemForm = ref({ name: '', price: '', qty: 1 });
+const quickItemSubmitting = ref(false);
+function openQuickItem() {
+    quickItemForm.value = { name: q.value || '', price: '', qty: 1 };
+    quickItemOpen.value = true;
+}
+async function submitQuickItem() {
+    const name = quickItemForm.value.name.trim();
+    const price = Number(quickItemForm.value.price);
+    const qty = Number(quickItemForm.value.qty) || 1;
+    if (!name || !(price >= 0)) {
+        toast('❌ ' + t('pos.quickItemName') + ' / ' + t('pos.quickItemPrice'));
+        return;
+    }
+    quickItemSubmitting.value = true;
+    try {
+        const res = await fetchWithSessionRetry(route('app.pos.quickItem'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken(), Accept: 'application/json' },
+            body: JSON.stringify({ name, price, qty }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            toast('❌ ' + (data.message || Object.values(data.errors || {})[0]?.[0] || t('pos.checkoutError')));
+            return;
+        }
+        props.products.push(data.product);
+        addToCart(data.product.id, null);
+        quickItemOpen.value = false;
+    } catch (e) {
+        toast('❌ ' + t('pos.checkoutError'));
+    } finally {
+        quickItemSubmitting.value = false;
+    }
+}
+
 // Real gap, found while building the Pending Sales sheet (docs/FIX_PLAN.md
 // Phase 12): this screen's offline payload had no client_uuid at all —
 // zero replay-idempotency protection (Phase 1's fix never reached this
@@ -473,7 +551,7 @@ async function submitCheckout() {
         client_uuid: checkoutUuid(),
         shop_id: shop.value?.id ?? null,
         shop_name: shop.value?.name ?? null,
-        items: cart.value.map((l) => ({ product_id: l.product_id, product_variant_id: l.product_variant_id, qty: l.qty, discount: l.discount || 0, ...lineSnapshot(l) })),
+        items: cart.value.map((l) => ({ product_id: l.product_id, product_variant_id: l.product_variant_id, qty: l.qty, discount: l.discount || 0, allow_oversell: l.allow_oversell || false, ...lineSnapshot(l) })),
         discount: discount.value || 0,
         complimentary: payMode.value === 'complimentary',
         payments: buildPayments(),
@@ -753,6 +831,7 @@ function sendMemoWA() {
                         autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
                     >
                     <button v-if="canScan" class="btn ghost" style="width:auto;padding:0 16px" :title="t('pos.scanTitle')" @click="openScanner">📷</button>
+                    <button v-if="hasPerm('stock')" class="btn ghost" style="width:auto;padding:0 16px" :title="t('pos.quickItem')" @click="openQuickItem">✏️</button>
                 </div>
                 <div v-if="catalogMode === 'search' && !catalog.syncProgress.value.complete" style="font-size:11.5px;color:var(--dim);margin:-6px 0 10px">
                     🔄 {{ t('pos.catalogSyncing') }} ({{ catalog.syncProgress.value.done }}/{{ catalog.syncProgress.value.total }})
@@ -791,6 +870,7 @@ function sendMemoWA() {
                         <button v-for="s in didYouMeanSuggestions" :key="s.id" type="button" class="btn ghost sm" style="margin:0 4px 6px" @click="q = s.name">{{ s.emoji }} {{ s.name }}</button>
                     </div>
                     <button v-if="hasPerm('stock')" type="button" class="btn ghost sm" style="margin-top:6px" @click="router.visit(route('app.stock') + '?new_name=' + encodeURIComponent(q))">{{ t('pos.addNewProductShortcut') }}</button>
+                    <button v-if="hasPerm('stock')" type="button" class="btn ghost sm" style="margin-top:6px" @click="openQuickItem">{{ t('pos.quickItem') }}</button>
                 </div>
             </div>
 
@@ -836,7 +916,7 @@ function sendMemoWA() {
                 <div style="display:flex;flex-wrap:wrap;gap:8px">
                     <button
                         v-for="v in variantSheetProduct.variants" :key="v.id" class="upill"
-                        :disabled="v.stock <= 0"
+                        :disabled="v.stock <= 0 && !isOwner"
                         :style="v.stock <= 0 ? 'opacity:.45' : (hasLowStockAlerts && stockLevel(v.stock, v.reorder_point) === 'low' ? 'color:var(--gold2);font-weight:700;border-color:var(--gold2)' : '')"
                         style="font-size:14px;padding:10px 16px"
                         @click="pickVariant(v)"
@@ -846,6 +926,24 @@ function sendMemoWA() {
                     </button>
                 </div>
             </template>
+        </Sheet>
+
+        <!-- Baby Park: sell a one-off item that isn't in the catalog yet -->
+        <Sheet v-model="quickItemOpen" :title="t('pos.quickItem')">
+            <div style="font-size:12.5px;color:var(--mut);margin-bottom:12px">{{ t('pos.quickItemHint') }}</div>
+            <div class="field">
+                <label>{{ t('pos.quickItemName') }}</label>
+                <input v-model="quickItemForm.name" type="text">
+            </div>
+            <div class="field">
+                <label>{{ t('pos.quickItemPrice') }}</label>
+                <input v-model.number="quickItemForm.price" type="number" inputmode="decimal" min="0">
+            </div>
+            <div class="field">
+                <label>{{ t('pos.qty') }}</label>
+                <input v-model.number="quickItemForm.qty" type="number" inputmode="numeric" min="1">
+            </div>
+            <button class="btn" :disabled="quickItemSubmitting" style="margin-top:8px" @click="submitQuickItem">{{ t('pos.quickItemAdd') }}</button>
         </Sheet>
 
         <!-- cart / checkout sheet — wide on tablet/desktop, same treatment as
@@ -879,7 +977,7 @@ function sendMemoWA() {
                      field below — same pattern as the shared Pos/Index.vue -->
                 <div class="cart-line-discount">
                     <span>{{ t('pos.itemDiscount') }}</span>
-                    <input v-model.number="l.discount" type="number" inputmode="numeric" placeholder="0" min="0">
+                    <input v-model.number="l.discount" type="number" inputmode="numeric" placeholder="0" min="0" @change="propagateDiscount(l)">
                 </div>
             </div>
 

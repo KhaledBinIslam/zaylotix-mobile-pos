@@ -1562,8 +1562,8 @@ useKeyboardShortcuts({
                                 <input v-model="variantStockInQty[v.id]" type="number" :placeholder="t('stock.stockIn')" style="width:90px">
                                 <button class="btn sm ghost" @click="stockInVariant(v)">+</button>
                                 <button v-if="Number(v.stock) > 0" class="btn sm ghost" @click="openDecrease(v)">{{ t('stock.decreaseBtn') }}</button>
-                                <!-- new stock just landed here — printing its label shouldn't need navigating away and re-searching for the same product by hand -->
-                                <Link :href="route('app.barcodeLabels.index') + '?q=' + encodeURIComponent(editing.name)" class="btn sm ghost" style="text-decoration:none">🏷</Link>
+                                <!-- new stock just landed here — printing ITS label shouldn't need navigating away, re-searching for the product by hand, and finding this one size among every other size. Lands pre-ticked on just this variant. -->
+                                <Link :href="route('app.barcodeLabels.index') + '?product=' + editing.id + '&variant=' + v.id" class="btn sm ghost" style="text-decoration:none">🏷</Link>
                             </div>
                             <div style="display:flex;gap:10px;margin-top:4px">
                                 <button class="btn sm ghost" style="width:auto;padding:2px 0;border:none;background:none;color:var(--sky);font-size:11px" @click="openExact(v)">{{ t('stock.setExactBtn') }}</button>

@@ -265,6 +265,13 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
 
         Route::get('medicine-catalog/search', [MedicineCatalogController::class, 'search'])->name('medicineCatalog.search');
         Route::get('products/barcode-lookup/{barcode}', [ProductController::class, 'barcodeLookup'])->name('products.barcodeLookup');
+
+        // Baby Park: sell a one-off item that isn't in the catalog yet,
+        // straight from POS — see PosController::quickItem()'s own
+        // docblock. Gated here (not under perm:pos) so it's never
+        // reachable by a cashier who couldn't already add a product from
+        // the Stock page.
+        Route::post('pos/quick-item', [PosController::class, 'quickItem'])->name('pos.quickItem');
     });
 
     // SEAMAN Phase 2 — category → sub-category management; gated so no

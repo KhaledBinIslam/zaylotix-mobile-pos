@@ -74,6 +74,14 @@ class CheckoutRequest extends FormRequest
             // product's own sold_by_weight flag to know which applies
             'items.*.qty' => ['required', 'numeric', 'min:0.001'],
             'items.*.discount' => ['nullable', 'numeric', 'min:0'],
+            // Baby Park: "stock na thakleo product sell korar bebosta" —
+            // owner confirms selling a line past what's actually in stock
+            // (stock is then allowed to go negative, same as any other
+            // sale's math, so it's visible and correctable later instead of
+            // silently clamped). PosController::checkout() strips this for
+            // anyone who isn't the shop owner, so a cashier's session can
+            // never set it just by sending the field.
+            'items.*.allow_oversell' => ['sometimes', 'boolean'],
             // Diagnostic-only snapshot (see docs/FIX_PLAN.md's offline-sync
             // "product not found" fix) — never trusted for pricing/stock,
             // only used (a) to name the specific product in an error
