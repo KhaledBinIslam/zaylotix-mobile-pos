@@ -590,9 +590,19 @@ function openEditSource(line, label) {
     editSourceSheet.value = true;
 }
 function saveEditSource() {
-    editSourceForm.patch(route('app.productSources.update', editSourceTarget.value.line.id), {
+    const line = editSourceTarget.value.line;
+    editSourceForm.patch(route('app.productSources.update', line.id), {
         preserveScroll: true,
-        onSuccess: () => { editSourceSheet.value = false; },
+        onSuccess: () => {
+            // the edit sheet underneath is still open on the SAME product —
+            // a full page reload replaces props.products with fresh
+            // objects, which this still-open sheet's `editing` ref never
+            // re-points to, so without this the fix looked like it did
+            // nothing until the sheet was closed and reopened
+            line.cost = Number(editSourceForm.cost) || 0;
+            line.price = editSourceForm.price !== '' ? Number(editSourceForm.price) : line.price;
+            editSourceSheet.value = false;
+        },
     });
 }
 

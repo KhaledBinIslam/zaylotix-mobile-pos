@@ -216,13 +216,13 @@ class ProductSourceController extends Controller
     /**
      * SEAMAN: "vul kore ... buy and sell price vul dichi eta update korar
      * option nai" — a typo at stock-in on one specific supplier's lot,
-     * fixed in place. Only this line's own cost/price change; qty/stock
-     * are untouched (that's stockIn/move's job). Deliberately does NOT push
-     * the correction up to the variant/product mirror — that mirror may
-     * have already moved on to a DIFFERENT, later lot's cost since this one
-     * was filed, and silently rewinding it would be its own surprise. Any
-     * sale that resolves to THIS exact lot (PosController's source-line
-     * resolution) picks up the corrected price immediately either way.
+     * fixed in place. Pushes the SAME correction onto the variant/product
+     * mirror too — the original mistaken stock-in already overwrote that
+     * mirror's cost to this exact wrong value (see applyStockIn()'s own
+     * "cost OVERWRITES, not a cross-supplier blend" convention), so fixing
+     * it here and not there would leave the product still showing the old
+     * mistake everywhere except this one line. Qty/stock are untouched —
+     * that is stockIn/move's job, not this one's.
      */
     public function update(Request $request, ProductSource $productSource)
     {
@@ -234,20 +234,30 @@ class ProductSourceController extends Controller
             'price' => ['nullable', 'numeric', 'min:0'],
         ]);
 
-        $locked = ProductSource::whereKey($productSource->id)->lockForUpdate()->first();
-        abort_unless($locked, 422, 'এই লাইনটি ইতিমধ্যে মুছে ফেলা হয়েছে।');
+        DB::transaction(function () use ($productSource, $data) {
+            $locked = ProductSource::whereKey($productSource->id)->lockForUpdate()->first();
+            abort_unless($locked, 422, 'এই লাইনটি ইতিমধ্যে মুছে ফেলা হয়েছে।');
 
-        $before = ['cost' => (float) $locked->cost, 'price' => (float) $locked->price];
-        $locked->update([
-            'cost' => (float) $data['cost'],
-            'price' => $data['price'] ?? $locked->price,
-        ]);
+            $before = ['cost' => (float) $locked->cost, 'price' => (float) $locked->price];
+            $newCost = (float) $data['cost'];
+            $newPrice = isset($data['price']) ? (float) $data['price'] : (float) $locked->price;
 
-        Activity::log(
-            'product.source.priceCorrected',
-            "'{$locked->product->name}' — {$locked->pickerLabel()}-এর ক্রয়/বিক্রয় মূল্য সংশোধন করা হয়েছে (ক্রয় ৳{$before['cost']} → ৳{$locked->cost}, বিক্রয় ৳{$before['price']} → ৳{$locked->price})।",
-            $locked
-        );
+            $locked->update(['cost' => $newCost, 'price' => $newPrice]);
+
+            if ($locked->product_variant_id) {
+                ProductVariant::whereKey($locked->product_variant_id)->lockForUpdate()->first()
+                    ?->update(['cost' => $newCost, 'price' => $newPrice]);
+            } else {
+                Product::whereKey($locked->product_id)->lockForUpdate()->first()
+                    ?->update(['cost' => $newCost, 'price' => $newPrice]);
+            }
+
+            Activity::log(
+                'product.source.priceCorrected',
+                "'{$locked->product->name}' — {$locked->pickerLabel()}-এর ক্রয়/বিক্রয় মূল্য সংশোধন করা হয়েছে (ক্রয় ৳{$before['cost']} → ৳{$newCost}, বিক্রয় ৳{$before['price']} → ৳{$newPrice})।",
+                $locked
+            );
+        });
 
         return back()->with('success', 'দাম ঠিক করা হয়েছে।');
     }

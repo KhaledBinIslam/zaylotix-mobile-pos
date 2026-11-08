@@ -1,1 +1,0 @@
-import{E as r,K as u}from"./app-Dfl9w0U5.js";function s(t){const e=String(t??""),n=e.match(/^(\d+)\.5$/);return n?n[1]+"½":e}function a(t){function e(n){const o=t[n.key];o&&(n.preventDefault(),o(n))}r(()=>document.addEventListener("keydown",e)),u(()=>document.removeEventListener("keydown",e))}export{s as f,a as u};

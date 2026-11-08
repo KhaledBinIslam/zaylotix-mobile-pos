@@ -147,7 +147,7 @@ class SourceLineCorrectionTest extends TestCase
             );
     }
 
-    public function test_update_corrects_cost_and_price_without_touching_stock_or_mirror(): void
+    public function test_update_corrects_cost_and_price_and_pushes_the_correction_onto_the_variant_mirror(): void
     {
         [, $p, $v, $bulu, , $buluLine] = $this->shopWithLine();
 
@@ -159,8 +159,24 @@ class SourceLineCorrectionTest extends TestCase
         $this->assertEquals(600.0, (float) $fresh->cost);
         $this->assertEquals(999.0, (float) $fresh->price);
         $this->assertEquals(6.0, (float) $fresh->stock); // qty untouched
-        $this->assertEquals(7.0, (float) $v->fresh()->stock); // mirror untouched
-        $this->assertEquals(650.0, (float) $p->fresh()->cost); // product's own mirror cost untouched
+        $this->assertEquals(7.0, (float) $v->fresh()->stock); // stock count untouched
+        $this->assertEquals(600.0, (float) $v->fresh()->cost); // mistaken stock-in's cost corrected here too
+        $this->assertEquals(999.0, (float) $v->fresh()->price);
+    }
+
+    public function test_update_on_a_plain_products_own_line_corrects_the_product_mirror(): void
+    {
+        [$shop, , , , $sujon] = $this->shopWithLine();
+        $plain = Product::create(['shop_id' => $shop->id, 'name' => 'Flag', 'cost' => 80, 'price' => 150, 'stock' => 9]);
+        $line = ProductSource::create(['shop_id' => $shop->id, 'product_id' => $plain->id, 'supplier_id' => $sujon->id, 'cost' => 80, 'price' => 150, 'stock' => 9]);
+
+        $this->patch(route('app.productSources.update', $line->id), [
+            'cost' => 95, 'price' => 180,
+        ])->assertSessionHasNoErrors();
+
+        $this->assertEquals(95.0, (float) $plain->fresh()->cost);
+        $this->assertEquals(180.0, (float) $plain->fresh()->price);
+        $this->assertEquals(9.0, (float) $plain->fresh()->stock); // stock untouched
     }
 
     public function test_update_requires_a_valid_cost(): void
