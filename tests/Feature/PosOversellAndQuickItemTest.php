@@ -14,11 +14,12 @@ use Tests\TestCase;
  * Baby Park: "sell korte caile kono product na thakleo product sell korar
  * bebosta koro" — two independent requests, covered here:
  *
- * 1. An owner can confirm selling a line past its stock (stock then goes
- *    negative instead of blocking the sale); a cashier never can, even if
+ * 1. An owner, or a cashier explicitly granted the 'oversell' permission,
+ *    can confirm selling a line past its stock (stock then goes negative
+ *    instead of blocking the sale); an ungranted cashier never can, even if
  *    their client sends the exact same flag — the server re-checks the
- *    role itself, never trusts the payload (see PosController::checkout's
- *    own comment).
+ *    permission itself, never trusts the payload (see
+ *    PosController::checkout's own comment).
  * 2. A one-off item that isn't in the catalog yet can be created and sold
  *    in one motion from POS (PosController::quickItem), gated the same as
  *    creating any other product (perm:stock).
@@ -54,6 +55,22 @@ class PosOversellAndQuickItemTest extends TestCase
         $response->assertStatus(422);
         $this->assertEquals(2, $product->fresh()->stock);
         $this->assertNull(Sale::first());
+    }
+
+    public function test_a_cashier_granted_the_oversell_permission_can_oversell(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $cashier = $this->cashier($shop, ['pos', 'oversell']);
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Boiler Suit', 'cost' => 650, 'price' => 1090, 'stock' => 2]);
+
+        $response = $this->actingAs($cashier, 'web')->postJson('/app/pos/checkout', [
+            'items' => [['product_id' => $product->id, 'qty' => 5, 'allow_oversell' => true]],
+            'payments' => [['method' => 'cash', 'amount' => 5450]],
+        ]);
+
+        $response->assertOk();
+        $this->assertEquals(-3, $product->fresh()->stock);
+        $this->assertNotNull(Sale::first());
     }
 
     public function test_the_owner_can_oversell_a_variant_past_its_stock(): void

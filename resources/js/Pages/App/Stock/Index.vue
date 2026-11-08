@@ -1565,63 +1565,6 @@ useKeyboardShortcuts({
             </div>
             <div v-if="editing && hasProductVariants" class="field">
                 <label>{{ t('stock.variants') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.variantsHint') }}</span></label>
-                <div v-for="g in editingColorGroups()" :key="g.color ?? '_'" style="margin-bottom:10px">
-                    <div v-if="g.color" style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-                        <img v-if="g.photoUrl" :src="g.photoUrl" style="width:30px;height:30px;border-radius:6px;object-fit:cover">
-                        <div v-else style="width:30px;height:30px;border-radius:6px;background:var(--panel2)"></div>
-                        <b style="font-size:13px">{{ g.color }}</b>
-                        <label style="font-size:11px;color:var(--sky);cursor:pointer">
-                            {{ g.photoUrl ? 'ছবি বদলান' : '📷 ছবি দিন' }}
-                            <input type="file" accept="image/*" style="display:none" @change="uploadColorPhoto(g.color, $event)">
-                        </label>
-                    </div>
-                    <div v-for="v in g.variants" :key="v.id" class="cart-line" style="align-items:flex-start">
-                        <div class="nm">
-                            <b>{{ variantLabel(v) }}</b>
-                            <!-- exactly which size/color needs restocking — Khaled: "low stock e click korle jeno deka jai konta konta low" -->
-                            <span :style="Number(v.stock) <= 0 ? 'color:var(--rose);font-weight:700' : (Number(v.reorder_point) > 0 && Number(v.stock) <= Number(v.reorder_point) ? 'color:var(--gold2);font-weight:700' : '')">
-                                {{ v.stock }} {{ t('stock.pieces') }}
-                                <template v-if="Number(v.stock) <= 0"> — {{ t('stock.outOfStock') }}</template>
-                                <template v-else-if="Number(v.reorder_point) > 0 && Number(v.stock) <= Number(v.reorder_point) "> ⚠ {{ t('stock.lowStock') }}</template>
-                            </span>
-                            <span><template v-if="v.price"> • {{ money(v.price) }}</template><template v-if="v.barcode"> • 🏷 {{ v.barcode }}</template><template v-if="v.reorder_point"> • reorder: {{ v.reorder_point }}</template></span>
-                            <!-- Phase 4 — per-variant brand (helmet: four brands in one product); only with the feature -->
-                            <select v-if="brands" :value="v.brand_id || ''" style="margin-top:6px;font-size:12px;padding:5px 8px;width:auto" @change="setVariantBrand(v, $event.target.value)">
-                                <option value="">Brand: Nil</option>
-                                <option v-for="b in brands" :key="b.id" :value="b.id">{{ b.name }}</option>
-                            </select>
-                            <!-- Part 1 — "one product, many sources": each
-                                 supplier/brand lot's own buy/sell/stock,
-                                 under this exact variant -->
-                            <div v-if="hasSourceLines && editVisibleLines(v).length" style="margin-top:6px;border-top:1px dashed var(--line);padding-top:6px">
-                                <div v-for="line in editVisibleLines(v)" :key="line.id" style="font-size:11.5px;color:var(--mut);padding:2px 0;display:flex;align-items:center;gap:6px">
-                                    <span style="flex:1">🚚 {{ line.supplier?.name || 'Nil' }}<template v-if="line.brand?.name"> · {{ line.brand.name }}</template>
-                                    · {{ t('stock.costShort') }} {{ money(line.cost) }} · {{ money(line.price) }} · {{ line.stock }} {{ t('stock.pieces') }}</span>
-                                    <button class="btn sm ghost" style="padding:2px 8px;font-size:11px;white-space:nowrap" @click="openEditSource(line, variantLabel(v))">{{ t('os.editPriceBtn') }}</button>
-                                    <button v-if="Number(line.stock) > 0" class="btn sm ghost" style="padding:2px 8px;font-size:11px;white-space:nowrap" @click="openMoveLine(line, variantLabel(v))">{{ t('os.moveBtn') }}</button>
-                                    <button class="btn sm rose" style="padding:2px 8px;font-size:11px" @click="deleteSource(line)">{{ t('os.deleteLineBtn') }}</button>
-                                </div>
-                            </div>
-                            <div v-if="hasSourceLines && untrackedQty(v) > 0" style="font-size:11.5px;color:var(--gold2);margin-top:4px">
-                                ⚠ {{ t('os.untracked', { n: untrackedQty(v) }) }}
-                                <button class="btn sm ghost" style="padding:2px 8px;font-size:11px;margin-left:6px" @click="openClaim('variant', v, variantLabel(v))">{{ t('os.claimBtn') }}</button>
-                            </div>
-                            <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
-                                <input v-model="variantStockInQty[v.id]" type="number" :placeholder="t('stock.stockIn')" style="width:90px">
-                                <button class="btn sm ghost" @click="stockInVariant(v)">+</button>
-                                <button v-if="Number(v.stock) > 0" class="btn sm ghost" @click="openDecrease(v)">{{ t('stock.decreaseBtn') }}</button>
-                                <!-- new stock just landed here — printing ITS label shouldn't need navigating away, re-searching for the product by hand, and finding this one size among every other size. Lands pre-ticked on just this variant. -->
-                                <Link :href="route('app.barcodeLabels.index') + '?product=' + editing.id + '&variant=' + v.id" class="btn sm ghost" style="text-decoration:none">🏷</Link>
-                            </div>
-                            <div style="display:flex;gap:10px;margin-top:4px">
-                                <button class="btn sm ghost" style="width:auto;padding:2px 0;border:none;background:none;color:var(--sky);font-size:11px" @click="openExact(v)">{{ t('stock.setExactBtn') }}</button>
-                                <button class="btn sm ghost" style="width:auto;padding:2px 0;border:none;background:none;color:var(--mut);font-size:11px" @click="openHistory(v)">{{ t('stock.historyBtn') }}</button>
-                            </div>
-                            <button v-if="hasSourceLines" class="btn sm ghost" style="margin-top:6px;width:auto" @click="openSourceStockIn('variant', v)">🚚 {{ t('os.addSourceStock') }}</button>
-                        </div>
-                        <button class="btn sm rose" @click="removeVariant(v)">✕</button>
-                    </div>
-                </div>
                 <button v-if="!gridOpen" class="btn sm" style="width:100%;margin-top:10px" @click="openGrid">
                     {{ t('stock.addVariantGrid') }}
                 </button>
@@ -1725,6 +1668,64 @@ useKeyboardShortcuts({
                     <div style="display:flex;gap:8px;margin-top:10px">
                         <button class="btn sm" style="flex:1" :disabled="gridProcessing" @click="submitGrid">{{ gridProcessing ? '...' : t('stock.gridSubmit') }}</button>
                         <button class="btn sm ghost" @click="gridOpen = false">{{ t('common.cancel') }}</button>
+                    </div>
+                </div>
+
+                <div v-for="g in editingColorGroups()" :key="g.color ?? '_'" style="margin-bottom:10px">
+                    <div v-if="g.color" style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                        <img v-if="g.photoUrl" :src="g.photoUrl" style="width:30px;height:30px;border-radius:6px;object-fit:cover">
+                        <div v-else style="width:30px;height:30px;border-radius:6px;background:var(--panel2)"></div>
+                        <b style="font-size:13px">{{ g.color }}</b>
+                        <label style="font-size:11px;color:var(--sky);cursor:pointer">
+                            {{ g.photoUrl ? 'ছবি বদলান' : '📷 ছবি দিন' }}
+                            <input type="file" accept="image/*" style="display:none" @change="uploadColorPhoto(g.color, $event)">
+                        </label>
+                    </div>
+                    <div v-for="v in g.variants" :key="v.id" class="cart-line" style="align-items:flex-start">
+                        <div class="nm">
+                            <b>{{ variantLabel(v) }}</b>
+                            <!-- exactly which size/color needs restocking — Khaled: "low stock e click korle jeno deka jai konta konta low" -->
+                            <span :style="Number(v.stock) <= 0 ? 'color:var(--rose);font-weight:700' : (Number(v.reorder_point) > 0 && Number(v.stock) <= Number(v.reorder_point) ? 'color:var(--gold2);font-weight:700' : '')">
+                                {{ v.stock }} {{ t('stock.pieces') }}
+                                <template v-if="Number(v.stock) <= 0"> — {{ t('stock.outOfStock') }}</template>
+                                <template v-else-if="Number(v.reorder_point) > 0 && Number(v.stock) <= Number(v.reorder_point) "> ⚠ {{ t('stock.lowStock') }}</template>
+                            </span>
+                            <span><template v-if="v.price"> • {{ money(v.price) }}</template><template v-if="v.barcode"> • 🏷 {{ v.barcode }}</template><template v-if="v.reorder_point"> • reorder: {{ v.reorder_point }}</template></span>
+                            <!-- Phase 4 — per-variant brand (helmet: four brands in one product); only with the feature -->
+                            <select v-if="brands" :value="v.brand_id || ''" style="margin-top:6px;font-size:12px;padding:5px 8px;width:auto" @change="setVariantBrand(v, $event.target.value)">
+                                <option value="">Brand: Nil</option>
+                                <option v-for="b in brands" :key="b.id" :value="b.id">{{ b.name }}</option>
+                            </select>
+                            <!-- Part 1 — "one product, many sources": each
+                                 supplier/brand lot's own buy/sell/stock,
+                                 under this exact variant -->
+                            <div v-if="hasSourceLines && editVisibleLines(v).length" style="margin-top:6px;border-top:1px dashed var(--line);padding-top:6px">
+                                <div v-for="line in editVisibleLines(v)" :key="line.id" style="font-size:11.5px;color:var(--mut);padding:2px 0;display:flex;align-items:center;gap:6px">
+                                    <span style="flex:1">🚚 {{ line.supplier?.name || 'Nil' }}<template v-if="line.brand?.name"> · {{ line.brand.name }}</template>
+                                    · {{ t('stock.costShort') }} {{ money(line.cost) }} · {{ money(line.price) }} · {{ line.stock }} {{ t('stock.pieces') }}</span>
+                                    <button class="btn sm ghost" style="padding:2px 8px;font-size:11px;white-space:nowrap" @click="openEditSource(line, variantLabel(v))">{{ t('os.editPriceBtn') }}</button>
+                                    <button v-if="Number(line.stock) > 0" class="btn sm ghost" style="padding:2px 8px;font-size:11px;white-space:nowrap" @click="openMoveLine(line, variantLabel(v))">{{ t('os.moveBtn') }}</button>
+                                    <button class="btn sm rose" style="padding:2px 8px;font-size:11px" @click="deleteSource(line)">{{ t('os.deleteLineBtn') }}</button>
+                                </div>
+                            </div>
+                            <div v-if="hasSourceLines && untrackedQty(v) > 0" style="font-size:11.5px;color:var(--gold2);margin-top:4px">
+                                ⚠ {{ t('os.untracked', { n: untrackedQty(v) }) }}
+                                <button class="btn sm ghost" style="padding:2px 8px;font-size:11px;margin-left:6px" @click="openClaim('variant', v, variantLabel(v))">{{ t('os.claimBtn') }}</button>
+                            </div>
+                            <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+                                <input v-model="variantStockInQty[v.id]" type="number" :placeholder="t('stock.stockIn')" style="width:90px">
+                                <button class="btn sm ghost" @click="stockInVariant(v)">+</button>
+                                <button v-if="Number(v.stock) > 0" class="btn sm ghost" @click="openDecrease(v)">{{ t('stock.decreaseBtn') }}</button>
+                                <!-- new stock just landed here — printing ITS label shouldn't need navigating away, re-searching for the product by hand, and finding this one size among every other size. Lands pre-ticked on just this variant. -->
+                                <Link :href="route('app.barcodeLabels.index') + '?product=' + editing.id + '&variant=' + v.id" class="btn sm ghost" style="text-decoration:none">🏷</Link>
+                            </div>
+                            <div style="display:flex;gap:10px;margin-top:4px">
+                                <button class="btn sm ghost" style="width:auto;padding:2px 0;border:none;background:none;color:var(--sky);font-size:11px" @click="openExact(v)">{{ t('stock.setExactBtn') }}</button>
+                                <button class="btn sm ghost" style="width:auto;padding:2px 0;border:none;background:none;color:var(--mut);font-size:11px" @click="openHistory(v)">{{ t('stock.historyBtn') }}</button>
+                            </div>
+                            <button v-if="hasSourceLines" class="btn sm ghost" style="margin-top:6px;width:auto" @click="openSourceStockIn('variant', v)">🚚 {{ t('os.addSourceStock') }}</button>
+                        </div>
+                        <button class="btn sm rose" @click="removeVariant(v)">✕</button>
                     </div>
                 </div>
 

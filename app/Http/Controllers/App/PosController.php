@@ -366,11 +366,13 @@ class PosController extends Controller
         $userId = Auth::guard('web')->id() ?? Auth::guard('sanctum')->id();
         $data = $request->validated();
 
-        // owner-only stock override (see CheckoutRequest's own comment on
-        // allow_oversell) — stripped here, before performCheckout ever sees
-        // it, for anyone not logged in as the owner, so a tampered cart
-        // payload from a cashier session can never force an oversell.
-        if (! (Auth::guard('web')->user()?->isOwner())) {
+        // Permission-gated stock override (see CheckoutRequest's own
+        // comment on allow_oversell) — stripped here, before performCheckout
+        // ever sees it, for anyone without the 'oversell' permission (the
+        // owner always has it; a cashier only if explicitly granted — see
+        // config/staff_permissions.php), so a tampered cart payload from an
+        // ungranted session can never force an oversell.
+        if (! (Auth::guard('web')->user()?->hasPermission('oversell'))) {
             foreach ($data['items'] as &$item) {
                 unset($item['allow_oversell']);
             }

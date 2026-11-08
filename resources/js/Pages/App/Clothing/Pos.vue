@@ -248,10 +248,11 @@ function addToCart(productId, productVariantId) {
         const alreadyInCart = cart.value.reduce((s, l) => s + (l.product_variant_id === productVariantId ? l.qty : 0), 0);
         if (v.stock <= alreadyInCart) {
             // Baby Park: "stock na thakleo product sell korar bebosta" —
-            // owner-only, confirmed every time (never silent), and the
-            // server independently re-checks the role before honoring it
+            // owner, or a cashier with the explicit 'oversell' permission;
+            // confirmed every time (never silent), and the server
+            // independently re-checks the permission before honoring it
             // (see CheckoutRequest/PosController::checkout's own comments)
-            if (!isOwner.value || !confirm(t('pos.oversellConfirm'))) {
+            if (!hasPerm('oversell') || !confirm(t('pos.oversellConfirm'))) {
                 toast('❌ ' + t('pos.notEnoughStock') + ' ' + product.name + ' (' + variantLabel(v) + ')');
                 return;
             }
@@ -270,7 +271,7 @@ function addToCart(productId, productVariantId) {
 
     const alreadyInCartBase = cart.value.reduce((s, l) => s + (!l.product_variant_id && l.product_id === productId ? l.qty : 0), 0);
     if (product.stock <= alreadyInCartBase) {
-        if (!isOwner.value || !confirm(t('pos.oversellConfirm'))) {
+        if (!hasPerm('oversell') || !confirm(t('pos.oversellConfirm'))) {
             toast('❌ ' + t('pos.notEnoughStock') + ' ' + product.name);
             return;
         }
@@ -916,7 +917,7 @@ function sendMemoWA() {
                 <div style="display:flex;flex-wrap:wrap;gap:8px">
                     <button
                         v-for="v in variantSheetProduct.variants" :key="v.id" class="upill"
-                        :disabled="v.stock <= 0 && !isOwner"
+                        :disabled="v.stock <= 0 && !hasPerm('oversell')"
                         :style="v.stock <= 0 ? 'opacity:.45' : (hasLowStockAlerts && stockLevel(v.stock, v.reorder_point) === 'low' ? 'color:var(--gold2);font-weight:700;border-color:var(--gold2)' : '')"
                         style="font-size:14px;padding:10px 16px"
                         @click="pickVariant(v)"

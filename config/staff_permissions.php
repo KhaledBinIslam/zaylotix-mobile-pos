@@ -16,6 +16,11 @@ return [
     // most restrictive): no existing staff row has it, and an owner passes
     // hasPermission() unconditionally anyway.
     'sales_void' => ['label_bn' => 'বিক্রি বাতিল (ভয়েড)', 'label_en' => 'Void sales', 'category' => 'বিক্রি'],
+    // Baby Park/SEAMAN live — confirming a sale past what's in stock (stock
+    // then goes negative) is a different risk than a normal sale, so it
+    // gets its own grant, defaulting closed for every existing cashier
+    // exactly like sales_void above.
+    'oversell' => ['label_bn' => 'স্টক না থাকলেও বিক্রি (ওভারসেল)', 'label_en' => 'Sell past stock (oversell)', 'category' => 'বিক্রি'],
     'promotions' => ['label_bn' => 'অফার/কুপন ব্যবস্থাপনা', 'label_en' => 'Promotions/coupons management', 'category' => 'বিক্রি'],
     'online_business' => ['label_bn' => 'অনলাইন বিজনেস (চ্যানেল/অর্ডার)', 'label_en' => 'Online business (channels/orders)', 'category' => 'বিক্রি'],
 
