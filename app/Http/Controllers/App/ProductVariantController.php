@@ -648,6 +648,16 @@ class ProductVariantController extends Controller
             $product = Product::whereKey($locked->product_id)->lockForUpdate()->first();
             $product?->applyStockDelta(-$locked->stock);
 
+            // Seaman live: a variant deleted while a supplier lot (source
+            // line) still had real stock on it left that lot active and
+            // pointing at a now-gone variant — its own barcode sticker
+            // (ZV{variantId}) kept scanning "not found" even though the
+            // physical goods were still on the shelf. Soft-deleted
+            // alongside the variant, same as the variant's own row (never
+            // a hard delete — keeps the history, and both come back
+            // together if the variant is ever restored).
+            $locked->sources()->delete();
+
             $locked->delete(); // soft delete — keeps historical sale_items intact
         });
 
