@@ -530,12 +530,19 @@ function productUntracked(p) {
     return Math.max(0, Math.round(((Number(p.stock) || 0) - tracked) * 1000) / 1000);
 }
 // Khaled: "supplier filter korle shudu ey filter dekhanor kotha" — with a
-// supplier picked up top, the edit sheet shows only that supplier's lines
+// supplier picked up top, the edit sheet shows only that supplier's lines.
+// Khaled live: he was picking "Sujon" in the sheet's OWN "Supplier for the
+// quick +boxes below" field (variantStockInSupplier) expecting the SAME
+// narrowing, since from inside the sheet it reads as "I selected a
+// supplier" either way — the page-level filter alone left that pick with
+// no visible effect. variantStockInSupplier only wins when the page-level
+// filter isn't already narrowing things (that one still takes priority).
 function editVisibleLines(target) {
     const lines = target.sources || [];
-    if (!supplierFilter.value) return lines;
+    const supplierId = supplierFilter.value || variantStockInSupplier.value;
+    if (!supplierId) return lines;
 
-    return lines.filter((l) => (l.supplier?.id ?? l.supplier_id) === Number(supplierFilter.value));
+    return lines.filter((l) => (l.supplier?.id ?? l.supplier_id) === Number(supplierId));
 }
 const fixSheet = ref(false);
 const fixMode = ref('move'); // 'move' (re-file a lot) | 'claim' (untracked stock)
