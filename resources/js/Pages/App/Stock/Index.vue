@@ -12,6 +12,7 @@ import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts';
 import { usePollingReload } from '@/composables/usePollingReload';
 import { useToast } from '@/composables/useToast';
 import { colorGroups } from '@/support/productDisplay';
+import { variantHasSupplier } from '@/support/clientProductSearch';
 import { usePermissions } from '@/composables/usePermissions';
 import { reportClientError } from '@/support/reportClientError';
 
@@ -814,8 +815,22 @@ function removeVariant(v) {
 }
 
 /** SkyBuy-style color picker (docs/ARTICLE_SERIES_PLAN.md §4) — groups the flat variant list below by color so each color's photo shows once, not per size. */
+// Khaled live: "supplier select korle shudu oi supplier er j product asbe
+// baki gula show korbena" — the page-level supplier filter already narrows
+// WHICH products appear, but a product that matched (because SOME of its
+// sizes/colors belong to that supplier) still showed every one of its
+// variant rows once opened, not just the ones actually carrying that
+// supplier. Hides the rest here too, same precedence (page filter wins,
+// falls back to the in-sheet quick-stock-in picker) as editVisibleLines()
+// already uses for the lines nested under each variant.
 function editingColorGroups() {
-    return colorGroups(editing.value);
+    const groups = colorGroups(editing.value);
+    const supplierId = supplierFilter.value || variantStockInSupplier.value;
+    if (!supplierId || !hasSourceLines.value) return groups;
+
+    return groups
+        .map((g) => ({ ...g, variants: g.variants.filter((v) => variantHasSupplier(v, Number(supplierId))) }))
+        .filter((g) => g.variants.length > 0);
 }
 function uploadColorPhoto(color, event) {
     const file = event.target.files?.[0];

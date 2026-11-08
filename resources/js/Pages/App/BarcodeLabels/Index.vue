@@ -7,7 +7,7 @@ import { useI18n } from '@/composables/useI18n';
 import { useToast } from '@/composables/useToast';
 import { labelSizeMm } from '@/support/labelSizes';
 import { thermalModuleWidth, THERMAL_BAR_HEIGHT_MM, detailedBarcodeDots } from '@/support/barcodeFit';
-import { searchProducts, productHasSupplier } from '@/support/clientProductSearch';
+import { searchProducts, productHasSupplier, variantHasSupplier } from '@/support/clientProductSearch';
 import { buildShareMetadata, canShareLabelFiles } from '@/support/bluetoothPrintShare';
 import { printedLabelKey } from '@/support/labelPrintKey';
 import { printableRowsOf } from '@/support/labelSelection';
@@ -252,6 +252,18 @@ function supplierNamesOf(p) {
     (p.variants || []).forEach((v) => (v.sources || []).forEach(take));
 
     return names.join(', ');
+}
+// Khaled live: "supplier select korle shudu oi supplier er product asbe
+// baki gula show korbena" — the page-level filter already narrows WHICH
+// products are listed, but an opened product still showed every one of
+// its own size/colour rows, not just the ones actually carrying that
+// supplier. A row stays visible once nothing is selected — same contract
+// as visibleLines() just below.
+function visibleVariants(p) {
+    const variants = p.variants || [];
+    if (!supplierFilter.value) return variants;
+
+    return variants.filter((v) => variantHasSupplier(v, Number(supplierFilter.value)));
 }
 // Khaled: "supplier filter korle shudu ey filter dekhanor kotha" — with a
 // supplier picked, only THAT supplier's lot rows show inside a product
@@ -1034,7 +1046,7 @@ const printCss = computed(() => {
                      every shop's page on first render ("Cannot read
                      properties of undefined (reading 'sources')"),
                      feature flag or not — this wrapper is the fix for both. -->
-                <template v-for="v in p.variants" :key="v.id">
+                <template v-for="v in visibleVariants(p)" :key="v.id">
                     <div :id="'bc-var-' + v.id" class="row" style="border-top:1px solid var(--line);padding-left:20px" :class="{ incart: isSelected('v:' + v.id) }" :style="isSelected('v:' + v.id) ? 'background:var(--goldSoft)' : ''" @click="toggleVariant(v)">
                         <div class="ava" style="font-size:16px">🏷</div>
                         <div class="mid">

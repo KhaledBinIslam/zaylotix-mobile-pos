@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { searchProducts, productHaystack, productHasSupplier } from '../clientProductSearch';
+import { searchProducts, productHaystack, productHasSupplier, variantHasSupplier } from '../clientProductSearch';
 
 /**
  * Barcode Labels' old filter was a bare includes() on name/barcode only —
@@ -139,5 +139,31 @@ describe('productHasSupplier', () => {
     it('falls back to the single supplier_id for a product with no lines at all', () => {
         expect(productHasSupplier(noLines, 7)).toBe(true);
         expect(productHasSupplier(noLines, 9)).toBe(false);
+    });
+});
+
+/**
+ * Khaled live (Stock's edit sheet AND Barcode Labels, both reported): the
+ * page-level filter already decided WHICH products are listed, but a
+ * product that matched (because SOME of its sizes/colors belong to that
+ * supplier) still showed every one of its OWN variant rows once opened,
+ * not just the ones that actually carry that supplier.
+ */
+describe('variantHasSupplier', () => {
+    it('matches a flat supplier_id on a line (Barcode Labels\' shape)', () => {
+        const v = { id: 11, sources: [{ id: 101, supplier_id: 7 }] };
+        expect(variantHasSupplier(v, 7)).toBe(true);
+        expect(variantHasSupplier(v, 9)).toBe(false);
+    });
+
+    it('matches a nested supplier object on a line (Stock\'s edit-sheet shape)', () => {
+        const v = { id: 11, sources: [{ id: 101, supplier: { id: 7, name: 'Monir Garments' } }] };
+        expect(variantHasSupplier(v, 7)).toBe(true);
+        expect(variantHasSupplier(v, 9)).toBe(false);
+    });
+
+    it('is false for a variant with no matching line at all', () => {
+        expect(variantHasSupplier({ id: 11, sources: [] }, 7)).toBe(false);
+        expect(variantHasSupplier({ id: 11 }, 7)).toBe(false);
     });
 });

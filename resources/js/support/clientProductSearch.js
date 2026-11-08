@@ -63,6 +63,21 @@ export function productHasSupplier(p, supplierId) {
 }
 
 /**
+ * Khaled live: "supplier select korle shudu oi supplier er product asbe
+ * baki gula show korbena" — productHasSupplier() above already decides
+ * WHICH products the page lists, but a product that matched (because SOME
+ * of its sizes/colors belong to that supplier) still showed every one of
+ * its OWN variant rows once opened. This is the per-variant version: does
+ * THIS one size/color carry a line from the given supplier? Robust to
+ * either shape a line's supplier arrives in — a flat `supplier_id` (Barcode
+ * Labels' product payload) or a nested `supplier: {id, name}` (Stock's own
+ * edit-sheet lines) — same `?? ` fallback editVisibleLines() already uses.
+ */
+export function variantHasSupplier(v, supplierId) {
+    return (v.sources || []).some((l) => (l.supplier?.id ?? l.supplier_id) === supplierId);
+}
+
+/**
  * @returns the matching products, best first; the original array when the
  * query is blank (so "no search" stays byte-identical to no filtering).
  */
