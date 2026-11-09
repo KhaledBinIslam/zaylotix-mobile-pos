@@ -31,17 +31,18 @@ use Illuminate\Console\Command;
  */
 class ArticlesFixCategoryCode extends Command
 {
-    protected $signature = 'articles:fix-category-code {--shop=} {--name= : shops whose name contains this, instead of an id} {--old-code=} {--new-code=} {--dry-run}';
+    protected $signature = 'articles:fix-category-code {--shop=} {--name= : shops whose name contains this, instead of an id} {--old-code=} {--by-product= : find the category via a product name substring (e.g. a serial like 70001) instead of retyping its code — use this when --old-code keeps reporting 0 articles because of an invisible encoding mismatch} {--new-code=} {--dry-run}';
 
     protected $description = 'Renames a category\'s (and its articles\') code — for a code that was typed in the wrong script and never produced a scannable barcode.';
 
     public function handle(): int
     {
         $oldCode = trim((string) $this->option('old-code'));
+        $byProduct = trim((string) $this->option('by-product'));
         $newCode = strtoupper(trim((string) $this->option('new-code')));
 
-        if ($oldCode === '' || $newCode === '') {
-            $this->error('--old-code=<বর্তমান কোড> আর --new-code=<নতুন ইংরেজি কোড> দুটোই দিতে হবে।');
+        if (($oldCode === '' && $byProduct === '') || $newCode === '') {
+            $this->error('--old-code=<বর্তমান কোড> অথবা --by-product=<আর্টিকেলের নামের অংশ, যেমন 70001> এর একটা, আর --new-code=<নতুন ইংরেজি কোড> দিতে হবে।');
 
             return self::FAILURE;
         }
@@ -73,7 +74,11 @@ class ArticlesFixCategoryCode extends Command
         foreach ($shops as $shop) {
             $this->newLine();
             $this->line("<fg=cyan>SHOP {$shop->id} — {$shop->name}</>");
-            $this->runForShop($shop, $oldCode, $newCode, $isDryRun);
+            if ($byProduct !== '') {
+                $this->runForShopByProduct($shop, $byProduct, $newCode, $isDryRun);
+            } else {
+                $this->runForShop($shop, $oldCode, $newCode, $isDryRun);
+            }
         }
 
         if (! $isDryRun) {
@@ -98,13 +103,74 @@ class ArticlesFixCategoryCode extends Command
             ->get();
 
         if ($categories->isEmpty()) {
-            $this->line("  এই শপে \"{$oldCode}\" কোডের কোনো ক্যাটাগরি নেই — বাদ।");
+            $this->line("  এই শপে \"{$oldCode}\" কোডের কোনো ক্যাটাগরি নেই — বাদ। (SSH/টার্মিনাল দিয়ে বাংলা কোড রিটাইপ করলে মাঝে মাঝে আসল ডেটার সাথে বাইট মেলে না — এর বদলে --by-product=<আর্টিকেলের সিরিয়াল, যেমন 70001> ব্যবহার করুন।)");
+
+            return;
+        }
+
+        $excludeIds = $categories->pluck('id')->all();
+        $supplierCache = [];
+
+        foreach ($categories as $category) {
+            $this->processCategory($shop, $category, $newCode, $isDryRun, $supplierCache, $excludeIds);
+        }
+    }
+
+    /**
+     * Finds the category to rename via a product NAME substring (e.g. a
+     * plain-ASCII serial like "70001") instead of asking the old code to be
+     * retyped — Baby Park live: retyping "টেপবড়" over SSH kept matching a
+     * 0-article "School" category instead of the real one, because the
+     * typed text didn't byte-match what's actually stored (invisible
+     * Unicode normalization difference). The category's OWN stored `code`
+     * is used as-is, straight from the DB, so this never depends on typing
+     * non-ASCII text through a terminal at all.
+     */
+    private function runForShopByProduct(Shop $shop, string $substring, string $newCode, bool $isDryRun): void
+    {
+        $products = Product::withoutGlobalScopes()->where('shop_id', $shop->id)
+            ->where(function ($q) use ($substring) {
+                $q->where('name', 'like', '%'.$substring.'%')
+                    ->orWhere('name_en', 'like', '%'.$substring.'%');
+            })->get();
+
+        if ($products->isEmpty()) {
+            $this->line("  \"{$substring}\" লেখাটা এই শপের কোনো প্রোডাক্টের নামে পাওয়া যায়নি — বাদ।");
+
+            return;
+        }
+
+        $categoryIds = $products->pluck('category_id')->filter()->unique()->values();
+        if ($categoryIds->isEmpty()) {
+            $this->line('  মিলে যাওয়া প্রোডাক্টগুলোর কোনো ক্যাটাগরি নেই — বাদ।');
+
+            return;
+        }
+
+        $excludeIds = $categoryIds->all();
+        $supplierCache = [];
+
+        foreach ($categoryIds as $categoryId) {
+            $category = ProductCategory::withoutGlobalScopes()->find($categoryId);
+            if (! $category) {
+                continue;
+            }
+            $this->processCategory($shop, $category, $newCode, $isDryRun, $supplierCache, $excludeIds);
+        }
+    }
+
+    private function processCategory(Shop $shop, ProductCategory $category, string $newCode, bool $isDryRun, array &$supplierCache, array $excludeIds = []): void
+    {
+        $oldCode = trim((string) $category->code);
+        if ($oldCode === '') {
+            $this->warn("  ক্যাটাগরি \"{$category->name}\" (id {$category->id}) এর কোনো কোড নেই — বাদ।");
 
             return;
         }
 
         $clash = ProductCategory::withoutGlobalScopes()
-            ->where('shop_id', $shop->id)->whereNotIn('id', $categories->pluck('id'))
+            ->where('shop_id', $shop->id)
+            ->whereNotIn('id', array_unique(array_merge($excludeIds, [$category->id])))
             ->whereRaw('UPPER(code) = ?', [$newCode])->exists();
         if ($clash) {
             $this->warn("  \"{$newCode}\" কোডটা এই শপে অন্য একটা ক্যাটাগরি আগে থেকেই ব্যবহার করছে — অন্য একটা কোড বাছুন।");
@@ -113,28 +179,24 @@ class ArticlesFixCategoryCode extends Command
         }
 
         $pattern = '/^'.preg_quote($oldCode, '/').'-(\d+)$/i';
-        $supplierCache = [];
+        $products = Product::withoutGlobalScopes()->where('shop_id', $shop->id)
+            ->where('category_id', $category->id)->get()
+            ->filter(fn (Product $p) => preg_match($pattern, trim((string) $p->name), $m) === 1);
 
-        foreach ($categories as $category) {
-            $products = Product::withoutGlobalScopes()->where('shop_id', $shop->id)
-                ->where('category_id', $category->id)->get()
-                ->filter(fn (Product $p) => preg_match($pattern, trim((string) $p->name), $m) === 1);
+        $this->line("  ক্যাটাগরি \"{$category->name}\" (id {$category->id}, কোড {$oldCode} → {$newCode}) — {$products->count()}টা আর্টিকেল পাওয়া গেছে।");
 
-            $this->line("  ক্যাটাগরি \"{$category->name}\" (id {$category->id}, {$oldCode} → {$newCode}) — {$products->count()}টা আর্টিকেল পাওয়া গেছে।");
-
-            if ($isDryRun) {
-                foreach ($products as $p) {
-                    $newName = preg_replace($pattern, $newCode.'-$1', trim((string) $p->name));
-                    $this->line("    \"{$p->name}\" → \"{$newName}\" (barcode {$p->barcode} সহ) হতো।");
-                }
-
-                continue;
+        if ($isDryRun) {
+            foreach ($products as $p) {
+                $newName = preg_replace($pattern, $newCode.'-$1', trim((string) $p->name));
+                $this->line("    \"{$p->name}\" → \"{$newName}\" (barcode {$p->barcode} সহ) হতো।");
             }
 
-            ProductCategory::withoutGlobalScopes()->whereKey($category->id)->update(['code' => $newCode]);
-
-            $this->renameAndRebuild($shop, $products, $pattern, $newCode, $supplierCache);
+            return;
         }
+
+        ProductCategory::withoutGlobalScopes()->whereKey($category->id)->update(['code' => $newCode]);
+
+        $this->renameAndRebuild($shop, $products, $pattern, $newCode, $supplierCache);
     }
 
     /** @param  \Illuminate\Support\Collection<int,Product>  $products */

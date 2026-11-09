@@ -122,6 +122,45 @@ class ArticlesFixCategoryCodeTest extends TestCase
         $this->assertSame('JUMP-TPB-70001-NSXXZ', $product->fresh()->barcode);
     }
 
+    /**
+     * Baby Park live: retyping "টেপবড়" over SSH kept reporting a 0-article
+     * "School" category instead of the real one — the typed text didn't
+     * byte-match the DB (invisible Unicode normalization difference).
+     * --by-product finds the category via a plain-ASCII product name
+     * substring instead, reading the category's own code straight from the
+     * DB, so retyping Bengali is never required.
+     */
+    public function test_by_product_locates_the_category_without_retyping_its_code(): void
+    {
+        [$shop, , $category, $product] = $this->aBrokenArticle();
+
+        $this->artisan('articles:fix-category-code', [
+            '--shop' => $shop->id, '--by-product' => '70001', '--new-code' => 'TPB',
+        ])->assertSuccessful();
+
+        $this->assertSame('TPB', $category->fresh()->code);
+        $this->assertSame('TPB-70001', $product->fresh()->name);
+        $this->assertSame('JUMP-TPB-70001-NSXXZ', $product->fresh()->barcode);
+    }
+
+    public function test_by_product_with_no_matching_name_is_reported_not_errored(): void
+    {
+        [$shop] = $this->createShopWithOwner();
+
+        $this->artisan('articles:fix-category-code', [
+            '--shop' => $shop->id, '--by-product' => 'NOPE12345', '--new-code' => 'TPB',
+        ])->assertSuccessful();
+    }
+
+    public function test_requires_old_code_or_by_product(): void
+    {
+        [$shop] = $this->createShopWithOwner();
+
+        $this->artisan('articles:fix-category-code', [
+            '--shop' => $shop->id, '--new-code' => 'TPB',
+        ])->assertFailed();
+    }
+
     public function test_reaches_a_branch_too(): void
     {
         [$shop, , $category, $product] = $this->aBrokenArticle();
