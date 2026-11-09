@@ -212,6 +212,38 @@ class ArticlesFixCategoryCodeTest extends TestCase
         ])->assertFailed();
     }
 
+    /**
+     * Baby Park live: articles:list-broken-categories came back clean
+     * while "টেপবড়-70001" was still unprintable — the product's name was
+     * never tied to its category's code at all. --product-id renames the
+     * product directly, by id, regardless of its category.
+     */
+    public function test_product_id_renames_the_product_directly_regardless_of_its_category(): void
+    {
+        [$shop, , $category, $product] = $this->aBrokenArticle();
+        ProductCategory::withoutGlobalScopes()->whereKey($category->id)->update(['code' => 'S']); // already-fine category code
+        $stray = Product::create([
+            'shop_id' => $shop->id, 'category_id' => $category->id, 'supplier_id' => $product->supplier_id,
+            'name' => 'টেপবড়-70009', 'name_en' => 'টেপবড়-70009',
+            'barcode' => 'JUMP-টেপবড়-70009-NSXXZ', 'cost' => 1300, 'price' => 1990, 'stock' => 0,
+        ]);
+
+        $this->artisan('articles:fix-category-code', [
+            '--product-id' => $stray->id, '--new-code' => 'TPB',
+        ])->assertSuccessful();
+
+        $this->assertSame('TPB-70009', $stray->fresh()->name);
+        $this->assertSame('JUMP-TPB-70009-NSXXZ', $stray->fresh()->barcode);
+        $this->assertSame('S', $category->fresh()->code); // category itself untouched
+    }
+
+    public function test_product_id_reports_an_unknown_id_not_errors_silently(): void
+    {
+        $this->artisan('articles:fix-category-code', [
+            '--product-id' => 999999, '--new-code' => 'TPB',
+        ])->assertFailed();
+    }
+
     public function test_reaches_a_branch_too(): void
     {
         [$shop, , $category, $product] = $this->aBrokenArticle();
