@@ -130,6 +130,26 @@ class CustomerController extends Controller
     public function search(Request $request)
     {
         $q = trim((string) $request->get('q', ''));
+        // SEAMAN: POS's own Party picker (feature: parties — a party IS a
+        // customer, see PartyController) reuses this same endpoint, scoped
+        // down to party rows only. A party list is small — unlike the
+        // general customer search below, an EMPTY query still lists
+        // (capped) parties so the picker works as a browse, not just
+        // type-ahead; a cashier rarely remembers a company's exact phone.
+        $partyOnly = $request->boolean('party_only');
+
+        if ($partyOnly) {
+            $parties = Customer::whereNotNull('party_type')
+                ->when($q !== '', fn ($w) => $w->where(fn ($sq) => $sq->where('name', 'like', '%'.$q.'%')
+                    ->orWhere('company_name', 'like', '%'.$q.'%')
+                    ->orWhere('phone', 'like', '%'.$q.'%')))
+                ->orderByDesc('due')->orderBy('name')
+                ->limit(30)
+                ->get(['id', 'name', 'phone', 'due', 'party_type', 'company_name']);
+
+            return response()->json(['results' => $parties]);
+        }
+
         if (mb_strlen($q) < 2) {
             return response()->json(['results' => []]);
         }

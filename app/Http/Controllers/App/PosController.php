@@ -992,8 +992,18 @@ class PosController extends Controller
             $customer = null;
             $phone = trim($data['customer_phone'] ?? '');
             $name = trim($data['customer_name'] ?? '');
+            $customerId = $data['customer_id'] ?? null;
 
-            if ($phone !== '') {
+            // SEAMAN: a Party picked explicitly (see CheckoutRequest's own
+            // comment) — resolved by id, never by phone, since a party is
+            // commonly entered with none. Tenant-scoped via Customer's
+            // normal global scope, so a cross-shop id simply resolves to
+            // nothing (falls through to "no customer attached", same as an
+            // unresolvable phone already does) rather than ever attaching
+            // the wrong shop's row.
+            if ($customerId) {
+                $customer = Customer::whereKey($customerId)->lockForUpdate()->first();
+            } elseif ($phone !== '') {
                 $customer = Customer::where('phone', $phone)->lockForUpdate()->first();
                 if (! $customer) {
                     $customer = Customer::create([

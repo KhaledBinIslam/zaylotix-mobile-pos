@@ -133,6 +133,13 @@ class CheckoutRequest extends FormRequest
             'payments.*.amount' => ['required_with:payments', 'numeric', 'min:0.01'],
             'customer_phone' => ['nullable', 'string', 'max:20'],
             'customer_name' => ['nullable', 'string', 'max:255'],
+            // SEAMAN: selling to a Party (feature: parties — see
+            // PartyController's own docblock, "a party IS a customer") that
+            // has no phone on file — resolved directly by id instead of the
+            // phone lookup below, which a phoneless party could never match.
+            // Tenant-scoped automatically via the Customer model's own
+            // global scope, same as every other id lookup in this app.
+            'customer_id' => ['nullable', 'integer'],
             // free-text prescription reference (doctor, medicine, dosage
             // note) — only meaningful for pharmacy-type shops with the
             // prescription_records feature, but harmless to accept from

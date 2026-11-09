@@ -60,6 +60,7 @@ const hasPromotions = computed(() => features.value.includes('promotions'));
 const hasLoyaltyPoints = computed(() => features.value.includes('loyalty_points'));
 const hasCreditLimit = computed(() => features.value.includes('credit_limit'));
 const hasWholesalePricing = computed(() => features.value.includes('wholesale_pricing'));
+const hasParties = computed(() => features.value.includes('parties'));
 const hasGenericSubstitute = computed(() => features.value.includes('generic_substitute_suggestions'));
 
 // Phase 3 feature 9 — "ধরন-ভিত্তিক সুবিধা" (pharmacy vertical, see
@@ -139,6 +140,36 @@ const quotationId = ref(null);
 const customerPhone = ref('');
 const customerName = ref('');
 const customerLookup = ref(null); // { found, name, due } — result of the last phone lookup
+
+// SEAMAN: "due te parties or kono person k sell korte caile select er
+// option dia dao" — a Party (feature: parties) is a Customer row, same due/
+// payments/credit-limit system, but commonly carries NO phone (see
+// PartyController's own docblock) — the phone field above can never find
+// one. A separate picker, by name/company, resolved and sent by id
+// (customer_id in the checkout payload) instead of phone.
+const sellToParty = ref(false);
+const partyQuery = ref('');
+const partyResults = ref([]);
+const selectedParty = ref(null); // {id, name, phone, due, party_type, company_name}
+let partySearchTimer = null;
+watch(partyQuery, (val) => {
+    clearTimeout(partySearchTimer);
+    partySearchTimer = setTimeout(async () => {
+        try {
+            const res = await fetch(route('app.customers.search') + '?party_only=1&q=' + encodeURIComponent(val), { headers: { Accept: 'application/json' } });
+            partyResults.value = (await res.json()).results || [];
+        } catch (e) { partyResults.value = []; }
+    }, 300);
+}, { immediate: true });
+function pickParty(p) {
+    selectedParty.value = p;
+    partyQuery.value = '';
+    partyResults.value = [];
+    showCustomerInfo.value = true;
+}
+function clearParty() {
+    selectedParty.value = null;
+}
 // Billing-UX simplification: for the common walk-in cash sale, customer
 // phone/name were sitting right below the cart, in the way before a
 // cashier ever reached the payment method — even though both fields are
@@ -880,6 +911,7 @@ function buildPayments() {
 // free sale).
 function dueNeedsCustomerPhone() {
     if (payMode.value === 'complimentary') return false;
+    if (selectedParty.value) return false; // resolved by id, not phone — see its own comment
     const tendered = buildPayments().reduce((sum, p) => sum + p.amount, 0);
     const due = Math.max(0, Math.round((total.value - tendered) * 100) / 100);
 
@@ -975,8 +1007,9 @@ function buildCheckoutPayload() {
         redeem_points: redeemPoints.value || 0,
         quotation_id: quotationId.value,
         payments: buildPayments(),
+        customer_id: selectedParty.value?.id || null,
         customer_phone: customerPhone.value,
-        customer_name: customerName.value,
+        customer_name: selectedParty.value?.name || customerName.value,
         prescription_note: cartNeedsPrescription.value ? prescriptionNote.value : '',
         sale_type: saleType.value,
     };
@@ -994,6 +1027,10 @@ function resetCartAfterCheckout() {
     lastAutoFilledName = null;
     customerLookup.value = null;
     nameSearchResults.value = [];
+    sellToParty.value = false;
+    selectedParty.value = null;
+    partyQuery.value = '';
+    partyResults.value = [];
     billingPreview.value = null;
     bogoSuggestions.value = [];
     showCustomerInfo.value = false;
@@ -2069,6 +2106,37 @@ useKeyboardShortcuts({
                     👤 {{ t('pos.addCustomerInfo') }}
                 </button>
                 <template v-else>
+                <!-- SEAMAN: sell to a Party (feature: parties) — a party is
+                     commonly phone-less, so it needs its own picker, not
+                     this section's phone field below -->
+                <div v-if="hasParties" class="seg" style="margin-bottom:10px">
+                    <button type="button" :class="{ on: !sellToParty }" @click="sellToParty = false">{{ t('pos.customerTab') }}</button>
+                    <button type="button" :class="{ on: sellToParty }" @click="sellToParty = true">{{ t('pos.partyTab') }}</button>
+                </div>
+
+                <template v-if="hasParties && sellToParty">
+                    <div v-if="selectedParty" class="card" style="margin-bottom:10px;padding:10px">
+                        <b>{{ selectedParty.name }}</b><span v-if="selectedParty.company_name"> — {{ selectedParty.company_name }}</span>
+                        <div v-if="selectedParty.due > 0" style="color:var(--rose);font-size:12.5px;margin-top:2px">{{ t('pos.dueExists', { due: money(selectedParty.due) }) }}</div>
+                        <button type="button" class="btn sm ghost" style="margin-top:8px" @click="clearParty">{{ t('common.change') }}</button>
+                    </div>
+                    <div v-else class="field" style="position:relative">
+                        <label>{{ t('pos.partyPickLabel') }}</label>
+                        <input v-model="partyQuery" :placeholder="t('pos.partyPickPlaceholder')" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                        <div v-if="partyResults.length" style="position:absolute;z-index:5;left:0;right:0;top:100%;margin-top:4px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.12);max-height:260px;overflow-y:auto">
+                            <button
+                                v-for="p in partyResults" :key="p.id" type="button"
+                                style="display:block;width:100%;text-align:left;padding:9px 12px;font-size:13px;border-bottom:1px solid var(--line)"
+                                @click="pickParty(p)"
+                            >
+                                <b>{{ p.name }}</b><span v-if="p.company_name" style="color:var(--mut)"> — {{ p.company_name }}</span>
+                                <span v-if="p.due > 0" style="color:var(--rose)"> • {{ t('pos.dueExists', { due: money(p.due) }) }}</span>
+                            </button>
+                        </div>
+                        <div v-else-if="partyQuery.length >= 2" style="font-size:12px;color:var(--dim);margin-top:4px">{{ t('pos.partyNoneFound') }}</div>
+                    </div>
+                </template>
+                <template v-else>
                 <div class="field">
                     <label>{{ t('pos.mobileLabel') }} <span style="color:var(--dim);font-weight:400">{{ t('pos.mobileHint') }}</span></label>
                     <input v-model="customerPhone" inputmode="tel" placeholder="01XXXXXXXXX">
@@ -2099,6 +2167,7 @@ useKeyboardShortcuts({
                         </button>
                     </div>
                 </div>
+                </template>
                 </template>
 
                 <div v-if="hasWholesalePricing" class="field">
