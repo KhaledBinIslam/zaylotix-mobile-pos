@@ -80,6 +80,50 @@ class ArticleControllerTest extends TestCase
         $this->assertSame('SMS-L-10001-NSXXZ-SILVER-36', $variants->firstWhere('size', '36')->barcode);
     }
 
+    /**
+     * Baby Park live: "JUMP-টেপবড়-70001..." — a category code typed in
+     * Bengali went straight into the article's own barcode, unscannable
+     * from the moment it was created, on every branch, with no settings
+     * screen to fix it afterward. Refused at the door now, same rule a
+     * colour's own short code already follows.
+     */
+    public function test_a_non_ascii_category_code_is_refused_not_baked_into_an_unscannable_barcode(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+
+        $this->actingAs($owner, 'web')->post('/app/articles', $this->payload([
+            'category_code' => 'টেপ',
+        ]))->assertSessionHasErrors('category_code');
+
+        $this->assertSame(0, Product::where('shop_id', $shop->id)->count());
+    }
+
+    public function test_a_non_ascii_manufacturer_code_is_refused_too(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+
+        $this->actingAs($owner, 'web')->post('/app/articles', $this->payload([
+            'manufacturer_code' => 'জাম্প',
+        ]))->assertSessionHasErrors('manufacturer_code');
+
+        $this->assertSame(0, Product::where('shop_id', $shop->id)->count());
+    }
+
+    /** A manufacturer code with a space (Khaled's own real data: "YSL 4", "LV 1") must stay accepted — only non-ASCII is new here. */
+    public function test_a_manufacturer_code_with_a_space_is_still_accepted(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+
+        $this->actingAs($owner, 'web')->post('/app/articles', $this->payload([
+            'manufacturer_code' => 'YSL 4',
+        ]))->assertSessionHasNoErrors();
+
+        $this->assertSame(1, Product::where('shop_id', $shop->id)->count());
+    }
+
     public function test_reuses_an_existing_category_and_its_code_instead_of_duplicating(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();

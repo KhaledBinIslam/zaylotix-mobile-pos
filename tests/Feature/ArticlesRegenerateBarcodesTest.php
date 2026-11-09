@@ -88,6 +88,29 @@ class ArticlesRegenerateBarcodesTest extends TestCase
             ->assertSuccessful();
     }
 
+    /**
+     * Baby Park live: "JUMP-টেপবড়-70001..." — a category code typed in
+     * Bengali (before createArticle() validated it) meant product.barcode
+     * itself was never printable, and this pass used to mint a colour
+     * barcode from it anyway, with no check at all — unlike the variant
+     * loop right above it, which already refused. Confirms the colour
+     * pass now refuses too, and is clearly reported apart from "this
+     * colour has no English code" (which would send the owner to fix the
+     * wrong setting).
+     */
+    public function test_a_product_with_an_unprintable_own_barcode_is_reported_not_silently_given_a_broken_colour_barcode(): void
+    {
+        [$shop] = $this->createShopWithOwner();
+        // simulating the pre-validation bug directly on the row: a
+        // category code that was never ASCII-checked at creation time
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'টেপবড়-10001', 'name_en' => 'টেপবড়-10001', 'barcode' => 'SMS-টেপবড়-10001-NSXXZ', 'cost' => 1300, 'price' => 1990, 'stock' => 5]);
+        ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => '36', 'color' => 'SILVER', 'stock' => 5]);
+
+        $this->artisan('articles:regenerate-barcodes', ['--shop' => $shop->id])->assertSuccessful();
+
+        $this->assertNull(ProductColorBarcode::withoutGlobalScopes()->where('product_id', $product->id)->where('color', 'SILVER')->first());
+    }
+
     public function test_rejects_a_missing_shop(): void
     {
         $this->artisan('articles:regenerate-barcodes', ['--shop' => 999999])

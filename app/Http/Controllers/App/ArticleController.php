@@ -68,7 +68,12 @@ class ArticleController extends Controller
         $shop = Tenancy::shop();
         $data = $request->validate([
             'category_id' => ['nullable', 'integer'],
-            'category_code' => ['nullable', 'string', 'max:5'],
+            // Baby Park live: "JUMP-টেপবড়-70001..." — a Bengali code typed
+            // here goes straight into the article's own barcode (see
+            // createArticle()'s matching comment), which Code128 cannot
+            // encode and JsBarcode cannot draw. English letters/digits
+            // only, same rule a colour's own short code already follows.
+            'category_code' => ['nullable', 'string', 'max:5', 'regex:/^[A-Za-z0-9]*$/'],
             // the band a not-yet-saved category is being given, so the
             // preview answers from the range the owner is typing rather
             // than from whatever the shared code happens to sit at
@@ -122,13 +127,21 @@ class ArticleController extends Controller
             'client_uuid' => ['required', 'string', 'max:64'],
             'category_id' => ['nullable', 'integer'],
             'new_category_name' => ['nullable', 'string', 'max:255'],
-            'category_code' => ['nullable', 'string', 'max:5'],
+            // Baby Park live: "JUMP-টেপবড়-70001-JXXZ-WHT" — typed in
+            // Bengali, this product's own barcode (built below) carried
+            // it straight through, unscannable from the moment it was
+            // created. English letters/digits only — same rule a colour's
+            // own short code already follows (see ArticleBarcode::
+            // isPrintable()'s docblock).
+            'category_code' => ['nullable', 'string', 'max:5', 'regex:/^[A-Za-z0-9]*$/'],
             // Where this category's article numbers begin — slippers from
             // 90000, ladies from 10000, and so on. Only ever SETS a band
             // that isn't set yet (see resolveCategory); changing an
             // existing one is the serial-settings page's job.
             'serial_start' => ['nullable', 'integer', 'min:1', 'max:99999999'],
-            'manufacturer_code' => ['required', 'string', 'max:20'],
+            // same reasoning as category_code immediately above — this
+            // segment goes straight into the barcode too
+            'manufacturer_code' => ['required', 'string', 'max:20', 'regex:/^[A-Za-z0-9 ]+$/'],
             'unit_id' => ['nullable', 'integer'],
             'new_unit_name' => ['nullable', 'string', 'max:50'],
             // nullable here, required below — a size-group article gives

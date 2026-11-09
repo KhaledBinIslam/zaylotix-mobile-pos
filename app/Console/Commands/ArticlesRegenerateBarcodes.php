@@ -161,6 +161,7 @@ class ArticlesRegenerateBarcodes extends Command
         $variantsStuck = 0;
         $variantsUnprintable = 0;
         $colorsWithoutCode = [];
+        $articlesWithBadOwnCode = [];
         $zAdded = 0;
 
         foreach (Product::withoutGlobalScopes()->where('shop_id', $shop->id)->get() as $product) {
@@ -261,11 +262,36 @@ class ArticlesRegenerateBarcodes extends Command
                 continue;
             }
 
+            // Baby Park live ("JUMP-টেপবড়-70001...") — unlike the variant
+            // loop above, this colour pass had NO printability guard at
+            // all: a product.barcode that was itself never validated (a
+            // Bengali category/manufacturer code, from before
+            // createArticle()'s own matching fix) flowed straight into
+            // every one of its colour barcodes, unscannable from the
+            // moment each was written. Checked once here, against the
+            // article's OWN barcode — never a per-colour cause, so it gets
+            // its own report instead of being folded into "this colour
+            // needs an English code", which would send the owner to fix
+            // the wrong setting.
+            if (! ArticleBarcode::isPrintable($product->barcode)) {
+                $articlesWithBadOwnCode[$product->name_en ?: $product->name] = true;
+
+                continue;
+            }
+
             $colors = ProductVariant::withoutGlobalScopes()->where('product_id', $product->id)
                 ->whereNotNull('color')->distinct()->pluck('color');
 
             foreach ($colors as $color) {
                 $computed = ArticleBarcode::buildColorBarcode($shop, $product->barcode, $color);
+
+                if (! ArticleBarcode::isPrintable($computed)) {
+                    $colorsWithoutCode[(string) $color] = true;
+                    $variantsUnprintable++;
+
+                    continue;
+                }
+
                 $existing = ProductColorBarcode::withoutGlobalScopes()
                     ->where('shop_id', $shop->id)->where('product_id', $product->id)->where('color', $color)->first();
 
@@ -302,6 +328,14 @@ class ArticlesRegenerateBarcodes extends Command
             $this->warn('    '.implode(', ', array_keys($colorsWithoutCode)));
             $this->warn('  বারকোড শুধু ইংরেজি অক্ষর-সংখ্যা বইতে পারে। অ্যাপে "⚙️ রং-কোড সেটিংস"-এ গিয়ে');
             $this->warn('  এই রংগুলোর কোড বসান (যেমন বাদামী → BRN), তারপর এই কমান্ডটা আবার চালান।');
+        }
+
+        if ($articlesWithBadOwnCode) {
+            $this->newLine();
+            $this->warn('  এই আর্টিকেলগুলোর নিজের বারকোডই অ-স্ক্যানযোগ্য (ক্যাটাগরি বা ম্যানুফ্যাকচারার কোডে বাংলা/অন্য অক্ষর ঢুকে গেছে):');
+            $this->warn('    '.implode(', ', array_keys($articlesWithBadOwnCode)));
+            $this->warn('  এগুলোর ক্যাটাগরি কোড ইংরেজি করে (php artisan articles:fix-category-code) ঠিক করুন,');
+            $this->warn('  তারপর এই কমান্ডটা আবার চালান।');
         }
     }
 }
