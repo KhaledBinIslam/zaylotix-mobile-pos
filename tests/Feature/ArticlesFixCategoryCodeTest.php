@@ -152,6 +152,31 @@ class ArticlesFixCategoryCodeTest extends TestCase
         ])->assertSuccessful();
     }
 
+    /**
+     * Baby Park live: --by-product="70001" also matched an article whose
+     * category had ALREADY been fixed to an English code, dragging it
+     * along and relabeling it yet again — a branch category was observed
+     * churning TPB → FITA → TCHOT → DAMI across four separate runs. Only a
+     * still-Bengali-coded category is a real target.
+     */
+    public function test_by_product_skips_a_category_whose_code_is_already_ascii(): void
+    {
+        [$shop] = $this->createShopWithOwner();
+        $fixed = ProductCategory::create(['shop_id' => $shop->id, 'name' => 'Fixed', 'name_en' => 'Fixed', 'code' => 'TPB']);
+        $broken = ProductCategory::create(['shop_id' => $shop->id, 'name' => 'Broken', 'name_en' => 'Broken', 'code' => 'ফিতা']);
+        $fixedProduct = Product::create(['shop_id' => $shop->id, 'category_id' => $fixed->id, 'name' => 'TPB-70009', 'name_en' => 'TPB-70009', 'barcode' => 'JUMP-TPB-70009-NSXXZ', 'cost' => 100, 'price' => 150, 'stock' => 0]);
+        $brokenProduct = Product::create(['shop_id' => $shop->id, 'category_id' => $broken->id, 'name' => 'ফিতা-70009', 'name_en' => 'ফিতা-70009', 'barcode' => 'JUMP-ফিতা-70009-NSXXZ', 'cost' => 100, 'price' => 150, 'stock' => 0]);
+
+        $this->artisan('articles:fix-category-code', [
+            '--shop' => $shop->id, '--by-product' => '70009', '--new-code' => 'FITA',
+        ])->assertSuccessful();
+
+        $this->assertSame('TPB', $fixed->fresh()->code);
+        $this->assertSame('TPB-70009', $fixedProduct->fresh()->name);
+        $this->assertSame('FITA', $broken->fresh()->code);
+        $this->assertSame('FITA-70009', $brokenProduct->fresh()->name);
+    }
+
     public function test_requires_old_code_or_by_product(): void
     {
         [$shop] = $this->createShopWithOwner();

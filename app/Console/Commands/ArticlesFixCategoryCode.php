@@ -147,14 +147,25 @@ class ArticlesFixCategoryCode extends Command
             return;
         }
 
-        $excludeIds = $categoryIds->all();
+        // Baby Park live: a plain numeric substring like "70001" also
+        // matches an article whose category was ALREADY fixed by an
+        // earlier run (e.g. "TPB-70001"), dragging that category along and
+        // relabeling it yet again under the new code — observed churning
+        // one branch category TPB → FITA → TCHOT → DAMI across four runs.
+        // Only a category whose code is STILL unprintable is a real target.
+        $categories = ProductCategory::withoutGlobalScopes()->whereIn('id', $categoryIds)->get()
+            ->filter(fn (ProductCategory $c) => ! ArticleBarcode::isPrintable((string) $c->code));
+
+        if ($categories->isEmpty()) {
+            $this->line("  \"{$substring}\" মিলে যাওয়া প্রোডাক্টগুলোর ক্যাটাগরি কোড আগেই ইংরেজি — ঠিক করার কিছু নেই।");
+
+            return;
+        }
+
+        $excludeIds = $categories->pluck('id')->all();
         $supplierCache = [];
 
-        foreach ($categoryIds as $categoryId) {
-            $category = ProductCategory::withoutGlobalScopes()->find($categoryId);
-            if (! $category) {
-                continue;
-            }
+        foreach ($categories as $category) {
             $this->processCategory($shop, $category, $newCode, $isDryRun, $supplierCache, $excludeIds);
         }
     }
