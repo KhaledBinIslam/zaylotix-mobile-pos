@@ -345,6 +345,19 @@ class ProductVariantController extends Controller
                 if ($rowPrice !== null) {
                     $locked->price = $rowPrice;
                 }
+                // Khaled live ("natun add korchi ekhane article auto
+                // asteche na") — an existing cell topped up here can have
+                // been created (an older flow, an import) with no barcode
+                // at all; same backfill the toCreate branch above already
+                // gives a brand new cell, so a top-up never stays silently
+                // unprintable until someone notices and hits "Generate
+                // barcode" — which, for an article, used to only ever mint
+                // the plain ZV{id} fallback below, never this product's own
+                // readable scheme (see generateVariantBarcode()'s matching fix).
+                if (! $locked->barcode) {
+                    $locked->barcode = ($shop ? ArticleVariant::freeBarcodeFor($shop, $product, $locked->color, $locked->size, $locked->cost) : null)
+                        ?? (ArticleVariant::isArticle($product) ? null : 'ZV'.$locked->id);
+                }
                 $locked->applyStockDelta($qty);
                 $locked->save();
                 \App\Support\IntakeLedger::record($lockedProduct, $locked, (float) $qty, $rowCost !== null ? (float) $rowCost : null, 'variant_stock_in', $pickedSupplierId, $line?->id);

@@ -249,6 +249,76 @@ class ArticleVariantAddedLaterTest extends TestCase
         $this->assertSame('ZV'.$v->id, $v->barcode);
     }
 
+    /**
+     * Baby Park live: "natun add korchi ekhane article auto asteche na,
+     * print e gele zv asteche" — a cell topped up from the grid (not a
+     * brand new one) used to never get a barcode backfilled even when it
+     * had none, so it stayed unprintable (or, once someone noticed and hit
+     * "Generate barcode" on the Barcode Labels page, only ever got the
+     * bare ZV{id} fallback — never this article's own readable code).
+     */
+    public function test_topping_up_an_existing_barcode_less_cell_from_the_grid_backfills_the_articles_own_code(): void
+    {
+        [$shop, $owner, $product] = $this->anArticle();
+        // exactly what an older import/flow could leave behind: the cell
+        // exists (so the grid will TOP IT UP, not create a new row) but
+        // never got a barcode
+        $existing = ProductVariant::create([
+            'shop_id' => $shop->id, 'product_id' => $product->id,
+            'size' => '38', 'color' => 'SILVER', 'stock' => 1,
+        ]);
+        $this->assertNull($existing->barcode);
+
+        $this->actingAs($owner, 'web')->post("/app/products/{$product->id}/variants/bulk", [
+            'variants' => [['color' => 'SILVER', 'size' => '38', 'stock' => 2]],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame('SMS-L-10001-NSXXZ-SILVER-38', $existing->fresh()->barcode);
+        $this->assertEquals(3, $existing->fresh()->stock); // 1 + 2, a real top-up, not a replace
+    }
+
+    public function test_topping_up_an_existing_barcode_less_cell_on_a_plain_product_gets_a_zv_code(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'product_variants');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 200, 'price' => 400, 'stock' => 0]);
+        $existing = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => 'M', 'color' => 'RED', 'stock' => 1]);
+
+        $this->actingAs($owner, 'web')->post("/app/products/{$product->id}/variants/bulk", [
+            'variants' => [['color' => 'RED', 'size' => 'M', 'stock' => 2]],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame('ZV'.$existing->id, $existing->fresh()->barcode);
+    }
+
+    public function test_topping_up_a_cell_that_already_has_a_barcode_never_touches_it(): void
+    {
+        [$shop, $owner, $product] = $this->anArticle();
+        $variant = ProductVariant::where('product_id', $product->id)->where('size', '36')->firstOrFail();
+        $this->assertSame('SMS-L-10001-NSXXZ-SILVER-36', $variant->barcode);
+
+        $this->actingAs($owner, 'web')->post("/app/products/{$product->id}/variants/bulk", [
+            'variants' => [['color' => 'SILVER', 'size' => '36', 'stock' => 5]],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame('SMS-L-10001-NSXXZ-SILVER-36', $variant->fresh()->barcode);
+    }
+
+    public function test_generate_variant_barcode_uses_the_articles_own_code_when_available(): void
+    {
+        [$shop, $owner, $product] = $this->anArticle();
+        $this->grantFeature($shop, 'barcode_printing');
+        $variant = ProductVariant::create([
+            'shop_id' => $shop->id, 'product_id' => $product->id,
+            'size' => '42', 'color' => 'SILVER', 'stock' => 1,
+        ]);
+        $this->assertNull($variant->barcode);
+
+        $this->actingAs($owner, 'web')->patch("/app/product-variants/{$variant->id}/barcode/generate")->assertRedirect();
+
+        $this->assertSame('SMS-L-10001-NSXXZ-SILVER-42', $variant->fresh()->barcode);
+    }
+
     public function test_the_backfill_command_fills_in_variants_that_went_in_without_one(): void
     {
         [$shop, $owner, $product] = $this->anArticle();

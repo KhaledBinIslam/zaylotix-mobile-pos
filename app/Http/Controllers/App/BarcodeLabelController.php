@@ -211,15 +211,29 @@ class BarcodeLabelController extends Controller
     /**
      * Assigns a fresh, unique barcode to a variant that doesn't have one
      * yet, so it can be printed right away without a separate trip to the
-     * Stock page first. `'ZV' . $variant->id` is unique by construction —
-     * variant ids are a single global auto-increment column, never reused
-     * across shops or after a delete — so there's nothing to check or
-     * retry on collision, unlike a randomly generated code would need.
+     * Stock page first.
+     *
+     * Khaled live ("print e gele zv asteche, eta fixed koro") — for an
+     * article (a product whose own code the shop already set up — see
+     * ArticleVariant::isArticle()), this used to always mint the bare
+     * 'ZV{id}' fallback instead of that article's own readable
+     * code-color-size scheme (ArticleVariant::freeBarcodeFor() — the exact
+     * one a brand new grid cell already gets, see
+     * ProductVariantController's bulk-grid handler). Only a non-article
+     * product, or an article with no free code left to give, still falls
+     * back to 'ZV' . $variant->id — unique by construction (variant ids
+     * are a single global auto-increment column, never reused across shops
+     * or after a delete), so there's nothing to check or retry on collision.
      */
     public function generateVariantBarcode(ProductVariant $productVariant)
     {
         if (! $productVariant->barcode) {
-            $productVariant->update(['barcode' => 'ZV'.$productVariant->id]);
+            $shop = Tenancy::shop();
+            $product = $productVariant->product;
+            $barcode = $shop && $product
+                ? \App\Support\ArticleVariant::freeBarcodeFor($shop, $product, $productVariant->color, $productVariant->size, $productVariant->cost)
+                : null;
+            $productVariant->update(['barcode' => $barcode ?? 'ZV'.$productVariant->id]);
         }
 
         return back();
