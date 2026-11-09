@@ -100,6 +100,28 @@ class ArticlesFixCategoryCodeTest extends TestCase
         $this->assertSame('TPB-70001', $product->fresh()->name);
     }
 
+    /**
+     * Baby Park live: the exact bug hit on deploy — a SECOND category
+     * ("School", no articles of its own) also carried code "টেপবড়", and
+     * the command picked that one (0 articles found) instead of the real
+     * article's own category row. Both must be renamed, and the real
+     * article's barcode fixed, in one run.
+     */
+    public function test_renames_every_category_sharing_the_old_code_not_just_the_first_one_found(): void
+    {
+        [$shop, , $category, $product] = $this->aBrokenArticle();
+        $unrelated = ProductCategory::create(['shop_id' => $shop->id, 'name' => 'School', 'name_en' => 'School', 'code' => 'টেপবড়']);
+
+        $this->artisan('articles:fix-category-code', [
+            '--shop' => $shop->id, '--old-code' => 'টেপবড়', '--new-code' => 'TPB',
+        ])->assertSuccessful();
+
+        $this->assertSame('TPB', $category->fresh()->code);
+        $this->assertSame('TPB', $unrelated->fresh()->code);
+        $this->assertSame('TPB-70001', $product->fresh()->name);
+        $this->assertSame('JUMP-TPB-70001-NSXXZ', $product->fresh()->barcode);
+    }
+
     public function test_reaches_a_branch_too(): void
     {
         [$shop, , $category, $product] = $this->aBrokenArticle();

@@ -87,19 +87,24 @@ class ArticlesFixCategoryCode extends Command
 
     private function runForShop(Shop $shop, string $oldCode, string $newCode, bool $isDryRun): void
     {
-        $category = ProductCategory::withoutGlobalScopes()
+        // Baby Park live: "School" and the real article's own category both
+        // carried the code "টেপবড়" — a code is explicitly allowed to be
+        // shared by more than one category (see resolveCategory()'s own
+        // comment), so EVERY one of them has to be renamed, not just
+        // whichever happens to come back first.
+        $categories = ProductCategory::withoutGlobalScopes()
             ->where('shop_id', $shop->id)
             ->whereRaw('UPPER(code) = ?', [strtoupper($oldCode)])
-            ->first();
+            ->get();
 
-        if (! $category) {
+        if ($categories->isEmpty()) {
             $this->line("  এই শপে \"{$oldCode}\" কোডের কোনো ক্যাটাগরি নেই — বাদ।");
 
             return;
         }
 
         $clash = ProductCategory::withoutGlobalScopes()
-            ->where('shop_id', $shop->id)->where('id', '!=', $category->id)
+            ->where('shop_id', $shop->id)->whereNotIn('id', $categories->pluck('id'))
             ->whereRaw('UPPER(code) = ?', [$newCode])->exists();
         if ($clash) {
             $this->warn("  \"{$newCode}\" কোডটা এই শপে অন্য একটা ক্যাটাগরি আগে থেকেই ব্যবহার করছে — অন্য একটা কোড বাছুন।");
@@ -108,24 +113,33 @@ class ArticlesFixCategoryCode extends Command
         }
 
         $pattern = '/^'.preg_quote($oldCode, '/').'-(\d+)$/i';
-        $products = Product::withoutGlobalScopes()->where('shop_id', $shop->id)
-            ->where('category_id', $category->id)->get()
-            ->filter(fn (Product $p) => preg_match($pattern, trim((string) $p->name), $m) === 1);
+        $supplierCache = [];
 
-        $this->line("  ক্যাটাগরি \"{$category->name}\" ({$oldCode} → {$newCode}) — {$products->count()}টা আর্টিকেল পাওয়া গেছে।");
+        foreach ($categories as $category) {
+            $products = Product::withoutGlobalScopes()->where('shop_id', $shop->id)
+                ->where('category_id', $category->id)->get()
+                ->filter(fn (Product $p) => preg_match($pattern, trim((string) $p->name), $m) === 1);
 
-        if ($isDryRun) {
-            foreach ($products as $p) {
-                $newName = preg_replace($pattern, $newCode.'-$1', trim((string) $p->name));
-                $this->line("    \"{$p->name}\" → \"{$newName}\" (barcode {$p->barcode} সহ) হতো।");
+            $this->line("  ক্যাটাগরি \"{$category->name}\" (id {$category->id}, {$oldCode} → {$newCode}) — {$products->count()}টা আর্টিকেল পাওয়া গেছে।");
+
+            if ($isDryRun) {
+                foreach ($products as $p) {
+                    $newName = preg_replace($pattern, $newCode.'-$1', trim((string) $p->name));
+                    $this->line("    \"{$p->name}\" → \"{$newName}\" (barcode {$p->barcode} সহ) হতো।");
+                }
+
+                continue;
             }
 
-            return;
+            ProductCategory::withoutGlobalScopes()->whereKey($category->id)->update(['code' => $newCode]);
+
+            $this->renameAndRebuild($shop, $products, $pattern, $newCode, $supplierCache);
         }
+    }
 
-        ProductCategory::withoutGlobalScopes()->whereKey($category->id)->update(['code' => $newCode]);
-
-        $supplierCache = [];
+    /** @param  \Illuminate\Support\Collection<int,Product>  $products */
+    private function renameAndRebuild(Shop $shop, $products, string $pattern, string $newCode, array &$supplierCache): void
+    {
         foreach ($products as $product) {
             $newName = preg_replace($pattern, $newCode.'-$1', trim((string) $product->name));
 
