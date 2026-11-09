@@ -186,6 +186,32 @@ class ArticlesFixCategoryCodeTest extends TestCase
         ])->assertFailed();
     }
 
+    /**
+     * Baby Park live: even --by-product="70001" kept missing the real
+     * article — the serial itself was most likely typed in Bengali-script
+     * digits, not ASCII ones, so no text substring from a keyboard could
+     * ever match it. An exact category id needs no text matched at all.
+     */
+    public function test_category_id_fixes_the_exact_row_with_no_text_matching(): void
+    {
+        [$shop, , $category, $product] = $this->aBrokenArticle();
+
+        $this->artisan('articles:fix-category-code', [
+            '--category-id' => $category->id, '--new-code' => 'TPB',
+        ])->assertSuccessful();
+
+        $this->assertSame('TPB', $category->fresh()->code);
+        $this->assertSame('TPB-70001', $product->fresh()->name);
+        $this->assertSame('JUMP-TPB-70001-NSXXZ', $product->fresh()->barcode);
+    }
+
+    public function test_category_id_reports_an_unknown_id_not_errors_silently(): void
+    {
+        $this->artisan('articles:fix-category-code', [
+            '--category-id' => 999999, '--new-code' => 'TPB',
+        ])->assertFailed();
+    }
+
     public function test_reaches_a_branch_too(): void
     {
         [$shop, , $category, $product] = $this->aBrokenArticle();

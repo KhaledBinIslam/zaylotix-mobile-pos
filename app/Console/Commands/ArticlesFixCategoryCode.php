@@ -31,7 +31,7 @@ use Illuminate\Console\Command;
  */
 class ArticlesFixCategoryCode extends Command
 {
-    protected $signature = 'articles:fix-category-code {--shop=} {--name= : shops whose name contains this, instead of an id} {--old-code=} {--by-product= : find the category via a product name substring (e.g. a serial like 70001) instead of retyping its code — use this when --old-code keeps reporting 0 articles because of an invisible encoding mismatch} {--new-code=} {--dry-run}';
+    protected $signature = 'articles:fix-category-code {--shop=} {--name= : shops whose name contains this, instead of an id} {--old-code=} {--by-product= : find the category via a product name substring (e.g. a serial like 70001) instead of retyping its code — use this when --old-code keeps reporting 0 articles because of an invisible encoding mismatch} {--category-id= : the exact category id to fix (from articles:list-broken-categories) — use this when --by-product also keeps missing it (e.g. the serial itself was typed in Bengali-script digits)} {--new-code=} {--dry-run}';
 
     protected $description = 'Renames a category\'s (and its articles\') code — for a code that was typed in the wrong script and never produced a scannable barcode.';
 
@@ -39,10 +39,11 @@ class ArticlesFixCategoryCode extends Command
     {
         $oldCode = trim((string) $this->option('old-code'));
         $byProduct = trim((string) $this->option('by-product'));
+        $categoryId = $this->option('category-id');
         $newCode = strtoupper(trim((string) $this->option('new-code')));
 
-        if (($oldCode === '' && $byProduct === '') || $newCode === '') {
-            $this->error('--old-code=<বর্তমান কোড> অথবা --by-product=<আর্টিকেলের নামের অংশ, যেমন 70001> এর একটা, আর --new-code=<নতুন ইংরেজি কোড> দিতে হবে।');
+        if (($oldCode === '' && $byProduct === '' && ! $categoryId) || $newCode === '') {
+            $this->error('--old-code=<বর্তমান কোড>, --by-product=<আর্টিকেলের নামের অংশ> অথবা --category-id=<id> এর একটা, আর --new-code=<নতুন ইংরেজি কোড> দিতে হবে।');
 
             return self::FAILURE;
         }
@@ -50,6 +51,10 @@ class ArticlesFixCategoryCode extends Command
             $this->error('নতুন কোড শুধু ইংরেজি অক্ষর/সংখ্যা হতে হবে (যেমন TPB) — বাংলা বা অন্য চিহ্ন চলবে না।');
 
             return self::FAILURE;
+        }
+
+        if ($categoryId) {
+            return $this->runForCategoryId((int) $categoryId, $newCode, (bool) $this->option('dry-run'));
         }
 
         $shops = Shop::withoutGlobalScopes()
@@ -85,6 +90,44 @@ class ArticlesFixCategoryCode extends Command
             $this->newLine();
             $this->info('এরপর এটা চালান যাতে সাইজ/রং-ভিত্তিক বারকোডও ঠিক হয়ে যায়:');
             $this->line('  php artisan articles:regenerate-barcodes --name="'.($this->option('name') ?: $this->option('shop')).'" --fix-unprintable');
+        }
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * Baby Park live: even --by-product kept missing the real article —
+     * the serial typed on the command line ("70001") didn't byte-match
+     * what's in the product's own name (most likely Bengali-script digits
+     * inside the serial itself, not ASCII ones). An exact category id from
+     * articles:list-broken-categories needs no text matched at all.
+     */
+    private function runForCategoryId(int $categoryId, string $newCode, bool $isDryRun): int
+    {
+        $category = ProductCategory::withoutGlobalScopes()->find($categoryId);
+        if (! $category) {
+            $this->error("ক্যাটাগরি id {$categoryId} পাওয়া যায়নি।");
+
+            return self::FAILURE;
+        }
+
+        $shop = Shop::withoutGlobalScopes()->find($category->shop_id);
+        if (! $shop) {
+            $this->error("ক্যাটাগরি id {$categoryId}-এর শপ পাওয়া যায়নি।");
+
+            return self::FAILURE;
+        }
+
+        $this->newLine();
+        $this->line("<fg=cyan>SHOP {$shop->id} — {$shop->name}</>");
+
+        $supplierCache = [];
+        $this->processCategory($shop, $category, $newCode, $isDryRun, $supplierCache, [$category->id]);
+
+        if (! $isDryRun) {
+            $this->newLine();
+            $this->info('এরপর এটা চালান যাতে সাইজ/রং-ভিত্তিক বারকোডও ঠিক হয়ে যায়:');
+            $this->line("  php artisan articles:regenerate-barcodes --shop={$shop->id} --fix-unprintable");
         }
 
         return self::SUCCESS;
