@@ -463,9 +463,18 @@ function addToCart(productId, productUnitId = null, { silent, productVariantId =
         const variant = variantOf(product, productVariantId);
         if (!variant) return;
         const alreadyInCart = cart.value.reduce((s, l) => s + (l.product_variant_id === productVariantId ? l.qty : 0), 0);
+        let oversold = false;
         if (variant.stock < alreadyInCart + qty) {
-            toast('❌ ' + t('pos.notEnoughStock') + ' ' + product.name + ' (' + variantLabel(variant) + ')');
-            return;
+            // Baby Park/Seaman: "stock na thakleo sell korar bebosta" — owner,
+            // or a cashier with the explicit 'oversell' permission; never for
+            // a silent/scan-triggered add (no modal mid-scan), and the server
+            // independently re-checks the permission regardless (see
+            // CheckoutRequest/PosController::checkout's own comments)
+            if (silent || !hasPerm('oversell') || !confirm(t('pos.oversellConfirm'))) {
+                if (!silent) toast('❌ ' + t('pos.notEnoughStock') + ' ' + product.name + ' (' + variantLabel(variant) + ')');
+                return;
+            }
+            oversold = true;
         }
 
         // Part 1 (source_lines) — a specific scanned/picked lot is its OWN
@@ -474,25 +483,29 @@ function addToCart(productId, productUnitId = null, { silent, productVariantId =
         // different lots must stay two different checkout lines. A second
         // scan of the SAME lot still just bumps its own qty, as before.
         const line = cart.value.find((l) => l.product_variant_id === productVariantId && (l.product_source_id || null) === (productSourceId || null));
-        if (line) line.qty += qty;
-        else cart.value.push({ product_id: productId, product_unit_id: null, product_variant_id: productVariantId, product_source_id: productSourceId, qty, discount: 0, imei: '' });
+        if (line) { line.qty += qty; if (oversold) line.allow_oversell = true; }
+        else cart.value.push({ product_id: productId, product_unit_id: null, product_variant_id: productVariantId, product_source_id: productSourceId, qty, discount: 0, imei: '', allow_oversell: oversold });
 
-        if (!silent) toast('✅ ' + product.name + ' (' + variantLabel(variant) + ') ' + t('pos.added'));
+        if (!silent) toast((oversold ? t('pos.oversellSold') : '✅') + ' ' + product.name + ' (' + variantLabel(variant) + ') ' + (oversold ? '' : t('pos.added')));
         return;
     }
 
     const { label, factor } = unitOf(product, productUnitId);
     const alreadyInCartBase = cart.value.reduce((s, l) => s + (!l.product_variant_id && l.product_id === productId ? l.qty * unitOf(product, l.product_unit_id).factor : 0), 0);
+    let oversoldBase = false;
     if (product.stock <= alreadyInCartBase + factor - 1) {
-        toast('❌ ' + t('pos.notEnoughStock') + ' ' + product.name);
-        return;
+        if (silent || !hasPerm('oversell') || !confirm(t('pos.oversellConfirm'))) {
+            if (!silent) toast('❌ ' + t('pos.notEnoughStock') + ' ' + product.name);
+            return;
+        }
+        oversoldBase = true;
     }
 
     const line = cart.value.find((l) => l.product_id === productId && l.product_unit_id === productUnitId && !l.product_variant_id);
-    if (line) line.qty++;
-    else cart.value.push({ product_id: productId, product_unit_id: productUnitId, product_variant_id: null, qty: 1, discount: 0, imei: '' });
+    if (line) { line.qty++; if (oversoldBase) line.allow_oversell = true; }
+    else cart.value.push({ product_id: productId, product_unit_id: productUnitId, product_variant_id: null, qty: 1, discount: 0, imei: '', allow_oversell: oversoldBase });
 
-    if (!silent) toast('✅ ' + product.name + (label ? ` (${label})` : '') + ' ' + t('pos.added'));
+    if (!silent) toast((oversoldBase ? t('pos.oversellSold') : '✅') + ' ' + product.name + (label ? ` (${label})` : '') + (oversoldBase ? '' : ' ' + t('pos.added')));
 }
 
 function inc(line, d) {
@@ -680,6 +693,31 @@ function lineTotal(l) {
     return Math.max(0, lineRaw(l) - (l.discount || 0));
 }
 
+// Khaled live: "same product hole ekta te 50 tk discount dile 2 ta te 100
+// auto count hobe" — l.discount itself stays exactly what it always was (the
+// flat total taka off THIS line — checkout, billing preview, the gateway
+// payload, every server-side rule stays byte-identical), but the box is now
+// a PER-PIECE entry: typing 50 on a qty-2 line sets the real flat total to
+// 100, and the box always re-displays 50 (derived by dividing back), so it
+// never drifts or double-multiplies on a second edit. The same per-piece
+// figure also spreads to any OTHER cart line of this same product (a
+// different size/color/pack, each with its own qty) the instant it's typed,
+// the common case for Seaman/Baby Park's multi-size sales. A product sold
+// alone (the overwhelming majority of carts) has no sibling to spread to —
+// zero behavior change there.
+function perPieceDiscount(l) {
+    return l.qty > 0 ? (Number(l.discount) || 0) / l.qty : (Number(l.discount) || 0);
+}
+function setPerPieceDiscount(l, value) {
+    const perUnit = Number(value) || 0;
+    l.discount = Math.round(perUnit * l.qty * 100) / 100;
+    cart.value.forEach((other) => {
+        if (other !== l && other.product_id === l.product_id) {
+            other.discount = Math.round(perUnit * other.qty * 100) / 100;
+        }
+    });
+}
+
 const subtotal = computed(() => cart.value.reduce((s, l) => s + lineTotal(l), 0));
 // Reported bug: a coupon code's (or redeemed loyalty points') discount was
 // never reflected here — only the manual overall discount was — so this
@@ -852,6 +890,48 @@ function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]')?.content || '';
 }
 
+// Baby Park/Seaman: "product na thakleo product sell korar bebosta koro" —
+// sell a one-off item that isn't in the catalog yet by typing its
+// name/price here. Creates a REAL product (server-side,
+// PosController::quickItem) with stock set to exactly the qty being sold,
+// then drops straight into the normal addToCart()/checkout path.
+const quickItemOpen = ref(false);
+const quickItemForm = ref({ name: '', price: '', qty: 1 });
+const quickItemSubmitting = ref(false);
+function openQuickItem() {
+    quickItemForm.value = { name: q.value || '', price: '', qty: 1 };
+    quickItemOpen.value = true;
+}
+async function submitQuickItem() {
+    const name = quickItemForm.value.name.trim();
+    const price = Number(quickItemForm.value.price);
+    const qty = Number(quickItemForm.value.qty) || 1;
+    if (!name || !(price >= 0)) {
+        toast('❌ ' + t('pos.quickItemName') + ' / ' + t('pos.quickItemPrice'));
+        return;
+    }
+    quickItemSubmitting.value = true;
+    try {
+        const res = await fetchWithSessionRetry(route('app.pos.quickItem'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken(), Accept: 'application/json' },
+            body: JSON.stringify({ name, price, qty }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            toast('❌ ' + (data.message || Object.values(data.errors || {})[0]?.[0] || t('pos.checkoutError')));
+            return;
+        }
+        props.products.push(data.product);
+        addToCart(data.product.id);
+        quickItemOpen.value = false;
+    } catch (e) {
+        toast('❌ ' + t('pos.checkoutError'));
+    } finally {
+        quickItemSubmitting.value = false;
+    }
+}
+
 // Diagnostic-only snapshot of a cart line's product/variant/unit (never
 // used for pricing/stock — the server always resolves those itself).
 // Exists so a product that can't be resolved by id at sync time (the
@@ -888,7 +968,7 @@ function buildCheckoutPayload() {
         // session — see docs/FIX_PLAN.md's offline-sync fix).
         shop_id: shop.value?.id ?? null,
         shop_name: shop.value?.name ?? null,
-        items: cart.value.map((l) => ({ product_id: l.product_id, product_unit_id: l.product_unit_id, product_variant_id: l.product_variant_id, product_source_id: l.product_source_id || null, qty: l.qty, discount: l.discount || 0, imei: l.imei || '', ...lineSnapshot(l) })),
+        items: cart.value.map((l) => ({ product_id: l.product_id, product_unit_id: l.product_unit_id, product_variant_id: l.product_variant_id, product_source_id: l.product_source_id || null, qty: l.qty, discount: l.discount || 0, imei: l.imei || '', allow_oversell: l.allow_oversell || false, ...lineSnapshot(l) })),
         discount: discount.value || 0,
         complimentary: payMode.value === 'complimentary',
         coupon_code: couponCode.value || '',
@@ -1660,6 +1740,7 @@ useKeyboardShortcuts({
                         autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
                     >
                     <button v-if="canScan" class="btn ghost" style="width:auto;padding:0 16px" :title="t('pos.scanTitle')" @click="openScanner">📷</button>
+                    <button v-if="hasPerm('stock')" class="btn ghost" style="width:auto;padding:0 16px" :title="t('pos.quickItem')" @click="openQuickItem">✏️</button>
                     <button class="btn ghost lg:hidden" style="width:auto;padding:0 16px;position:relative" :title="t('pos.heldCarts')" @click="heldSheet = true">
                         📋
                         <span v-if="heldCarts.length" style="position:absolute;top:-4px;right:-4px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--rose);color:#fff;font-size:9.5px;font-weight:800;display:flex;align-items:center;justify-content:center">{{ heldCarts.length }}</span>
@@ -1810,6 +1891,7 @@ useKeyboardShortcuts({
                         <button v-for="s in didYouMeanSuggestions" :key="s.id" type="button" class="btn ghost sm" style="margin:0 4px 6px" @click="q = s.name">{{ s.emoji }} {{ s.name }}</button>
                     </div>
                     <button v-if="hasPerm('stock')" type="button" class="btn ghost sm" style="margin-top:6px" @click="router.visit(route('app.stock') + '?new_name=' + encodeURIComponent(q))">{{ t('pos.addNewProductShortcut') }}</button>
+                    <button v-if="hasPerm('stock')" type="button" class="btn ghost sm" style="margin-top:6px" @click="openQuickItem">{{ t('pos.quickItem') }}</button>
                 </div>
                 <!-- invisible trigger for the lazy-loading fallback (see
                      loadMoreObserver above) — grows visibleProducts by
@@ -1950,8 +2032,8 @@ useKeyboardShortcuts({
                             <button type="button" class="qbtn ghost" style="width:30px;height:30px;color:var(--rose)" :title="t('common.delete')" @click="removeLine(l)">✕</button>
                         </div>
                         <div class="cart-line-discount">
-                            <span>{{ t('pos.itemDiscount') }}</span>
-                            <input v-model.number="l.discount" type="number" inputmode="numeric" placeholder="0" min="0">
+                            <span>{{ t('pos.itemDiscountPerPiece') }}</span>
+                            <input :value="perPieceDiscount(l)" type="number" inputmode="numeric" placeholder="0" min="0" @input="setPerPieceDiscount(l, $event.target.value)">
                         </div>
                         <div v-if="hasSerialTracking && !l.product_variant_id && !l.product_unit_id" class="cart-line-discount" style="align-items:flex-start">
                             <span style="padding-top:10px">{{ t('pos.imei') }}</span>
@@ -2169,6 +2251,24 @@ useKeyboardShortcuts({
         <!-- scanning an article-level barcode (ambiguous size/color) opens this instead of a dead-end error -->
         <Sheet v-model="scanVariantSheetOpen" :title="scanVariantProduct?.name" :subtitle="t('pos.pickVariantHint')">
             <ColorSizePicker v-if="scanVariantProduct" :product="scanVariantProduct" :only-color="scanVariantOnlyColor" @pick="onScanVariantPick" />
+        </Sheet>
+
+        <!-- Baby Park/Seaman: sell a one-off item that isn't in the catalog yet -->
+        <Sheet v-model="quickItemOpen" :title="t('pos.quickItem')">
+            <div style="font-size:12.5px;color:var(--mut);margin-bottom:12px">{{ t('pos.quickItemHint') }}</div>
+            <div class="field">
+                <label>{{ t('pos.quickItemName') }}</label>
+                <input v-model="quickItemForm.name" type="text">
+            </div>
+            <div class="field">
+                <label>{{ t('pos.quickItemPrice') }}</label>
+                <input v-model.number="quickItemForm.price" type="number" inputmode="decimal" min="0">
+            </div>
+            <div class="field">
+                <label>{{ t('pos.qty') }}</label>
+                <input v-model.number="quickItemForm.qty" type="number" inputmode="numeric" min="1">
+            </div>
+            <button class="btn" :disabled="quickItemSubmitting" style="margin-top:8px" @click="submitQuickItem">{{ t('pos.quickItemAdd') }}</button>
         </Sheet>
 
         <!-- weight/volume quick-entry — the only way a loose kg/litre product gets added to (or edited in) the cart -->

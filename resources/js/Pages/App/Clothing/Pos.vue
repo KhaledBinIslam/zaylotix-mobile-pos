@@ -305,17 +305,25 @@ function lineUnitPrice(l) {
 function lineTotal(l) {
     return Math.max(0, lineUnitPrice(l) * l.qty - (l.discount || 0));
 }
-// Seaman: same product in several cart lines (different sizes/colors,
-// usually qty 1 each) — "50 tk kore discount dile eksoty 3 ta tekhe discount
-// hoi jabe 150". A line's own discount box still means exactly what it
-// always has (a flat taka amount off THAT line, unchanged for the common
-// single-line sale), but once typed, its PER-UNIT value spreads to every
-// other line of the same product, scaled to that line's own qty — so two
-// qty-1 lines at 50 each total 100, and a qty-2 sibling gets 100, not 50.
-// A product sold alone (the overwhelming majority of carts) has no sibling
-// to spread to, so this is a no-op there — zero behavior change.
-function propagateDiscount(line) {
-    const perUnit = line.qty > 0 ? (Number(line.discount) || 0) / line.qty : 0;
+// Seaman/Baby Park live: "same product hole ekta te 50 tk discount dile 2 ta
+// te 100 auto count hobe" — confirmed live on a SINGLE line with qty 2, not
+// just across sibling lines, so the box itself is now a PER-PIECE entry.
+// l.discount stays exactly what it always was underneath — the flat taka
+// total off THIS line, unchanged for checkout/the server — but the box
+// always shows the per-piece figure (derived by dividing back), so typing
+// 50 on a qty-2 line sets the real total to 100 and re-displays 50, never
+// drifting or doubling on a second edit. The same per-piece figure also
+// spreads live to any OTHER line of this same product (a different
+// size/color, each with its own qty) — two qty-1 lines at 50 each total
+// 100, and a qty-2 sibling gets 100, not 50. A product sold alone (the
+// overwhelming majority of carts) has no sibling to spread to — zero
+// behavior change there.
+function perPieceDiscount(l) {
+    return l.qty > 0 ? (Number(l.discount) || 0) / l.qty : (Number(l.discount) || 0);
+}
+function setPerPieceDiscount(line, value) {
+    const perUnit = Number(value) || 0;
+    line.discount = Math.round(perUnit * line.qty * 100) / 100;
     cart.value.forEach((l) => {
         if (l !== line && l.product_id === line.product_id) {
             l.discount = Math.round(perUnit * l.qty * 100) / 100;
@@ -977,8 +985,8 @@ function sendMemoWA() {
                 <!-- per-item discount, stacks on top of the overall discount
                      field below — same pattern as the shared Pos/Index.vue -->
                 <div class="cart-line-discount">
-                    <span>{{ t('pos.itemDiscount') }}</span>
-                    <input v-model.number="l.discount" type="number" inputmode="numeric" placeholder="0" min="0" @change="propagateDiscount(l)">
+                    <span>{{ t('pos.itemDiscountPerPiece') }}</span>
+                    <input :value="perPieceDiscount(l)" type="number" inputmode="numeric" placeholder="0" min="0" @input="setPerPieceDiscount(l, $event.target.value)">
                 </div>
             </div>
 

@@ -1373,6 +1373,7 @@ export const translations = {
     'pos.lineTotal': { bn: 'মূল্য', en: 'Total' },
     'pos.cartItemsCount': { bn: '{n} পণ্য', en: '{n} item(s)' },
     'pos.itemDiscount': { bn: '🏷 এই পণ্যে আলাদা ছাড়', en: '🏷 Discount on this item' },
+    'pos.itemDiscountPerPiece': { bn: '🏷 ছাড় (প্রতি পিস)', en: '🏷 Discount (per piece)' },
     'pos.itemDiscountApplied': { bn: 'ছাড়', en: 'off' },
     'pos.mobileLabel': { bn: 'মোবাইল', en: 'Mobile' },
     'pos.mobileHint': { bn: '(ঐচ্ছিক — মেমো ও বাকির জন্য)', en: '(optional — for memo & due)' },
