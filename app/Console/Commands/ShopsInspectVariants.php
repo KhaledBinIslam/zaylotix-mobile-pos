@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Product;
+use App\Models\ProductColorBarcode;
 use App\Models\ProductVariant;
 use Illuminate\Console\Command;
 
@@ -37,6 +38,10 @@ class ShopsInspectVariants extends Command
             $variants = ProductVariant::withoutGlobalScopes()->withTrashed()->where('product_id', $p->id)->get();
             foreach ($variants as $v) {
                 $this->line("  variant id={$v->id} size={$v->size} color={$v->color} barcode={$v->barcode} scan_code={$v->scan_code} price={$v->price} deleted=" . ($v->deleted_at ? 'yes' : 'no'));
+            }
+            $colorBarcodes = ProductColorBarcode::withoutGlobalScopes()->where('product_id', $p->id)->get();
+            foreach ($colorBarcodes as $cb) {
+                $this->line("  color_barcode id={$cb->id} color={$cb->color} barcode={$cb->barcode} scan_code={$cb->scan_code}");
             }
         }
 
