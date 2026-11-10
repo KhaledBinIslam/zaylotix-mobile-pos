@@ -50,6 +50,7 @@ export const translations = {
     'nav.campaigns': { bn: 'সিজন ক্যাম্পেইন', en: 'Season campaigns' },
     'nav.campaignsShort': { bn: 'ক্যাম্পেইন', en: 'Campaigns' },
     'nav.deadStock': { bn: 'ডেড স্টক ক্লিয়ারেন্স', en: 'Dead stock clearance' },
+    'nav.priceUpdate': { bn: 'দাম আপডেট', en: 'Price update' },
     'nav.catalog': { bn: 'ডিজিটাল ক্যাটালগ', en: 'Digital catalog' },
     'catalog.subtitle': { bn: 'একটা পাবলিক লিঙ্ক শেয়ার করুন, কাস্টমার দাম/স্টক দেখে WhatsApp-এ অর্ডার করতে পারবে', en: 'Share a public link — customers can see prices/stock and order over WhatsApp' },
     'catalog.yourLink': { bn: 'আপনার ক্যাটালগ লিঙ্ক', en: 'Your catalog link' },

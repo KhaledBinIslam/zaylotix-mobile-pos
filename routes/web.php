@@ -16,6 +16,7 @@ use App\Http\Controllers\App\CustomerController;
 use App\Http\Controllers\App\CustomerListController;
 use App\Http\Controllers\App\DamageController;
 use App\Http\Controllers\App\DeadStockController;
+use App\Http\Controllers\App\PriceUpdateController;
 use App\Http\Controllers\App\ExpenseController;
 use App\Http\Controllers\App\ExportController;
 use App\Http\Controllers\App\GatewayCheckoutController;
@@ -305,6 +306,11 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::patch('dead-stock/days', [DeadStockController::class, 'updateDays'])->name('deadStock.updateDays');
         Route::post('dead-stock/markdown', [DeadStockController::class, 'markdown'])->name('deadStock.markdown');
         Route::post('dead-stock/clear-markdown', [DeadStockController::class, 'clearMarkdown'])->name('deadStock.clearMarkdown');
+    });
+
+    Route::middleware('perm:stock')->group(function () {
+        Route::get('prices', [PriceUpdateController::class, 'index'])->name('prices.index');
+        Route::post('prices/bulk-update', [PriceUpdateController::class, 'bulkUpdate'])->name('prices.bulkUpdate');
     });
 
     // "ডিজিটাল ক্যাটালগ লিঙ্ক" — see docs/FIX_PLAN.md's design note.
