@@ -150,13 +150,20 @@ async function render() {
     }
 
     try {
-        JsBarcode(el, encoded, { ...opts, width: 1 });
-        const naturalWidth = parseFloat(el.getAttribute('width')) || 0;
-        const availableWidth = el.closest('.label-card')?.clientWidth - 12; // minus the card's own 6px+6px padding
-        if (naturalWidth > 0 && availableWidth > 0) {
-            const scale = Math.min(availableWidth / naturalWidth, 2.5);
-            JsBarcode(el, encoded, { ...opts, width: scale });
-        }
+        // Dot-aligned instead of the old fractional fill-to-width scale
+        // (measured off the on-screen .label-card's clientWidth, which
+        // never actually corresponds to the PRINTED physical width once
+        // @media print's own @page size takes over). Liberty Bali live:
+        // "barcode scan hocche na" on a USB thermal printer (RP400H) --
+        // a thermal head can't render a fractional-pixel bar width evenly
+        // at its own fixed dot pitch, the exact failure Phase 41 already
+        // diagnosed and fixed for the Bluetooth/XP-365B path. Whole-dot
+        // alignment never hurts a non-thermal "classic" printer either,
+        // so this isn't limited to print_mode:'thermal' anymore.
+        const usableMm = labelSizeMm(props.settings).width - 5;
+        const fit = thermalModuleWidth(encoded, usableMm);
+        barcodeWarn.value = fit.fits ? '' : 'overflow';
+        JsBarcode(el, encoded, { ...opts, width: mmToPx(fit.moduleMm) });
     } catch (e) { /* invalid barcode value for CODE128 — leave blank */ }
 }
 
@@ -202,7 +209,7 @@ watch(() => [props.shop?.resolved_label_header, props.shop?.name, props.settings
         <!-- Phase 41 — never shrink a too-long barcode silently: say so.
              Screen-only (no-print): the preview is a mandatory tap before
              printing, so the warning is always seen before paper is used. -->
-        <div v-if="thermal && barcodeWarn === 'overflow'" class="label-warn no-print">⚠ বারকোডটি এই লেবেলের জন্য খুব লম্বা — ছাপা হয়নি</div>
+        <div v-if="barcodeWarn === 'overflow'" class="label-warn no-print">⚠ বারকোডটি এই লেবেলের জন্য খুব লম্বা — ছাপা হয়নি</div>
         <div v-else-if="thermal && barcodeWarn === 'onedot'" class="label-warn no-print">⚠ লম্বা বারকোড — সরু বারে ছাপা হবে, স্ক্যান টেস্ট করে নিন</div>
         <svg :id="domId"></svg>
         <template v-if="isDetailed">
