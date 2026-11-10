@@ -28,17 +28,28 @@ const headerText = computed(() => props.shop?.resolved_label_header || props.sho
 const thermal = computed(() => props.settings.print_mode === 'thermal');
 const barcodeWarn = ref(''); // '' | 'onedot' | 'overflow'
 
-// Phase 43 fix — the card previously had no on-screen width/height at
-// all outside @media print, so inside BarcodeLabels/Index.vue's preview
-// grid it sized itself to its grid column (often much taller/narrower
-// than the real label) instead of the true 38×25mm-ish ratio. That was
-// invisible on screen, but the Bluetooth-print capture (html2canvas on
+// Phase 43 fix, generalized — the card previously had no fixed width/
+// height of its own in EITHER mode; a thermal (Bluetooth) capture needs
+// this for the html2canvas reason below, but classic (browser @page
+// print) needed it just as much and didn't have it: without an explicit
+// box size, .label-card's height is purely however tall its own content
+// (name/variant/barcode/price) happens to be, and @page's mm size only
+// bounds the PAGE, not this element -- so whenever a label's content got
+// even slightly taller than the configured label height, the box grew
+// past the page boundary and Chrome silently continued it onto the NEXT
+// physical sticker instead of clipping it. Liberty Bali live: a bigger/
+// bolder barcode (this same commit) reopened exactly that drift. Pinning
+// every card to its true mm size, in every mode, makes `overflow: hidden`
+// (label-card's own CSS) actually have a box to clip against.
+//
+// (Original Phase 43 note, still true for the Bluetooth path specifically:
+// outside @media print, the on-screen preview grid used to size this card
+// to its grid column, often a very different aspect ratio than the real
+// label -- invisible on screen, but the Bluetooth capture (html2canvas on
 // the LIVE on-screen DOM, never the @media print layout) then force-
 // squeezed that wrong-aspect-ratio capture into the label's real pixel
-// size, crushing most of the content. Pinning the card to its true mm
-// size on screen too — not just in print — fixes the capture at the
-// source instead of trying to correct a bad aspect ratio after the fact.
-const thermalCardSize = computed(() => thermal.value ? labelSizeMm(props.settings) : null);
+// size, crushing most of the content.)
+const cardSizeMm = computed(() => labelSizeMm(props.settings));
 
 // A thermal sticker prints the shop name, the barcode (whose own text
 // already identifies the article) and the price — nothing between the
@@ -196,7 +207,7 @@ watch(() => [props.shop?.resolved_label_header, props.shop?.name, props.settings
 </script>
 
 <template>
-    <div class="label-card" :class="{ thermal }" :style="thermalCardSize ? { width: thermalCardSize.width + 'mm', height: thermalCardSize.height + 'mm', margin: '0 auto' } : null">
+    <div class="label-card" :class="{ thermal }" :style="{ width: cardSizeMm.width + 'mm', height: cardSizeMm.height + 'mm', margin: '0 auto' }">
         <!-- SEAMAN Phase 7 — 'detailed' template: website on top, the
              name/brand/size lines BELOW the bars; every other shop's card
              renders exactly as before -->
