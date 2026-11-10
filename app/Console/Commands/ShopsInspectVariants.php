@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Product;
+use App\Models\ProductVariant;
 use Illuminate\Console\Command;
 
 /**
@@ -29,11 +30,12 @@ class ShopsInspectVariants extends Command
             return self::FAILURE;
         }
 
-        $products = Product::withoutGlobalScopes()->where('shop_id', $shopId)->whereIn('name', $names)->with('variants')->get();
+        $products = Product::withoutGlobalScopes()->where('shop_id', $shopId)->whereIn('name', $names)->get();
 
         foreach ($products as $p) {
             $this->line("{$p->name} id={$p->id} product_barcode={$p->barcode}");
-            foreach ($p->variants as $v) {
+            $variants = ProductVariant::withoutGlobalScopes()->withTrashed()->where('product_id', $p->id)->get();
+            foreach ($variants as $v) {
                 $this->line("  variant id={$v->id} size={$v->size} color={$v->color} barcode={$v->barcode} scan_code={$v->scan_code} price={$v->price} deleted=" . ($v->deleted_at ? 'yes' : 'no'));
             }
         }
