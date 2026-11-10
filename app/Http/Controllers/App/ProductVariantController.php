@@ -808,6 +808,50 @@ class ProductVariantController extends Controller
         return back()->with('success', 'স্টক ঠিক করা হয়েছে।');
     }
 
+    /**
+     * Quick price/cost edit for one variant, right from its row on the
+     * Stock page — Khaled wanted this inline rather than on a separate
+     * page. Writes an `Activity` entry (the exact log history() already
+     * reads), so the variant's existing "ইতিহাস" button shows price
+     * changes alongside its stock ones, with date/time, with no change to
+     * that endpoint at all.
+     *
+     * Only ever touches this ONE variant's own cost/price — never the
+     * parent product's, and never an already-printed barcode (see
+     * PriceUpdateController's own docblock for why a price change must
+     * never rewrite a sticker that's already out on the shelf).
+     */
+    public function updatePrice(Request $request, ProductVariant $productVariant)
+    {
+        $this->authorize('update', $productVariant->product);
+
+        $data = $request->validate([
+            'cost' => ['required', 'numeric', 'min:0'],
+            'price' => ['required', 'numeric', 'min:0'],
+        ]);
+
+        $product = $productVariant->product;
+
+        DB::transaction(function () use ($productVariant, $data, $product) {
+            $locked = ProductVariant::whereKey($productVariant->id)->lockForUpdate()->first();
+            $before = ['cost' => (float) $locked->cost, 'price' => (float) $locked->price];
+            $after = ['cost' => (float) $data['cost'], 'price' => (float) $data['price']];
+
+            $locked->update(['cost' => $after['cost'], 'price' => $after['price']]);
+
+            if ($before !== $after) {
+                Activity::log(
+                    'product.variant.priceUpdate',
+                    "'{$product->name}' ({$locked->label()}) এর দাম বদলানো হয়েছে — cost ".number_format($before['cost']).' → '.number_format($after['cost']).', sell '.number_format($before['price']).' → '.number_format($after['price']).'।',
+                    $locked,
+                    ['before' => $before, 'after' => $after]
+                );
+            }
+        });
+
+        return back()->with('success', 'দাম আপডেট হয়েছে।');
+    }
+
     /** Read-only trail for one variant — every Stock +/−/set-exact event, newest first. Same `Activity` log every other mutation in this app already writes to. */
     public function history(ProductVariant $productVariant)
     {

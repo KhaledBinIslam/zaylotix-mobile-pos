@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\ProductVariant;
+use App\Support\Activity;
 use App\Support\ArticleVariant;
 use App\Support\CatalogSync;
 use App\Support\ColorBarcodeResolver;
@@ -112,7 +113,9 @@ class PriceUpdateController extends Controller
                 }
 
                 $newCost = round((float) $row['cost'], 2);
-                $costChanged = $newCost !== round((float) $product->cost, 2);
+                $newPrice = round((float) $row['price'], 2);
+                $before = ['cost' => (float) $product->cost, 'price' => (float) $product->price];
+                $costChanged = $newCost !== round($before['cost'], 2);
 
                 if ($costChanged && ArticleVariant::isArticle($product)) {
                     $newArticleBarcode = ArticleVariant::restampCost($shop, $product, (int) $newCost);
@@ -129,9 +132,18 @@ class PriceUpdateController extends Controller
                 }
 
                 $product->cost = $newCost;
-                $product->price = round((float) $row['price'], 2);
+                $product->price = $newPrice;
                 $product->save();
                 $productCount++;
+
+                if ($before['cost'] !== $newCost || $before['price'] !== $newPrice) {
+                    Activity::log(
+                        'product.priceUpdate',
+                        "'{$product->name}' এর দাম বদলানো হয়েছে — cost ".number_format($before['cost']).' → '.number_format($newCost).', sell '.number_format($before['price']).' → '.number_format($newPrice).'।',
+                        $product,
+                        ['before' => $before, 'after' => ['cost' => $newCost, 'price' => $newPrice]]
+                    );
+                }
 
                 if (! $shop->parent_shop_id && $shop->hasFeature('shared_catalog')) {
                     CatalogSync::syncProductToBranches($shop, $product);
@@ -143,8 +155,20 @@ class PriceUpdateController extends Controller
                 if (! $variant) {
                     continue;
                 }
-                $variant->update(['cost' => round((float) $row['cost'], 2), 'price' => round((float) $row['price'], 2)]);
+                $vBefore = ['cost' => (float) $variant->cost, 'price' => (float) $variant->price];
+                $vAfter = ['cost' => round((float) $row['cost'], 2), 'price' => round((float) $row['price'], 2)];
+
+                $variant->update(['cost' => $vAfter['cost'], 'price' => $vAfter['price']]);
                 $variantCount++;
+
+                if ($vBefore !== $vAfter) {
+                    Activity::log(
+                        'product.variant.priceUpdate',
+                        "'{$variant->product?->name}' ({$variant->label()}) এর দাম বদলানো হয়েছে — cost ".number_format($vBefore['cost']).' → '.number_format($vAfter['cost']).', sell '.number_format($vBefore['price']).' → '.number_format($vAfter['price']).'।',
+                        $variant,
+                        ['before' => $vBefore, 'after' => $vAfter]
+                    );
+                }
             }
         });
 

@@ -655,6 +655,24 @@ function saveExact() {
     });
 }
 
+const priceSheet = ref(false);
+const priceTarget = ref(null);
+const priceForm = useForm({ cost: '', price: '' });
+function openPriceEdit(v) {
+    priceTarget.value = { variant: v, label: variantLabel(v) };
+    priceForm.reset();
+    priceForm.clearErrors();
+    priceForm.cost = String(v.cost ?? 0);
+    priceForm.price = String(v.price ?? 0);
+    priceSheet.value = true;
+}
+function savePrice() {
+    priceForm.post(route('app.productVariants.updatePrice', priceTarget.value.variant.id), {
+        preserveScroll: true,
+        onSuccess: () => { priceSheet.value = false; },
+    });
+}
+
 // per-variant history — fetched on open, not preloaded with the page
 const historySheet = ref(false);
 const historyTarget = ref(null);
@@ -1734,8 +1752,9 @@ useKeyboardShortcuts({
                                 <!-- new stock just landed here — printing ITS label shouldn't need navigating away, re-searching for the product by hand, and finding this one size among every other size. Lands pre-ticked on just this variant. -->
                                 <Link :href="route('app.barcodeLabels.index') + '?product=' + editing.id + '&variant=' + v.id" class="btn sm ghost" style="text-decoration:none">🏷</Link>
                             </div>
-                            <div style="display:flex;gap:10px;margin-top:4px">
+                            <div style="display:flex;gap:10px;margin-top:4px;flex-wrap:wrap">
                                 <button class="btn sm ghost" style="width:auto;padding:2px 0;border:none;background:none;color:var(--sky);font-size:11px" @click="openExact(v)">{{ t('stock.setExactBtn') }}</button>
+                                <button class="btn sm ghost" style="width:auto;padding:2px 0;border:none;background:none;color:var(--gold2);font-size:11px" @click="openPriceEdit(v)">✏️ দাম</button>
                                 <button class="btn sm ghost" style="width:auto;padding:2px 0;border:none;background:none;color:var(--mut);font-size:11px" @click="openHistory(v)">{{ t('stock.historyBtn') }}</button>
                             </div>
                             <button v-if="hasSourceLines" class="btn sm ghost" style="margin-top:6px;width:auto" @click="openSourceStockIn('variant', v)">🚚 {{ t('os.addSourceStock') }}</button>
@@ -2048,6 +2067,18 @@ useKeyboardShortcuts({
             <div v-if="exactForm.errors.stock" style="color:var(--rose);font-size:12.5px;margin-bottom:10px">{{ exactForm.errors.stock }}</div>
             <button class="btn" :disabled="exactForm.processing" @click="saveExact">{{ exactForm.processing ? '...' : t('os.save') }}</button>
             <button class="btn ghost" style="margin-top:10px" @click="exactSheet = false">{{ t('common.cancel') }}</button>
+        </Sheet>
+
+        <!-- Quick cost/sell price edit for one variant, right from its row -->
+        <Sheet v-model="priceSheet" :title="'✏️ দাম বদলান' + (priceTarget ? ' — ' + priceTarget.label : '')">
+            <HowToHint text="এখানে এই নির্দিষ্ট সাইজ/রংয়ের কেনা দাম আর বিক্রি দাম আলাদা করে বসাতে পারবেন। কবে দাম বদলেছে তা 'ইতিহাস' বাটনে দেখা যাবে।" />
+            <div class="f2">
+                <div class="field"><label>কেনা দাম (cost)</label><input v-model="priceForm.cost" type="number" min="0" step="0.01"></div>
+                <div class="field"><label>বিক্রি দাম (sell)</label><input v-model="priceForm.price" type="number" min="0" step="0.01"></div>
+            </div>
+            <div v-if="priceForm.errors.cost || priceForm.errors.price" style="color:var(--rose);font-size:12.5px;margin-bottom:10px">{{ priceForm.errors.cost || priceForm.errors.price }}</div>
+            <button class="btn" :disabled="priceForm.processing" @click="savePrice">{{ priceForm.processing ? '...' : t('os.save') }}</button>
+            <button class="btn ghost" style="margin-top:10px" @click="priceSheet = false">{{ t('common.cancel') }}</button>
         </Sheet>
 
         <!-- per-variant history — read-only -->

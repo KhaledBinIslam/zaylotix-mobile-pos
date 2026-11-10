@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\ProductColorBarcode;
@@ -148,6 +149,20 @@ class PriceUpdateTest extends TestCase
 
         $productB->refresh();
         $this->assertSame(1300.0, (float) $productB->cost);
+    }
+
+    public function test_bulk_update_logs_an_activity_entry_for_a_changed_product_and_variant(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        [$product, $variant] = $this->anArticleWithVariant($shop);
+
+        $this->actingAs($owner)->post(route('app.prices.bulkUpdate'), [
+            'products' => [['id' => $product->id, 'cost' => 1400, 'price' => 2100]],
+            'variants' => [['id' => $variant->id, 'cost' => 1350, 'price' => 2050]],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(1, ActivityLog::where('subject_type', Product::class)->where('subject_id', $product->id)->where('action', 'product.priceUpdate')->count());
+        $this->assertSame(1, ActivityLog::where('subject_type', ProductVariant::class)->where('subject_id', $variant->id)->where('action', 'product.variant.priceUpdate')->count());
     }
 
     public function test_requires_at_least_one_selection(): void

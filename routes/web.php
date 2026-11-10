@@ -344,6 +344,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
             // recount ("set exact") and its own read-only history trail
             Route::post('product-variants/{productVariant}/stock-decrease', [ProductVariantController::class, 'decreaseStock'])->name('productVariants.decreaseStock');
             Route::post('product-variants/{productVariant}/set-exact-stock', [ProductVariantController::class, 'setExactStock'])->name('productVariants.setExactStock');
+            Route::post('product-variants/{productVariant}/price', [ProductVariantController::class, 'updatePrice'])->name('productVariants.updatePrice');
             Route::get('product-variants/{productVariant}/history', [ProductVariantController::class, 'history'])->name('productVariants.history');
             Route::delete('product-variants/{productVariant}', [ProductVariantController::class, 'destroy'])->name('productVariants.destroy');
         });
