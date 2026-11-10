@@ -276,4 +276,13 @@ watch(() => [props.shop?.resolved_label_header, props.shop?.name, props.settings
    margin above is then real, visible breathing room. */
 .label-card.thermal .label-shop { line-height: 1.25; }
 .label-warn { font-size: 8px; font-weight: 700; color: #c0392b; }
+/* The dashed border is an on-screen boundary guide only -- BarcodeLabels/
+   Index.vue already sets border:none under @media print, but that rule
+   and this component's own unconditional border live in different
+   bundled files, and equal-specificity + load order let this one win on
+   some builds (Liberty Bali live: a dashed line kept printing on every
+   sticker). !important here makes it unambiguous regardless of order. */
+@media print {
+    .label-card { border: none !important; }
+}
 </style>
