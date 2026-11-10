@@ -111,7 +111,11 @@ async function render() {
     if (!el) return;
     const displayValue = props.settings.show_barcode_number !== false;
     const encoded = props.label.scanCode || props.label.barcode;
-    const opts = { format: 'CODE128', height: 22, fontSize: 8, margin: 2, displayValue, text: props.label.barcode };
+    // fontSize here only ever reaches classic-mode output — the thermal
+    // branch right below always re-passes its own fontSize: 8 regardless
+    // of this value, so bumping it never touches Baby Park's dot-exact
+    // calibrated thermal labels.
+    const opts = { format: 'CODE128', height: 22, fontSize: 10, margin: 2, displayValue, text: props.label.barcode };
 
     // Phase 41 thermal mode — a fixed whole-dot module width (2 dots =
     // 0.25mm at 203dpi, 1 dot if the value is long), NEVER the fractional
