@@ -115,7 +115,11 @@ async function render() {
     // branch right below always re-passes its own fontSize: 8 regardless
     // of this value, so bumping it never touches Baby Park's dot-exact
     // calibrated thermal labels.
-    const opts = { format: 'CODE128', height: 22, fontSize: 10, margin: 2, displayValue, text: props.label.barcode };
+    // height trimmed from 22 to compensate: a taller fontSize grows the
+    // SVG's total height too, and this card's fixed physical size clips
+    // (overflow: hidden) whatever doesn't fit -- the price line is last
+    // in the stack, so it's the first casualty of a block that grew.
+    const opts = { format: 'CODE128', height: 18, fontSize: 9, margin: 2, displayValue, text: props.label.barcode };
 
     // Phase 41 thermal mode — a fixed whole-dot module width (2 dots =
     // 0.25mm at 203dpi, 1 dot if the value is long), NEVER the fractional
