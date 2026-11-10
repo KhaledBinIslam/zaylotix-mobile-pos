@@ -122,7 +122,7 @@ async function render() {
     // block that grew. Card padding (221) and this margin both cut too,
     // so the net footprint lands smaller than the pre-fontSize-bump
     // original, not just "compensated back to even."
-    const opts = { format: 'CODE128', height: 14, fontSize: 9, margin: 1, displayValue, text: props.label.barcode };
+    const opts = { format: 'CODE128', height: 20, fontSize: 11, fontOptions: 'bold', margin: 1, displayValue, text: props.label.barcode };
 
     // Phase 41 thermal mode — a fixed whole-dot module width (2 dots =
     // 0.25mm at 203dpi, 1 dot if the value is long), NEVER the fractional
@@ -204,8 +204,15 @@ watch(() => [props.shop?.resolved_label_header, props.shop?.name, props.settings
         <div v-if="!isDetailed && settings.show_shop_name && headerText" class="label-head">
             <div ref="headerEl" class="label-shop" :style="{ fontSize: headerFontSize + 'px' }">{{ headerText }}</div>
         </div>
-        <div v-if="!isDetailed && showMiddleLines && settings.show_product_name" class="label-name">{{ label.name }}</div>
-        <div v-if="!isDetailed && showMiddleLines && settings.show_variant && label.variantLabel" class="label-variant">{{ label.variantLabel }}</div>
+        <!-- name + variant on one line, not two -- frees vertical room for
+             a bigger/bolder barcode below. Only ever reached by the plain
+             (non-detailed) template with showMiddleLines true, i.e.
+             classic-mode, non-detailed shops -- Baby Park's thermal labels
+             skip this block entirely (showMiddleLines is false there) and
+             Seaman's own 'detailed' lines are at 215-218, untouched. -->
+        <div v-if="!isDetailed && showMiddleLines && (settings.show_product_name || (settings.show_variant && label.variantLabel))" class="label-name">
+            <template v-if="settings.show_product_name">{{ label.name }}</template><template v-if="settings.show_variant && label.variantLabel">{{ settings.show_product_name ? ' ' : '' }}{{ label.variantLabel }}</template>
+        </div>
         <!-- Phase 41 — never shrink a too-long barcode silently: say so.
              Screen-only (no-print): the preview is a mandatory tap before
              printing, so the warning is always seen before paper is used. -->
