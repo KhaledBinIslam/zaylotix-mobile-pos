@@ -1203,6 +1203,16 @@ const printCss = computed(() => {
 
 @media print {
     #app { display: none !important; }
+    /* #label-print-overlay is position:fixed + overflow-y:auto (so the ON-
+       SCREEN preview can scroll) -- per the CSS overflow spec, an explicit
+       overflow-y on a box whose overflow-x stays 'visible' forces overflow-x
+       to compute to 'auto' too, so the box gets its OWN scrollport in both
+       directions. Chrome was rasterizing that scrollport's scrollbars
+       straight into the print/PDF output (confirmed via a "Save as PDF"
+       test -- the arrow/pill marks were baked into the PDF itself, no
+       printer or driver involved). Printing doesn't need a scrollport at
+       all -- page-break-after below already paginates the labels. */
+    #label-print-overlay { position: static; inset: auto; overflow: visible; }
     .label-grid { display: block; padding: 0; }
     .label-card {
         box-sizing: border-box; border: none; border-radius: 0; padding: 1.5mm;
