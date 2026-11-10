@@ -214,9 +214,9 @@ watch(() => [props.shop?.resolved_label_header, props.shop?.name, props.settings
 .label-card { border: 1px dashed #999; border-radius: 6px; padding: 6px; text-align: center; overflow: hidden; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .label-head { display: flex; align-items: center; justify-content: center; margin-bottom: 1px; width: 100%; }
 .label-shop { font-weight: 900; color: #000; white-space: nowrap; line-height: 1.1; max-width: 100%; }
-.label-name { font-size: 9px; font-weight: 700; margin-bottom: 1px; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.label-name { font-size: 11px; font-weight: 800; margin-bottom: 1px; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .label-site { font-size: 7px; font-weight: 900; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.label-variant { font-size: 8px; font-weight: 600; color: #333; margin-bottom: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.label-variant { font-size: 9px; font-weight: 800; color: #000; margin-bottom: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .label-price { font-size: 12px; color: #000; margin-top: 1px; display: flex; flex-direction: column; align-items: center; gap: 0; line-height: 1.15; }
 .label-price-reg { font-size: 8px; color: #888; text-decoration: line-through; }
 .label-price-disc { font-size: 12px; }
