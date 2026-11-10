@@ -115,11 +115,14 @@ async function render() {
     // branch right below always re-passes its own fontSize: 8 regardless
     // of this value, so bumping it never touches Baby Park's dot-exact
     // calibrated thermal labels.
-    // height trimmed from 22 to compensate: a taller fontSize grows the
-    // SVG's total height too, and this card's fixed physical size clips
-    // (overflow: hidden) whatever doesn't fit -- the price line is last
-    // in the stack, so it's the first casualty of a block that grew.
-    const opts = { format: 'CODE128', height: 18, fontSize: 9, margin: 2, displayValue, text: props.label.barcode };
+    // height/margin trimmed well below the original 22/2 to compensate: a
+    // taller fontSize grows the SVG's total height too, and this card's
+    // fixed physical size clips (overflow: hidden) whatever doesn't fit --
+    // the price line is last in the stack, so it's the first casualty of a
+    // block that grew. Card padding (221) and this margin both cut too,
+    // so the net footprint lands smaller than the pre-fontSize-bump
+    // original, not just "compensated back to even."
+    const opts = { format: 'CODE128', height: 14, fontSize: 9, margin: 1, displayValue, text: props.label.barcode };
 
     // Phase 41 thermal mode — a fixed whole-dot module width (2 dots =
     // 0.25mm at 203dpi, 1 dot if the value is long), NEVER the fractional
@@ -219,7 +222,7 @@ watch(() => [props.shop?.resolved_label_header, props.shop?.name, props.settings
 </template>
 
 <style>
-.label-card { border: 1px dashed #999; border-radius: 6px; padding: 6px; text-align: center; overflow: hidden; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.label-card { border: 1px dashed #999; border-radius: 6px; padding: 3px; text-align: center; overflow: hidden; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .label-head { display: flex; align-items: center; justify-content: center; margin-bottom: 1px; width: 100%; }
 .label-shop { font-weight: 900; color: #000; white-space: nowrap; line-height: 1.1; max-width: 100%; }
 .label-name { font-size: 11px; font-weight: 800; margin-bottom: 1px; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
