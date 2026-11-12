@@ -25,7 +25,7 @@ function submit() {
 <template>
     <Head :title="t('login.title')" />
 
-    <div id="login" style="display: flex">
+    <div id="zx-auth" style="display: flex">
         <div class="login-inner">
             <div class="login-brand">
                 <ZaylotixLogo :size="60" />
@@ -74,12 +74,12 @@ function submit() {
                     <button class="btn" type="submit" :disabled="form.processing">
                         <Spinner v-if="form.processing" /><span v-else>{{ t('login.submit') }}</span>
                     </button>
-                    <div v-if="signupEnabled" class="lc-hint">{{ t('login.noAccount') }}<Link :href="route('signup')" style="color:var(--green);font-weight:700">{{ t('login.signupLink') }}</Link></div>
+                    <div v-if="signupEnabled" class="lc-hint">{{ t('login.noAccount') }}<Link :href="route('signup')" style="font-weight:700">{{ t('login.signupLink') }}</Link></div>
                 </form>
             </div>
 
             <div class="login-foot">
-                A <a href="https://zaylotix.com/" target="_blank" rel="noopener" style="color:var(--purple);font-weight:800">Zaylotix →</a> product
+                A <a href="https://zaylotix.com/" target="_blank" rel="noopener" style="font-weight:800">Zaylotix →</a> product
             </div>
         </div>
     </div>

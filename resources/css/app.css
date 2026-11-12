@@ -611,6 +611,36 @@ body {
 .login-foot a { color: var(--green); font-weight: 700; text-decoration: none; }
 .login-foot a[href^="tel"] { color: var(--gold); }
 
+/* zx-auth — the public Login/Signup pages' own skin, matched to the
+   redesigned landing page (deep navy backdrop, purple as the single brand
+   accent). A SEPARATE id from #login on purpose: Error.vue and Public/
+   Rate.vue still render on the plain #login/.login-card chrome above and
+   must keep looking exactly as they do. Same `safe center` overflow fix. */
+#zx-auth {
+    --zxp: #7138E8; --zxp2: #5B2CC4; --zxp-light: #B9A3FF;
+    position: fixed; inset: 0; z-index: 100; overflow-y: auto;
+    background:
+        radial-gradient(640px 360px at 85% -8%, rgba(113, 56, 232, .35), transparent),
+        radial-gradient(520px 320px at -8% 108%, rgba(66, 133, 232, .22), transparent),
+        linear-gradient(165deg, #17152D 0%, #201C3D 100%);
+    display: flex; align-items: center; align-items: safe center; justify-content: center; padding: 24px 18px;
+}
+#zx-auth .login-brand { text-align: center; margin-bottom: 22px; }
+#zx-auth .login-tag { color: rgba(255, 255, 255, .72); }
+#zx-auth .login-card { background: #fff; border: 1px solid rgba(255, 255, 255, .14); border-radius: 22px; padding: 24px 20px; box-shadow: 0 24px 64px rgba(10, 8, 30, .55); animation: zx-auth-in .5s ease both; }
+@keyframes zx-auth-in { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { #zx-auth .login-card { animation: none; } }
+#zx-auth .btn:not(.ghost):not(.wa) { background: var(--zxp); box-shadow: 0 10px 24px rgba(113, 56, 232, .28); }
+#zx-auth .btn:not(.ghost):not(.wa):hover { background: var(--zxp2); }
+#zx-auth .login-foot { color: rgba(255, 255, 255, .55); }
+#zx-auth .lc-hint a { color: var(--zxp); }
+/* the footer sits on the navy itself — the dark brand purple would sink
+   into it, the light tint stays readable */
+#zx-auth .login-foot a { color: var(--zxp-light); }
+/* Signup's business-type tiles — neutral/purple on this skin, and their
+   labels in plain ink instead of the onboarding flow's green */
+#zx-auth .onb-3grid .item b { color: var(--ink); }
+
 /* same align-items: safe center fix as #login above — same overflow-clipping risk on a tall step. */
 #onboarding { position: fixed; inset: 0; z-index: 100; overflow-y: auto; background: radial-gradient(600px 340px at 85% -6%, rgba(242, 106, 27, .10), transparent), radial-gradient(560px 400px at -8% 106%, rgba(31, 164, 99, .14), transparent), var(--bg); display: flex; align-items: center; align-items: safe center; justify-content: center; padding: 24px 18px; }
 .onb-inner { width: 100%; max-width: 400px; }

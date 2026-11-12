@@ -27,7 +27,7 @@ function submit() {
 <template>
     <Head :title="t('signup.title')" />
 
-    <div id="login" style="display: flex">
+    <div id="zx-auth" style="display: flex">
         <div class="login-inner">
             <div class="login-brand">
                 <ZaylotixLogo :size="52" />
@@ -50,7 +50,7 @@ function submit() {
                             <button
                                 v-for="bt in businessTypes" :key="bt.id" type="button"
                                 class="item"
-                                :style="{ cursor: 'pointer', border: form.business_type_id === bt.id ? '1.5px solid var(--gold)' : '1.5px solid var(--line2)', background: form.business_type_id === bt.id ? 'var(--goldSoft)' : 'var(--greenSoft)' }"
+                                :style="{ cursor: 'pointer', border: form.business_type_id === bt.id ? '1.5px solid var(--zxp)' : '1.5px solid var(--line2)', background: form.business_type_id === bt.id ? '#EFE6FD' : '#F1F2F4' }"
                                 @click="form.business_type_id = bt.id"
                             >
                                 <div class="ic">{{ TYPE_ICONS[bt.slug] || '📦' }}</div>
@@ -87,13 +87,13 @@ function submit() {
                         <Spinner v-if="form.processing" /><span v-else>{{ t('signup.submit') }}</span>
                     </button>
                     <div class="lc-hint">
-                        {{ t('signup.hasAccount') }}<Link :href="route('login')" style="color:var(--green);font-weight:700">{{ t('signup.loginLink') }}</Link>
+                        {{ t('signup.hasAccount') }}<Link :href="route('login')" style="font-weight:700">{{ t('signup.loginLink') }}</Link>
                     </div>
                 </form>
             </div>
 
             <div class="login-foot">
-                A <a href="https://zaylotix.com/" target="_blank" rel="noopener" style="color:var(--purple);font-weight:800">Zaylotix →</a> product
+                A <a href="https://zaylotix.com/" target="_blank" rel="noopener" style="font-weight:800">Zaylotix →</a> product
             </div>
         </div>
     </div>
