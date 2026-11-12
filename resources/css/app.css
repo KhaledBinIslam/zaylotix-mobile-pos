@@ -3,35 +3,44 @@
 @tailwind utilities;
 
 :root {
-  --bg: #F2F7F2;
-  --bg2: #E7F1E8;
+  /* 2026-11 reskin (Khaled's landing-page guideline, carried into the app):
+     the green-tinted neutral ramp becomes the landing's warm off-white/
+     neutral family, text goes neutral ink, and the accents land on their
+     purposes — green #20A36A for money/success, orange for POS/checkout
+     (kept at the existing contrast-safe depth: the brief's lighter #FF8A36
+     fails white-text contrast on buttons, so it lives in the soft tint
+     instead), blue #4285E8 for inventory/info, purple #7138E8 strictly as
+     the brand accent. Every page reads these tokens, so this block IS the
+     app-wide reskin — no per-page edits. */
+  --bg: #FAFAF7;
+  --bg2: #F1F2F4;
   --panel: #FFFFFF;
-  --panel2: #F5FAF5;
-  --ink: #12261C;
-  --tx: #12261C;
-  --mut: #5F7A67;
+  --panel2: #F6F6F8;
+  --ink: #202124;
+  --tx: #202124;
+  --mut: #5F6168;
   /* Was #93A99A (~2.9:1 on white, below readable text contrast) — Khaled's
      explicit call: quiet/secondary text (stat sub-labels, timestamps,
      hints) still needs to be clearly legible, not just visually "quiet".
-     #627A6C clears ~4.5:1 on --panel while staying lighter-weight than
-     --mut's own ~4.7:1, so the two-tier hierarchy (mut = secondary body,
-     dim = tertiary hint) still reads, just no longer illegibly faint. */
-  --dim: #627A6C;
-  --line: #DCE8DD;
-  --line2: #C4DAC7;
-  --green: #1FA463;
-  --green2: #178A52;
-  --greenSoft: #E4F3EA;
+     This neutral clears ~4.5:1 on --panel while staying lighter-weight
+     than --mut's own contrast, so the two-tier hierarchy (mut = secondary
+     body, dim = tertiary hint) still reads, just no longer illegibly faint. */
+  --dim: #6B6E76;
+  --line: #E6E6E9;
+  --line2: #D4D4DA;
+  --green: #20A36A;
+  --green2: #188756;
+  --greenSoft: #E3F5EC;
   --gold: #F26A1B;
   --gold2: #D9560D;
-  --goldSoft: #FDE9DC;
-  --mint: #1FA463;
+  --goldSoft: #FFEEE0;
+  --mint: #20A36A;
   --rose: #E5484D;
   --roseSoft: #FBE3E4;
-  --sky: #2E7DD1;
-  --skySoft: #E4EFFB;
-  --purple: #7C3AED;
-  --purpleSoft: #EFE7FD;
+  --sky: #4285E8;
+  --skySoft: #E8F0FD;
+  --purple: #7138E8;
+  --purpleSoft: #EFE6FD;
   --wa: #25D366;
 
   /* Admin backoffice's own identity (Phase 10, Khaled's explicit call:
@@ -134,9 +143,9 @@
    overlay, hero banner text sitting on its own gradient) are untouched on
    purpose — see their own comments elsewhere in this file. */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { --bg:#0E1512; --bg2:#121C17; --panel:#16211C; --panel2:#1B2821; --ink:#E8F1EC; --tx:#E8F1EC; --mut:#A9C2B4; --dim:#87A696; --line:#24342B; --line2:#314536; --green:#2ECC80; --green2:#27B873; --greenSoft:#163524; --gold:#FF8F4D; --gold2:#FF7A2E; --goldSoft:#3B2414; --mint:#2ECC80; --rose:#FF6B70; --roseSoft:#3A1619; --sky:#5FA8EE; --skySoft:#142A3C; --purple:#A077FF; --purpleSoft:#241A40; --admin-primary:#9B7FFF; --admin-primary2:#7C5CFF; --admin-primary-soft:#241C47; --sh:0 6px 20px rgba(0,0,0,.5); --sh-md:0 12px 40px rgba(0,0,0,.55); --sh-lg:0 24px 64px rgba(0,0,0,.65); }
+  :root:not([data-theme="light"]) { --bg:#131221; --bg2:#17162B; --panel:#1B1A30; --panel2:#211F38; --ink:#ECEAF6; --tx:#ECEAF6; --mut:#A8A6C0; --dim:#8E8CA8; --line:#2A2843; --line2:#3B3859; --green:#2ECC80; --green2:#27B873; --greenSoft:#163524; --gold:#FF8F4D; --gold2:#FF7A2E; --goldSoft:#3B2414; --mint:#2ECC80; --rose:#FF6B70; --roseSoft:#3A1619; --sky:#5FA8EE; --skySoft:#142A3C; --purple:#A077FF; --purpleSoft:#241A40; --admin-primary:#9B7FFF; --admin-primary2:#7C5CFF; --admin-primary-soft:#241C47; --sh:0 6px 20px rgba(0,0,0,.5); --sh-md:0 12px 40px rgba(0,0,0,.55); --sh-lg:0 24px 64px rgba(0,0,0,.65); }
 }
-:root[data-theme="dark"] { --bg:#0E1512; --bg2:#121C17; --panel:#16211C; --panel2:#1B2821; --ink:#E8F1EC; --tx:#E8F1EC; --mut:#A9C2B4; --dim:#87A696; --line:#24342B; --line2:#314536; --green:#2ECC80; --green2:#27B873; --greenSoft:#163524; --gold:#FF8F4D; --gold2:#FF7A2E; --goldSoft:#3B2414; --mint:#2ECC80; --rose:#FF6B70; --roseSoft:#3A1619; --sky:#5FA8EE; --skySoft:#142A3C; --purple:#A077FF; --purpleSoft:#241A40; --admin-primary:#9B7FFF; --admin-primary2:#7C5CFF; --admin-primary-soft:#241C47; --sh:0 6px 20px rgba(0,0,0,.5); --sh-md:0 12px 40px rgba(0,0,0,.55); --sh-lg:0 24px 64px rgba(0,0,0,.65); }
+:root[data-theme="dark"] { --bg:#131221; --bg2:#17162B; --panel:#1B1A30; --panel2:#211F38; --ink:#ECEAF6; --tx:#ECEAF6; --mut:#A8A6C0; --dim:#8E8CA8; --line:#2A2843; --line2:#3B3859; --green:#2ECC80; --green2:#27B873; --greenSoft:#163524; --gold:#FF8F4D; --gold2:#FF7A2E; --goldSoft:#3B2414; --mint:#2ECC80; --rose:#FF6B70; --roseSoft:#3A1619; --sky:#5FA8EE; --skySoft:#142A3C; --purple:#A077FF; --purpleSoft:#241A40; --admin-primary:#9B7FFF; --admin-primary2:#7C5CFF; --admin-primary-soft:#241C47; --sh:0 6px 20px rgba(0,0,0,.5); --sh-md:0 12px 40px rgba(0,0,0,.55); --sh-lg:0 24px 64px rgba(0,0,0,.65); }
 
 /* Boot splash (Phase 10) — see the HTML comment in app.blade.php for why
    this lives in raw HTML/CSS instead of a Vue component. app.js removes
@@ -393,11 +402,28 @@ body {
    bell by default, and re-anchored near the sidebar's bell on desktop
    (see AppLayout.vue) since that button lives in the sidebar footer instead */
 .notif-scrim { position: fixed; inset: 0; background: transparent; z-index: 62; }
-/* Desktop sidebar's active-item state — was raw Tailwind bg-emerald-50/
-   text-emerald-700, which don't correspond to this app's own brand tokens
-   (--green/--greenSoft below are the real ones, used everywhere else:
-   pills, quick-action buttons, totals). Same active look, now on-token. */
-.nav-item-on { background: var(--greenSoft); color: var(--green2); }
+/* Desktop sidebar — navy chrome matching the redesigned landing page's
+   hero (same gradient + glow recipe), per Khaled's "carry the landing
+   guideline into every page". Only the <aside> wears this; the page
+   content area, mobile bars and sheets stay on the normal light tokens.
+   Deliberately literal colors, not var(--bg) etc: this surface is the
+   same navy in light AND dark theme, exactly like the landing hero. */
+.zx-side {
+    background:
+        radial-gradient(420px 260px at 85% -6%, rgba(113, 56, 232, .28), transparent),
+        linear-gradient(180deg, #17152D 0%, #201C3D 100%);
+    border-right: 1px solid rgba(255, 255, 255, .08);
+}
+.zx-side .zx-side-sep { border-color: rgba(255, 255, 255, .1); }
+.zx-side-brand { color: #C9B8FF; }
+.zx-side-dim { color: rgba(255, 255, 255, .55); }
+.zx-side-label { color: rgba(255, 255, 255, .4); }
+.zx-side-item { color: rgba(255, 255, 255, .72); }
+.zx-side-item:hover { background: rgba(255, 255, 255, .08); color: #fff; }
+.zx-side-danger { color: #FF9B9F; }
+.zx-side-danger:hover { background: rgba(229, 72, 77, .18); }
+/* active item — the brand purple as a real filled pill on the navy */
+.nav-item-on { background: var(--purple); color: #fff; box-shadow: 0 6px 16px rgba(113, 56, 232, .35); }
 
 .notif-dropdown {
   position: fixed; z-index: 63; top: 62px; right: 14px; width: 320px; max-width: 90vw;

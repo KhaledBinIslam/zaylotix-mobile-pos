@@ -607,11 +607,11 @@ const mobileNavSlots = computed(() => {
 </script>
 
 <template>
-    <div class="lg:flex lg:min-h-screen lg:bg-gray-50">
+    <div class="lg:flex lg:min-h-screen lg:bg-[var(--bg2)]">
         <!-- desktop sidebar (web view) — hidden on phone/APK widths, where the
              bottom tab bar below is used instead -->
-        <aside class="hidden lg:flex lg:flex-col lg:w-64 lg:shrink-0 lg:bg-white lg:border-r lg:sticky lg:top-0 lg:h-screen">
-            <div class="p-5 border-b flex items-center gap-2">
+        <aside class="zx-side hidden lg:flex lg:flex-col lg:w-64 lg:shrink-0 lg:sticky lg:top-0 lg:h-screen">
+            <div class="p-5 border-b zx-side-sep flex items-center gap-2">
                 <!-- a shop's own uploaded logo (More → logo) takes priority here
                      over the platform's own brand mark — this header is the one
                      place a shop is "branded" in daily use, unlike receipts/
@@ -620,8 +620,8 @@ const mobileNavSlots = computed(() => {
                 <img v-else-if="platformLogoUrl" :src="platformLogoUrl" class="w-[34px] h-[34px] object-contain rounded-lg shrink-0">
                 <ZaylotixMark v-else :size="34" />
                 <div>
-                    <div class="font-extrabold text-base leading-tight" style="color:var(--green)">Zaylotix POS</div>
-                    <div class="text-[11px] text-gray-400 leading-tight" v-if="shop">{{ shop.name }}</div>
+                    <div class="font-extrabold text-base leading-tight zx-side-brand">Zaylotix POS</div>
+                    <div class="text-[11px] zx-side-dim leading-tight" v-if="shop">{{ shop.name }}</div>
                 </div>
             </div>
 
@@ -635,19 +635,19 @@ const mobileNavSlots = computed(() => {
                 <Link
                     :href="route('app.home')"
                     class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium"
-                    :class="active === 'home' ? 'nav-item-on' : 'text-gray-600 hover:bg-gray-100'"
+                    :class="active === 'home' ? 'nav-item-on' : 'zx-side-item'"
                 >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 shrink-0" v-html="ICONS.home"></svg> {{ t('nav.home') }}
                 </Link>
 
                 <div v-for="group in sidebarGroups" :key="group.label">
                     <template v-if="group.items.some(i => i.show)">
-                        <div class="px-3 pt-1 pb-1 text-[10px] font-bold uppercase tracking-wide text-gray-400">{{ group.label }}</div>
+                        <div class="px-3 pt-1 pb-1 text-[10px] font-bold uppercase tracking-wide zx-side-label">{{ group.label }}</div>
                         <Link
                             v-for="item in group.items.filter(i => i.show)" :key="item.key"
                             :href="item.href"
                             class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium"
-                            :class="item.on ? 'nav-item-on' : 'text-gray-600 hover:bg-gray-100'"
+                            :class="item.on ? 'nav-item-on' : 'zx-side-item'"
                         >
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 shrink-0" v-html="ICONS[item.icon]"></svg> {{ item.label }}
                         </Link>
@@ -655,25 +655,25 @@ const mobileNavSlots = computed(() => {
                 </div>
             </nav>
 
-            <div class="p-3 border-t space-y-1">
-                <button v-if="isOwner" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100" @click="toggleNotifications">
+            <div class="p-3 border-t zx-side-sep space-y-1">
+                <button v-if="isOwner" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium zx-side-item" @click="toggleNotifications">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 shrink-0" v-html="ICONS.bell"></svg> {{ t('notif.title') }}
                     <span v-if="unreadCount" class="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">{{ unreadCount }}</span>
                 </button>
-                <button class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100" @click="toggleLang">
+                <button class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium zx-side-item" @click="toggleLang">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 shrink-0" v-html="ICONS.globe"></svg> {{ lang === 'bn' ? 'English' : 'বাংলা' }}
                 </button>
-                <button class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-rose-600 hover:bg-rose-50" @click="logout">
+                <button class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium zx-side-danger" @click="logout">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 shrink-0" v-html="ICONS.logout"></svg> {{ t('common.logout') }}
                 </button>
             </div>
 
-            <div class="p-4 border-t text-center text-[11px] text-gray-400">
-                A <a href="https://zaylotix.com/" target="_blank" class="font-semibold" style="color:var(--green)">Zaylotix</a> product
+            <div class="p-4 border-t zx-side-sep text-center text-[11px] zx-side-dim">
+                A <a href="https://zaylotix.com/" target="_blank" class="font-semibold zx-side-brand">Zaylotix</a> product
                 <template v-if="shop?.support_contact_name || shop?.support_contact_phone"><br>
                     {{ t('more.supportContact') }}:
-                    <span v-if="shop?.support_contact_name" class="font-semibold text-gray-600">{{ shop.support_contact_name }}</span>
-                    <a v-if="shop?.support_contact_phone" :href="'tel:' + shop.support_contact_phone" class="font-semibold text-gray-600">{{ shop.support_contact_phone }}</a>
+                    <span v-if="shop?.support_contact_name" class="font-semibold zx-side-item">{{ shop.support_contact_name }}</span>
+                    <a v-if="shop?.support_contact_phone" :href="'tel:' + shop.support_contact_phone" class="font-semibold zx-side-item">{{ shop.support_contact_phone }}</a>
                 </template>
             </div>
         </aside>
