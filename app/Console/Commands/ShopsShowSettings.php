@@ -14,7 +14,7 @@ use Illuminate\Console\Command;
  */
 class ShopsShowSettings extends Command
 {
-    protected $signature = 'shops:show-settings {--shop=} {--name=}';
+    protected $signature = 'shops:show-settings {--shop=} {--name=} {--children}';
 
     protected $description = 'Read-only: dumps a shop\'s settings relevant to cloning it into a new shop.';
 
@@ -58,6 +58,14 @@ class ShopsShowSettings extends Command
         $this->line('price tier rows: '.\App\Models\ProductPriceTier::withoutGlobalScopes()->whereIn('product_id', \App\Models\Product::withoutGlobalScopes()->where('shop_id', $shop->id)->pluck('id'))->count());
         $users = \App\Models\User::withoutGlobalScopes()->where('shop_id', $shop->id)->get(['role', 'phone']);
         $this->line('users: '.$users->map(fn ($u) => "{$u->role}:{$u->phone}")->implode(' | '));
+
+        if ($this->option('children')) {
+            $branches = Shop::withoutGlobalScopes()->where('parent_shop_id', $shop->id)->get(['id', 'name', 'area', 'sales_mode', 'hardware_scanner_enabled']);
+            $this->line('branches: '.($branches->isEmpty() ? '(none)' : ''));
+            foreach ($branches as $b) {
+                $this->line("  id={$b->id} name={$b->name} area={$b->area} sales_mode={$b->sales_mode} hardware_scanner_enabled=".($b->hardware_scanner_enabled ? 'true' : 'false'));
+            }
+        }
 
         return self::SUCCESS;
     }
