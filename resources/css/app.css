@@ -502,7 +502,28 @@ body {
    crowding the +/- buttons either side of it. */
 .qn-input { flex: 0 0 46px; min-width: 30px; text-align: center; font-weight: 750; font-variant-numeric: tabular-nums; padding: 4px 2px; border-radius: 8px; }
 
-.pgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* align-items:start — without it, grid-stretch inflates every short card to
+   its row's tallest neighbor, which read as random empty boxes on the Quick
+   Sale screenshot; cards now hug their own content */
+.pgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
+
+/* a variant card's size table, capped and internally scrollable — the card
+   itself stays a tidy, grid-friendly height no matter how many sizes the
+   article carries (a 26-45 pant run is 20 rows) */
+.vscroll { max-height: 252px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+/* the size table's own touch ergonomics — the +/- steppers carry inline
+   padding:2px 8px (desktop-dense); on any touch screen they get a real
+   finger-sized hit area, and the Add button too, without template changes */
+@media (pointer: coarse) {
+    .vscroll .btn.ghost.sm { min-width: 34px; min-height: 32px; }
+    .vscroll .btn.sm { min-height: 32px; }
+}
+/* 320-400px phones: the 4-column size row (size | price | qty | Add) must
+   never overflow sideways — tighter cell padding, price stays on one line */
+@media (max-width: 400px) {
+    .vscroll td { padding: 7px 2px !important; font-size: 12.5px; }
+    .vscroll td:nth-child(2) { white-space: nowrap; }
+}
 /* content-visibility:auto tells the browser to skip layout/paint entirely
    for any card currently off-screen — no JS, no change to how many cards
    are actually in the DOM, every click handler/cart-state binding on a
@@ -517,7 +538,7 @@ body {
    Pos/Index.vue's visibleProducts/loadMoreSentinel for the complementary
    piece — capping how many cards ever get mounted at once in the first
    place, which this alone doesn't do. */
-.pcard { content-visibility: auto; contain-intrinsic-size: 0 140px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--sh); position: relative; width: 100%; }
+.pcard { content-visibility: auto; contain-intrinsic-size: 0 140px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 1px 2px rgba(23, 21, 45, .04), 0 8px 22px rgba(23, 21, 45, .05); position: relative; width: 100%; }
 /* A card carrying a colour-chip row and a size/price table (the SkyBuy-
    style picker Baby Park sells from) is a worksheet, not a tile — in the
    phone's two-column grid its chips truncated and its rows cramped (the

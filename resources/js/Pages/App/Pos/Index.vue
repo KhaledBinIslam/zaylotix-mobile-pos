@@ -1882,7 +1882,11 @@ useKeyboardShortcuts({
                                     <span style="padding-right:4px">{{ g.color }}</span>
                                 </button>
                             </div>
-                            <table v-if="activeColorGroup(p)" style="width:100%;border-collapse:collapse;font-size:13px;margin-top:4px;padding-top:6px;border-top:1px solid var(--line)">
+                            <!-- capped + internally scrollable: a 20-size pant used to balloon its
+                                 card to ~2000px and wreck the whole grid's rhythm (Khaled's full-page
+                                 screenshot); every row/button inside is untouched, it just scrolls -->
+                            <div v-if="activeColorGroup(p)" class="vscroll">
+                            <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:4px;padding-top:6px;border-top:1px solid var(--line)">
                                 <tbody>
                                     <tr
                                         v-for="v in activeColorGroup(p).variants" :key="v.id"
@@ -1918,6 +1922,7 @@ useKeyboardShortcuts({
                                     </tr>
                                 </tbody>
                             </table>
+                            </div>
                         </div>
                     </div>
                 </div>
