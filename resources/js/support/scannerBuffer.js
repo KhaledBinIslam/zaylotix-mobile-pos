@@ -1,4 +1,11 @@
-export const DEFAULT_MAX_GAP_MS = 30;
+// Liberty Bali's new Bluetooth scanner (XL-9309B) sends its burst with
+// wider gaps than a wired USB scanner -- 30ms flagged every real scan from
+// it as "too slow" and let the raw digits fall through as literal typed
+// text in whatever field had focus (Khaled: "scan e pore thake kichu
+// hoina"). 60ms still rejects the test suite's 100ms human-typing case
+// (nobody sustains sub-60ms on every keystroke of a barcode by accident)
+// while giving BLE HID's extra latency room to still register as a scan.
+export const DEFAULT_MAX_GAP_MS = 60;
 export const DEFAULT_MIN_LENGTH = 4;
 
 export function createScannerState() {
