@@ -8,7 +8,23 @@ const props = defineProps({
     shop: Object, businessTypes: Array, features: Array, shopFeatureKeys: Array, branches: { type: Array, default: null },
     ambassadors: { type: Array, default: null }, currentAmbassadorId: { type: Number, default: null },
     customization: { type: Object, default: () => ({}) }, canEditCustomization: Boolean,
+    isSuperAdmin: Boolean, owner: { type: Object, default: null },
 });
+
+// owner's login phone/email reset -- its own endpoint, same
+// isolated-from-the-main-form pattern as ambassadorForm/labelHeaderForm
+// above. Password starts blank; leaving it blank keeps the owner's
+// existing password untouched (ShopController::updateOwnerCredentials()).
+const ownerForm = useForm({
+    phone: props.owner?.phone || '', email: props.owner?.email || '', password: '',
+});
+function saveOwnerCredentials() {
+    if (! confirm(`'${props.shop.name}'-এর owner-এর লগইন তথ্য বদলাবেন?`)) return;
+    ownerForm.patch(route('admin.shops.ownerCredentials', props.shop.id), {
+        preserveScroll: true,
+        onSuccess: () => (ownerForm.password = ''),
+    });
+}
 
 // separate from the main shop form above -- posts to its own endpoint
 // (AmbassadorController::assignToShop) so saving ambassador assignment
@@ -291,6 +307,35 @@ const sourceBadgeClass = (source) => ({
             </div>
             <button class="px-4 py-2 rounded-lg bg-brand-purple text-white text-sm font-bold" :disabled="ambassadorForm.processing">
                 {{ ambassadorForm.processing ? 'Saving...' : 'Save ambassador' }}
+            </button>
+        </form>
+
+        <!-- super-admin-only: reset the shop owner's own login phone/
+             email/password -- for a locked-out owner with no other way
+             back in. Never shows/returns the existing password, only
+             lets one be SET. -->
+        <form v-if="isSuperAdmin && owner" @submit.prevent="saveOwnerCredentials" class="bg-white border rounded-xl p-6 max-w-2xl mt-6 space-y-3">
+            <h2 class="text-lg font-bold">🔑 Owner লগইন তথ্য</h2>
+            <p class="text-xs text-gray-400">Owner লক-আউট হয়ে গেলে এখান থেকে ফোন/ইমেইল বা পাসওয়ার্ড রিসেট করা যায়। পাসওয়ার্ড ফাঁকা রাখলে পুরোনোটাই থাকবে।</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="text-sm font-medium text-gray-600">Phone (login ID)</label>
+                    <input v-model="ownerForm.phone" class="mt-1 w-full rounded-lg border-gray-300">
+                    <div v-if="ownerForm.errors.phone" class="text-rose-600 text-xs mt-1">{{ ownerForm.errors.phone }}</div>
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-gray-600">Email <span class="text-xs font-normal text-gray-400">(ঐচ্ছিক)</span></label>
+                    <input v-model="ownerForm.email" class="mt-1 w-full rounded-lg border-gray-300">
+                    <div v-if="ownerForm.errors.email" class="text-rose-600 text-xs mt-1">{{ ownerForm.errors.email }}</div>
+                </div>
+            </div>
+            <div>
+                <label class="text-sm font-medium text-gray-600">নতুন পাসওয়ার্ড <span class="text-xs font-normal text-gray-400">(ফাঁকা = অপরিবর্তিত)</span></label>
+                <input v-model="ownerForm.password" type="text" placeholder="কমপক্ষে ৬ ক্যারেক্টার" class="mt-1 w-full rounded-lg border-gray-300">
+                <div v-if="ownerForm.errors.password" class="text-rose-600 text-xs mt-1">{{ ownerForm.errors.password }}</div>
+            </div>
+            <button class="px-4 py-2 rounded-lg bg-brand-purple text-white text-sm font-bold" :disabled="ownerForm.processing">
+                {{ ownerForm.processing ? 'Saving...' : 'Save owner credentials' }}
             </button>
         </form>
 

@@ -72,6 +72,7 @@ Route::middleware('admin')->group(function () {
     // feature catalog, other admin accounts) is super_admin-only
     Route::middleware('super.admin')->group(function () {
         Route::delete('shops/{shop}', [ShopController::class, 'destroy'])->name('shops.destroy');
+        Route::patch('shops/{shop}/owner-credentials', [ShopController::class, 'updateOwnerCredentials'])->name('shops.ownerCredentials');
 
         // Phase 40 — shop customization panel's write actions (the shop
         // edit page shows effective values to every admin; changing another

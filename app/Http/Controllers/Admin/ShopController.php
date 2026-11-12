@@ -15,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
@@ -114,6 +115,12 @@ class ShopController extends Controller
             'branches' => $shop->parent_shop_id ? null : $shop->branches()->get(['id', 'name', 'area', 'status', 'is_warehouse', 'created_at']),
             'ambassadors' => $isSuperAdmin ? \App\Models\Ambassador::where('status', 'active')->orderBy('name')->get(['id', 'name', 'employee_id']) : null,
             'currentAmbassadorId' => $isSuperAdmin ? $shop->currentAmbassador()?->id : null,
+            'isSuperAdmin' => $isSuperAdmin,
+            // owner's own login phone/email — never the password itself
+            // (User::$hidden already strips it, this is belt-and-suspenders
+            // since a super admin can only ever SET a new one below, never
+            // read the existing one)
+            'owner' => $shop->owner()->first(['id', 'name', 'phone', 'email']),
             // Phase 40 — every customizable setting's effective value and
             // its source layer (শপ/ব্যবসা/ডিফল্ট); see App\Support\ShopCustomization
             'customization' => \App\Support\ShopCustomization::effective($shop),
@@ -225,6 +232,35 @@ class ShopController extends Controller
         AdminActivity::log('shop.createBranch', "Created branch '{$branch->name}' under '{$shop->name}'.", $branch);
 
         return back()->with('success', "শাখা '{$branch->name}' তৈরি হয়েছে।");
+    }
+
+    /**
+     * Super-admin-only reset of a shop owner's own login ID (phone/email)
+     * and/or password — for when an owner is locked out and can't be
+     * reached any other way. Route is already behind `super.admin`
+     * middleware; every call is written to the audit log since this
+     * directly grants login access to the shop.
+     */
+    public function updateOwnerCredentials(Request $request, Shop $shop)
+    {
+        $owner = $shop->owner;
+        abort_if(! $owner, 404, 'এই শপের কোনো owner অ্যাকাউন্ট পাওয়া যায়নি।');
+
+        $data = $request->validate([
+            'phone' => ['required', 'string', 'max:20', Rule::unique('users', 'phone')->ignore($owner->id)],
+            'email' => ['nullable', 'email', 'max:255', Rule::unique('users', 'email')->ignore($owner->id)],
+            'password' => ['nullable', 'string', 'min:6'],
+        ]);
+
+        $owner->update([
+            'phone' => $data['phone'],
+            'email' => $data['email'] ?? null,
+            ...(! empty($data['password']) ? ['password' => $data['password']] : []),
+        ]);
+
+        AdminActivity::log('shop.ownerCredentials', "Reset login credentials for shop '{$shop->name}''s owner.", $shop);
+
+        return back()->with('success', "'{$shop->name}' — owner login credentials updated.");
     }
 
     public function toggleStatus(Shop $shop)

@@ -123,6 +123,64 @@ class AdminRbacAndImpersonationTest extends TestCase
         $response->assertInertia(fn ($page) => $page->where('impersonating.adminName', 'Support Person'));
     }
 
+    public function test_a_support_admin_cannot_reset_an_owners_login_credentials(): void
+    {
+        $support = Admin::create(['name' => 'Support', 'email' => 'cred1@test.com', 'password' => 'password', 'role' => 'support']);
+        [$shop, $owner] = $this->createShopWithOwner();
+
+        $response = $this->actingAs($support, 'admin')->patch("/admin/shops/{$shop->id}/owner-credentials", [
+            'phone' => '01700000099',
+        ]);
+
+        $response->assertStatus(403);
+        $this->assertNotSame('01700000099', $owner->fresh()->phone);
+    }
+
+    public function test_a_super_admin_can_reset_an_owners_phone_and_password(): void
+    {
+        $superAdmin = Admin::create(['name' => 'Super', 'email' => 'cred2@test.com', 'password' => 'password', 'role' => 'super_admin']);
+        [$shop, $owner] = $this->createShopWithOwner();
+
+        $response = $this->actingAs($superAdmin, 'admin')->patch("/admin/shops/{$shop->id}/owner-credentials", [
+            'phone' => '01700000088',
+            'password' => 'newsecret1',
+        ]);
+
+        $response->assertRedirect();
+        $owner->refresh();
+        $this->assertSame('01700000088', $owner->phone);
+        $this->assertTrue(\Illuminate\Support\Facades\Hash::check('newsecret1', $owner->password));
+        $this->assertDatabaseHas('admin_activity_logs', ['action' => 'shop.ownerCredentials']);
+    }
+
+    public function test_leaving_the_password_blank_keeps_the_owners_existing_password(): void
+    {
+        $superAdmin = Admin::create(['name' => 'Super', 'email' => 'cred3@test.com', 'password' => 'password', 'role' => 'super_admin']);
+        [$shop, $owner] = $this->createShopWithOwner();
+        $originalHash = $owner->password;
+
+        $this->actingAs($superAdmin, 'admin')->patch("/admin/shops/{$shop->id}/owner-credentials", [
+            'phone' => $owner->phone,
+        ])->assertRedirect();
+
+        $this->assertSame($originalHash, $owner->fresh()->password);
+    }
+
+    public function test_owner_phone_must_be_unique_across_users(): void
+    {
+        $superAdmin = Admin::create(['name' => 'Super', 'email' => 'cred4@test.com', 'password' => 'password', 'role' => 'super_admin']);
+        [, $otherOwner] = $this->createShopWithOwner([], ['phone' => '01711112222']);
+        [$shop, $owner] = $this->createShopWithOwner();
+
+        $response = $this->actingAs($superAdmin, 'admin')->patch("/admin/shops/{$shop->id}/owner-credentials", [
+            'phone' => '01711112222',
+        ]);
+
+        $response->assertSessionHasErrors('phone');
+        $this->assertNotSame('01711112222', $owner->fresh()->phone);
+        $this->assertSame('01711112222', $otherOwner->fresh()->phone);
+    }
+
     public function test_signup_business_types_endpoint_still_works_without_super_admin_gate(): void
     {
         // sanity check that the public self-serve signup page (which lists
