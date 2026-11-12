@@ -24,9 +24,11 @@
         "vue": "^3.4.0"
     },
     "dependencies": {
+        "gsap": "^3.12.5",
         "html2canvas": "^1.4.1",
         "html5-qrcode": "^2.3.8",
         "jsbarcode": "^3.12.3",
-        "tesseract.js": "^7.0.0"
+        "tesseract.js": "^7.0.0",
+        "three": "^0.169.0"
     }
 }
