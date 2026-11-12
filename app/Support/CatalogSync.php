@@ -4,6 +4,8 @@ namespace App\Support;
 
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Models\ProductColorBarcode;
+use App\Models\ProductColorBarcodeAlias;
 use App\Models\ProductPriceTier;
 use App\Models\ProductVariant;
 use App\Models\Shop;
@@ -129,6 +131,7 @@ class CatalogSync
             $branchProduct = static::upsertBranchProduct($mainShop, $branch, $master, $existing, $categoryMap, $unitMap);
             static::syncPriceTiersForProduct($master, $branchProduct);
             static::syncVariantsOfProduct($mainShop, $branch, $master->id, $branchProduct->id);
+            static::syncColorBarcodesOfProduct($mainShop, $branch, $master->id, $branchProduct->id);
         }
     }
 
@@ -493,6 +496,7 @@ class CatalogSync
     {
         foreach ($productMap as $mainProductId => $branchProductId) {
             static::syncVariantsOfProduct($mainShop, $branch, $mainProductId, $branchProductId);
+            static::syncColorBarcodesOfProduct($mainShop, $branch, $mainProductId, $branchProductId);
         }
     }
 
@@ -531,6 +535,45 @@ class CatalogSync
                 } else {
                     ProductVariant::create(['shop_id' => $branch->id, 'product_id' => $branchProductId, 'stock' => $startingStock, ...$attrs]);
                 }
+            }
+        }
+    }
+
+    /**
+     * The "tier 2" color-level scannable barcode (docs/ARTICLE_SERIES_PLAN.md
+     * §9) for every color of one product, plus its alias history — neither
+     * table was ever touched by this class before, so a branch's own copy
+     * of a product/its sizes existed but its color-barcode stickers always
+     * came back "not found" when scanned there (found live: Baby Park's
+     * branch could never resolve a color-level sticker at all, variant-tier
+     * stickers were unaffected since ProductVariant::barcode IS synced by
+     * syncVariantsOfProduct() above). Matched by `color` (unique per
+     * product_id+color, same as product_color_barcodes' own DB constraint);
+     * the barcode value is kept IDENTICAL across shops on purpose, same
+     * reasoning as a variant's barcode — safe because both tables' unique
+     * index is scoped to (shop_id, barcode), not barcode alone.
+     */
+    private static function syncColorBarcodesOfProduct(Shop $mainShop, Shop $branch, int $mainProductId, int $branchProductId): void
+    {
+        $branchByColor = ProductColorBarcode::withoutGlobalScopes()->where('shop_id', $branch->id)->where('product_id', $branchProductId)->get()->keyBy('color');
+
+        foreach (ProductColorBarcode::withoutGlobalScopes()->where('shop_id', $mainShop->id)->where('product_id', $mainProductId)->get() as $cb) {
+            $existing = $branchByColor->get($cb->color);
+            if ($existing) {
+                $existing->update(['barcode' => $cb->barcode]);
+            } else {
+                ProductColorBarcode::create(['shop_id' => $branch->id, 'product_id' => $branchProductId, 'color' => $cb->color, 'barcode' => $cb->barcode]);
+            }
+        }
+
+        // append-only history -- every old value the main shop's color ever
+        // held also has to resolve at the branch, so a sticker printed
+        // before a rename stays scannable there too. Matched by barcode
+        // (unique per shop+barcode, same as the live table), never updated.
+        $branchBarcodes = ProductColorBarcodeAlias::withoutGlobalScopes()->where('shop_id', $branch->id)->pluck('barcode')->flip();
+        foreach (ProductColorBarcodeAlias::withoutGlobalScopes()->where('shop_id', $mainShop->id)->where('product_id', $mainProductId)->get() as $alias) {
+            if (! isset($branchBarcodes[$alias->barcode])) {
+                ProductColorBarcodeAlias::create(['shop_id' => $branch->id, 'product_id' => $branchProductId, 'color' => $alias->color, 'barcode' => $alias->barcode, 'created_at' => $alias->created_at]);
             }
         }
     }

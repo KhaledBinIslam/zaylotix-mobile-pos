@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\Product;
+use App\Models\ProductColorBarcode;
+use App\Models\ProductColorBarcodeAlias;
 use App\Models\ProductVariant;
 use App\Models\Shop;
 use App\Support\CatalogSync;
@@ -133,6 +135,52 @@ class CatalogSyncBusinessTest extends TestCase
         // and the cost does not scale with the catalogue: syncBusiness()
         // on this same data runs well into four figures of queries
         $this->assertLessThan(60, $queries, "one article's sync should not walk every product");
+    }
+
+    /**
+     * Real bug: product_color_barcodes/product_color_barcode_aliases were
+     * never synced at all — a branch's own copy of a product/its sizes
+     * existed, but scanning that product's color-level sticker there
+     * always came back "not found" (Baby Park branch 2, confirmed live).
+     */
+    public function test_a_color_barcode_entered_at_the_main_shop_reaches_the_branch(): void
+    {
+        [$shop, $branch] = $this->aChain();
+
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'B-20007', 'cost' => 100, 'price' => 200, 'stock' => 2]);
+        ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => '36', 'color' => 'BLACK', 'stock' => 2]);
+        $colorBarcode = ProductColorBarcode::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'color' => 'BLACK', 'barcode' => 'ANG-B-20007-BK']);
+        ProductColorBarcodeAlias::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'color' => 'BLACK', 'barcode' => 'ANG-B-20007-OLD', 'created_at' => now()->subDay()]);
+
+        CatalogSync::syncToBranch($shop, $branch);
+
+        $branchProduct = Product::withoutGlobalScopes()->where('shop_id', $branch->id)->where('master_product_id', $product->id)->firstOrFail();
+        $branchColorBarcode = ProductColorBarcode::withoutGlobalScopes()->where('shop_id', $branch->id)->where('product_id', $branchProduct->id)->first();
+        $this->assertNotNull($branchColorBarcode, 'the branch has to get its own color-barcode row');
+        $this->assertSame('ANG-B-20007-BK', $branchColorBarcode->barcode);
+
+        $branchAlias = ProductColorBarcodeAlias::withoutGlobalScopes()->where('shop_id', $branch->id)->where('barcode', 'ANG-B-20007-OLD')->first();
+        $this->assertNotNull($branchAlias, 'an old (pre-rename) barcode has to stay scannable at the branch too');
+
+        // the main shop's own row is untouched
+        $this->assertSame('ANG-B-20007-BK', $colorBarcode->fresh()->barcode);
+    }
+
+    public function test_a_renamed_color_barcode_updates_the_branchs_existing_row_instead_of_duplicating(): void
+    {
+        [$shop, $branch] = $this->aChain();
+
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'B-20007', 'cost' => 100, 'price' => 200, 'stock' => 2]);
+        ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => '36', 'color' => 'BLACK', 'stock' => 2]);
+        $colorBarcode = ProductColorBarcode::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'color' => 'BLACK', 'barcode' => 'ANG-B-20007-BK']);
+        CatalogSync::syncToBranch($shop, $branch);
+
+        $colorBarcode->update(['barcode' => 'ANG-B-20007-BK2']);
+        CatalogSync::syncBusiness($shop);
+
+        $branchProduct = Product::withoutGlobalScopes()->where('shop_id', $branch->id)->where('master_product_id', $product->id)->firstOrFail();
+        $this->assertSame(1, ProductColorBarcode::withoutGlobalScopes()->where('shop_id', $branch->id)->where('product_id', $branchProduct->id)->count());
+        $this->assertSame('ANG-B-20007-BK2', ProductColorBarcode::withoutGlobalScopes()->where('shop_id', $branch->id)->where('product_id', $branchProduct->id)->first()->barcode);
     }
 
     public function test_a_shop_with_no_shared_catalog_is_left_alone(): void
