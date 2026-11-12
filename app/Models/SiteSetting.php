@@ -12,9 +12,14 @@ use Illuminate\Support\Facades\Storage;
  */
 class SiteSetting extends Model
 {
-    protected $fillable = ['logo_path', 'reminder_days', 'whatsapp_contact', 'play_store_url'];
+    protected $fillable = ['logo_path', 'reminder_days', 'whatsapp_contact', 'play_store_url', 'signup_enabled'];
 
     protected $appends = ['logo_url'];
+
+    protected function casts(): array
+    {
+        return ['signup_enabled' => 'boolean'];
+    }
 
     protected function logoUrl(): Attribute
     {
@@ -27,7 +32,9 @@ class SiteSetting extends Model
         // firstOrCreate()'s returned in-memory instance never picks up a
         // value that only exists because the DB applied its own column
         // default on insert, so the very first read after a fresh install
-        // would otherwise see `reminder_days` as null instead of 3
-        return static::firstOrCreate(['id' => 1], ['reminder_days' => 3]);
+        // would otherwise see `reminder_days` as null instead of 3 (and
+        // signup_enabled as null instead of true -- same gotcha, hit live
+        // writing this column's own test)
+        return static::firstOrCreate(['id' => 1], ['reminder_days' => 3, 'signup_enabled' => true]);
     }
 }

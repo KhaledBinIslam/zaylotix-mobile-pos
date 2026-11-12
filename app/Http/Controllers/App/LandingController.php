@@ -61,6 +61,7 @@ class LandingController extends Controller
             // local, Bubblewrap step) actually drops it here — no dead link
             // in the meantime.
             'apkAvailable' => File::exists(public_path('downloads/zaylotix-pos.apk')),
+            'signupEnabled' => SiteSetting::current()->signup_enabled,
         ]);
     }
 }

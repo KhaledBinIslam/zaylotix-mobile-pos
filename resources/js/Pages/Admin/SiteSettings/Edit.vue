@@ -10,6 +10,12 @@ const form = useForm({ logo: null });
 const reminderForm = useForm({ reminder_days: props.setting.reminder_days });
 const whatsappForm = useForm({ whatsapp_contact: props.setting.whatsapp_contact });
 const playStoreForm = useForm({ play_store_url: props.setting.play_store_url });
+const signupForm = useForm({ signup_enabled: props.setting.signup_enabled });
+
+function toggleSignupEnabled(value) {
+    signupForm.signup_enabled = value;
+    signupForm.patch(route('admin.siteSettings.signupEnabled'), { preserveScroll: true });
+}
 
 function saveReminderDays() {
     reminderForm.patch(route('admin.siteSettings.reminderDays'), { preserveScroll: true });
@@ -118,6 +124,24 @@ function remove() {
                 </button>
             </div>
             <div v-if="playStoreForm.errors.play_store_url" class="text-rose-600 text-xs mt-2">{{ playStoreForm.errors.play_store_url }}</div>
+        </div>
+
+        <div class="bg-white border rounded-xl p-6 max-w-lg mt-6">
+            <h2 class="font-semibold text-gray-900 mb-1">Public Self-Signup</h2>
+            <p class="text-sm text-gray-500 mb-4">Lets a visitor create their own trial shop from /signup without an admin provisioning it first. Turning this off hides every "Sign up" link on the landing/login pages and closes /signup itself (404) — an admin can still create a shop from Admin &gt; Shops &gt; Create either way.</p>
+
+            <div class="flex gap-2">
+                <button
+                    class="px-4 py-2 rounded-lg text-sm font-semibold border"
+                    :class="signupForm.signup_enabled ? 'bg-brand-purple text-white border-brand-purple' : 'border-gray-300 text-gray-600'"
+                    :disabled="signupForm.processing" @click="toggleSignupEnabled(true)"
+                >On</button>
+                <button
+                    class="px-4 py-2 rounded-lg text-sm font-semibold border"
+                    :class="!signupForm.signup_enabled ? 'bg-rose-600 text-white border-rose-600' : 'border-gray-300 text-gray-600'"
+                    :disabled="signupForm.processing" @click="toggleSignupEnabled(false)"
+                >Off</button>
+            </div>
         </div>
     </AdminLayout>
 </template>

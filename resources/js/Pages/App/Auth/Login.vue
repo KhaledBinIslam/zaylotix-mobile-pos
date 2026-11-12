@@ -5,7 +5,7 @@ import ZaylotixLogo from '@/Components/ZaylotixLogo.vue';
 import Spinner from '@/Components/Spinner.vue';
 import { useI18n } from '@/composables/useI18n';
 
-defineProps({ subscriptionExpired: Boolean });
+defineProps({ subscriptionExpired: Boolean, signupEnabled: { type: Boolean, default: true } });
 
 const { t } = useI18n();
 /** Off by default — someone can be standing at the counter. */
@@ -74,7 +74,7 @@ function submit() {
                     <button class="btn" type="submit" :disabled="form.processing">
                         <Spinner v-if="form.processing" /><span v-else>{{ t('login.submit') }}</span>
                     </button>
-                    <div class="lc-hint">{{ t('login.noAccount') }}<Link :href="route('signup')" style="color:var(--green);font-weight:700">{{ t('login.signupLink') }}</Link></div>
+                    <div v-if="signupEnabled" class="lc-hint">{{ t('login.noAccount') }}<Link :href="route('signup')" style="color:var(--green);font-weight:700">{{ t('login.signupLink') }}</Link></div>
                 </form>
             </div>
 

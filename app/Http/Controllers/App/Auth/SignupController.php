@@ -5,6 +5,7 @@ namespace App\Http\Controllers\App\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\Ambassador;
 use App\Models\BusinessType;
+use App\Models\SiteSetting;
 use App\Support\AmbassadorCommissionService;
 use App\Support\DefaultLandingRoute;
 use App\Support\FeatureRecommendations;
@@ -25,6 +26,8 @@ class SignupController extends Controller
 {
     public function create(Request $request)
     {
+        abort_unless(SiteSetting::current()->signup_enabled, 404);
+
         return Inertia::render('App/Auth/Signup', [
             'businessTypes' => BusinessType::where('is_active', true)->orderBy('label_bn')->get(['id', 'slug', 'label_bn', 'label_en']),
             // see docs/FIX_PLAN.md's "অ্যাম্বাসেডর টুলস" design note —
@@ -37,6 +40,8 @@ class SignupController extends Controller
 
     public function store(Request $request)
     {
+        abort_unless(SiteSetting::current()->signup_enabled, 404);
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['required', 'string', 'max:20', 'unique:shops,phone', 'unique:users,phone'],

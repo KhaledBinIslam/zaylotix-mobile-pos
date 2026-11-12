@@ -4,6 +4,7 @@ namespace App\Http\Controllers\App\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\App\LoginRequest;
+use App\Models\SiteSetting;
 use App\Support\DefaultLandingRoute;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -15,6 +16,7 @@ class LoginController extends Controller
     {
         return Inertia::render('App/Auth/Login', [
             'subscriptionExpired' => $request->session()->get('subscription_expired', false),
+            'signupEnabled' => SiteSetting::current()->signup_enabled,
         ]);
     }
 

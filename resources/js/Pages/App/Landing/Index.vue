@@ -5,7 +5,7 @@ import ZaylotixMark from '@/Components/ZaylotixMark.vue';
 import { useI18n } from '@/composables/useI18n';
 import { isInApp } from '@/composables/useInApp';
 
-const props = defineProps({ whatsappContact: String, playStoreUrl: String, apkAvailable: Boolean });
+const props = defineProps({ whatsappContact: String, playStoreUrl: String, apkAvailable: Boolean, signupEnabled: { type: Boolean, default: true } });
 const { t } = useI18n();
 
 // Opened inside the Android app itself — hide Zaylotix's own pricing/
@@ -152,7 +152,7 @@ onBeforeUnmount(() => {
                 </div>
                 <div class="landing-nav-cta">
                     <Link :href="route('login')" class="btn ghost sm">{{ t('landing.loginBtn') }}</Link>
-                    <Link :href="route('signup')" class="btn sm">{{ t('landing.signupBtn') }}</Link>
+                    <Link v-if="signupEnabled" :href="route('signup')" class="btn sm">{{ t('landing.signupBtn') }}</Link>
                 </div>
             </div>
         </div>
@@ -167,7 +167,7 @@ onBeforeUnmount(() => {
                         <p>{{ t('landing.heroSubtitle') }}</p>
 
                         <div class="landing-cta">
-                            <Link :href="route('signup')" class="btn lg">{{ t('landing.signupBtn') }}</Link>
+                            <Link v-if="signupEnabled" :href="route('signup')" class="btn lg">{{ t('landing.signupBtn') }}</Link>
                             <Link :href="route('login')" class="btn ghost lg light">{{ t('landing.loginBtn') }}</Link>
                             <a v-if="whatsappUrl" :href="whatsappUrl" target="_blank" rel="noopener" class="btn wa lg">
                                 <span class="licon" v-html="ICON_PATHS.whatsapp"></span> {{ t('landing.whatsappBtn') }}
@@ -299,7 +299,7 @@ onBeforeUnmount(() => {
                     <a v-if="whatsappUrl" :href="whatsappUrl" target="_blank" rel="noopener" class="btn wa lg">
                         <span class="licon" v-html="ICON_PATHS.whatsapp"></span> {{ t('landing.pricingCta') }}
                     </a>
-                    <Link v-else :href="route('signup')" class="btn lg">{{ t('landing.pricingCta') }}</Link>
+                    <Link v-else-if="signupEnabled" :href="route('signup')" class="btn lg">{{ t('landing.pricingCta') }}</Link>
                 </div>
             </section>
 
@@ -327,7 +327,7 @@ onBeforeUnmount(() => {
                 <p>{{ t('landing.closingSub') }}</p>
                 <p class="landing-closing-punch">{{ t('landing.closingPunch') }}</p>
                 <div class="landing-cta">
-                    <Link :href="route('signup')" class="btn lg">{{ t('landing.signupBtn') }}</Link>
+                    <Link v-if="signupEnabled" :href="route('signup')" class="btn lg">{{ t('landing.signupBtn') }}</Link>
                     <Link :href="route('login')" class="btn ghost lg light">{{ t('landing.loginBtn') }}</Link>
                     <a v-if="whatsappUrl" :href="whatsappUrl" target="_blank" rel="noopener" class="btn wa lg">
                         <span class="licon" v-html="ICON_PATHS.whatsapp"></span> {{ t('landing.whatsappBtn') }}

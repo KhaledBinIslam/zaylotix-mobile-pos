@@ -65,6 +65,22 @@ class SiteSettingController extends Controller
         return back()->with('success', 'Play Store লিংক সংরক্ষণ করা হয়েছে।');
     }
 
+    /**
+     * Khaled: turn off public self-registration (/signup) entirely —
+     * see SignupController/LoginController/Landing\Index.vue for the
+     * three places this flag is actually read.
+     */
+    public function updateSignupEnabled(Request $request)
+    {
+        $data = $request->validate([
+            'signup_enabled' => ['required', 'boolean'],
+        ]);
+
+        SiteSetting::current()->update($data);
+
+        return back()->with('success', $data['signup_enabled'] ? 'পাবলিক সাইন-আপ চালু করা হয়েছে।' : 'পাবলিক সাইন-আপ বন্ধ করা হয়েছে।');
+    }
+
     public function update(Request $request)
     {
         $request->validate([

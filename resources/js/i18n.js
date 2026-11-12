@@ -1006,6 +1006,7 @@ export const translations = {
     'more.sectionCustomers': { bn: '👥 কাস্টমার', en: '👥 Customers' },
     'more.customerList': { bn: 'কাস্টমার তালিকা', en: 'Customer list' },
     'more.customerListSub': { bn: 'বাছাই করে WhatsApp পাঠান বা এক্সপোর্ট করুন', en: 'Select customers to WhatsApp or export' },
+    'more.dueLedgerSub': { bn: 'বাকি টাকার কাস্টমার ও পরিশোধ কালেক্ট করুন', en: 'Customers with dues and collect payments' },
 
     'customerList.title': { bn: 'কাস্টমার তালিকা', en: 'Customer list' },
     'customerList.titleShort': { bn: 'কাস্টমার', en: 'Customers' },
