@@ -699,29 +699,31 @@ const mobileNavSlots = computed(() => {
                     <ZaylotixMark v-else :size="32" />
                     <div class="btitle">
                         <b style="font-size:15.5px;display:block;line-height:1.15">Zaylotix POS</b>
-                        <span style="font-size:11px;color:var(--dim)" v-if="shop && !branches">{{ shop.name }} • {{ shop.area }}</span>
+                        <span style="font-size:11px" class="btitle-sub" v-if="shop && !branches">{{ shop.name }} • {{ shop.area }}</span>
                         <select v-if="branches" :value="shop?.id" style="font-size:11px;margin:2px 0 0;padding:2px 6px;height:auto" @change="switchBranch">
                             <option v-for="b in branches" :key="b.id" :value="b.id">🏬 {{ b.name }}{{ b.area ? ' — ' + b.area : '' }}</option>
                         </select>
                     </div>
                     <button
                         v-if="isOwner"
-                        style="margin-left:auto;position:relative;border:1.5px solid var(--line2);border-radius:99px;width:33px;height:33px;color:var(--green);background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:16px;flex:0 0 auto"
+                        class="topbtn"
+                        style="margin-left:auto;position:relative;font-size:16px"
                         @click="toggleNotifications"
                     >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px" v-html="ICONS.bell"></svg>
                         <span v-if="unreadCount" style="position:absolute;top:-3px;right:-3px;min-width:16px;height:16px;padding:0 3px;border-radius:9px;background:var(--rose);color:#fff;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center">{{ unreadCount }}</span>
                     </button>
                     <button
-                        :style="`${isOwner ? 'margin-left:6px' : 'margin-left:auto'};border:1.5px solid var(--line2);border-radius:99px;width:33px;height:33px;color:var(--green);background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:800;flex:0 0 auto`"
+                        class="topbtn"
+                        :style="`${isOwner ? 'margin-left:6px' : 'margin-left:auto'};font-size:12.5px`"
                         :title="lang === 'bn' ? 'English' : 'বাংলা'"
                         @click="toggleLang"
                     >
                         {{ lang === 'bn' ? 'EN' : 'বাং' }}
                     </button>
                     <button
-                        class="langbtn"
-                        style="margin-left:6px;border:1.5px solid var(--line2);border-radius:99px;width:33px;height:33px;color:var(--green);background:var(--panel);display:flex;align-items:center;justify-content:center;flex:0 0 auto"
+                        class="langbtn topbtn"
+                        style="margin-left:6px"
                         :title="t('common.logout')"
                         @click="logout"
                     >
