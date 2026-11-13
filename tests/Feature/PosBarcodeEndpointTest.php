@@ -158,4 +158,31 @@ class PosBarcodeEndpointTest extends TestCase
 
         $response->assertOk()->assertJson(['found' => true, 'variant_id' => $branchVariant->id]);
     }
+
+    /**
+     * The fix is symmetric, not one-directional: Khaled explicitly asked
+     * that stock/labels be addable from WHICHEVER branch, with sales
+     * working smoothly from every branch either way. A label printed
+     * while viewing the BRANCH must resolve just as well back at the
+     * MAIN shop's own register.
+     */
+    public function test_a_short_zv_code_printed_at_a_branch_still_resolves_at_the_main_shop(): void
+    {
+        [$main, $mainOwner] = $this->createShopWithOwner();
+        $branch = Shop::create([
+            'name' => 'Branch', 'phone' => 'PENDING-'.uniqid(), 'parent_shop_id' => $main->id,
+            'sales_mode' => 'both', 'lang' => 'bn', 'plan' => 'monthly', 'status' => 'active',
+            'subscription_start' => now()->toDateString(), 'subscription_expiry' => now()->addMonth()->toDateString(),
+        ]);
+
+        $mp = Product::create(['shop_id' => $main->id, 'name' => 'L-10001', 'barcode' => 'SMS-L-10001-NSXX', 'cost' => 1300, 'price' => 1990, 'stock' => 5]);
+        $mainVariant = ProductVariant::create(['shop_id' => $main->id, 'product_id' => $mp->id, 'size' => '36', 'color' => 'SILVER', 'barcode' => 'SMS-L-10001-NSXX-SILVER-36', 'stock' => 5]);
+        $bp = Product::create(['shop_id' => $branch->id, 'name' => 'L-10001', 'master_product_id' => $mp->id, 'barcode' => 'SMS-L-10001-NSXX', 'cost' => 1300, 'price' => 1990, 'stock' => 5]);
+        $branchVariant = ProductVariant::create(['shop_id' => $branch->id, 'product_id' => $bp->id, 'size' => '36', 'color' => 'SILVER', 'barcode' => 'SMS-L-10001-NSXX-SILVER-36', 'stock' => 5]);
+
+        // scanning the label printed FROM THE BRANCH's own variant id, but logged in as the main shop owner
+        $response = $this->actingAs($mainOwner, 'web')->getJson('/app/pos/barcode/ZV'.$branchVariant->id);
+
+        $response->assertOk()->assertJson(['found' => true, 'variant_id' => $mainVariant->id]);
+    }
 }
