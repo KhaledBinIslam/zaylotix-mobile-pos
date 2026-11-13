@@ -67,6 +67,7 @@ function impersonate(shop) {
                     <tr v-for="s in filteredShops" :key="s.id" class="border-t hover:bg-gray-50">
                         <td class="px-4 py-3">
                             <Link :href="route('admin.shops.show', s.id)" class="font-medium text-gray-900 hover:text-brand-purple-700 hover:underline" title="Export/delete data for this shop">{{ s.name }}</Link>
+                            <span class="ml-1.5 text-xs font-mono text-gray-400" title="Shop ID">#{{ s.id }}</span>
                             <div class="text-xs text-gray-500">{{ s.phone }}</div>
                         </td>
                         <td class="px-4 py-3">{{ s.business_type }}</td>
