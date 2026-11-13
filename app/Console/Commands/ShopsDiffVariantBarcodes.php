@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Product;
+use App\Models\ProductColorBarcode;
 use App\Models\ProductVariant;
 use App\Models\Shop;
 use Illuminate\Console\Command;
@@ -77,6 +78,39 @@ class ShopsDiffVariantBarcodes extends Command
             if ((float) $bp->stock !== (float) $mp->stock) {
                 $this->line("PRODUCT STOCK MISMATCH {$mp->name} main_stock={$mp->stock} branch_stock={$bp->stock}");
                 $mismatches++;
+            }
+
+            // tier 2 (docs/ARTICLE_SERIES_PLAN.md §9) — the actual barcode
+            // printed on most of Baby Park's shoe labels when
+            // barcode_include_size is off. Never compared before now:
+            // shops:sync-business only ever checked the COUNT (409 vs
+            // 404), never each color's own barcode VALUE.
+            $branchColorBarcodes = ProductColorBarcode::withoutGlobalScopes()->where('product_id', $bp->id)->get();
+            foreach (ProductColorBarcode::withoutGlobalScopes()->where('product_id', $mp->id)->get() as $mcb) {
+                $checked++;
+                $match = $branchColorBarcodes->firstWhere('color', $mcb->color);
+                if (! $match) {
+                    $this->line("MISSING color barcode {$mp->name} {$mcb->color} (main barcode {$mcb->barcode})");
+                    $mismatches++;
+
+                    continue;
+                }
+                if ($match->barcode !== $mcb->barcode) {
+                    $this->line("COLOR BARCODE MISMATCH {$mp->name} {$mcb->color} main={$mcb->barcode} branch={$match->barcode}");
+                    $mismatches++;
+                }
+            }
+            // the reverse direction — a color barcode that exists at the
+            // branch but not at main would never show up in the loop
+            // above at all, and a scan for it would still resolve fine
+            // (it's real, synced data) — but it's worth surfacing as an
+            // orphan if the two counts (409 vs 404, seen earlier) are
+            // ever revisited.
+            $mainColorBarcodes = ProductColorBarcode::withoutGlobalScopes()->where('product_id', $mp->id)->pluck('color');
+            foreach ($branchColorBarcodes as $bcb) {
+                if (! $mainColorBarcodes->contains($bcb->color)) {
+                    $this->line("ORPHAN branch-only color barcode {$bp->name} {$bcb->color} branch={$bcb->barcode}");
+                }
             }
         }
 
