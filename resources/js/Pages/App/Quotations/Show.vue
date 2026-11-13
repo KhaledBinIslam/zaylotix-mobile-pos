@@ -67,7 +67,7 @@ function cancelQuotation() {
             <div class="rc-t"><span>{{ t('pos.grandTotal') }}</span><span>{{ money(quotation.total) }}</span></div>
             <div v-if="quotation.valid_until" style="text-align:center;color:#666;margin-top:8px;font-size:11px">{{ t('quotation.validUntilLabel') }} {{ quotation.valid_until }}</div>
             <div class="rc-f">ধন্যবাদ! 🙏</div>
-            <div class="rc-brand">A Zaylotix product · zaylotix.com</div>
+            <div class="rc-brand">Powered by Zaylotix · visit zaylotix.com</div>
         </div>
 
         <div v-if="quotation.notes" class="no-print card" style="margin-top:16px">

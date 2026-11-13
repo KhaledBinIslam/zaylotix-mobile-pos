@@ -42,6 +42,6 @@
         @endforeach
     </table>
 
-    <div class="footer">A Zaylotix product &middot; zaylotix.com</div>
+    <div class="footer">Powered by Zaylotix &middot; visit zaylotix.com</div>
 </body>
 </html>

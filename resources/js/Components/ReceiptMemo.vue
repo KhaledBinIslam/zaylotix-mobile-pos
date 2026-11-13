@@ -133,9 +133,12 @@ watch(() => [props.sale.id, props.sale.invoice_no, settings.value.show_shop_qr, 
                 <div class="rm-qr-hint">{{ shop?.website }}</div>
             </div>
         </template>
+        <!-- Khaled: every shop's memo carries this by default — the platform
+             credit is the wordmark line itself now, with the logo (when the
+             admin has set one) sitting above it rather than replacing it -->
         <div class="rc-brand">
-            <template v-if="platformLogoUrl"><img :src="platformLogoUrl" alt="Zaylotix"></template>
-            <template v-else>A Zaylotix product · zaylotix.com</template>
+            <img v-if="platformLogoUrl" :src="platformLogoUrl" alt="Zaylotix">
+            <div>Powered by Zaylotix · visit zaylotix.com</div>
         </div>
     </div>
 </template>

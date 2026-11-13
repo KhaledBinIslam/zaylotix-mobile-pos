@@ -15,7 +15,7 @@ class SetupDemoClothingShopTest extends TestCase
 
     private function runSetup(array $extra = []): Shop
     {
-        $this->artisan('shop:setup-demo-clothing', ['--phone' => '01799000088', '--password' => 'demo1234', ...$extra])
+        $this->artisan('shop:setup-demo-clothing', ['--phone' => '01799000088', '--password' => 'demo1234', '--articles' => 3, ...$extra])
             ->assertSuccessful();
 
         return Shop::withoutGlobalScopes()->where('phone', '01799000088')->firstOrFail();
@@ -59,6 +59,32 @@ class SetupDemoClothingShopTest extends TestCase
         $this->assertSame($shop->id, $again->id);
         $this->assertSame(27, Product::withoutGlobalScopes()->where('shop_id', $shop->id)->whereNull('deleted_at')->count());
         $this->assertEquals(20, (float) ProductVariant::withoutGlobalScopes()->where('product_id', $pant->id)->first()->stock);
+    }
+
+    public function test_seed_demo_articles_adds_a_footwear_catalog_to_an_existing_demo_shop(): void
+    {
+        $shop = $this->runSetup();
+
+        $this->artisan('shops:seed-demo-articles', ['--shop' => $shop->id, '--catalog' => 'footwear', '--articles' => 2, '--qty' => 10])
+            ->assertSuccessful();
+
+        $gents = Product::withoutGlobalScopes()->where('shop_id', $shop->id)->where('name', 'GS-10001')->firstOrFail();
+        $variants = ProductVariant::withoutGlobalScopes()->where('product_id', $gents->id)->whereNull('deleted_at')->get();
+        $this->assertCount(12, $variants); // 6 sizes x 2 colors
+        $this->assertEquals(10, (float) $variants->first()->stock);
+        $this->assertSame('DF-GS-10001-BK-39', $variants->firstWhere('size', '39')->barcode);
+
+        // the clothing articles it already had are untouched
+        $this->assertNotNull(Product::withoutGlobalScopes()->where('shop_id', $shop->id)->where('name', 'P-10001')->first());
+    }
+
+    public function test_seed_demo_articles_refuses_a_paid_shop_without_force(): void
+    {
+        $shop = $this->runSetup();
+        Shop::withoutGlobalScopes()->whereKey($shop->id)->update(['account_type' => 'paid']);
+
+        $this->artisan('shops:seed-demo-articles', ['--shop' => $shop->id, '--catalog' => 'footwear'])->assertFailed();
+        $this->assertNull(Product::withoutGlobalScopes()->where('shop_id', $shop->id)->where('name', 'GS-10001')->first());
     }
 
     public function test_rollback_removes_the_demo_when_no_sales_exist(): void
