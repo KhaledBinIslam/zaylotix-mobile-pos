@@ -1380,6 +1380,23 @@ class PosController extends Controller
                 return response()->json(['found' => true, 'product' => $product, 'variant_id' => $variant->id]);
             }
 
+            // Baby Park live bug (shop 81, "Product not found: ZV1288"):
+            // the id is a single global auto-increment column, so a label
+            // printed while viewing one branch encodes THAT branch's own
+            // variant row — not found under a sibling branch's tenant
+            // scope even though the exact same product/size/color exists
+            // there too (every data-parity check this session proved
+            // clean; this is a lookup-scope bug, not a data bug). Labels
+            // get printed once and the physical stickers end up on stock
+            // sold from every branch sharing it, so cross-resolve via the
+            // sibling's own .barcode string — identical on both copies by
+            // CatalogSync — then re-run the ordinary tenant-scoped lookup
+            // below for THIS shop.
+            $sibling = ProductVariant::withoutGlobalScopes()->find((int) $m[1]);
+            if ($sibling && $sibling->barcode && Tenancy::id() && Tenancy::sameBusiness(Tenancy::id(), $sibling->shop_id)) {
+                return $this->barcode($sibling->barcode);
+            }
+
             return response()->json(['found' => false], 404);
         }
         if (preg_match('/^ZC(\d+)$/', $barcode, $m)) {
@@ -1389,6 +1406,12 @@ class PosController extends Controller
                 if ($product) {
                     return response()->json(['found' => true, 'product' => $product, 'color' => $colorBarcode->color]);
                 }
+            }
+
+            // same cross-branch id fallback as ZV above
+            $sibling = ProductColorBarcode::withoutGlobalScopes()->find((int) $m[1]);
+            if ($sibling && $sibling->barcode && Tenancy::id() && Tenancy::sameBusiness(Tenancy::id(), $sibling->shop_id)) {
+                return $this->barcode($sibling->barcode);
             }
 
             return response()->json(['found' => false], 404);

@@ -6,6 +6,8 @@ use App\Models\Product;
 use App\Models\ProductColorBarcode;
 use App\Models\ProductColorBarcodeAlias;
 use App\Models\ProductVariant;
+use App\Models\Shop;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\CreatesShops;
 use Tests\TestCase;
@@ -124,5 +126,36 @@ class PosBarcodeEndpointTest extends TestCase
         $response = $this->actingAs($ownerB, 'web')->getJson('/app/pos/barcode/ZV'.$variantA->id);
 
         $response->assertStatus(404);
+    }
+
+    /**
+     * Baby Park live bug (shop 81, "Product not found: ZV1288"): a label
+     * printed while viewing one branch encodes THAT branch's own variant
+     * row id — a global auto-increment column, so the exact same id never
+     * exists at a sibling branch even though the same product/size/color
+     * is correctly synced there too under its own row. Unlike the
+     * cross-shop isolation test above (two unrelated shops), this branch
+     * IS a sibling of the main shop, so the id should cross-resolve via
+     * the synced .barcode string instead of 404ing.
+     */
+    public function test_a_short_zv_code_printed_at_the_main_shop_still_resolves_at_a_sibling_branch(): void
+    {
+        [$main] = $this->createShopWithOwner();
+        $branch = Shop::create([
+            'name' => 'Branch', 'phone' => 'PENDING-'.uniqid(), 'parent_shop_id' => $main->id,
+            'sales_mode' => 'both', 'lang' => 'bn', 'plan' => 'monthly', 'status' => 'active',
+            'subscription_start' => now()->toDateString(), 'subscription_expiry' => now()->addMonth()->toDateString(),
+        ]);
+        $branchOwner = User::create(['shop_id' => $branch->id, 'name' => 'Branch Staff', 'phone' => $branch->phone, 'password' => 'password', 'role' => 'owner', 'lang' => 'bn']);
+
+        $mp = Product::create(['shop_id' => $main->id, 'name' => 'L-10001', 'barcode' => 'SMS-L-10001-NSXX', 'cost' => 1300, 'price' => 1990, 'stock' => 5]);
+        $mainVariant = ProductVariant::create(['shop_id' => $main->id, 'product_id' => $mp->id, 'size' => '36', 'color' => 'SILVER', 'barcode' => 'SMS-L-10001-NSXX-SILVER-36', 'stock' => 5]);
+        $bp = Product::create(['shop_id' => $branch->id, 'name' => 'L-10001', 'master_product_id' => $mp->id, 'barcode' => 'SMS-L-10001-NSXX', 'cost' => 1300, 'price' => 1990, 'stock' => 5]);
+        $branchVariant = ProductVariant::create(['shop_id' => $branch->id, 'product_id' => $bp->id, 'size' => '36', 'color' => 'SILVER', 'barcode' => 'SMS-L-10001-NSXX-SILVER-36', 'stock' => 5]);
+
+        // scanning the label printed FROM THE MAIN SHOP's own variant id, but logged in as the branch
+        $response = $this->actingAs($branchOwner, 'web')->getJson('/app/pos/barcode/ZV'.$mainVariant->id);
+
+        $response->assertOk()->assertJson(['found' => true, 'variant_id' => $branchVariant->id]);
     }
 }
