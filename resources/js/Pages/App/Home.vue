@@ -1,10 +1,9 @@
 <script setup>
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useI18n } from '@/composables/useI18n';
-import { usePermissions } from '@/composables/usePermissions';
-import { usePage } from '@inertiajs/vue3';
+import { useNavItems } from '@/composables/useNavItems';
 import { ICONS } from '@/support/navIcons';
 
 const { t } = useI18n();
@@ -39,37 +38,46 @@ const payModeLabel = { cash: t('pay.cash'), bkash: t('pay.bkash'), nagad: t('pay
 const payModeClass = { cash: 'mint', bkash: 'gold', nagad: 'gold', credit: 'rose', split: 'sky' };
 
 // --- Quick Actions — Khaled's "bKash-style" dashboard shortcut grid ---
-// Every entry reuses an existing route/permission/feature check (same
-// show: logic AppLayout.vue's own sidebarGroups already applies for the
-// exact same destination) — nothing new added to routes/web.php, nothing
-// re-gated. "Add product"/"add customer" aren't separate tiles: neither
-// has its own route (both open from a button inside Stock/Customer List
-// itself), so a dedicated tile would just duplicate the Stock/Customer
-// List destination under a second label.
-const { hasPerm, isOwner } = usePermissions();
-const page = usePage();
-const hasFeature = (key) => (page.props.features || []).includes(key);
-const isRestaurant = computed(() => props.shop?.business_type_slug === 'restaurant');
-function moreLink(openKey) {
-    return route('app.more', { open: openKey });
+// "jetugula feature ache sob nia aso, kosto kore more button e na jate
+// cole" — every destination the desktop sidebar can reach, shown here
+// too, so nothing is ever hidden a tap deeper behind "আরো". Pulled from
+// the SAME useNavItems() composable AppLayout.vue's own sidebar now
+// builds its list from (no `active` passed — nothing on this grid is
+// ever the "currently open" page, so every item's `on` is simply
+// unused here), rather than a second hand-picked list that could drift
+// out of sync with what the sidebar actually shows.
+const { navGroups } = useNavItems();
+
+// One accent color per category, cycling the same 5 soft tones the app
+// already uses elsewhere for this exact purpose (feature pillars,
+// platform cards) — keeps 30+ tiles from reading as one flat gray wall.
+const ACCENTS = ['gold', 'purple', 'rose', 'sky', 'green'];
+function accentFor(categoryIndex, itemIndex) {
+    return ACCENTS[(categoryIndex + itemIndex) % ACCENTS.length];
 }
 
-const QUICK_ACTIONS = computed(() => [
-    { key: 'sell', icon: 'cart', ac: 'gold', label: t('nav.sellFull'), href: isRestaurant.value ? route('app.restaurant.tables.index') : route('app.pos'), show: hasPerm('pos') },
-    { key: 'sales', icon: 'receipt', ac: 'purple', label: t('nav.salesHistory'), href: route('app.sales'), show: hasPerm('sales_history') },
-    { key: 'due', icon: 'invoice', ac: 'rose', label: t('nav.dueFull'), href: route('app.customers'), show: hasPerm('customers') },
-    { key: 'stock', icon: 'box', ac: 'sky', label: isRestaurant.value ? t('nav.stockFullRestaurant') : t('nav.stockFull'), href: route('app.stock'), show: hasPerm('stock') },
-    { key: 'purchase', icon: 'truck', ac: 'green', label: t('nav.purchase'), href: moreLink('purchase'), show: hasPerm('purchases') && hasFeature('purchases') },
-    { key: 'supplierReturn', icon: 'undo', ac: 'rose', label: t('more.supplierReturnTitle'), href: moreLink('supplierReturn'), show: hasPerm('purchases') && hasFeature('suppliers') },
-    { key: 'customerList', icon: 'users', ac: 'purple', label: t('customerList.title'), href: route('app.customerList.index'), show: hasPerm('customers') },
-    { key: 'suppliers', icon: 'factory', ac: 'green', label: t('nav.suppliers'), href: route('app.suppliers'), show: hasPerm('purchases') && hasFeature('suppliers') },
-    { key: 'quotations', icon: 'clipboard', ac: 'gold', label: t('nav.quotations'), href: route('app.quotations.index'), show: hasPerm('pos') && hasFeature('quotations') },
-    { key: 'barcode', icon: 'tag', ac: 'sky', label: t('nav.barcode'), href: route('app.barcodeLabels.index'), show: hasPerm('barcode_labels') && hasFeature('barcode_printing') },
-    { key: 'expenses', icon: 'trendingDown', ac: 'rose', label: t('nav.expenses'), href: route('app.expenses'), show: hasPerm('expenses') && hasFeature('expenses') },
-    { key: 'accounts', icon: 'briefcase', ac: 'green', label: t('nav.accounts'), href: route('app.accounts'), show: hasPerm('accounts') && hasFeature('accounts') },
-    { key: 'reports', icon: 'barChart', ac: 'purple', label: t('nav.reports'), href: route('app.reports'), show: hasPerm('reports') && hasFeature('reports') },
-    { key: 'cashier', icon: 'user', ac: 'gold', label: t('nav.cashier'), href: route('app.staff.index'), show: isOwner.value && hasFeature('cashier_management') },
-].filter((a) => a.show));
+// "Supplier Return" has a real route/feature but no sidebar entry of its
+// own (it only ever opened from inside More.vue's own list) — added here
+// only, as Khaled's "show literally everything" ask, without inventing a
+// new sidebar item AppLayout.vue (and therefore every other page) would
+// also start showing.
+const QUICK_ACTION_GROUPS = computed(() => {
+    const groups = navGroups.value;
+    const extraInventoryItem = {
+        key: 'supplierReturn', icon: 'undo', label: t('more.supplierReturnTitle'),
+        href: route('app.more', { open: 'supplierReturn' }),
+        show: groups[1]?.items.some((i) => i.key === 'suppliers' && i.show),
+    };
+
+    return groups
+        .map((group, gi) => ({
+            label: group.label,
+            items: [...group.items, ...(gi === 1 ? [extraInventoryItem] : [])]
+                .filter((item) => item.show)
+                .map((item, ii) => ({ ...item, ac: accentFor(gi, ii) })),
+        }))
+        .filter((group) => group.items.length);
+});
 </script>
 
 <template>
@@ -114,13 +122,15 @@ const QUICK_ACTIONS = computed(() => [
                 </Link>
             </div>
 
-            <!-- Quick Actions — the bKash-style shortcut grid; every item's
-                 own show: already matches the sidebar's identical check for
-                 that same destination, so nothing appears here that the
-                 shop/cashier couldn't already reach another way. -->
-            <div class="qa-section">
+            <!-- Quick Actions — the bKash-style shortcut grid, one section per
+                 sidebar category. Every item's own show: already matches the
+                 sidebar's identical check for that same destination, so
+                 nothing appears here that the shop/cashier couldn't already
+                 reach another way — just without going through "আরো" first. -->
+            <div v-for="group in QUICK_ACTION_GROUPS" :key="group.label" class="qa-section">
+                <div class="qa-section-label">{{ group.label }}</div>
                 <div class="qa-grid">
-                    <Link v-for="a in QUICK_ACTIONS" :key="a.key" :href="a.href" class="qa-item">
+                    <Link v-for="a in group.items" :key="a.key" :href="a.href" class="qa-item">
                         <span class="qa-icon" :class="'ac-' + a.ac">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" v-html="ICONS[a.icon]"></svg>
                         </span>
@@ -229,9 +239,14 @@ const QUICK_ACTIONS = computed(() => [
    unrelated sections — these two visually belong together */
 .qa-summary-card { margin-top: 10px; }
 
-/* Quick Actions — bKash-style icon+label shortcut grid. 4 per row on a
-   phone per the brief; more columns as width allows, never fewer than 4. */
-.qa-section { margin-top: 14px; }
+/* Quick Actions — bKash-style icon+label shortcut grid, one section per
+   sidebar category ("jetugula feature ache sob" — everything, grouped the
+   same way the sidebar already groups it, not one flat 30-tile wall). 4
+   per row on a phone per the brief; more columns as width allows, never
+   fewer than 4. */
+.qa-section { margin-top: 16px; }
+.qa-section:first-of-type { margin-top: 14px; }
+.qa-section-label { font-size: 11px; font-weight: 700; color: var(--mut); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 6px; padding-left: 2px; }
 .qa-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px 2px; }
 .qa-item { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 2px; border-radius: 16px; text-decoration: none; color: var(--ink); transition: background .15s ease, transform .1s ease; }
 .qa-item:hover { background: var(--panel2, rgba(0, 0, 0, .025)); }

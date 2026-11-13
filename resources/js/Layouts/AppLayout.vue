@@ -10,6 +10,7 @@ import { useI18n } from '@/composables/useI18n';
 import { useOfflineSync } from '@/composables/useOfflineSync';
 import { useVersionCheck } from '@/composables/useVersionCheck';
 import { usePermissions } from '@/composables/usePermissions';
+import { useNavItems } from '@/composables/useNavItems';
 import { buildOfflineSaleSnapshot } from '@/support/offlineSaleSnapshot';
 import { buildReceiptWhatsAppText, whatsAppUrlFor } from '@/support/receiptMessage';
 import { canDiscardEntry as canDiscardQueuedEntry, classifyOfflineFailure } from '@/support/offlineQueue';
@@ -434,106 +435,11 @@ function goBack() {
     window.history.back();
 }
 
-// The "আরো" page (More.vue) holds a few actions that don't have their own
-// route — a cashier form, the shop logo, purchase/damage/return/stock-count
-// sheets, and data export — they're all opened as sheets on that one page.
-// Linking here with ?open=<key> (read by More.vue on mount) lets the
-// desktop sidebar list every one of them directly instead of hiding them
-// all behind a single generic "আরো" entry, since a sidebar has the room.
-function moreLink(openKey) {
-    return route('app.more', openKey ? { open: openKey } : {});
-}
-function isMoreLinkActive(openKey) {
-    if (props.active !== 'more') return false;
-    const params = new URLSearchParams(page.url.split('?')[1] || '');
-    return (params.get('open') || null) === (openKey || null);
-}
-
-// The mobile bottom bar only has room for ONE big "Sell" button (unlike the
-// desktop sidebar, which lists Sell and Tables as two separate links) — for
-// a shop with table service turned on, that one button has to go straight to
-// the table/kitchen flow, or a phone-only cashier would never reach it at all.
-const mobileSellHref = computed(() => isRestaurant.value ? route('app.restaurant.tables.index') : route('app.pos'));
-const mobileSellActive = computed(() => props.active === 'sell' || props.active === 'restaurant');
-
-// Grouped nav for the desktop sidebar — richer than the 5-icon mobile
-// bottom bar since a sidebar has room to show everything at once.
-const sidebarGroups = computed(() => [
-    {
-        label: t('nav.category.sales'),
-        items: [
-            // ALWAYS visible, first, for every business type — Khaled's
-            // explicit correction after an earlier fix hid this item
-            // entirely for a restaurant shop (it used to be hardcoded to
-            // route('app.pos'), the wrong screen for that vertical, so a
-            // prior pass hid it rather than fix the destination). Reusing
-            // mobileSellHref/mobileSellActive — the exact same smart
-            // routing the mobile bottom nav's single "sell" tab already
-            // uses — fixes the actual bug (right destination per business
-            // type) without ever hiding the button itself. The separate
-            // "টেবিল" item that used to sit here as the restaurant-only
-            // stand-in is gone — this one link now covers it.
-            { key: 'sell', label: t('nav.sellFull'), href: mobileSellHref.value, icon: 'cart', on: mobileSellActive.value, show: hasPerm('pos') },
-            { key: 'reservations', label: t('nav.reservations'), href: route('app.reservations.index'), icon: 'calendar', on: props.active === 'reservations', show: hasPerm('pos') && isRestaurant.value && hasFeature('restaurant_tables') },
-            { key: 'kds', label: t('nav.kds'), href: route('app.kds.index'), icon: 'pot', on: props.active === 'kds', show: hasPerm('pos') && isRestaurant.value && hasFeature('restaurant_tables') },
-            { key: 'cds', label: t('nav.cds'), href: route('app.cds.index'), icon: 'monitor', on: props.active === 'cds', show: hasPerm('pos') && isRestaurant.value && hasFeature('restaurant_tables') },
-            { key: 'sales', label: t('nav.salesHistory'), navLabel: t('nav.salesHistoryShort'), href: route('app.sales'), icon: 'receipt', on: props.active === 'sales', show: hasPerm('sales_history') },
-            { key: 'due', label: t('nav.dueFull'), navLabel: t('nav.due'), href: route('app.customers'), icon: 'invoice', on: props.active === 'due', show: hasPerm('customers') },
-            { key: 'customerList', label: t('customerList.title'), navLabel: t('customerList.titleShort'), href: route('app.customerList.index'), icon: 'users', on: props.active === 'customerList', show: hasPerm('customers') },
-            { key: 'promotions', label: t('nav.promotions'), navLabel: t('nav.promotionsShort'), href: route('app.promotions.index'), icon: 'gift', on: props.active === 'promotions', show: hasPerm('promotions') && hasFeature('promotions') },
-            { key: 'campaigns', label: t('nav.campaigns'), navLabel: t('nav.campaignsShort'), href: route('app.campaigns.index'), icon: 'gift', on: props.active === 'campaigns', show: hasPerm('promotions') && hasFeature('season_campaigns') },
-            { key: 'quotations', label: t('nav.quotations'), href: route('app.quotations.index'), icon: 'clipboard', on: props.active === 'quotations', show: hasPerm('pos') && hasFeature('quotations') },
-            { key: 'onlineOrders', label: t('nav.onlineOrders'), href: route('app.onlineOrders.index'), icon: 'globe', on: props.active === 'onlineOrders', show: hasPerm('online_business') && hasFeature('online_business') },
-            { key: 'channels', label: t('nav.channels'), href: route('app.channels.index'), icon: 'globe', on: props.active === 'channels', show: hasPerm('online_business') && hasFeature('online_business') },
-            { key: 'couriers', label: t('nav.couriers'), href: route('app.couriers.index'), icon: 'truck', on: props.active === 'couriers', show: hasPerm('online_business') && hasFeature('online_business') },
-            { key: 'ads', label: t('nav.ads'), href: route('app.ads.index'), icon: 'trending', on: props.active === 'ads', show: hasPerm('online_business') && hasFeature('online_business') },
-            { key: 'onlineProfit', label: t('nav.onlineProfit'), href: route('app.onlineProfit.index'), icon: 'barChart', on: props.active === 'onlineProfit', show: hasPerm('online_business') && hasFeature('online_business') },
-        ],
-    },
-    {
-        label: t('nav.category.inventory'),
-        items: [
-            { key: 'stock', label: isRestaurant.value ? t('nav.stockFullRestaurant') : t('nav.stockFull'), navLabel: isRestaurant.value ? t('nav.stockRestaurant') : t('nav.stock'), href: route('app.stock'), icon: 'box', on: props.active === 'stock', show: hasPerm('stock') },
-            { key: 'units', label: t('nav.units'), href: route('app.units.index'), icon: 'ruler', on: props.active === 'units', show: hasPerm('stock') },
-            { key: 'prices', label: t('nav.priceUpdate'), href: route('app.prices.index'), icon: 'tag', on: props.active === 'prices', show: hasPerm('stock') },
-            { key: 'deadStock', label: t('nav.deadStock'), href: route('app.deadStock.index'), icon: 'box', on: props.active === 'deadStock', show: hasPerm('stock') && hasFeature('dead_stock_clearance') },
-            { key: 'catalog', label: t('nav.catalog'), href: route('app.catalog.index'), icon: 'gift', on: props.active === 'catalog', show: hasPerm('stock') && hasFeature('digital_catalog') },
-            { key: 'barcode', label: t('nav.barcode'), href: route('app.barcodeLabels.index'), icon: 'tag', on: props.active === 'more' && page.url.startsWith('/app/barcode-labels'), show: hasPerm('barcode_labels') && hasFeature('barcode_printing') },
-            { key: 'purchase', label: t('nav.purchase'), href: moreLink('purchase'), icon: 'truck', on: isMoreLinkActive('purchase'), show: hasPerm('purchases') && hasFeature('purchases') },
-            { key: 'purchaseHistory', label: t('nav.purchaseHistory'), navLabel: t('nav.purchaseHistoryShort'), href: route('app.purchases.index'), icon: 'history', on: props.active === 'purchaseHistory', show: hasPerm('purchases') && hasFeature('purchases') },
-            { key: 'suppliers', label: t('nav.suppliers'), href: route('app.suppliers'), icon: 'factory', on: props.active === 'suppliers', show: hasPerm('purchases') && hasFeature('suppliers') },
-            { key: 'purchaseOrders', label: t('purchaseOrder.title'), href: route('app.purchaseOrders.index'), icon: 'invoice', on: page.url.startsWith('/app/purchase-orders'), show: hasPerm('purchases') && hasFeature('purchase_orders') },
-            { key: 'serials', label: t('nav.serials'), href: route('app.serials.index'), icon: 'phone', on: props.active === 'serials', show: hasPerm('stock') && hasFeature('serial_tracking') },
-            { key: 'damage', label: t('nav.damage'), href: moreLink('damage'), icon: 'trash', on: isMoreLinkActive('damage'), show: hasPerm('damages') && hasFeature('damages') },
-            { key: 'return', label: t('nav.return'), href: moreLink('return'), icon: 'undo', on: isMoreLinkActive('return'), show: hasPerm('returns') && hasFeature('returns') },
-            { key: 'count', label: t('nav.stockCount'), href: moreLink('count'), icon: 'hash', on: isMoreLinkActive('count'), show: hasPerm('stock_count') && hasFeature('stock_count') },
-            { key: 'ingredients', label: t('nav.ingredients'), href: route('app.ingredients.index'), icon: 'flask', on: props.active === 'ingredients', show: hasPerm('stock') && hasFeature('ingredient_tracking') },
-            { key: 'preparations', label: t('nav.preparations'), href: route('app.preparations.index'), icon: 'pan', on: props.active === 'preparations', show: hasPerm('stock') && hasFeature('ingredient_tracking') },
-            { key: 'estimator', label: t('nav.estimator'), href: route('app.estimator.index'), icon: 'trending', on: props.active === 'estimator', show: hasPerm('stock') && hasFeature('ingredient_tracking') },
-        ],
-    },
-    {
-        label: t('nav.category.accounts'),
-        items: [
-            { key: 'accounts', label: t('nav.accounts'), navLabel: t('nav.accountsShort'), href: route('app.accounts'), icon: 'briefcase', on: props.active === 'accounts', show: hasPerm('accounts') && hasFeature('accounts') },
-            { key: 'partners', label: t('nav.partners'), href: route('app.partners.index'), icon: 'handshake', on: props.active === 'partners', show: isOwner.value && hasFeature('partners') },
-            { key: 'reports', label: t('nav.reports'), href: route('app.reports'), icon: 'barChart', on: props.active === 'reports', show: hasPerm('reports') && hasFeature('reports') },
-            { key: 'expenses', label: t('nav.expenses'), href: route('app.expenses'), icon: 'trendingDown', on: props.active === 'expenses', show: hasPerm('expenses') && hasFeature('expenses') },
-            { key: 'export', label: t('nav.export'), href: moreLink('export'), icon: 'upload', on: isMoreLinkActive('export'), show: hasPerm('export') && hasFeature('export') },
-        ],
-    },
-    {
-        label: t('nav.category.settings'),
-        items: [
-            { key: 'cashier', label: t('nav.cashier'), href: route('app.staff.index'), icon: 'user', on: props.active === 'cashier', show: isOwner.value && hasFeature('cashier_management') },
-            { key: 'activity', label: t('nav.activity'), href: route('app.activity'), icon: 'activity', on: props.active === 'activity', show: isOwner.value && hasFeature('activity_log') },
-            { key: 'help', label: t('nav.help'), href: route('app.help'), icon: 'help', on: props.active === 'help', show: true },
-            { key: 'employees', label: t('nav.employees'), href: route('app.employees.index'), icon: 'users', on: props.active === 'employees', show: isOwner.value && hasFeature('hr_payroll') },
-            { key: 'logo', label: t('nav.logo'), href: moreLink('logo'), icon: 'image', on: isMoreLinkActive('logo'), show: hasPerm('settings') },
-            { key: 'more', label: t('nav.moreAll'), href: moreLink(), icon: 'settings', on: isMoreLinkActive(), show: true },
-        ],
-    },
-]);
+// Grouped nav for the desktop sidebar + the "আরো" page sheet-opening
+// helpers below — shared with Home.vue's Quick Actions grid via
+// useNavItems(), so the two surfaces can never drift to different
+// routes/gates for the same destination.
+const { navGroups: sidebarGroups, mobileSellHref, mobileSellActive } = useNavItems(props.active);
 
 // Missing feature (see docs/FIX_PLAN.md Phase 8): the mobile bottom nav's
 // two flexible slots (between the always-fixed Home/Sell/More) were
