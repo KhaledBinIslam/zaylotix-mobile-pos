@@ -1063,6 +1063,11 @@ async function submitCheckout() {
         errorMsg.value = t('pos.splitNeedsPhone');
         return;
     }
+    // Khaled: checkout fired on a single tap, so a stray tap completed a
+    // real sale — one explicit yes/no (with the amount) before anything
+    // is sent. confirm() is the house pattern for exactly this (variant
+    // delete, customization reset, etc.).
+    if (!window.confirm(t('pos.confirmCheckout', { total: money(total.value) }))) return;
     submitting.value = true;
     errorMsg.value = '';
     const payload = buildCheckoutPayload();

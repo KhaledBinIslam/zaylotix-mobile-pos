@@ -553,6 +553,8 @@ async function submitCheckout() {
         errorMsg.value = t('pos.splitNeedsPhone');
         return;
     }
+    // same one-tap-sale guard as Pos/Index.vue's submitCheckout()
+    if (!window.confirm(t('pos.confirmCheckout', { total: money(total.value) }))) return;
     submitting.value = true;
     errorMsg.value = '';
 

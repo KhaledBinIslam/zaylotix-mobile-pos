@@ -1423,6 +1423,7 @@ export const translations = {
     'pos.grandTotal': { bn: 'সর্বমোট', en: 'Grand Total' },
     'pos.processing': { bn: '⏳ প্রসেসিং...', en: '⏳ Processing...' },
     'pos.checkoutButton': { bn: '✅ বিল করুন •', en: '✅ Checkout •' },
+    'pos.confirmCheckout': { bn: 'মোট {total} — বিক্রি সম্পন্ন করবেন?', en: 'Total {total} — complete this sale?' },
     'pos.cartEmpty': { bn: 'কার্ট খালি', en: 'Cart is empty' },
     'pos.cart': { bn: 'কার্ট', en: 'Cart' },
     'pos.noProducts': { bn: 'কোনো পণ্য পাওয়া যায়নি', en: 'No products found' },
