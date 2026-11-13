@@ -8,7 +8,9 @@ const props = defineProps({ shops: Array });
 const accountTypeLabel = { demo: 'Demo', trial: 'Trial', paid: 'Paid', internal: 'Internal' };
 const accountTypeBadge = { demo: 'bg-amber-100 text-amber-700', trial: 'bg-sky-100 text-sky-700', paid: 'bg-emerald-100 text-emerald-700', internal: 'bg-gray-200 text-gray-700' };
 
-const accountTypeFilter = ref('all');
+// Khaled: the default view should be the paid shops — "all" is still one
+// tap away in the dropdown, just no longer what loads first.
+const accountTypeFilter = ref('paid');
 const filteredShops = computed(() => accountTypeFilter.value === 'all' ? props.shops : props.shops.filter((s) => s.account_type === accountTypeFilter.value));
 
 // MRR/active-shop count already only reflect paid accounts server-side
