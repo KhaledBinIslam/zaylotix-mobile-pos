@@ -14,7 +14,7 @@ use Illuminate\Console\Command;
  */
 class ShopsShowSettings extends Command
 {
-    protected $signature = 'shops:show-settings {--shop=} {--name=} {--children}';
+    protected $signature = 'shops:show-settings {--shop=} {--name=} {--children} {--products=}';
 
     protected $description = 'Read-only: dumps a shop\'s settings relevant to cloning it into a new shop.';
 
@@ -58,6 +58,17 @@ class ShopsShowSettings extends Command
         $this->line('price tier rows: '.\App\Models\ProductPriceTier::withoutGlobalScopes()->whereIn('product_id', \App\Models\Product::withoutGlobalScopes()->where('shop_id', $shop->id)->pluck('id'))->count());
         $users = \App\Models\User::withoutGlobalScopes()->where('shop_id', $shop->id)->get(['role', 'phone']);
         $this->line('users: '.$users->map(fn ($u) => "{$u->role}:{$u->phone}")->implode(' | '));
+
+        if ($n = (int) $this->option('products')) {
+            $this->line('product sample:');
+            \App\Models\Product::withoutGlobalScopes()->where('shop_id', $shop->id)->whereNull('deleted_at')
+                ->orderBy('id')->limit($n)->get(['id', 'name', 'category_id'])
+                ->each(function ($p) use ($shop) {
+                    $vc = \App\Models\ProductVariant::withoutGlobalScopes()->where('product_id', $p->id)->whereNull('deleted_at')->count();
+                    $cat = \App\Models\ProductCategory::withoutGlobalScopes()->whereKey($p->category_id)->value('name');
+                    $this->line("  [{$p->id}] {$p->name} · cat={$cat} · variants={$vc}");
+                });
+        }
 
         if ($this->option('children')) {
             $branches = Shop::withoutGlobalScopes()->where('parent_shop_id', $shop->id)->get(['id', 'name', 'area', 'sales_mode', 'hardware_scanner_enabled']);
