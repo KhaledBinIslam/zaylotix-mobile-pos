@@ -108,6 +108,19 @@ export function useOfflineCatalog() {
             try {
                 const res = await fetchWithSessionRetry(route('app.pos.barcode', code), { headers: { Accept: 'application/json' } });
                 if (res.ok) return res.json();
+                // A 404 here is PosController::barcode()'s own definitive
+                // "genuinely not in this shop's catalog" answer — trust it.
+                // This file's own docblock already promises the offline
+                // cache is a fallback for when "the network itself fails",
+                // but `res.ok` is also false for this (and any other) non-2xx
+                // status, so a real, server-confirmed "not found" used to
+                // fall through to the stale/empty local cache below instead
+                // of being believed — for a 'search'-mode shop with a
+                // populated offline cache, that could even resolve to the
+                // WRONG product if one happened to share a stale cached
+                // barcode. Only a genuine network/server failure (anything
+                // that isn't a clean 404) should still fall back below.
+                if (res.status === 404) return { found: false };
             } catch {
                 // fall through to the offline cache below
             }
