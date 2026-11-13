@@ -33,7 +33,7 @@ class ShopsDiffVariantBarcodes extends Command
         $checked = 0;
         $mismatches = 0;
 
-        foreach (Product::withoutGlobalScopes()->where('shop_id', $main->id)->whereNull('deleted_at')->get(['id', 'name']) as $mp) {
+        foreach (Product::withoutGlobalScopes()->where('shop_id', $main->id)->whereNull('deleted_at')->get(['id', 'name', 'stock']) as $mp) {
             $bp = Product::withoutGlobalScopes()->where('shop_id', $branch->id)->where('master_product_id', $mp->id)->first();
             if (! $bp) {
                 $this->line("NO BRANCH PRODUCT for {$mp->name}");
@@ -64,6 +64,19 @@ class ShopsDiffVariantBarcodes extends Command
                     $this->line("BARCODE MISMATCH {$mp->name} {$mv->size}/{$mv->color} main={$mv->barcode} branch={$bv->barcode}");
                     $mismatches++;
                 }
+                // shared_stock_pool's whole promise: one real number, every
+                // pool member row carries it — Khaled's own follow-up
+                // question ("branch 1-e sell hole branch 2-eo stock kome
+                // toh?"), checked directly rather than just asserted.
+                if ((float) $bv->stock !== (float) $mv->stock) {
+                    $this->line("STOCK MISMATCH {$mp->name} {$mv->size}/{$mv->color} main_stock={$mv->stock} branch_stock={$bv->stock}");
+                    $mismatches++;
+                }
+            }
+
+            if ((float) $bp->stock !== (float) $mp->stock) {
+                $this->line("PRODUCT STOCK MISMATCH {$mp->name} main_stock={$mp->stock} branch_stock={$bp->stock}");
+                $mismatches++;
             }
         }
 
