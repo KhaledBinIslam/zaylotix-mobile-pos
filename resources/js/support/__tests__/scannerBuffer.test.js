@@ -58,18 +58,48 @@ describe('reduceScannerKey', () => {
         expect(scanned).toBeNull();
     });
 
-    it('ignores modifier/navigation keys without corrupting the buffer state incorrectly', () => {
+    /**
+     * Liberty Bali live bug ("Product not found: C807"): a wired USB
+     * scanner that presses Shift separately before EVERY uppercase
+     * character used to get its buffer wiped on each Shift keydown — a
+     * real "ZC807" came through as just "C807" (everything before the
+     * last Shift lost). Shift is part of how a scanner types uppercase,
+     * never a sign the scan ended.
+     */
+    it('keeps the buffer across per-character Shift presses (uppercase-typing scanners)', () => {
+        let state = createScannerState();
+        let t = 0;
+        // Shift, Z, Shift, C, 8, 0, 7 — exactly how the failing scanner types "ZC807"
+        for (const key of ['Shift', 'Z', 'Shift', 'C', '8', '0', '7']) {
+            ({ next: state } = reduceScannerKey(state, { key, timestamp: t }));
+            t += 1;
+        }
+        const { scanned } = reduceScannerKey(state, { key: 'Enter', timestamp: t });
+        expect(scanned).toBe('ZC807');
+    });
+
+    it('a non-Shift control key mid-run still resets the buffer (human editing)', () => {
         let state = createScannerState();
         let t = 0;
         for (const ch of 'ABCD') {
             ({ next: state } = reduceScannerKey(state, { key: ch, timestamp: t }));
             t += 1;
         }
-        // a stray Shift keydown arrives mid-scan (its own keyup doesn't reach this reducer)
-        ({ next: state } = reduceScannerKey(state, { key: 'Shift', timestamp: t }));
+        ({ next: state } = reduceScannerKey(state, { key: 'Backspace', timestamp: t }));
         t += 1;
         const { scanned } = reduceScannerKey(state, { key: 'Enter', timestamp: t });
-        // the modifier key reset the buffer entirely — nothing left to scan
+        expect(scanned).toBeNull();
+    });
+
+    it('slow human typing stays rejected even with interleaved Shift presses', () => {
+        let state = createScannerState();
+        let t = 0;
+        // a human typing "ZC807" by hand: shift+letter pairs ~150ms apart
+        for (const key of ['Shift', 'Z', 'Shift', 'C', '8', '0', '7']) {
+            ({ next: state } = reduceScannerKey(state, { key, timestamp: t }));
+            t += 150;
+        }
+        const { scanned } = reduceScannerKey(state, { key: 'Enter', timestamp: t });
         expect(scanned).toBeNull();
     });
 

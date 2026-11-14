@@ -44,8 +44,23 @@ export function reduceScannerKey(state, { key, timestamp }, opts = {}) {
             : { next, scanned: null };
     }
 
-    // ignore modifier/navigation/function keys (e.key.length > 1 for those,
-    // e.g. "Shift", "ArrowLeft") — only single printable characters count
+    // Liberty Bali's wired USB scanner (Khaled live, "Product not found:
+    // C807"): many keyboard-wedge scanners press/release Shift around EVERY
+    // uppercase character instead of holding it, so a real "ZC807" arrives
+    // as Shift, Z, Shift, C, 8, 0, 7 — and treating that mid-burst Shift as
+    // "human doing something else" wiped the buffer, chopping the code to
+    // its tail after the last Shift ("C807", which matches nothing). Shift
+    // is part of how a scanner TYPES, not a sign the scan ended — pass it
+    // through, keeping the burst alive timing-wise. The speed gate below
+    // still rejects human typing: nobody sustains sub-maxGapMs on every
+    // keystroke of a 4+ character code by accident, shifted or not.
+    if (key === 'Shift') {
+        return { next: { ...state, lastTime: timestamp }, scanned: null };
+    }
+
+    // ignore other modifier/navigation/function keys (e.key.length > 1 for
+    // those, e.g. "ArrowLeft", "Backspace") — only single printable
+    // characters count, and any of these mid-run means a human is editing
     if (key.length !== 1) {
         return { next: createScannerState(), scanned: null };
     }
