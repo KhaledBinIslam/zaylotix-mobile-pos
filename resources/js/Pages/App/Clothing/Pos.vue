@@ -8,6 +8,7 @@ import HowToHint from '@/Components/HowToHint.vue';
 import ReceiptMemo from '@/Components/ReceiptMemo.vue';
 import { useToast } from '@/composables/useToast';
 import { useI18n } from '@/composables/useI18n';
+import { confirmAsync } from '@/composables/useConfirm';
 import { useHardwareScanner } from '@/composables/useHardwareScanner';
 import { useOfflineSync } from '@/composables/useOfflineSync';
 import { useOfflineCatalog } from '@/composables/useOfflineCatalog';
@@ -239,7 +240,7 @@ function changeCartLineVariant(line, productId, newVariantId) {
     toast('✅ ' + product.name + ' (' + variantLabel(newVariant) + ')');
 }
 
-function addToCart(productId, productVariantId) {
+async function addToCart(productId, productVariantId) {
     const product = productOf(productId);
     if (!product) return;
 
@@ -253,7 +254,7 @@ function addToCart(productId, productVariantId) {
             // confirmed every time (never silent), and the server
             // independently re-checks the permission before honoring it
             // (see CheckoutRequest/PosController::checkout's own comments)
-            if (!hasPerm('oversell') || !confirm(t('pos.oversellConfirm'))) {
+            if (!hasPerm('oversell') || !(await confirmAsync(t('pos.oversellConfirm')))) {
                 toast('❌ ' + t('pos.notEnoughStock') + ' ' + product.name + ' (' + variantLabel(v) + ')');
                 return;
             }
@@ -272,7 +273,7 @@ function addToCart(productId, productVariantId) {
 
     const alreadyInCartBase = cart.value.reduce((s, l) => s + (!l.product_variant_id && l.product_id === productId ? l.qty : 0), 0);
     if (product.stock <= alreadyInCartBase) {
-        if (!hasPerm('oversell') || !confirm(t('pos.oversellConfirm'))) {
+        if (!hasPerm('oversell') || !(await confirmAsync(t('pos.oversellConfirm')))) {
             toast('❌ ' + t('pos.notEnoughStock') + ' ' + product.name);
             return;
         }

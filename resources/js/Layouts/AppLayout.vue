@@ -2,6 +2,7 @@
 import { Link, usePage, router, useForm } from '@inertiajs/vue3';
 import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import Toast from '@/Components/Toast.vue';
+import ConfirmDialog from '@/Components/ConfirmDialog.vue';
 import ZaylotixMark from '@/Components/ZaylotixMark.vue';
 import Sheet from '@/Components/Sheet.vue';
 import ReceiptMemo from '@/Components/ReceiptMemo.vue';
@@ -872,4 +873,5 @@ const mobileNavSlots = computed(() => {
     </div>
 
     <Toast />
+    <ConfirmDialog />
 </template>

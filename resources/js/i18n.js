@@ -625,6 +625,7 @@ export const translations = {
     'common.logoutConfirm': { bn: 'লগ আউট করতে চান?', en: 'Log out of your account?' },
     'common.close': { bn: 'বন্ধ করুন', en: 'Close' },
     'common.cancel': { bn: 'বাতিল', en: 'Cancel' },
+    'common.yes': { bn: '✅ হ্যাঁ', en: '✅ Yes' },
     'common.save': { bn: 'সংরক্ষণ করুন', en: 'Save' },
     'common.settings': { bn: 'সেটিংস', en: 'Settings' },
     'common.more': { bn: 'আরও', en: 'More' },

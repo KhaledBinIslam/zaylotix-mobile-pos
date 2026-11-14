@@ -5,6 +5,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import { useI18n } from '@/composables/useI18n';
 import { useToast } from '@/composables/useToast';
+import { confirmAsync } from '@/composables/useConfirm';
 import { useHardwareScanner } from '@/composables/useHardwareScanner';
 import { useOfflineActionQueue } from '@/composables/useOfflineActionQueue';
 import { usePollingReload } from '@/composables/usePollingReload';
@@ -431,8 +432,8 @@ function sendKotWA() {
     router.post(route('app.restaurant.orders.kot', props.order.id), {}, { preserveScroll: true });
 }
 
-const cancelOrder = () => {
-    if (!confirm(t('restaurant.cancelOrderConfirm'))) return;
+const cancelOrder = async () => {
+    if (!(await confirmAsync(t('restaurant.cancelOrderConfirm')))) return;
     try { sessionStorage.removeItem(BILL_RECOVERY_KEY); } catch { /* ignore */ }
     router.post(route('app.restaurant.orders.cancel', props.order.id));
 };

@@ -10,6 +10,7 @@ import HowToHint from '@/Components/HowToHint.vue';
 import ReceiptMemo from '@/Components/ReceiptMemo.vue';
 import { useToast } from '@/composables/useToast';
 import { useI18n } from '@/composables/useI18n';
+import { confirmAsync } from '@/composables/useConfirm';
 import { useHardwareScanner } from '@/composables/useHardwareScanner';
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts';
 import { useOfflineSync } from '@/composables/useOfflineSync';
@@ -486,7 +487,7 @@ function openScanColorPicker(product, color, onFeedback) {
 }
 
 /** A cart line is either a base sale, a pack-unit line, or a variant line — never a mix, mirrors PosController::checkout. */
-function addToCart(productId, productUnitId = null, { silent, productVariantId = null, qty = 1, productSourceId = null } = {}) {
+async function addToCart(productId, productUnitId = null, { silent, productVariantId = null, qty = 1, productSourceId = null } = {}) {
     if (!productId) return;
     const product = props.products.find((p) => p.id === productId);
     if (!product) return;
@@ -502,7 +503,7 @@ function addToCart(productId, productUnitId = null, { silent, productVariantId =
             // a silent/scan-triggered add (no modal mid-scan), and the server
             // independently re-checks the permission regardless (see
             // CheckoutRequest/PosController::checkout's own comments)
-            if (silent || !hasPerm('oversell') || !confirm(t('pos.oversellConfirm'))) {
+            if (silent || !hasPerm('oversell') || !(await confirmAsync(t('pos.oversellConfirm')))) {
                 if (!silent) toast('❌ ' + t('pos.notEnoughStock') + ' ' + product.name + ' (' + variantLabel(variant) + ')');
                 return;
             }
@@ -526,7 +527,7 @@ function addToCart(productId, productUnitId = null, { silent, productVariantId =
     const alreadyInCartBase = cart.value.reduce((s, l) => s + (!l.product_variant_id && l.product_id === productId ? l.qty * unitOf(product, l.product_unit_id).factor : 0), 0);
     let oversoldBase = false;
     if (product.stock <= alreadyInCartBase + factor - 1) {
-        if (silent || !hasPerm('oversell') || !confirm(t('pos.oversellConfirm'))) {
+        if (silent || !hasPerm('oversell') || !(await confirmAsync(t('pos.oversellConfirm')))) {
             if (!silent) toast('❌ ' + t('pos.notEnoughStock') + ' ' + product.name);
             return;
         }
@@ -1297,8 +1298,8 @@ async function resumeHeldCart(id) {
     router.reload({ only: ['heldCarts'] });
 }
 
-function deleteHeldCart(id) {
-    if (!confirm(t('pos.deleteHeldConfirm'))) return;
+async function deleteHeldCart(id) {
+    if (!(await confirmAsync(t('pos.deleteHeldConfirm')))) return;
     router.delete(route('app.heldCarts.destroy', id), { preserveScroll: true });
 }
 

@@ -5,6 +5,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import { useI18n } from '@/composables/useI18n';
 import { useToast } from '@/composables/useToast';
+import { confirmAsync } from '@/composables/useConfirm';
 import { usePollingReload } from '@/composables/usePollingReload';
 
 const props = defineProps({ tables: Array, takeawayOrders: { type: Array, default: () => [] } });
@@ -66,8 +67,8 @@ function startTakeaway() {
 function startNewOrder() {
     router.post(route('app.restaurant.order.open'));
 }
-function removeTable(tbl) {
-    if (!confirm(`"${tbl.name}" ${t('restaurant.removeTableConfirm')}`)) return;
+async function removeTable(tbl) {
+    if (!(await confirmAsync(`"${tbl.name}" ${t('restaurant.removeTableConfirm')}`))) return;
     router.delete(route('app.restaurant.tables.destroy', tbl.id));
 }
 
