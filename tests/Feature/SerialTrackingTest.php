@@ -207,6 +207,58 @@ class SerialTrackingTest extends TestCase
         $this->assertSame(2, ProductSerial::count());
     }
 
+    /**
+     * Khaled live (2026-11-14): checking "Track IMEI" on the create-product
+     * form, with stock already typed in, never offered anywhere to type
+     * those IMEIs — the box only ever appeared later, on a separate
+     * stock-in. A brand-new product born WITH stock registers one serial
+     * per unit right away, same as stockIn() already does.
+     */
+    public function test_creating_a_serial_tracked_product_with_initial_stock_registers_one_serial_per_unit(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'serial_tracking');
+
+        $this->actingAs($owner, 'web')->post(route('app.products.store'), [
+            'name' => 'Phone', 'cost' => 10000, 'price' => 15000, 'stock' => 3, 'track_serial' => true,
+            'imeis' => "111\n222\n333", 'warranty_expiry' => now()->addYear()->toDateString(),
+        ])->assertRedirect();
+
+        $product = Product::where('name', 'Phone')->first();
+        $this->assertEquals(3, $product->stock);
+        $this->assertSame(3, ProductSerial::count());
+        $this->assertSame(['111', '222', '333'], ProductSerial::where('product_id', $product->id)->orderBy('id')->pluck('imei')->all());
+    }
+
+    public function test_creating_a_serial_tracked_product_rejects_a_mismatched_imei_count(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'serial_tracking');
+
+        $response = $this->actingAs($owner, 'web')->post(route('app.products.store'), [
+            'name' => 'Phone', 'cost' => 10000, 'price' => 15000, 'stock' => 3, 'track_serial' => true,
+            'imeis' => "111\n222", // only 2, for stock 3
+        ]);
+
+        $response->assertSessionHasErrors('imeis');
+        $this->assertNull(Product::where('name', 'Phone')->first()); // whole creation rejected, not partially applied
+        $this->assertSame(0, ProductSerial::count());
+    }
+
+    public function test_creating_a_serial_tracked_product_with_no_imeis_still_works_normally(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'serial_tracking');
+
+        $this->actingAs($owner, 'web')->post(route('app.products.store'), [
+            'name' => 'Phone', 'cost' => 10000, 'price' => 15000, 'stock' => 3, 'track_serial' => true,
+        ])->assertRedirect();
+
+        $product = Product::where('name', 'Phone')->first();
+        $this->assertEquals(3, $product->stock);
+        $this->assertSame(0, ProductSerial::count());
+    }
+
     public function test_serials_are_tenant_scoped(): void
     {
         [$shopA, $ownerA] = $this->createShopWithOwner();

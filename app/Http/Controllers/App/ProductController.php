@@ -196,6 +196,17 @@ class ProductController extends Controller
     {
         $data = $request->validated();
 
+        // Same qty-must-match-count contract as stockIn() below — a
+        // brand-new serial-tracked product born WITH stock is "receiving"
+        // those units exactly the same way a later stock-in does.
+        $imeis = \App\Support\SerialStock::parseList($data['imeis'] ?? null);
+        if ($imeis && ($data['track_serial'] ?? false)) {
+            $qty = (int) ($data['stock'] ?? 0);
+            if (count($imeis) !== $qty) {
+                return back()->withErrors(['imeis' => 'IMEI সংখ্যা ('.count($imeis).") স্টকের পরিমাণের ({$qty}) সাথে মিলছে না।"])->withInput();
+            }
+        }
+
         [$categoryId, $unitId] = DB::transaction(function () use ($data) {
             $categoryId = $data['category_id'] ?? null;
             if (! $categoryId && ! empty($data['new_category_name'])) {
@@ -277,6 +288,10 @@ class ProductController extends Controller
                 );
             }
             \App\Support\IntakeLedger::record($product, null, (float) $product->stock, (float) $data['cost'], 'product_create');
+        }
+
+        if ($imeis && $product->track_serial && \App\Support\Tenancy::shop()?->hasFeature('serial_tracking')) {
+            \App\Support\SerialStock::receive($product, $imeis, $data['warranty_expiry'] ?? null, $data['cost'] ?? null);
         }
 
         return back()->with('success', "{$product->name} added.");

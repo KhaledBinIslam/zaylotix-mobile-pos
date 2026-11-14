@@ -1,5 +1,4 @@
 import { ref, computed } from 'vue';
-import { useOfflineSync } from '@/composables/useOfflineSync';
 import { putProducts, searchProductsOffline, findProductByBarcode } from '@/support/offlineDb';
 import { fetchWithSessionRetry } from '@/support/fetchWithSessionRetry';
 
@@ -57,8 +56,6 @@ async function runBackgroundSync(productCount) {
 }
 
 export function useOfflineCatalog() {
-    const { isOnline } = useOfflineSync();
-
     function startBackgroundSync(productCount) {
         if (syncStarted) return;
         syncStarted = true;
@@ -68,29 +65,39 @@ export function useOfflineCatalog() {
     /**
      * Debounced (300ms, matching this app's one existing precedent — the
      * pharmacy medicine-catalog lookup) server search, falling back to the
-     * local cache when offline or the request itself fails. `categoryId`
-     * follows Pos/Index.vue's own 'all' sentinel for "no filter".
+     * local cache when the request itself fails. `categoryId` follows
+     * Pos/Index.vue's own 'all' sentinel for "no filter".
+     *
+     * Deliberately does NOT gate on navigator.onLine (via useOfflineSync's
+     * `isOnline`) before even trying the network — that flag only reflects
+     * whether the device has an active network interface, not whether it
+     * can actually reach the server, and is known to get stuck wrong on
+     * some Android devices/carriers. A device Khaled tested live (the ZV
+     * cross-branch barcode fix, 2026-11-13) scanned "not found" on one
+     * phone but not another, same item, same shop — root cause: that one
+     * phone's isOnline flag was stuck false, so it skipped the (now fixed)
+     * server lookup entirely and went straight to the stale local cache.
+     * Always attempting the real request and falling back only on an
+     * actual thrown failure removes this whole class of false negative.
      */
     function search(query, categoryId) {
         return new Promise((resolve) => {
             clearTimeout(searchDebounceTimer);
             searchDebounceTimer = setTimeout(async () => {
-                if (isOnline.value) {
-                    try {
-                        const params = new URLSearchParams();
-                        if (query) params.set('q', query);
-                        if (categoryId && categoryId !== 'all') params.set('category_id', categoryId);
-                        const res = await fetchWithSessionRetry(`${route('app.pos.search')}?${params.toString()}`, {
-                            headers: { Accept: 'application/json' },
-                        });
-                        if (res.ok) {
-                            resolve((await res.json()).products);
+                try {
+                    const params = new URLSearchParams();
+                    if (query) params.set('q', query);
+                    if (categoryId && categoryId !== 'all') params.set('category_id', categoryId);
+                    const res = await fetchWithSessionRetry(`${route('app.pos.search')}?${params.toString()}`, {
+                        headers: { Accept: 'application/json' },
+                    });
+                    if (res.ok) {
+                        resolve((await res.json()).products);
 
-                            return;
-                        }
-                    } catch {
-                        // fall through to the offline cache below
+                        return;
                     }
+                } catch {
+                    // fall through to the offline cache below
                 }
                 resolve(await searchProductsOffline(query, categoryId));
             }, 300);
@@ -101,29 +108,29 @@ export function useOfflineCatalog() {
      * Mirrors Pos/Index.vue's existing barcode fallback order (in-memory
      * first, handled by the caller before this is even reached; then the
      * server) — this only adds one more step after the server attempt
-     * fails or there's no network at all: the local offline cache.
+     * fails: the local offline cache. See search()'s docblock above for
+     * why this always attempts the real request rather than gating on
+     * navigator.onLine first.
      */
     async function resolveBarcode(code) {
-        if (isOnline.value) {
-            try {
-                const res = await fetchWithSessionRetry(route('app.pos.barcode', code), { headers: { Accept: 'application/json' } });
-                if (res.ok) return res.json();
-                // A 404 here is PosController::barcode()'s own definitive
-                // "genuinely not in this shop's catalog" answer — trust it.
-                // This file's own docblock already promises the offline
-                // cache is a fallback for when "the network itself fails",
-                // but `res.ok` is also false for this (and any other) non-2xx
-                // status, so a real, server-confirmed "not found" used to
-                // fall through to the stale/empty local cache below instead
-                // of being believed — for a 'search'-mode shop with a
-                // populated offline cache, that could even resolve to the
-                // WRONG product if one happened to share a stale cached
-                // barcode. Only a genuine network/server failure (anything
-                // that isn't a clean 404) should still fall back below.
-                if (res.status === 404) return { found: false };
-            } catch {
-                // fall through to the offline cache below
-            }
+        try {
+            const res = await fetchWithSessionRetry(route('app.pos.barcode', code), { headers: { Accept: 'application/json' } });
+            if (res.ok) return res.json();
+            // A 404 here is PosController::barcode()'s own definitive
+            // "genuinely not in this shop's catalog" answer — trust it.
+            // This file's own docblock already promises the offline
+            // cache is a fallback for when "the network itself fails",
+            // but `res.ok` is also false for this (and any other) non-2xx
+            // status, so a real, server-confirmed "not found" used to
+            // fall through to the stale/empty local cache below instead
+            // of being believed — for a 'search'-mode shop with a
+            // populated offline cache, that could even resolve to the
+            // WRONG product if one happened to share a stale cached
+            // barcode. Only a genuine network/server failure (anything
+            // that isn't a clean 404) should still fall back below.
+            if (res.status === 404) return { found: false };
+        } catch {
+            // genuinely offline, or the request itself failed — fall through to the local cache below
         }
 
         const found = await findProductByBarcode(code);

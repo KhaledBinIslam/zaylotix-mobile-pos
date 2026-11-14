@@ -96,6 +96,13 @@ class StoreProductRequest extends FormRequest
             // simply never found there)
             'brand_id' => ['nullable', 'integer'],
             'imei' => ['nullable', 'string', 'max:50'],
+            // ProductController::stockIn()'s own bulk IMEI textarea, mirrored
+            // here for a brand-new serial-tracked product born WITH stock —
+            // Khaled live: checking "Track IMEI" on the create form never
+            // offered anywhere to type them, so that initial stock had no
+            // real serial behind it at all.
+            'imeis' => ['nullable', 'string'],
+            'warranty_expiry' => ['nullable', 'date'],
             'reorder_point' => ['nullable', 'integer', 'min:0'],
         ];
     }

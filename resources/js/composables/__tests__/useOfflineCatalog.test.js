@@ -46,6 +46,7 @@ async function freshModule() {
 afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    isOnlineValue = true;
 });
 
 describe('resolveBarcode', () => {
@@ -93,5 +94,30 @@ describe('resolveBarcode', () => {
 
         expect(result).toEqual({ found: false });
         expect(findProductByBarcode).toHaveBeenCalledWith('ANY-CODE');
+    });
+
+    /**
+     * Real bug (Baby Park live, 2026-11-14): one cashier's phone scanned
+     * "not found" for an item that scanned fine on another phone, same
+     * item, same shop. Root cause: navigator.onLine (surfaced here as
+     * useOfflineSync's `isOnline`) is known to get stuck reporting false
+     * on some devices even with a perfectly working connection — and this
+     * module used to skip the server request entirely whenever it was
+     * false, going straight to the (stale, same-shop-only) local cache.
+     * resolveBarcode() must always attempt the real request regardless of
+     * that flag; only a genuine thrown failure may fall back to the cache.
+     */
+    it('still attempts the server request even when navigator.onLine reports offline', async () => {
+        isOnlineValue = false;
+        const payload = { found: true, product: { id: 1, name: 'L-10003' } };
+        const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, payload));
+        vi.stubGlobal('fetch', fetchMock);
+        const { useOfflineCatalog } = await freshModule();
+
+        const result = await useOfflineCatalog().resolveBarcode('ANG-L-10003-BK');
+
+        expect(fetchMock).toHaveBeenCalled();
+        expect(result).toEqual(payload);
+        expect(findProductByBarcode).not.toHaveBeenCalled();
     });
 });

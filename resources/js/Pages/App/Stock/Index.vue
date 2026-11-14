@@ -232,7 +232,7 @@ const form = useForm({
     name: '', name_en: '', generic_name: '', company: '', shelf_location: '', requires_prescription: false, emoji: '📦', photo: null, remove_photo: false, category_id: '', new_category_name: '',
     option1_label: '', option2_label: '', brand_id: '', supplier_id: '', internal_note: '',
     unit_id: '', new_unit_name: '', barcode: '', cost: '', price: '', wholesale_price: '', wholesale_moq: '', discount_price: '', stock: '',
-    reorder_point: '', sold_by_weight: false, weight_unit: 'kg', track_serial: false,
+    reorder_point: '', sold_by_weight: false, weight_unit: 'kg', track_serial: false, imeis: '', warranty_expiry: '',
     // restaurant-only (see isRestaurant) — 'tracked' everywhere else,
     // unchanged from before this field existed
     stock_mode: 'tracked', available: true,
@@ -344,6 +344,7 @@ function openEdit(p) {
     form.available = Number(p.stock) > 0; // only meaningful when stock_mode is 'toggle' — see Product::isMarkedAvailable()
     form.sold_by_weight = !!p.sold_by_weight; form.weight_unit = p.weight_unit || 'kg';
     form.track_serial = !!p.track_serial;
+    form.imeis = ''; form.warranty_expiry = '';
     form.photo = null; form.remove_photo = false;
     newPhotoPreview.value = null;
     form.new_category_name = ''; form.new_unit_name = '';
@@ -1411,6 +1412,21 @@ useKeyboardShortcuts({
                 </label>
                 <div style="color:var(--dim);font-size:12px;margin-top:4px">{{ t('stock.trackSerialHint') }}</div>
             </div>
+
+            <!-- Khaled live: checking "Track IMEI" above, for a brand-new
+                 product born with stock already set, never offered anywhere
+                 to actually type those IMEIs — the box only ever appeared
+                 later, on a SEPARATE stock-in. Mirrors that exact stock-in
+                 field so the initial units get real serials too, not just
+                 editing an existing product's own stock here. -->
+            <template v-if="hasSerialTracking && form.track_serial && !editing">
+                <div class="field">
+                    <label>{{ t('stock.imeis') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.imeisHint') }}</span></label>
+                    <textarea v-model="form.imeis" rows="3" :placeholder="t('stock.imeisPlaceholder')"></textarea>
+                    <div v-if="form.errors.imeis" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.imeis }}</div>
+                </div>
+                <div class="field"><label>{{ t('stock.warrantyUntil') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label><input v-model="form.warranty_expiry" type="date"></div>
+            </template>
 
             <div class="f2">
                 <div class="field">
