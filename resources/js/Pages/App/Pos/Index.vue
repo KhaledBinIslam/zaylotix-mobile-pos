@@ -186,6 +186,7 @@ watch([customerPhone, customerName], ([phone, name]) => {
 watch(payMode, (mode) => { if (mode === 'credit') showCustomerInfo.value = true; });
 const submitting = ref(false);
 const errorMsg = ref('');
+const checkoutConfirmOpen = ref(false);
 // One idempotency key per checkout attempt, reused across manual retries of
 // the SAME cart (an ambiguous-failure resubmit must not look like a brand
 // new sale to the server) — only cleared once this attempt actually
@@ -1065,9 +1066,20 @@ async function submitCheckout() {
     }
     // Khaled: checkout fired on a single tap, so a stray tap completed a
     // real sale — one explicit yes/no (with the amount) before anything
-    // is sent. confirm() is the house pattern for exactly this (variant
-    // delete, customization reset, etc.).
-    if (!window.confirm(t('pos.confirmCheckout', { total: money(total.value) }))) return;
+    // is sent. A real logged bug on a live clothing demo shop (0 sales
+    // ever going through, "বিল আসছে না" with no visible error) traced to
+    // window.confirm() here: a native blocking dialog is known to get
+    // silently auto-dismissed (returns false, exactly like tapping
+    // Cancel, with nothing to show for it) inside some Android WebView/
+    // PWA/"add to home screen" contexts — precisely the shop-floor setup
+    // this app is used in. An in-app Sheet (checkoutConfirmOpen below)
+    // can never be suppressed that way, and matches how every other
+    // confirmation in this app already looks.
+    checkoutConfirmOpen.value = true;
+}
+
+async function proceedCheckout() {
+    checkoutConfirmOpen.value = false;
     submitting.value = true;
     errorMsg.value = '';
     const payload = buildCheckoutPayload();
@@ -2312,6 +2324,16 @@ useKeyboardShortcuts({
                 </div>
             </div>
             <div v-else class="empty"><div class="big">🛒</div>{{ t('pos.cartEmpty') }}</div>
+        </Sheet>
+
+        <!-- one explicit yes/no before a sale actually fires (Khaled: a
+             stray tap used to complete a real sale) — an in-app Sheet, not
+             window.confirm(), which a shop's Android "add to home screen"/
+             WebView setup can silently auto-dismiss with no visible error -->
+        <Sheet v-model="checkoutConfirmOpen" :title="t('pos.confirmCheckoutTitle')">
+            <p style="font-size:15px;margin-bottom:18px">{{ t('pos.confirmCheckout', { total: money(total) }) }}</p>
+            <button class="btn" :disabled="submitting" @click="proceedCheckout">{{ submitting ? t('pos.processing') : t('pos.confirmCheckoutYes') }}</button>
+            <button class="btn ghost" style="margin-top:10px" :disabled="submitting" @click="checkoutConfirmOpen = false">{{ t('common.cancel') }}</button>
         </Sheet>
 
         <!-- held carts picker -->

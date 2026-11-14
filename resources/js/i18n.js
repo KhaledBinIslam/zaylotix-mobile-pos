@@ -1424,6 +1424,8 @@ export const translations = {
     'pos.processing': { bn: '⏳ প্রসেসিং...', en: '⏳ Processing...' },
     'pos.checkoutButton': { bn: '✅ বিল করুন •', en: '✅ Checkout •' },
     'pos.confirmCheckout': { bn: 'মোট {total} — বিক্রি সম্পন্ন করবেন?', en: 'Total {total} — complete this sale?' },
+    'pos.confirmCheckoutTitle': { bn: 'বিক্রি নিশ্চিত করুন', en: 'Confirm sale' },
+    'pos.confirmCheckoutYes': { bn: '✅ হ্যাঁ, বিল করুন', en: '✅ Yes, complete sale' },
     'pos.cartEmpty': { bn: 'কার্ট খালি', en: 'Cart is empty' },
     'pos.cart': { bn: 'কার্ট', en: 'Cart' },
     'pos.noProducts': { bn: 'কোনো পণ্য পাওয়া যায়নি', en: 'No products found' },

@@ -69,6 +69,7 @@ const receiptOpen = ref(false);
 const lastSale = ref(null);
 const errorMsg = ref('');
 const submitting = ref(false);
+const checkoutConfirmOpen = ref(false);
 
 // see Pos/Index.vue's identical block for the full explanation — search
 // results merge into props.products (accumulating, never replaced) so
@@ -553,8 +554,18 @@ async function submitCheckout() {
         errorMsg.value = t('pos.splitNeedsPhone');
         return;
     }
-    // same one-tap-sale guard as Pos/Index.vue's submitCheckout()
-    if (!window.confirm(t('pos.confirmCheckout', { total: money(total.value) }))) return;
+    // Same one-tap-sale guard as Pos/Index.vue's submitCheckout() — an
+    // in-app Sheet (checkoutConfirmOpen below), not window.confirm(). Real
+    // bug traced live on a clothing demo shop (0 sales ever going through,
+    // "বিল আসছে না" with nothing visible): a native confirm() dialog is
+    // known to get silently auto-dismissed — acts exactly like the cashier
+    // tapped Cancel, no error to show — inside some Android WebView/PWA
+    // "add to home screen" setups, precisely how this app runs shop-floor.
+    checkoutConfirmOpen.value = true;
+}
+
+async function proceedCheckout() {
+    checkoutConfirmOpen.value = false;
     submitting.value = true;
     errorMsg.value = '';
 
@@ -1077,6 +1088,14 @@ function sendMemoWA() {
                 </button>
             </div>
             </div>
+        </Sheet>
+
+        <!-- one explicit yes/no before a sale actually fires — an in-app
+             Sheet, not window.confirm() (see submitCheckout()'s docblock) -->
+        <Sheet v-model="checkoutConfirmOpen" :title="t('pos.confirmCheckoutTitle')">
+            <p style="font-size:15px;margin-bottom:18px">{{ t('pos.confirmCheckout', { total: money(total) }) }}</p>
+            <button class="btn" :disabled="submitting" @click="proceedCheckout">{{ submitting ? t('pos.processing') : t('pos.confirmCheckoutYes') }}</button>
+            <button class="btn ghost" style="margin-top:10px" :disabled="submitting" @click="checkoutConfirmOpen = false">{{ t('common.cancel') }}</button>
         </Sheet>
 
         <!-- barcode scanner -->
