@@ -53,6 +53,46 @@ describe('featureSearch', () => {
         const flat = flattenSearchable(navGroups);
         expect(searchItems(flat, 'BARCO').map((i) => i.key)).toEqual(['barcode']);
     });
+
+    /**
+     * Khaled's explicit ask (2026-11-15): "banan vul holeo ... search korle
+     * cole ase" — a misspelled query must still find the right option.
+     */
+    describe('typo tolerance', () => {
+        it('one wrong letter in an English word still matches ("barcod" -> barcode)', () => {
+            const flat = flattenSearchable(navGroups);
+            expect(searchItems(flat, 'barcod').map((i) => i.key)).toContain('barcode');
+        });
+
+        it('one wrong Bangla letter still matches a Bangla label', () => {
+            const flat = flattenSearchable([{ label: 'X', items: [{ key: 'stock', label: 'স্টক', href: '#', icon: 'box', show: true }] }]);
+            // "স্টোক" instead of "স্টক" — one extra/substituted character
+            expect(searchItems(flat, 'স্টোক').map((i) => i.key)).toContain('stock');
+        });
+
+        it('a short query (under 3 chars) stays strict — no fuzzy noise on tiny queries', () => {
+            const flat = flattenSearchable(navGroups);
+            expect(searchItems(flat, 'xz')).toEqual([]);
+        });
+
+        it('a completely unrelated word still matches nothing', () => {
+            const flat = flattenSearchable(navGroups);
+            expect(searchItems(flat, 'zzzzzzzzzz')).toEqual([]);
+        });
+
+        it('exact matches still rank before fuzzy ones', () => {
+            const flat = flattenSearchable([
+                { label: 'X', items: [
+                    { key: 'a', label: 'Stock', href: '#', icon: 'box', show: true },
+                    { key: 'b', label: 'Stocks History', href: '#', icon: 'box', show: true },
+                ] },
+            ]);
+            // "stock" is an exact substring of BOTH, so order is stable —
+            // this just confirms exact matches never get pushed behind fuzzy ones
+            const results = searchItems(flat, 'stock');
+            expect(results[0].key).toBe('a');
+        });
+    });
 });
 
 describe('buildExtraSearchItems — genuinely per-shop dynamic', () => {

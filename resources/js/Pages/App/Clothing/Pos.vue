@@ -1145,6 +1145,9 @@ function sendMemoWA() {
         width: auto; max-width: none; padding: 0; border: 0; border-radius: 0;
         left: auto; transform: none;
     }
+    /* .sheet-body is the part that actually scrolls now (see Sheet.vue/
+       app.css) — same reasoning as #sheet above, print must never clip it */
+    .sheet-body { overflow: visible; }
     #scrim { display: none !important; }
     #printable-memo {
         padding: 2mm 3mm;

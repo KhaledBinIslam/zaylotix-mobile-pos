@@ -384,15 +384,22 @@ body {
 .tab.sell .fab svg { width: 26px; height: 26px; stroke-width: 2.4; stroke: #fff; }
 
 #scrim { position: fixed; inset: 0; background: rgba(4, 6, 20, .6); z-index: 50; }
-#sheet { position: fixed; left: 50%; transform: translateX(-50%); bottom: 0; z-index: 60; width: 100%; max-width: 430px; background: var(--bg); border-radius: 28px 28px 0 0; border: 1px solid var(--line2); border-bottom: 0; box-shadow: 0 -18px 50px rgba(23, 21, 45, .18); padding: 8px 18px calc(40px + env(safe-area-inset-bottom)); max-height: 90vh; overflow-y: auto; }
+/* #sheet itself no longer scrolls — only .sheet-body (the slot content)
+   does, as its own flex child. That keeps .grab/.sheet-close/title/
+   subtitle permanently visible no matter how long the form inside gets
+   (see Sheet.vue's own comment: a long form used to scroll the ✕ button
+   away with the rest of the content, since it was absolutely positioned
+   relative to #sheet, which WAS the thing scrolling). */
+#sheet { position: fixed; left: 50%; transform: translateX(-50%); bottom: 0; z-index: 60; width: 100%; max-width: 430px; background: var(--bg); border-radius: 28px 28px 0 0; border: 1px solid var(--line2); border-bottom: 0; box-shadow: 0 -18px 50px rgba(23, 21, 45, .18); padding: 8px 18px 0; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column; }
+.sheet-body { overflow-y: auto; padding-bottom: calc(40px + env(safe-area-inset-bottom)); flex: 1 1 auto; min-height: 0; }
 /* on a tablet/desktop-wide viewport, a checkout/cart sheet stuck at the
    phone's 430px width forces a lot of scrolling for what's otherwise a
    normal-length form — widen it in step with #phone's own tablet/desktop
    breakpoints (still a bottom sheet, not a redesign, just more breathing room) */
 @media (min-width: 700px) { #sheet { max-width: 520px; } }
 @media (min-width: 1024px) { #sheet { max-width: 580px; } }
-.grab { width: 44px; height: 5px; border-radius: 99px; background: var(--line2); margin: 8px auto 14px; }
-.sheet-close { position: absolute; top: 14px; right: 14px; width: 30px; height: 30px; border-radius: 50%; border: none; background: var(--panel2); color: var(--tx); font-size: 14px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 1; }
+.grab { width: 44px; height: 5px; border-radius: 99px; background: var(--line2); margin: 8px auto 14px; flex: 0 0 auto; }
+.sheet-close { position: absolute; top: 14px; right: 14px; width: 30px; height: 30px; border-radius: 50%; border: none; background: var(--panel2); color: var(--tx); font-size: 14px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 2; }
 
 /* checkout's actual redesign, not just a wider bottom-drawer (see the note
    above this block, now addressed) — Khaled's explicit spec: on a
@@ -406,10 +413,11 @@ body {
         left: 50%; top: 50%; bottom: auto; transform: translate(-50%, -50%);
         width: 92vw; max-width: 880px; max-height: 86vh;
         border-radius: 22px; border-bottom: 1px solid var(--line2);
-        padding: 22px 26px calc(22px + env(safe-area-inset-bottom));
+        padding: 22px 26px 0;
         box-shadow: var(--sh-lg);
     }
     #sheet.wide .grab { display: none; }
+    #sheet.wide .sheet-body { padding-bottom: calc(22px + env(safe-area-inset-bottom)); }
 }
 
 /* the wide sheet's own content — cart/fields on the left, the sticky

@@ -73,11 +73,23 @@ onBeforeUnmount(() => window.removeEventListener('popstate', onPopState));
                  the dimmed backdrop, an invisible affordance nobody could be
                  expected to discover on their own. The backdrop tap still
                  works, but this is now the primary, always-visible way out
-                 of any sheet in the app, not just the ones with a title. -->
+                 of any sheet in the app, not just the ones with a title.
+
+                 Pinned OUTSIDE .sheet-body (which is the only part that
+                 actually scrolls now) — reported live: on a long form
+                 (Supplier Return's, specifically) this button used to
+                 scroll away with the rest of the content since it was
+                 absolutely positioned relative to #sheet itself, which
+                 WAS the scrolling box. A tap on "where ✕ used to be" then
+                 landed on form content instead, and only closed the sheet
+                 once the user happened to scroll back up first — reported
+                 as "have to click the ✕ several times". -->
             <button type="button" class="sheet-close" :aria-label="t('common.close')" @click="$emit('update:modelValue', false)">✕</button>
             <div v-if="title" class="shttl">{{ title }}</div>
             <div v-if="subtitle" class="shsub">{{ subtitle }}</div>
-            <slot />
+            <div class="sheet-body">
+                <slot />
+            </div>
         </div>
     </Teleport>
 </template>
