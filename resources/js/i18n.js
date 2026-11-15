@@ -1320,6 +1320,8 @@ export const translations = {
     'returns.success': { bn: 'সফলভাবে সম্পন্ন হয়েছে।', en: 'Completed successfully.' },
     'returns.print': { bn: '🖨 প্রিন্ট', en: '🖨 Print' },
     'returns.doneScan': { bn: 'শেষ হয়েছে / বন্ধ করুন', en: 'Done scanning / Close' },
+    'search.placeholder': { bn: 'কোনো ফিচার/অপশন খুঁজুন...', en: 'Search for any feature/option...' },
+    'search.noResults': { bn: 'কিছু পাওয়া যায়নি', en: 'No results' },
     'returns.newInvoice': { bn: 'নতুন ইনভয়েস', en: 'New invoice' },
 
     'supplierReturn.sheetTitle': { bn: '📦 সাপ্লায়ার রিটার্ন', en: '📦 Supplier Return' },

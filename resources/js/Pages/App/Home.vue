@@ -2,6 +2,7 @@
 import { Head, Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import FeatureSearch from '@/Components/FeatureSearch.vue';
 import { useI18n } from '@/composables/useI18n';
 import { useNavItems } from '@/composables/useNavItems';
 import { ICONS } from '@/support/navIcons';
@@ -86,6 +87,8 @@ const QUICK_ACTION_GROUPS = computed(() => {
         <div class="home-dash">
             <div class="pgttl">{{ t('home.greeting') }}</div>
             <div class="pgsub">{{ shop?.name }}</div>
+
+            <FeatureSearch />
 
             <div class="grid2">
                 <div class="stat gold">

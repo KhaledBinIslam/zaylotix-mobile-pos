@@ -3,6 +3,7 @@ import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { ref, computed, onMounted } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
+import FeatureSearch from '@/Components/FeatureSearch.vue';
 import { useI18n } from '@/composables/useI18n';
 import { isInApp } from '@/composables/useInApp';
 import { resolvedTheme, setTheme } from '@/composables/useTheme';
@@ -462,6 +463,8 @@ onMounted(() => {
     <AppLayout active="more">
         <div class="pgttl">{{ t('more.title') }}</div>
         <div class="pgsub">{{ shop?.name }} • {{ shop?.phone }}</div>
+
+        <FeatureSearch />
 
         <!--
             Khaled: "more e gia jeshb button beshi use hoi jemon barcode
