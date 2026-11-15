@@ -69,6 +69,7 @@ function selectSale(sale) {
     overrideWindow.value = false;
     returnReason.value = '';
     newItems.value = [];
+    newItemsDiscount.value = 0;
     payments.value = [];
     resultSummary.value = null;
     const state = {};
@@ -113,6 +114,8 @@ function variantPrice(row) {
     return p.price ?? 0;
 }
 const newItemsTotal = computed(() => newItems.value.reduce((sum, row) => sum + variantPrice(row) * Number(row.qty || 0), 0));
+const newItemsDiscount = ref(0);
+const newItemsTotalAfterDiscount = computed(() => Math.max(0, newItemsTotal.value - Number(newItemsDiscount.value || 0)));
 
 // --- exchange: scan to add a new item (camera + hardware), same barcode
 // precedence as POS (a variant's own barcode is checked first) but looked
@@ -248,7 +251,7 @@ const estimatedRefund = computed(() => {
     }, 0);
 });
 
-const netSettlement = computed(() => newItemsTotal.value - estimatedRefund.value);
+const netSettlement = computed(() => newItemsTotalAfterDiscount.value - estimatedRefund.value);
 
 // --- payments (for an exchange price top-up) ---
 const payments = ref([]);
@@ -280,6 +283,7 @@ async function submit() {
         payload.new_items = newItems.value
             .filter((r) => r.product_id && Number(r.qty) > 0)
             .map((r) => ({ product_id: Number(r.product_id), product_variant_id: r.product_variant_id ? Number(r.product_variant_id) : null, qty: Number(r.qty) }));
+        payload.new_items_discount = Number(newItemsDiscount.value || 0);
         payload.payments = payments.value.filter((p) => Number(p.amount) > 0).map((p) => ({ method: p.method, amount: Number(p.amount) }));
     }
 
@@ -436,10 +440,18 @@ function sendMemoWA() {
                         <button class="btn ghost" style="width:auto;padding:0 16px" @click="openScanner">📷 স্ক্যান</button>
                     </div>
 
+                    <div class="field" style="margin-top:10px">
+                        <label>নতুন আইটেমে ডিসকাউন্ট <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
+                        <input type="number" v-model="newItemsDiscount" min="0" :max="newItemsTotal" step="any">
+                    </div>
+
                     <div class="card" style="margin-top:12px;background:var(--surface2)">
+                        <div>আগে এই বিলে দেওয়া হয়েছিল: {{ money(selectedSale.tendered) }}</div>
                         <div>নতুন আইটেমের মূল্য: {{ money(newItemsTotal) }}</div>
-                        <div>আনুমানিক রিফান্ড ক্রেডিট: {{ money(estimatedRefund) }}</div>
-                        <div style="font-weight:700">{{ netSettlement > 0 ? 'কাস্টমারের থেকে নিতে হবে' : netSettlement < 0 ? 'কাস্টমারকে ফেরত দিতে হবে' : 'সমান' }}: {{ money(Math.abs(netSettlement)) }}</div>
+                        <div v-if="Number(newItemsDiscount) > 0">ডিসকাউন্ট: − {{ money(newItemsDiscount) }}</div>
+                        <div v-if="Number(newItemsDiscount) > 0" style="font-weight:700">ডিসকাউন্টের পর নতুন আইটেমের মূল্য: {{ money(newItemsTotalAfterDiscount) }}</div>
+                        <div>আনুমানিক রিফান্ড ক্রেডিট (ফেরত দেওয়া আইটেমের জন্য): {{ money(estimatedRefund) }}</div>
+                        <div style="font-weight:700;margin-top:4px">{{ netSettlement > 0 ? 'কাস্টমারের থেকে আরও নিতে হবে' : netSettlement < 0 ? 'কাস্টমারকে ফেরত দিতে হবে' : 'আর কিছু দিতে/নিতে হবে না' }}{{ netSettlement !== 0 ? ': ' + money(Math.abs(netSettlement)) : '' }}</div>
                     </div>
 
                     <div v-if="netSettlement > 0" style="margin-top:10px">
@@ -484,6 +496,7 @@ function sendMemoWA() {
                 <div v-for="(it, idx) in resultSummary.exchange_sale.items" :key="idx">
                     🔄 {{ it.product_name }}{{ it.variant_label ? ' ('+it.variant_label+')' : '' }} — {{ qty(it.qty) }} × {{ money(it.price) }}
                 </div>
+                <div v-if="resultSummary.exchange_sale.discount > 0" style="margin-top:4px">ডিসকাউন্ট দেওয়া হয়েছে: {{ money(resultSummary.exchange_sale.discount) }}</div>
                 <div style="margin-top:4px">নতুন ইনভয়েস: <b>{{ resultSummary.exchange_sale.invoice_no }}</b> — {{ money(resultSummary.exchange_sale.total) }}</div>
                 <div style="margin-top:4px;font-weight:700">
                     দামের পার্থক্য:
@@ -506,7 +519,15 @@ function sendMemoWA() {
         <Sheet v-model="scannerOpen" title="বারকোড স্ক্যান করুন">
             <div id="returns-reader" style="width:100%;border-radius:12px;overflow:hidden"></div>
             <div style="text-align:center;margin-top:10px;font-size:13px;color:var(--mut)">{{ scanHint }}</div>
-            <button class="btn ghost" style="margin-top:10px" @click="closeScanner">{{ t('common.cancel') }}</button>
+            <div style="text-align:center;margin-top:4px;font-size:12px;color:var(--dim)">ক্যামেরা চালু থাকবে — একটার পর একটা নতুন আইটেম স্ক্যান করতে থাকুন</div>
+            <div v-if="newItems.length" class="card" style="margin-top:10px;background:var(--surface2)">
+                <div v-for="(row, idx) in newItems" :key="idx" style="font-size:13px">
+                    ✅ {{ productOf(row.product_id)?.name || '—' }}
+                    <span v-if="row.product_variant_id">({{ productOf(row.product_id)?.variants?.find(v => v.id === Number(row.product_variant_id))?.label }})</span>
+                    × {{ qty(row.qty) }}
+                </div>
+            </div>
+            <button class="btn ghost" style="margin-top:10px" @click="closeScanner">{{ t('returns.doneScan') }}</button>
         </Sheet>
     </AppLayout>
 </template>

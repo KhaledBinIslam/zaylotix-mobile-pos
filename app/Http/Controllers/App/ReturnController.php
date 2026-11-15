@@ -215,7 +215,7 @@ class ReturnController extends Controller
         // currently-active one), so it's unscoped explicitly here too.
         if ($saleId = $request->get('sale_id')) {
             $sale = Sale::withoutGlobalScopes()->whereIn('shop_id', $businessShopIds)
-                ->with(['customer', 'items' => fn ($q) => $q->withoutGlobalScopes()])
+                ->with(['customer', 'payments', 'items' => fn ($q) => $q->withoutGlobalScopes()])
                 ->find($saleId);
 
             return response()->json(['sales' => $sale ? [$this->presentSale($sale, $shop)] : []]);
@@ -241,7 +241,7 @@ class ReturnController extends Controller
                     ->orWhereHas('items', fn ($i) => $i->withoutGlobalScopes()->whereHas('product', fn ($p) => $p->withoutGlobalScopes()->where('barcode', $q)))
                     ->orWhereHas('items', fn ($i) => $i->withoutGlobalScopes()->whereHas('variant', fn ($v) => $v->withoutGlobalScopes()->where('barcode', $q)));
             })
-            ->with(['customer', 'items' => fn ($q) => $q->withoutGlobalScopes()])
+            ->with(['customer', 'payments', 'items' => fn ($q) => $q->withoutGlobalScopes()])
             ->latest('id')
             ->limit(10)
             ->get();
@@ -265,6 +265,11 @@ class ReturnController extends Controller
             'total' => (float) $sale->total,
             'subtotal' => (float) $sale->subtotal,
             'discount' => (float) $sale->discount,
+            // what the customer actually handed over at checkout time —
+            // "আগে কত টাকা দেওয়া হয়েছিল" in the exchange screen's money
+            // summary. Same tendered/credit-sale branching as process()'s
+            // own due-split below, kept in one place via tenderedFor().
+            'tendered' => round($this->tenderedFor($sale), 2),
             'payment_mode' => $sale->payment_mode,
             // so the cashier can see at a glance this bill was sold at a
             // sibling branch, not this one, before processing the return
@@ -321,6 +326,11 @@ class ReturnController extends Controller
             'new_items.*.product_id' => ['required_with:new_items', 'integer'],
             'new_items.*.product_variant_id' => ['nullable', 'integer'],
             'new_items.*.qty' => ['required_with:new_items', 'numeric', 'min:0.001'],
+            // a discount on the new item(s) given in an exchange — the
+            // cashier's own ask ("new item e discount dile koto ashbe"):
+            // clamped against the new items' own total inside
+            // createExchangeSale(), never trusted at face value here
+            'new_items_discount' => ['nullable', 'numeric', 'min:0'],
             'payments' => ['nullable', 'array'],
             'payments.*.method' => ['required_with:payments', Rule::in(['cash', 'bkash', 'nagad'])],
             'payments.*.amount' => ['required_with:payments', 'numeric', 'min:0'],
@@ -502,15 +512,7 @@ class ReturnController extends Controller
             // still on credit (never actually collected) reduces the
             // customer's due instead of being paid out as cash — the shop
             // never held that money to begin with.
-            // Legacy pre-split-payment sale (or a pure-credit sale): no
-            // SalePayment rows exist at all, so `payment_mode` alone is the
-            // source of truth for how much was actually tendered — same
-            // branching as SaleReversal::reverse().
-            if ($sale->payments->isEmpty()) {
-                $tendered = $sale->payment_mode === 'credit' ? 0.0 : (float) $sale->total;
-            } else {
-                $tendered = (float) $sale->payments->sum('amount');
-            }
+            $tendered = $this->tenderedFor($sale);
             $dueAtCheckout = max(0, (float) $sale->total - $tendered);
             $refundDuePortion = (float) $sale->total > 0 ? round($totalRefund * $dueAtCheckout / (float) $sale->total, 2) : 0.0;
             $refundCashPortion = round($totalRefund - $refundDuePortion, 2);
@@ -636,6 +638,21 @@ class ReturnController extends Controller
         });
 
         return response()->json($result);
+    }
+
+    /**
+     * What the customer actually tendered at checkout for this sale.
+     * Legacy pre-split-payment sale (or a pure-credit sale): no SalePayment
+     * rows exist at all, so `payment_mode` alone is the source of truth —
+     * same branching as SaleReversal::reverse().
+     */
+    private function tenderedFor(Sale $sale): float
+    {
+        if ($sale->payments->isEmpty()) {
+            return $sale->payment_mode === 'credit' ? 0.0 : (float) $sale->total;
+        }
+
+        return (float) $sale->payments->sum('amount');
     }
 
     /** Proportional refund: the per-unit price the customer actually paid for this line, after BOTH its own line discount and its share of the whole bill's overall discount — never today's price, never more than was actually paid. */
@@ -789,8 +806,13 @@ class ReturnController extends Controller
         $lockedShop->invoice_counter += 1;
         $invoiceNo = 'INV-'.$lockedShop->invoice_counter;
 
+        // clamped against the new items' own total — a discount can never
+        // flip the new item(s) into a negative price
+        $discount = round(min((float) ($data['new_items_discount'] ?? 0), $newTotal), 2);
+        $newTotalAfterDiscount = round($newTotal - $discount, 2);
+
         // net_settlement > 0: customer must pay this much more; < 0: shop owes the customer this much back
-        $netSettlement = round($newTotal - $credit, 2);
+        $netSettlement = round($newTotalAfterDiscount - $credit, 2);
 
         $tenderedExtra = 0.0;
         if ($netSettlement > 0) {
@@ -838,12 +860,12 @@ class ReturnController extends Controller
             'date' => now()->toDateString(),
             'time' => now()->toTimeString(),
             'subtotal' => $newTotal,
-            'discount' => 0,
+            'discount' => $discount,
             'is_complimentary' => false,
             'service_charge' => 0,
             'vat' => 0,
-            'total' => $newTotal,
-            'profit' => $newTotal - $newCost,
+            'total' => $newTotalAfterDiscount,
+            'profit' => $newTotalAfterDiscount - $newCost,
             'payment_mode' => $paymentMode,
             'sale_type' => 'exchange',
         ]);
@@ -884,11 +906,12 @@ class ReturnController extends Controller
         // shape as any other SalePayment, so every existing sum(payments)
         // call site already handles it with zero special-casing) makes that
         // generic formula correct again with no other code needing to change.
-        // min($credit, $newTotal): only the portion of the trade-in that was
-        // actually applied toward THIS sale's total counts here — if the
-        // traded-in item was worth more than the new item(s), the excess is
-        // refunded/credited separately above, not "spent" on this sale.
-        $creditApplied = round(min($credit, $newTotal), 2);
+        // min($credit, $newTotalAfterDiscount): only the portion of the
+        // trade-in that was actually applied toward THIS sale's (discounted)
+        // total counts here — if the traded-in item was worth more than the
+        // new item(s), the excess is refunded/credited separately above, not
+        // "spent" on this sale.
+        $creditApplied = round(min($credit, $newTotalAfterDiscount), 2);
         if ($creditApplied > 0) {
             SalePayment::create([
                 'shop_id' => $shopId,

@@ -735,6 +735,79 @@ class ReturnExchangeTest extends TestCase
         $this->assertEquals(4, (float) $product->fresh()->stock); // 2 + 2 units back on hand
     }
 
+    /**
+     * Khaled's explicit ask: a discount on the new item(s) given in an
+     * exchange, with the final due reflecting it (not the pre-discount
+     * total). ৳100 new item, ৳20 discount, ৳0 credit from the return (no
+     * returned lines) — customer owes exactly ৳80, not ৳100.
+     */
+    public function test_exchange_new_item_discount_reduces_the_amount_owed(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
+        $this->grantFeature($shop, 'returns');
+        $oldProduct = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt L', 'cost' => 60, 'price' => 150, 'stock' => 3]);
+        $newProduct = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt M', 'cost' => 50, 'price' => 100, 'stock' => 3]);
+        $sale = $this->makeSale($shop->id, ['subtotal' => 150, 'total' => 150]);
+        $item = $this->makeItem($sale, $oldProduct, ['qty' => 1, 'price' => 150, 'cost' => 60]);
+
+        $response = $this->actingAs($owner, 'web')->postJson('/app/returns/process', [
+            'sale_id' => $sale->id,
+            'action' => 'exchange',
+            'lines' => [['sale_item_id' => $item->id, 'qty' => 1, 'condition' => 'resalable']],
+            'new_items' => [['product_id' => $newProduct->id, 'qty' => 1]],
+            'new_items_discount' => 20,
+            'payments' => [['method' => 'cash', 'amount' => 0]],
+        ]);
+
+        $response->assertOk();
+        $exchangeSale = Sale::where('sale_type', 'exchange')->first();
+        $this->assertEquals(100.0, (float) $exchangeSale->subtotal);
+        $this->assertEquals(20.0, (float) $exchangeSale->discount);
+        $this->assertEquals(80.0, (float) $exchangeSale->total);
+        // 150 credit from the return against an 80 (discounted) total — the
+        // full 80 is covered by credit, the rest (70) comes back as cash
+        $this->assertEquals(930.0, (float) $shop->fresh()->cash_balance); // 1000 - (150 - 80)
+    }
+
+    /** A discount larger than the new item(s)' own total clamps to the total — it can never go negative. */
+    public function test_exchange_new_item_discount_clamps_to_the_items_own_total(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 1000]);
+        $this->grantFeature($shop, 'returns');
+        $oldProduct = Product::create(['shop_id' => $shop->id, 'name' => 'Old', 'cost' => 50, 'price' => 100, 'stock' => 3]);
+        $newProduct = Product::create(['shop_id' => $shop->id, 'name' => 'New', 'cost' => 30, 'price' => 50, 'stock' => 3]);
+        $sale = $this->makeSale($shop->id, ['subtotal' => 100, 'total' => 100]);
+        $item = $this->makeItem($sale, $oldProduct, ['qty' => 1, 'price' => 100, 'cost' => 50]);
+
+        $this->actingAs($owner, 'web')->postJson('/app/returns/process', [
+            'sale_id' => $sale->id,
+            'action' => 'exchange',
+            'lines' => [['sale_item_id' => $item->id, 'qty' => 1, 'condition' => 'resalable']],
+            'new_items' => [['product_id' => $newProduct->id, 'qty' => 1]],
+            'new_items_discount' => 999,
+        ])->assertOk();
+
+        $exchangeSale = Sale::where('sale_type', 'exchange')->first();
+        $this->assertEquals(50.0, (float) $exchangeSale->discount); // clamped down from 999
+        $this->assertEquals(0.0, (float) $exchangeSale->total);
+    }
+
+    /** The money-summary the exchange screen shows before submit needs to know what was actually tendered on the original sale — "আগে কত টাকা দেওয়া হয়েছিল". */
+    public function test_lookup_exposes_what_was_actually_tendered_on_the_original_sale(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'returns');
+        $customer = Customer::create(['shop_id' => $shop->id, 'name' => 'Karim', 'phone' => '01711111111']);
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Shirt', 'cost' => 50, 'price' => 100, 'stock' => 3]);
+        $sale = $this->makeSale($shop->id, ['customer_id' => $customer->id, 'payment_mode' => 'split']);
+        $this->makeItem($sale, $product);
+        SalePayment::create(['shop_id' => $shop->id, 'sale_id' => $sale->id, 'method' => 'cash', 'amount' => 120]);
+
+        $response = $this->actingAs($owner, 'web')->get('/app/returns/lookup?sale_id='.$sale->id);
+
+        $response->assertOk()->assertJson(['sales' => [['id' => $sale->id, 'tendered' => 120.0]]]);
+    }
+
     /** The memo (print + WhatsApp) needs the exchange's new item(s) and the signed price difference — both must come back in the JSON response, not just the bare exchange sale total. */
     public function test_exchange_response_includes_new_items_and_signed_net_settlement_for_the_memo(): void
     {
