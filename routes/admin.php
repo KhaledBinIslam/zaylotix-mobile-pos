@@ -17,6 +17,7 @@ use App\Http\Controllers\Admin\NotificationController;
 use App\Http\Controllers\Admin\ShopController;
 use App\Http\Controllers\Admin\ShopDataController;
 use App\Http\Controllers\Admin\ShopExportController;
+use App\Http\Controllers\Admin\ShopUsageController;
 use App\Http\Controllers\Admin\SiteSettingController;
 use App\Http\Controllers\Admin\SubscriptionController;
 use App\Http\Controllers\Admin\SystemHealthController;
@@ -38,6 +39,7 @@ Route::middleware('admin')->group(function () {
 
     Route::get('shops', [ShopController::class, 'index'])->name('shops.index');
     Route::get('shops/create', [ShopController::class, 'create'])->name('shops.create');
+    Route::get('shops/usage', [ShopUsageController::class, 'index'])->name('shops.usage');
     Route::post('shops', [ShopController::class, 'store'])->name('shops.store');
     Route::get('shops/{shop}/edit', [ShopController::class, 'edit'])->name('shops.edit');
     Route::put('shops/{shop}', [ShopController::class, 'update'])->name('shops.update');

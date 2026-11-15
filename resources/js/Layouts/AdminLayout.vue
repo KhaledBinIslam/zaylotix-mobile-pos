@@ -32,6 +32,7 @@ function logout() {
 const nav = computed(() => [
     { key: 'dashboard', label: 'Dashboard', icon: '📊', route: 'admin.dashboard', show: true },
     { key: 'shops', label: 'Shops', icon: '🏬', route: 'admin.shops.index', show: true },
+    { key: 'shopUsage', label: 'Shop Resource Usage', icon: '💾', route: 'admin.shops.usage', show: true },
     { key: 'analytics', label: 'Analytics', icon: '📈', route: 'admin.analytics.index', show: true },
     { key: 'subscriptions', label: 'Subscriptions', icon: '💳', route: 'admin.subscriptions.index', show: true },
     { key: 'businessTypes', label: 'Business Types', icon: '🗂', route: 'admin.businessTypes.index', show: isSuperAdmin.value },

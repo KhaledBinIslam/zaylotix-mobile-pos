@@ -1,9 +1,9 @@
 <script setup>
-import { Head } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 
 defineProps({
-    db: Object, recentErrors: Array, disk: Object,
+    db: Object, recentErrors: Array, disk: Object, appUsage: Object,
     php_version: String, laravel_version: String, queue_connection: String, app_env: String, app_debug: Boolean,
 });
 </script>
@@ -20,11 +20,19 @@ defineProps({
                 <div v-if="db.error" class="text-xs text-rose-500 mt-1">{{ db.error }}</div>
             </div>
             <div class="bg-white border rounded-xl p-4 shadow-sm">
-                <div class="text-xs text-gray-500">Disk free</div>
-                <div class="text-lg font-extrabold mt-1" :class="(disk.used_percent || 0) > 90 ? 'text-rose-600' : 'text-gray-900'">
+                <div class="text-xs text-gray-500">Disk free <span class="text-gray-400">(whole shared host)</span></div>
+                <div class="text-lg font-extrabold mt-1 text-gray-900">
                     {{ disk.free_gb !== null ? disk.free_gb + ' GB' : '—' }}
                 </div>
-                <div class="text-xs text-gray-400" v-if="disk.used_percent !== null">{{ disk.used_percent }}% used of {{ disk.total_gb }} GB</div>
+                <div class="text-xs text-gray-400" v-if="disk.used_percent !== null">{{ disk.used_percent }}% used of {{ disk.total_gb }} GB — every Hostinger customer on this server combined, not just this app</div>
+            </div>
+            <div class="bg-white border rounded-xl p-4 shadow-sm">
+                <div class="text-xs text-gray-500 flex items-center justify-between">
+                    <span>This app's own storage</span>
+                    <Link :href="route('admin.shops.usage')" class="text-brand-purple-700 font-semibold">per-shop ›</Link>
+                </div>
+                <div class="text-lg font-extrabold mt-1 text-gray-900">{{ appUsage.total_mb.toLocaleString('en-IN') }} MB</div>
+                <div class="text-xs text-gray-400">{{ appUsage.db_mb.toLocaleString('en-IN') }} MB database · {{ appUsage.file_mb.toLocaleString('en-IN') }} MB files</div>
             </div>
             <div class="bg-white border rounded-xl p-4 shadow-sm">
                 <div class="text-xs text-gray-500">App environment</div>

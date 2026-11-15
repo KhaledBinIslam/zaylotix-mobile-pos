@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Support\ShopResourceUsage;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
@@ -57,11 +58,20 @@ class SystemHealthController extends Controller
         return Inertia::render('Admin/SystemHealth/Index', [
             'db' => ['ok' => $dbOk, 'error' => $dbError],
             'recentErrors' => $recentErrors,
+            // disk_free_space()/disk_total_space() report the WHOLE shared
+            // host filesystem's stats on Hostinger's shared/Cloud hosting —
+            // every other customer's usage on this physical node included,
+            // not just this app's. Khaled live, confused by this exact
+            // number: "ami 20gb space khai pechi?" over a 70%-of-21TB
+            // figure that was never his own usage at all. Kept (clearly
+            // labeled as the shared host) alongside the real, this-app-only
+            // figure from ShopResourceUsage so neither replaces the other.
             'disk' => [
                 'free_gb' => $diskFree ? round($diskFree / 1073741824, 1) : null,
                 'total_gb' => $diskTotal ? round($diskTotal / 1073741824, 1) : null,
                 'used_percent' => ($diskFree && $diskTotal) ? round((1 - $diskFree / $diskTotal) * 100, 1) : null,
             ],
+            'appUsage' => ShopResourceUsage::appTotals(),
             'php_version' => PHP_VERSION,
             'laravel_version' => app()->version(),
             'queue_connection' => config('queue.default'),
