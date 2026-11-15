@@ -37,9 +37,20 @@ class PaymentController extends Controller
             // this just makes a later per-invoice view possible going
             // forward (see docs/FIX_PLAN.md Phase 3.2).
             'sale_id' => ['nullable', Rule::exists('sales', 'id')->where('customer_id', $customer->id)],
+            // Idempotency key — same pattern as PosController::checkout's
+            // client_uuid. Real finding (2026-11-15 audit): a cashier
+            // double-tapping "কালেক্ট" on a slow connection used to create
+            // two separate Payment rows and double-decrement the due for
+            // one real-world collection. A replay with the same uuid now
+            // just returns success without collecting twice.
+            'client_uuid' => ['nullable', 'string', 'max:64'],
         ]);
 
         $amount = (float) $data['amount'];
+
+        if (! empty($data['client_uuid']) && Payment::where('client_uuid', $data['client_uuid'])->exists()) {
+            return back()->with('success', 'Payment recorded.');
+        }
 
         DB::transaction(function () use ($customer, $amount, $data) {
             // Customer::whereKey(...)->lockForUpdate() — NOT
@@ -75,6 +86,7 @@ class PaymentController extends Controller
                 'due_after' => $dueBefore - $amount,
                 'method' => $data['method'] ?? 'cash',
                 'date' => now()->toDateString(),
+                'client_uuid' => $data['client_uuid'] ?? null,
             ]);
 
             if (($data['method'] ?? 'cash') === 'cash') {

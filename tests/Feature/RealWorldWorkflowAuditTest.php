@@ -6,6 +6,8 @@ use App\Models\Customer;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SalesReturn;
+use App\Models\Shop;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesShops;
@@ -177,5 +179,168 @@ class RealWorldWorkflowAuditTest extends TestCase
         // the original invoice is still in Sales History with its original ৳2000 total, unmodified
         $this->assertEquals(2000.0, (float) Sale::find($saleId)->total);
         $this->assertSame(1, SalesReturn::where('sale_id', $saleId)->count());
+    }
+
+    /**
+     * FIXED (2026-11-15 audit): /app/customers/{id}/payments now takes the
+     * same client_uuid idempotency key /app/pos/checkout already had.
+     * Before the fix, a cashier double-tapping "কালেক্ট" on a slow
+     * connection created two separate Payment rows and double-collected the
+     * same money — a real bug, not a hypothetical one (see git history for
+     * the before-fix version of this test, which asserted exactly that).
+     */
+    public function test_a_resubmitted_due_payment_with_the_same_client_uuid_is_not_double_collected(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $customer = Customer::create(['shop_id' => $shop->id, 'name' => 'Rahim', 'due' => 1000]);
+        $uuid = (string) Str::uuid();
+
+        // simulates a cashier double-tapping "কালেক্ট" — the exact same
+        // request, sent twice, same idempotency key both times
+        $first = $this->actingAs($owner, 'web')->post("/app/customers/{$customer->id}/payments", ['amount' => 400, 'client_uuid' => $uuid]);
+        $second = $this->actingAs($owner, 'web')->post("/app/customers/{$customer->id}/payments", ['amount' => 400, 'client_uuid' => $uuid]);
+
+        $first->assertSessionDoesntHaveErrors();
+        $second->assertSessionDoesntHaveErrors();
+
+        $this->assertSame(1, $customer->payments()->where('amount', 400)->count(), 'the replay must not create a second ledger row');
+        $this->assertEquals(600.0, (float) $customer->fresh()->due, 'due must be reduced exactly once (1000 - 400), not twice');
+    }
+
+    /** Two genuinely different due collections (no shared uuid) must both still go through normally — the idempotency fix must never block real repeat payments. */
+    public function test_two_genuinely_different_due_payments_both_still_collect(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $customer = Customer::create(['shop_id' => $shop->id, 'name' => 'Rahim', 'due' => 1000]);
+
+        $this->actingAs($owner, 'web')->post("/app/customers/{$customer->id}/payments", ['amount' => 400, 'client_uuid' => (string) Str::uuid()])
+            ->assertSessionDoesntHaveErrors();
+        $this->actingAs($owner, 'web')->post("/app/customers/{$customer->id}/payments", ['amount' => 300, 'client_uuid' => (string) Str::uuid()])
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertEquals(2, $customer->payments()->count());
+        $this->assertEquals(300.0, (float) $customer->fresh()->due, '1000 - 400 - 300');
+    }
+
+    /** Split payment at checkout (cash + bkash together) must add up correctly and never silently drop a method. */
+    public function test_split_payment_checkout_records_every_method_and_sums_to_the_total(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 0, 'bank_balance' => 0]);
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Test Product', 'cost' => 250, 'price' => 400, 'stock' => 10]);
+
+        $checkout = $this->actingAs($owner, 'web')->postJson('/app/pos/checkout', [
+            'client_uuid' => (string) Str::uuid(),
+            'items' => [['product_id' => $product->id, 'qty' => 5]],
+            'payments' => [
+                ['method' => 'cash', 'amount' => 1200],
+                ['method' => 'bkash', 'amount' => 800],
+            ],
+        ]);
+        $checkout->assertOk();
+
+        $this->assertEquals(2000.0, (float) $checkout->json('sale.total'));
+        $this->assertSame('split', $checkout->json('sale.payment_mode'));
+        $this->assertEquals(1200.0, (float) $shop->fresh()->cash_balance);
+        $this->assertEquals(800.0, (float) $shop->fresh()->bank_balance);
+        $this->assertEquals(2, $checkout->json('sale.id') ? \App\Models\SalePayment::where('sale_id', $checkout->json('sale.id'))->count() : 0);
+    }
+
+    /** Sales History's own invoice search (`q`) — the only search it currently offers (see finding below). */
+    public function test_sales_history_invoice_search_finds_by_partial_invoice_number(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Test Product', 'cost' => 250, 'price' => 400, 'stock' => 10]);
+        $checkout = $this->actingAs($owner, 'web')->postJson('/app/pos/checkout', [
+            'client_uuid' => (string) Str::uuid(),
+            'items' => [['product_id' => $product->id, 'qty' => 1]],
+            'payments' => [['method' => 'cash', 'amount' => 400]],
+        ]);
+        $invoiceNo = $checkout->json('sale.invoice_no');
+
+        $response = $this->actingAs($owner, 'web')->get('/app/sales?q='.substr($invoiceNo, -3));
+
+        $response->assertInertia(fn ($page) => $page->has('sales.data', fn ($sales) => $sales->where('0.invoice_no', $invoiceNo)->etc()));
+    }
+
+    /**
+     * FINDING: Sales History (/app/sales, SalesController::index) only
+     * supports `q` (invoice substring) and `mine` — no date-range filter
+     * and no customer-name search on this page itself (confirmed by
+     * reading the controller: it builds the query with only those two
+     * `when()` clauses). Khaled's spec asks for both. This is not a bug
+     * in existing behavior — it is a feature gap. This test pins today's
+     * real behavior (an unsupported `from`/`to` query string is silently
+     * ignored, not an error) so it can't be mistaken for "already works"
+     * later.
+     */
+    public function test_sales_history_has_no_date_range_or_customer_name_filter_yet(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Test Product', 'cost' => 250, 'price' => 400, 'stock' => 10]);
+        $this->actingAs($owner, 'web')->postJson('/app/pos/checkout', [
+            'client_uuid' => (string) Str::uuid(),
+            'items' => [['product_id' => $product->id, 'qty' => 1]],
+            'payments' => [['method' => 'cash', 'amount' => 400]],
+        ]);
+
+        // these params are not validated/consumed anywhere in SalesController::index
+        $response = $this->actingAs($owner, 'web')->get('/app/sales?from=2020-01-01&to=2020-01-02&customer=NoSuchCustomer');
+
+        // the sale still shows up — proving `from`/`to`/`customer` were
+        // silently ignored rather than actually filtering anything out
+        $response->assertInertia(fn ($page) => $page->has('sales.data', fn ($sales) => $sales->count(1)->etc()));
+    }
+
+    /**
+     * Soft-delete/restore consistency: deleting the product a sale already
+     * references must not corrupt that sale's own historical figures —
+     * the sale row snapshots its own product_name/price/cost at sale time,
+     * it never re-reads the live product.
+     */
+    public function test_deleting_the_product_after_the_sale_does_not_corrupt_that_sales_own_figures(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Test Product', 'cost' => 250, 'price' => 400, 'stock' => 10]);
+        $checkout = $this->actingAs($owner, 'web')->postJson('/app/pos/checkout', [
+            'client_uuid' => (string) Str::uuid(),
+            'items' => [['product_id' => $product->id, 'qty' => 1]],
+            'payments' => [['method' => 'cash', 'amount' => 400]],
+        ]);
+        $saleId = $checkout->json('sale.id');
+
+        $product->delete();
+
+        $response = $this->actingAs($owner, 'web')->get("/app/sales/{$saleId}");
+        $response->assertOk();
+        $response->assertInertia(fn ($page) => $page
+            ->where('sale.total', fn ($total) => (float) $total === 400.0)
+            ->where('sale.items.0.product_name', 'Test Product'));
+    }
+
+    /** Two cashiers checking out from the same shop concurrently must never corrupt the shared stock/cash counters — each sale locks the shop row, so updates serialize instead of racing. */
+    public function test_two_cashiers_selling_at_nearly_the_same_time_never_lose_a_stock_update(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['cash_balance' => 0]);
+        $cashier = User::create(['shop_id' => $shop->id, 'name' => 'Cashier', 'phone' => '01900001111', 'password' => 'secret1', 'role' => 'staff', 'permissions' => ['pos'], 'lang' => 'bn']);
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Test Product', 'cost' => 250, 'price' => 400, 'stock' => 10]);
+
+        // not truly simultaneous threads (PHPUnit is single-threaded), but
+        // this is exactly the code path two real concurrent requests take —
+        // each performCheckout() call locks the shop row for the duration
+        // of its own transaction, which is what actually prevents the race
+        $this->actingAs($owner, 'web')->postJson('/app/pos/checkout', [
+            'client_uuid' => (string) Str::uuid(),
+            'items' => [['product_id' => $product->id, 'qty' => 3]],
+            'payments' => [['method' => 'cash', 'amount' => 1200]],
+        ])->assertOk();
+        $this->actingAs($cashier, 'web')->postJson('/app/pos/checkout', [
+            'client_uuid' => (string) Str::uuid(),
+            'items' => [['product_id' => $product->id, 'qty' => 4]],
+            'payments' => [['method' => 'cash', 'amount' => 1600]],
+        ])->assertOk();
+
+        $this->assertEquals(3, $product->fresh()->stock, '10 - 3 - 4 = 3, neither sale\'s deduction was lost');
+        $this->assertEquals(2800.0, (float) $shop->fresh()->cash_balance, '1200 + 1600, neither cashier\'s cash was lost');
+        $this->assertSame(2, Sale::where('shop_id', $shop->id)->count());
     }
 }

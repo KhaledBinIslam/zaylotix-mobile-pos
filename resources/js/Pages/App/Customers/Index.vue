@@ -84,6 +84,20 @@ const collecting = ref(null);
 const collectForm = useForm({ amount: '', sale_id: '' });
 const markingPaid = ref(false);
 
+// One idempotency key per collection attempt, reused across a double-tap of
+// "কালেক্ট" on the SAME amount — same pattern as Pos/Index.vue's own
+// checkoutUuid(). Real finding (2026-11-15 audit): without this, a slow
+// network double-tap created two Payment rows and double-collected the same
+// money. Reset whenever the sheet opens fresh (openCollect) so a genuinely
+// new collection on a later visit gets its own key.
+let pendingCollectUuid = null;
+function collectUuid() {
+    if (!pendingCollectUuid) {
+        pendingCollectUuid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+    }
+    return pendingCollectUuid;
+}
+
 // Per-invoice reference (Khaled's explicit ask — see docs/FIX_PLAN.md Phase
 // 3.2): due_at_checkout is exact; tagged_paid only ever reflects a payment
 // that explicitly picked this invoice via the dropdown below, never a
@@ -109,11 +123,12 @@ function openCollect(c) {
     collectForm.reset();
     collectForm.clearErrors();
     collectSheet.value = true;
+    pendingCollectUuid = null;
     loadInvoices(c);
 }
 function collect() {
-    collectForm.post(route('app.payments.store', collecting.value.id), {
-        onSuccess: () => (collectSheet.value = false),
+    collectForm.transform((data) => ({ ...data, client_uuid: collectUuid() })).post(route('app.payments.store', collecting.value.id), {
+        onSuccess: () => { collectSheet.value = false; pendingCollectUuid = null; },
     });
 }
 // --- credit limit quick-edit (see docs/FIX_PLAN.md's "ক্রেডিট লিমিট"
