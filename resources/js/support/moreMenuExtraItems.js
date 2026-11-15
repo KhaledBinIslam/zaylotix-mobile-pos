@@ -9,6 +9,13 @@
 // refuse to show.
 export function buildExtraSearchItems({ hasPerm, isOwner, hasFeature, branches, t }) {
     return [
+        // THE real invoice-based return/exchange screen (Returns/Index.vue)
+        // — missing from useNavItems() entirely; its own 'return' entry
+        // there points at the OLD no-invoice sheet (label "বিক্রয় ফেরত" /
+        // "Sales Returns", no "exchange" in it at all), so searching
+        // "exchange" found nothing. key/label both carry "exchange" so an
+        // English or Bangla query for either word finds this one.
+        { key: 'returnExchange', label: t('more.returnInvoiceTitle'), icon: 'undo', groupLabel: t('nav.category.inventory'), href: route('app.returns.index'), show: hasPerm('returns') && hasFeature('returns') },
         { key: 'workPeriodHistory', label: t('workPeriod.historyPrompt'), icon: 'activity', groupLabel: t('nav.category.sales'), href: route('app.workPeriod.index'), show: isOwner },
         { key: 'stockTransfer', label: t('more.stockTransfer'), icon: 'truck', groupLabel: t('nav.category.inventory'), href: route('app.stockTransfers.index'), show: isOwner && !!branches },
         { key: 'serviceTickets', label: t('nav.serviceTickets'), icon: 'box', groupLabel: t('nav.category.sales'), href: route('app.serviceTickets.index'), show: hasPerm('service_billing') && hasFeature('service_billing') },

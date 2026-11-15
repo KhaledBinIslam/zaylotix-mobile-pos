@@ -87,4 +87,18 @@ describe('buildExtraSearchItems — genuinely per-shop dynamic', () => {
         const items = buildExtraSearchItems({ hasPerm, isOwner: true, hasFeature: () => true, branches: null, t });
         expect(items.find((i) => i.key === 'stockTransfer').show).toBe(false);
     });
+
+    /**
+     * Khaled's exact report (2026-11-15): typing "exchange" in the search
+     * bar found nothing, because useNavItems()'s own 'return' entry points
+     * at the OLD no-invoice sheet and is labeled "Sales Returns" — no
+     * "exchange" anywhere in it. This proves the real invoice-based
+     * Return/Exchange screen is now searchable by that word.
+     */
+    it('searching "exchange" finds the real invoice-based return/exchange screen', () => {
+        const items = buildExtraSearchItems({ hasPerm, isOwner: true, hasFeature: () => true, branches: null, t });
+        const flat = flattenSearchable([], items);
+        const results = searchItems(flat, 'exchange');
+        expect(results.some((i) => i.key === 'returnExchange')).toBe(true);
+    });
 });
