@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Product;
+use App\Models\ProductCategory;
 use App\Models\ProductColorBarcode;
 use App\Models\ProductColorBarcodeAlias;
 use App\Models\ProductVariant;
@@ -109,6 +110,52 @@ class ArticlesRegenerateBarcodesTest extends TestCase
         $this->artisan('articles:regenerate-barcodes', ['--shop' => $shop->id])->assertSuccessful();
 
         $this->assertNull(ProductColorBarcode::withoutGlobalScopes()->where('product_id', $product->id)->where('color', 'SILVER')->first());
+    }
+
+    /**
+     * Baby Park live ("WHITE-BLUE" variant stuck printing "ZV10239" instead
+     * of a real code): BarcodeLabelController::generateVariantBarcode()
+     * only ever tries once (gated on `! $variant->barcode`, and the ZV
+     * fallback itself is non-empty) — so a colour missing its short code
+     * at the moment a label was first printed stays stuck on ZV{id}
+     * forever, even after the owner adds that colour's code afterward.
+     * --retry-zv-fallback is the one-time repair: an unprintable Bengali
+     * colour name is the same root cause ArticleBarcode's own docblock
+     * documents ("বাদামী"), and is exactly what a config gap looks like
+     * before/after being fixed in ⚙️ রং-কোড সেটিংস.
+     */
+    public function test_retry_zv_fallback_fixes_a_variant_once_its_missing_color_code_is_added(): void
+    {
+        [$shop] = $this->createShopWithOwner();
+        $category = ProductCategory::create(['shop_id' => $shop->id, 'name' => 'Shoe', 'name_en' => 'Shoe', 'code' => 'S']);
+        $product = Product::create(['shop_id' => $shop->id, 'category_id' => $category->id, 'name' => 'S-10001', 'name_en' => 'S-10001', 'barcode' => 'SMS-S-10001-NSXXZ', 'cost' => 1300, 'price' => 1990, 'stock' => 5]);
+        $variant = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => '36', 'color' => 'বাদামী', 'barcode' => 'ZV'.random_int(1000, 9999), 'stock' => 5]);
+        $stuckBarcode = $variant->barcode;
+
+        // not yet configured — still stuck, --retry-zv-fallback changes nothing
+        $this->artisan('articles:regenerate-barcodes', ['--shop' => $shop->id, '--retry-zv-fallback' => true, '--variants-only' => true])
+            ->assertSuccessful();
+        $this->assertSame($stuckBarcode, $variant->fresh()->barcode);
+
+        $shop->update(['color_code_map' => ['বাদামী' => 'BRN']]);
+
+        $this->artisan('articles:regenerate-barcodes', ['--shop' => $shop->id, '--retry-zv-fallback' => true, '--variants-only' => true])
+            ->expectsOutputToContain('SMS-S-10001-NSXXZ-BRN-36')
+            ->assertSuccessful();
+
+        $this->assertSame('SMS-S-10001-NSXXZ-BRN-36', $variant->fresh()->barcode);
+    }
+
+    public function test_without_retry_zv_fallback_a_stuck_zv_barcode_is_left_alone_even_once_fixable(): void
+    {
+        [$shop] = $this->createShopWithOwner(['color_code_map' => ['বাদামী' => 'BRN']]);
+        $category = ProductCategory::create(['shop_id' => $shop->id, 'name' => 'Shoe', 'name_en' => 'Shoe', 'code' => 'S']);
+        $product = Product::create(['shop_id' => $shop->id, 'category_id' => $category->id, 'name' => 'S-10001', 'name_en' => 'S-10001', 'barcode' => 'SMS-S-10001-NSXXZ', 'cost' => 1300, 'price' => 1990, 'stock' => 5]);
+        $variant = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => '36', 'color' => 'বাদামী', 'barcode' => 'ZV9999', 'stock' => 5]);
+
+        $this->artisan('articles:regenerate-barcodes', ['--shop' => $shop->id, '--variants-only' => true])->assertSuccessful();
+
+        $this->assertSame('ZV9999', $variant->fresh()->barcode);
     }
 
     public function test_rejects_a_missing_shop(): void

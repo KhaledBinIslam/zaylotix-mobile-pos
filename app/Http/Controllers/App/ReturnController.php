@@ -50,19 +50,29 @@ class ReturnController extends Controller
      * Product model including cost/margin, which this page deliberately
      * never ships to the browser (see presentProductForPicker).
      */
+    /**
+     * Baby Park live bug ("exchange e scanner product not found") traced to
+     * this endpoint never having had the same scan resolution as the main
+     * POS screen — just a bare exact-string match, none of
+     * App\Support\BarcodeResolver's tiers/ZV-ZC-short-codes/cross-branch
+     * fallback. See that class's own docblock.
+     */
     public function barcodeLookup(string $barcode)
     {
-        $variant = ProductVariant::with(['product.variants' => fn ($q) => $q->orderBy('size')->orderBy('color')])->where('barcode', $barcode)->first();
-        if ($variant) {
-            return response()->json(['found' => true, 'product' => $this->presentProductForPicker($variant->product), 'variant_id' => $variant->id]);
-        }
-
-        $product = Product::with(['variants' => fn ($q) => $q->orderBy('size')->orderBy('color')])->where('barcode', $barcode)->first();
-        if (! $product) {
+        $result = \App\Support\BarcodeResolver::resolve($barcode);
+        if (! $result['found']) {
             return response()->json(['found' => false], 404);
         }
 
-        return response()->json(['found' => true, 'product' => $this->presentProductForPicker($product)]);
+        $response = ['found' => true, 'product' => $this->presentProductForPicker($result['product'])];
+        if (isset($result['variant_id'])) {
+            $response['variant_id'] = $result['variant_id'];
+        }
+        if (isset($result['color'])) {
+            $response['color'] = $result['color'];
+        }
+
+        return response()->json($response);
     }
 
     /**
@@ -76,7 +86,7 @@ class ReturnController extends Controller
     {
         return [
             'id' => $p->id, 'name' => $p->name, 'price' => (float) $p->price, 'stock' => (float) $p->stock, 'barcode' => $p->barcode,
-            'variants' => $p->variants->map(fn (ProductVariant $v) => [
+            'variants' => $p->variants->sortBy(['size', 'color'])->values()->map(fn (ProductVariant $v) => [
                 'id' => $v->id, 'size' => $v->size, 'color' => $v->color, 'label' => $v->label(),
                 'price' => $v->effectivePrice(), 'stock' => $v->stock, 'barcode' => $v->barcode,
             ]),

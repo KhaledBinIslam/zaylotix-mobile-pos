@@ -24,7 +24,7 @@ use Illuminate\Console\Command;
  */
 class ArticlesRegenerateBarcodes extends Command
 {
-    protected $signature = 'articles:regenerate-barcodes {--shop=} {--name= : shops whose name contains this, instead of an id} {--variants-only : only fill in missing variant barcodes, never touch a colour barcode} {--fix-unprintable : also REPLACE a variant barcode that Code128 cannot encode} {--add-missing-z : append the compulsory Z terminator to a cost code that lacks it} {--dry-run}';
+    protected $signature = 'articles:regenerate-barcodes {--shop=} {--name= : shops whose name contains this, instead of an id} {--variants-only : only fill in missing variant barcodes, never touch a colour barcode} {--fix-unprintable : also REPLACE a variant barcode that Code128 cannot encode} {--retry-zv-fallback : also REPLACE a variant stuck on its auto ZV{id} fallback (BarcodeLabelController::generateVariantBarcode() only ever retries this once a label has been printed, so a one-time failure sticks forever otherwise — e.g. a colour-code gap fixed in ⚙️ রং-কোড সেটিংস after the sticker was already printed)} {--add-missing-z : append the compulsory Z terminator to a cost code that lacks it} {--dry-run}';
 
     protected $description = 'Backfills/refreshes colour barcodes, and fills in any variant that has none, for a shop\'s articles. --dry-run previews only.';
 
@@ -210,11 +210,21 @@ class ArticlesRegenerateBarcodes extends Command
              * be handed its barcode back and immediately block the live
              * row that replaced it — the very collision this fixes.
              */
+            // the precise decision is all in the in-PHP filter() below —
+            // this query-level whereNull() is just a cheap pre-filter, so
+            // either widening flag simply skips it and fetches every
+            // variant for the product instead (fine at this scale: one
+            // product's own variants, never the whole shop)
+            $retryZv = (bool) $this->option('retry-zv-fallback');
             $candidates = ProductVariant::withoutGlobalScopes()->where('product_id', $product->id)
                 ->whereNull('deleted_at')
-                ->when(! $this->option('fix-unprintable'), fn ($q) => $q->whereNull('barcode'))
+                ->when(! $this->option('fix-unprintable') && ! $retryZv, fn ($q) => $q->whereNull('barcode'))
                 ->get()
-                ->filter(fn (ProductVariant $v) => ! ArticleBarcode::isPrintable($v->barcode));
+                // a ZV{id} fallback IS printable (plain ASCII) — it's only
+                // ever a candidate under --retry-zv-fallback, never swept
+                // in by --fix-unprintable's broader "can't scan it" net
+                ->filter(fn (ProductVariant $v) => ! ArticleBarcode::isPrintable($v->barcode)
+                    || ($retryZv && preg_match('/^ZV\d+$/', (string) $v->barcode)));
 
             foreach ($candidates as $variant) {
                 // "could not" has two very different causes, and only one

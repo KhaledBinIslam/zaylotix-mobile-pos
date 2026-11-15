@@ -1346,112 +1346,12 @@ class PosController extends Controller
 
     public function barcode(string $barcode)
     {
-        // docs/ARTICLE_SERIES_PLAN.md §10 — a short printed-symbol code
-        // (ZV{variantId}/ZC{colorBarcodeId}): what's actually ENCODED in a
-        // label's bars, decoupled from the full descriptive text still
-        // printed below it (and still the real .barcode value everywhere
-        // else) — see BarcodeLabelCard.vue. Checked first since it's the
-        // normal path for a newly-printed label going forward; a global
-        // auto-increment id is unique by construction, so a straight
-        // ::find() (tenant-scoped by the model's own global scope, same as
-        // every lookup below) is all this needs — no new table.
-        // Part 1 (source_lines) — a lot's own printed sticker: "scanning a
-        // line's barcode -> that line, at its price, comes out of its
-        // stock" (no picker, no ambiguity — the scan IS the choice).
-        // Same shape as the ZV branch below, plus source_id so the
-        // frontend sends it straight through at checkout.
-        if (preg_match('/^ZL(\d+)$/', $barcode, $m)) {
-            $source = \App\Models\ProductSource::with('product.productUnits.unit')->find((int) $m[1]);
-            if ($source && $source->product) {
-                $product = $source->product;
-                $product->setRelation('variants', $product->variants()->get());
+        // See App\Support\BarcodeResolver's own docblock — the single
+        // shared tier1/tier2/tier3 + ZL/ZV/ZC + cross-branch resolver every
+        // scan consumer (this endpoint, ReturnController::barcodeLookup())
+        // now calls, so they can never drift apart again.
+        $result = \App\Support\BarcodeResolver::resolve($barcode);
 
-                return response()->json(['found' => true, 'product' => $product, 'variant_id' => $source->product_variant_id, 'source_id' => $source->id]);
-            }
-
-            return response()->json(['found' => false], 404);
-        }
-        if (preg_match('/^ZV(\d+)$/', $barcode, $m)) {
-            $variant = ProductVariant::with('product.productUnits.unit')->find((int) $m[1]);
-            if ($variant) {
-                $product = $variant->product;
-                $product->setRelation('variants', $product->variants()->get());
-
-                return response()->json(['found' => true, 'product' => $product, 'variant_id' => $variant->id]);
-            }
-
-            // Baby Park live bug (shop 81, "Product not found: ZV1288"):
-            // the id is a single global auto-increment column, so a label
-            // printed while viewing one branch encodes THAT branch's own
-            // variant row — not found under a sibling branch's tenant
-            // scope even though the exact same product/size/color exists
-            // there too (every data-parity check this session proved
-            // clean; this is a lookup-scope bug, not a data bug). Labels
-            // get printed once and the physical stickers end up on stock
-            // sold from every branch sharing it, so cross-resolve via the
-            // sibling's own .barcode string — identical on both copies by
-            // CatalogSync — then re-run the ordinary tenant-scoped lookup
-            // below for THIS shop.
-            $sibling = ProductVariant::withoutGlobalScopes()->find((int) $m[1]);
-            if ($sibling && $sibling->barcode && Tenancy::id() && Tenancy::sameBusiness(Tenancy::id(), $sibling->shop_id)) {
-                return $this->barcode($sibling->barcode);
-            }
-
-            return response()->json(['found' => false], 404);
-        }
-        if (preg_match('/^ZC(\d+)$/', $barcode, $m)) {
-            $colorBarcode = ProductColorBarcode::find((int) $m[1]);
-            if ($colorBarcode) {
-                $product = Product::with(['productUnits.unit', 'variants'])->find($colorBarcode->product_id);
-                if ($product) {
-                    return response()->json(['found' => true, 'product' => $product, 'color' => $colorBarcode->color]);
-                }
-            }
-
-            // same cross-branch id fallback as ZV above
-            $sibling = ProductColorBarcode::withoutGlobalScopes()->find((int) $m[1]);
-            if ($sibling && $sibling->barcode && Tenancy::id() && Tenancy::sameBusiness(Tenancy::id(), $sibling->shop_id)) {
-                return $this->barcode($sibling->barcode);
-            }
-
-            return response()->json(['found' => false], 404);
-        }
-
-        // a variant's own barcode (e.g. printed for "নীল শার্ট M" specifically)
-        // takes priority — it's more specific than the product's own barcode
-        // `$variant->product` can be null: Product soft-deletes now cascade
-        // to their variants, but a product removed BEFORE that cascade
-        // existed left its variants live, and a sticker printed for one of
-        // those still scans. Treating it as not-found (falling through to
-        // the branches below) is what a deleted product should do anyway —
-        // reading ->variants() off null was a 500 on a shop-floor scan.
-        $variant = ProductVariant::with('product.productUnits.unit')->where('barcode', $barcode)->first();
-        if ($variant && $variant->product) {
-            $product = $variant->product;
-            $product->setRelation('variants', $product->variants()->get());
-
-            return response()->json(['found' => true, 'product' => $product, 'variant_id' => $variant->id]);
-        }
-
-        // docs/ARTICLE_SERIES_PLAN.md §9 — "tier 2": the color-level sticker
-        // barcode (and its history of old values, once a color's code is
-        // renamed) resolves to a product + which color, not one exact
-        // variant — the frontend opens ColorSizePicker filtered to it
-        $colorBarcode = ProductColorBarcode::where('barcode', $barcode)->first()
-            ?? ProductColorBarcodeAlias::where('barcode', $barcode)->first();
-        if ($colorBarcode) {
-            $product = Product::with(['productUnits.unit', 'variants'])->find($colorBarcode->product_id);
-            if ($product) {
-                return response()->json(['found' => true, 'product' => $product, 'color' => $colorBarcode->color]);
-            }
-        }
-
-        $product = Product::with(['productUnits.unit', 'variants'])->where('barcode', $barcode)->first();
-
-        if (! $product) {
-            return response()->json(['found' => false], 404);
-        }
-
-        return response()->json(['found' => true, 'product' => $product]);
+        return response()->json($result, $result['found'] ? 200 : 404);
     }
 }
