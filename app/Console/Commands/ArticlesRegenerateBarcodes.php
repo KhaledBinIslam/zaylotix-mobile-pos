@@ -150,6 +150,42 @@ class ArticlesRegenerateBarcodes extends Command
         return true;
     }
 
+    /**
+     * See the call site's comment — derives the real article prefix
+     * ("CHINA-S-80001-IXXZ") from a sibling variant of the SAME product
+     * that already carries a working, non-ZV, non-empty barcode, by
+     * stripping that sibling's own colour+size tail off the end. Only
+     * ever used as a fallback when ArticleVariant::barcodeFor() can't
+     * (the product itself doesn't satisfy isArticle()'s name-pattern
+     * check) — a product that genuinely IS recognized as an article keeps
+     * using the normal, authoritative path above.
+     */
+    private function inferFromSibling(Shop $shop, ProductVariant $variant): ?string
+    {
+        $siblings = ProductVariant::withoutGlobalScopes()
+            ->where('product_id', $variant->product_id)
+            ->where('id', '!=', $variant->id)
+            ->whereNull('deleted_at')
+            ->get()
+            ->filter(fn (ProductVariant $s) => ArticleBarcode::isPrintable($s->barcode) && ! preg_match('/^ZV\d+$/', (string) $s->barcode));
+
+        foreach ($siblings as $sibling) {
+            $tail = '-'.ArticleBarcode::colorCode($shop, $sibling->color).(($sibling->size ?? '') !== '' ? '-'.$sibling->size : '');
+            if (! str_ends_with((string) $sibling->barcode, $tail)) {
+                continue; // this sibling's own barcode doesn't end the way its own colour/size would predict — not a safe prefix source
+            }
+
+            $prefix = substr((string) $sibling->barcode, 0, -strlen($tail));
+            $candidate = $prefix.'-'.ArticleBarcode::colorCode($shop, $variant->color).(($variant->size ?? '') !== '' ? '-'.$variant->size : '');
+
+            if (ArticleBarcode::isPrintable($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
     private function runForShop(Shop $shop): void
     {
         $isDryRun = (bool) $this->option('dry-run');
@@ -227,17 +263,35 @@ class ArticlesRegenerateBarcodes extends Command
                     || ($retryZv && preg_match('/^ZV\d+$/', (string) $v->barcode)));
 
             foreach ($candidates as $variant) {
+                $computed = ArticleVariant::barcodeFor($shop, $product, $variant->color, $variant->size, $variant->cost);
+
+                // Baby Park live ("80001" stuck on ZV10239/ZV10245 for
+                // WHITE-BLUE/BLACK-BLUE, while BLACK-RED/GREEN/etc on the
+                // SAME product carry real "CHINA-S-80001-IXXZ-..." codes):
+                // ArticleVariant::isArticle() requires the product's own
+                // NAME to literally read "{category code}-{serial}" — this
+                // product is just named "80001" (no "S-" prefix), so it
+                // was NEVER going to satisfy that check, regardless of
+                // colour-code setup. Its working siblings' barcodes must
+                // have come from the original article-creation form, not
+                // this incremental per-variant generator. Rather than
+                // require a risky product rename, --retry-zv-fallback
+                // infers the real prefix empirically from any sibling
+                // variant that already carries a working code, then
+                // rebuilds just the colour+size tail for the stuck one.
+                if ($computed === null && $retryZv) {
+                    $computed = $this->inferFromSibling($shop, $variant);
+                }
+
                 // "could not" has two very different causes, and only one
                 // of them is something the owner can act on — so they are
                 // counted and reported apart
-                if (ArticleVariant::barcodeFor($shop, $product, $variant->color, $variant->size, $variant->cost) === null) {
+                if ($computed === null) {
                     $colorsWithoutCode[(string) $variant->color] = true;
                     $variantsUnprintable++;
 
                     continue;
                 }
-
-                $computed = ArticleVariant::barcodeFor($shop, $product, $variant->color, $variant->size, $variant->cost);
 
                 // "আগেই কারো দখলে" is useless on its own — say WHO, or
                 // the owner has nothing to go and look at. Trashed rows

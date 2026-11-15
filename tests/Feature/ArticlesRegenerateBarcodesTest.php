@@ -146,6 +146,29 @@ class ArticlesRegenerateBarcodesTest extends TestCase
         $this->assertSame('SMS-S-10001-NSXXZ-BRN-36', $variant->fresh()->barcode);
     }
 
+    /**
+     * Baby Park live: product "80001" (named without its category's "S-"
+     * prefix, so ArticleVariant::isArticle() never recognizes it as an
+     * article at all) has working siblings like BLACK-RED carrying real
+     * "CHINA-S-80001-IXXZ-BLACK-RED-40" codes — only WHITE-BLUE, added
+     * later, is stuck on ZV. --retry-zv-fallback must infer the real
+     * prefix from a working sibling rather than require isArticle() at all.
+     */
+    public function test_retry_zv_fallback_infers_the_prefix_from_a_sibling_when_the_product_itself_is_not_recognized_as_an_article(): void
+    {
+        [$shop] = $this->createShopWithOwner();
+        // deliberately NOT "S-80001" — isArticle() will return false for this product
+        $product = Product::create(['shop_id' => $shop->id, 'name' => '80001', 'name_en' => '80001', 'barcode' => '80001-IXXZ', 'cost' => 1300, 'price' => 1990, 'stock' => 10]);
+        ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => '40', 'color' => 'BLACK-RED', 'barcode' => 'CHINA-S-80001-IXXZ-BLACK-RED-40', 'stock' => 5]);
+        $stuck = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => '40', 'color' => 'WHITE-BLUE', 'barcode' => 'ZV'.random_int(1000, 9999), 'stock' => 5]);
+
+        $this->artisan('articles:regenerate-barcodes', ['--shop' => $shop->id, '--retry-zv-fallback' => true, '--variants-only' => true])
+            ->expectsOutputToContain('CHINA-S-80001-IXXZ-WHITE-BLUE-40')
+            ->assertSuccessful();
+
+        $this->assertSame('CHINA-S-80001-IXXZ-WHITE-BLUE-40', $stuck->fresh()->barcode);
+    }
+
     public function test_without_retry_zv_fallback_a_stuck_zv_barcode_is_left_alone_even_once_fixable(): void
     {
         [$shop] = $this->createShopWithOwner(['color_code_map' => ['বাদামী' => 'BRN']]);
