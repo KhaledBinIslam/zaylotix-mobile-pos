@@ -52,7 +52,17 @@
 // carefully-scoped pass rather than shipped again half-thought-through.
 // This version keeps only the safe part every prior bump already had:
 // purge old caches, claim clients — no forced navigation of anyone.
-const CACHE = 'zaylotix-shell-v5';
+//
+// v6: no logic change — just the version bump itself. A live Sheet.vue
+// fix (scroll bug) sat deployed-but-invisible for a user whose tab had
+// been open since before the deploy: a SPA's in-memory JS never re-fetches
+// itself on client-side (Inertia) navigation, only on a genuine full
+// reload, so simply visiting pages inside the app never picks up new
+// code — only closing/reopening the tab/app does. Bumping CACHE here
+// doesn't force that (see v4's revert above for why not), but it does
+// make sure the *next* normal reopen gets a clean slate instead of
+// whatever partially-stale mix the old cache held.
+const CACHE = 'zaylotix-shell-v6';
 const SHELL_ASSETS = ['/manifest.json'];
 
 self.addEventListener('install', (event) => {
