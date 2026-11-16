@@ -70,16 +70,19 @@ class RentalController extends Controller
     {
         return Product::with(['variants' => fn ($q) => $q->orderBy('size')->orderBy('color')])
             ->whereIn('rental_mode', [Product::RENTAL_MODE_RENT_ONLY, Product::RENTAL_MODE_BOTH])
-            ->get(['id', 'name', 'rent_price', 'stock', 'rental_mode'])
+            ->get(['id', 'name', 'barcode', 'rent_price', 'stock', 'rental_mode'])
             ->map(function (Product $p) {
                 return [
                     'id' => $p->id,
                     'name' => $p->name,
+                    'barcode' => $p->barcode,
                     'rent_price' => (float) $p->rent_price,
                     'available' => $p->availableForRent(),
+                    // same barcode-matching precedence every other scanner in
+                    // the app uses — a variant's own barcode is checked first
                     'variants' => $p->variants->map(fn (ProductVariant $v) => [
                         'id' => $v->id, 'label' => trim(($v->size ?? '').' '.($v->color ?? '')),
-                        'available' => $v->availableForRent(),
+                        'barcode' => $v->barcode, 'available' => $v->availableForRent(),
                     ])->values(),
                 ];
             });
@@ -264,6 +267,10 @@ class RentalController extends Controller
             'rawItems' => $rental->items->map(fn (RentalItem $i) => [
                 'id' => $i->id, 'product_name' => $i->product?->name,
                 'variant_label' => $i->variant ? trim(($i->variant->size ?? '').' '.($i->variant->color ?? '')) : null,
+                // a variant's own barcode takes precedence (same scanning
+                // precedence every other screen uses), falling back to the
+                // plain product barcode for a variant-less rental item
+                'barcode' => $i->variant?->barcode ?: $i->product?->barcode,
                 'qty' => (float) $i->qty, 'returned_qty' => (float) $i->returned_qty, 'outstanding_qty' => $i->outstandingQty(),
                 'rent_price' => (float) $i->rent_price, 'status' => $i->status,
             ])->values(),

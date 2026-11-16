@@ -327,4 +327,43 @@ class RentalTest extends TestCase
 
         $response->assertStatus(422);
     }
+
+    /**
+     * Khaled's explicit ask (2026-11-16): scan a barcode to pick which
+     * product is being rented, and to select which rental item is being
+     * returned — instead of scrolling a dropdown. Both screens need the
+     * real barcode in their JSON props to match against.
+     */
+    public function test_rentals_index_exposes_product_and_variant_barcodes_for_scanning(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'rentals');
+        $this->grantFeature($shop, 'product_variants');
+        $product = $this->rentableProduct($shop, ['barcode' => 'STD-SHR-10001']);
+        $variant = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => 'M', 'color' => 'Golden', 'barcode' => 'STD-SHR-10001-GLD-M', 'stock' => 5]);
+
+        $response = $this->actingAs($owner, 'web')->get('/app/rentals');
+
+        $response->assertInertia(fn ($page) => $page
+            ->where('products.0.barcode', 'STD-SHR-10001')
+            ->where('products.0.variants.0.barcode', 'STD-SHR-10001-GLD-M'));
+    }
+
+    public function test_rental_show_exposes_each_items_own_barcode_for_return_scanning(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'rentals');
+        $product = $this->rentableProduct($shop, ['barcode' => 'STD-PGR-10001']);
+
+        $create = $this->actingAs($owner, 'web')->postJson('/app/rentals', [
+            'customer_id' => Customer::create(['shop_id' => $shop->id, 'name' => 'Rahim', 'due' => 0])->id,
+            'rental_date' => now()->toDateString(),
+            'expected_return_date' => now()->addDays(3)->toDateString(),
+            'items' => [['product_id' => $product->id, 'qty' => 1, 'rent_price' => 300]],
+        ]);
+
+        $response = $this->actingAs($owner, 'web')->get('/app/rentals/'.$create->json('rental.id'));
+
+        $response->assertInertia(fn ($page) => $page->where('rawItems.0.barcode', 'STD-PGR-10001'));
+    }
 }

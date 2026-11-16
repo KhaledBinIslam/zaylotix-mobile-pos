@@ -1,10 +1,11 @@
 <script setup>
 import { Head, Link } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { ref, computed, onBeforeUnmount } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
 import Pagination from '@/Components/Pagination.vue';
 import { useI18n } from '@/composables/useI18n';
+import { useHardwareScanner } from '@/composables/useHardwareScanner';
 import { useToast } from '@/composables/useToast';
 import { fetchWithSessionRetry } from '@/support/fetchWithSessionRetry';
 
@@ -68,6 +69,84 @@ function onProductChange(row) {
     row.product_variant_id = '';
 }
 const itemsTotal = computed(() => items.value.reduce((sum, row) => sum + Number(row.rent_price || 0) * Number(row.qty || 0), 0));
+
+// --- scan to add a product (camera + hardware) — same barcode precedence
+// (a variant's own barcode checked first) and continuous-scan behavior
+// Returns/Index.vue already uses this session. props.products already
+// carries the FULL rentable catalog (not paginated), so matching stays
+// purely client-side, no separate lookup endpoint needed.
+function addScannedItem(productId, variantId) {
+    const existing = items.value.find((r) => Number(r.product_id) === productId && (variantId ? Number(r.product_variant_id) === variantId : !r.product_variant_id));
+    if (existing) {
+        existing.qty = Number(existing.qty || 0) + 1;
+        return;
+    }
+    const p = productOf(productId);
+    items.value = items.value.filter((r) => r.product_id); // drop the one still-blank placeholder row, if any
+    items.value.push({ product_id: productId, product_variant_id: variantId || '', qty: 1, rent_price: p ? p.rent_price : 0 });
+}
+
+let lastScanCode = '';
+let lastScanAt = 0;
+function handleScan(decodedText, onFeedback) {
+    const now = Date.now();
+    if (decodedText === lastScanCode && now - lastScanAt < 1500) return;
+    lastScanCode = decodedText;
+    lastScanAt = now;
+    if (navigator.vibrate) navigator.vibrate(40);
+    const code = decodedText.trim();
+
+    for (const p of props.products) {
+        const v = p.variants?.find((variant) => variant.barcode === code);
+        if (v) {
+            addScannedItem(p.id, v.id);
+            onFeedback('✅ ' + p.name + ' (' + v.label + ')');
+            return;
+        }
+    }
+    const product = props.products.find((p) => p.barcode === code);
+    if (product) {
+        if (product.variants?.length) {
+            onFeedback('❌ ' + product.name + ' — ' + t('rental.sizeColor'));
+            return;
+        }
+        addScannedItem(product.id, null);
+        onFeedback('✅ ' + product.name);
+        return;
+    }
+    onFeedback('❌ ' + t('rental.notFoundOrNotRentable'));
+}
+
+useHardwareScanner((code) => handleScan(code, (msg) => toast(msg)), () => createSheet.value);
+
+const scannerOpen = ref(false);
+const scanHint = ref('');
+let html5Qrcode = null;
+async function openScanner() {
+    scannerOpen.value = true;
+    scanHint.value = t('rental.scanHint');
+    try {
+        const { Html5Qrcode } = await import('html5-qrcode');
+        html5Qrcode = new Html5Qrcode('rental-reader', { verbose: false });
+        await html5Qrcode.start(
+            { facingMode: 'environment' },
+            { fps: 12, qrbox: { width: 260, height: 200 } },
+            (text) => handleScan(text, (msg) => (scanHint.value = msg)),
+            () => {},
+        );
+    } catch (e) {
+        toast('❌ ' + t('rental.cameraNotFound'));
+        closeScanner();
+    }
+}
+async function closeScanner() {
+    scannerOpen.value = false;
+    if (html5Qrcode) {
+        try { await html5Qrcode.stop(); html5Qrcode.clear(); } catch (e) { /* already stopped */ }
+        html5Qrcode = null;
+    }
+}
+onBeforeUnmount(() => { if (html5Qrcode) html5Qrcode.stop().catch(() => {}); });
 
 function openCreate() {
     createSheet.value = true;
@@ -208,7 +287,10 @@ async function submitRental() {
                     </div>
                 </div>
             </div>
-            <button class="btn ghost" style="margin-top:8px" @click="addItemRow">{{ t('rental.addMoreProduct') }}</button>
+            <div style="display:flex;gap:8px;margin-top:8px">
+                <button class="btn ghost" style="flex:1" @click="addItemRow">{{ t('rental.addMoreProduct') }}</button>
+                <button class="btn ghost" style="width:auto;padding:0 16px" @click="openScanner">{{ t('rental.scanButton') }}</button>
+            </div>
 
             <div class="card" style="margin-top:12px;background:var(--surface2)">
                 <div style="font-weight:700">{{ t('rental.totalRent') }}: {{ money(itemsTotal) }}</div>
@@ -227,6 +309,20 @@ async function submitRental() {
             <button class="btn" style="margin-top:16px" :disabled="submitting" @click="submitRental">
                 {{ submitting ? '...' : t('rental.createButton') }}
             </button>
+        </Sheet>
+
+        <Sheet v-model="scannerOpen" :title="t('rental.scanTitle')">
+            <div id="rental-reader" style="width:100%;border-radius:12px;overflow:hidden"></div>
+            <div style="text-align:center;margin-top:10px;font-size:13px;color:var(--mut)">{{ scanHint }}</div>
+            <div style="text-align:center;margin-top:4px;font-size:12px;color:var(--dim)">{{ t('rental.scanStaysOpen') }}</div>
+            <div v-if="items.filter((r) => r.product_id).length" class="card" style="margin-top:10px;background:var(--surface2)">
+                <div v-for="(row, idx) in items.filter((r) => r.product_id)" :key="idx" style="font-size:13px">
+                    ✅ {{ productOf(row.product_id)?.name }}
+                    <span v-if="row.product_variant_id">({{ productOf(row.product_id)?.variants?.find((v) => v.id === Number(row.product_variant_id))?.label }})</span>
+                    × {{ qty(row.qty) }}
+                </div>
+            </div>
+            <button class="btn ghost" style="margin-top:10px" @click="closeScanner">{{ t('rental.doneScan') }}</button>
         </Sheet>
     </AppLayout>
 </template>

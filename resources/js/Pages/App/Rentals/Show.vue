@@ -1,8 +1,10 @@
 <script setup>
 import { Head } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { ref, computed, onBeforeUnmount } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import Sheet from '@/Components/Sheet.vue';
 import { useI18n } from '@/composables/useI18n';
+import { useHardwareScanner } from '@/composables/useHardwareScanner';
 import { useToast } from '@/composables/useToast';
 import { fetchWithSessionRetry } from '@/support/fetchWithSessionRetry';
 
@@ -25,6 +27,66 @@ const lineState = ref(
 );
 
 const extraCharge = computed(() => Object.values(lineState.value).reduce((sum, l) => sum + (l.checked ? Number(l.late_fee || 0) + Number(l.damage_charge || 0) : 0), 0));
+
+// --- scan to select which item is being returned — same continuous-scan,
+// barcode-first pattern as everywhere else in the app. Matches only
+// against THIS rental's own rawItems (never a different rental's product),
+// checks the box, and bumps qty by 1 each scan (capped at outstanding_qty).
+let lastScanCode = '';
+let lastScanAt = 0;
+function handleScan(decodedText, onFeedback) {
+    const now = Date.now();
+    if (decodedText === lastScanCode && now - lastScanAt < 1500) return;
+    lastScanCode = decodedText;
+    lastScanAt = now;
+    if (navigator.vibrate) navigator.vibrate(40);
+    const code = decodedText.trim();
+
+    const item = props.rawItems.find((i) => i.barcode === code);
+    if (!item) {
+        onFeedback('❌ ' + t('rental.scannedNotInThisRental'));
+        return;
+    }
+    if (item.outstanding_qty <= 0) {
+        onFeedback('❌ ' + item.product_name + ' — ' + t('rental.scannedAlreadyFullyReturned'));
+        return;
+    }
+    const line = lineState.value[item.id];
+    line.checked = true;
+    line.qty = Math.min(item.outstanding_qty, Number(line.qty || 0) + 1);
+    onFeedback('✅ ' + item.product_name + (item.variant_label ? ' (' + item.variant_label + ')' : '') + ' × ' + qty(line.qty));
+}
+
+useHardwareScanner((code) => handleScan(code, (msg) => toast(msg)), () => props.rental.status !== 'returned');
+
+const scannerOpen = ref(false);
+const scanHint = ref('');
+let html5Qrcode = null;
+async function openScanner() {
+    scannerOpen.value = true;
+    scanHint.value = t('rental.scanReturnHint');
+    try {
+        const { Html5Qrcode } = await import('html5-qrcode');
+        html5Qrcode = new Html5Qrcode('rental-return-reader', { verbose: false });
+        await html5Qrcode.start(
+            { facingMode: 'environment' },
+            { fps: 12, qrbox: { width: 260, height: 200 } },
+            (text) => handleScan(text, (msg) => (scanHint.value = msg)),
+            () => {},
+        );
+    } catch (e) {
+        toast('❌ ' + t('rental.cameraNotFound'));
+        closeScanner();
+    }
+}
+async function closeScanner() {
+    scannerOpen.value = false;
+    if (html5Qrcode) {
+        try { await html5Qrcode.stop(); html5Qrcode.clear(); } catch (e) { /* already stopped */ }
+        html5Qrcode = null;
+    }
+}
+onBeforeUnmount(() => { if (html5Qrcode) html5Qrcode.stop().catch(() => {}); });
 const paymentAmount = ref(0);
 const paymentMethod = ref('cash');
 const submitting = ref(false);
@@ -87,6 +149,7 @@ async function submitReturn() {
         </div>
 
         <div class="sechead" style="margin-top:16px"><h2>{{ t('rental.itemsHeading') }}</h2></div>
+        <button v-if="rental.status !== 'returned'" class="btn ghost" style="width:100%;margin-bottom:10px" @click="openScanner">{{ t('rental.scanToReturn') }}</button>
         <div v-for="item in rawItems" :key="item.id" class="card" style="margin-bottom:10px">
             <div class="mid">
                 <b>{{ item.product_name }}</b><span v-if="item.variant_label">{{ item.variant_label }}</span>
@@ -150,5 +213,17 @@ async function submitReturn() {
             <div class="mid"><b>{{ money(p.amount) }}</b><span>{{ p.date }} • {{ p.method }}</span></div>
         </div>
         <div v-if="!payments.length" class="empty">{{ t('rental.noPayments') }}</div>
+
+        <Sheet v-model="scannerOpen" :title="t('rental.scanTitle')">
+            <div id="rental-return-reader" style="width:100%;border-radius:12px;overflow:hidden"></div>
+            <div style="text-align:center;margin-top:10px;font-size:13px;color:var(--mut)">{{ scanHint }}</div>
+            <div style="text-align:center;margin-top:4px;font-size:12px;color:var(--dim)">{{ t('rental.scanStaysOpen') }}</div>
+            <div v-if="Object.values(lineState).some((l) => l.checked)" class="card" style="margin-top:10px;background:var(--surface2)">
+                <div v-for="item in rawItems.filter((i) => lineState[i.id]?.checked)" :key="item.id" style="font-size:13px">
+                    ✅ {{ item.product_name }}<span v-if="item.variant_label">({{ item.variant_label }})</span> × {{ qty(lineState[item.id].qty) }}
+                </div>
+            </div>
+            <button class="btn ghost" style="margin-top:10px" @click="closeScanner">{{ t('rental.doneScan') }}</button>
+        </Sheet>
     </AppLayout>
 </template>
