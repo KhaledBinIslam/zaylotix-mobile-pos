@@ -162,6 +162,17 @@ async function handleScan(decodedText, onFeedback) {
     if (navigator.vibrate) navigator.vibrate(40);
     const code = decodedText.trim();
 
+    // Before any sale is picked, a scan IS the search — ReturnController::
+    // lookup() already matches a sale by any item's barcode (this page's
+    // own search placeholder already says "scan/type a barcode"), so just
+    // run the same search this box's Enter key runs.
+    if (!selectedSale.value) {
+        q.value = code;
+        onFeedback('🔎 ' + code);
+        await search();
+        return;
+    }
+
     const returnMatch = applySaleReturnMatch(code);
     if (returnMatch) {
         onFeedback(returnMatch);
@@ -216,10 +227,11 @@ async function handleScan(decodedText, onFeedback) {
     }
 }
 
-// hardware (USB/Bluetooth keyboard-wedge) scanner — only live while the
-// exchange "new item" step is actually on screen, so a fast barcode scan
-// can't get misread as typed text into the invoice search box or anywhere else
-useHardwareScanner((code) => handleScan(code, (msg) => toast(msg)), () => !!selectedSale.value);
+// hardware (USB/Bluetooth keyboard-wedge) scanner — always live on this
+// page: before a sale is picked it searches (same as this page's own
+// barcode-capable search box), after a sale is picked it's handleScan's
+// return-item/new-item matching above.
+useHardwareScanner((code) => handleScan(code, (msg) => toast(msg)), true);
 
 // camera scanner
 const scannerOpen = ref(false);
@@ -380,6 +392,7 @@ function sendMemoWA() {
                 <label>{{ t('returns.searchPlaceholder') }}</label>
                 <div style="display:flex;gap:8px">
                     <input v-model="q" @keyup.enter="search" :placeholder="t('returns.searchPlaceholder')">
+                    <button class="btn ghost" style="width:auto;padding:0 14px" @click="openScanner">📷</button>
                     <button class="btn" style="width:auto;padding:0 18px" :disabled="searching" @click="search">{{ t('returns.search') }}</button>
                 </div>
             </div>
