@@ -23,7 +23,8 @@ function csrfToken() {
 }
 
 const statusLabel = (s) => ({
-    active: 'সক্রিয়', partially_returned: 'আংশিক ফেরত', returned: 'ফেরত সম্পন্ন', cancelled: 'বাতিল',
+    active: t('rental.statusActive'), partially_returned: t('rental.statusPartiallyReturned'),
+    returned: t('rental.statusReturned'), cancelled: t('rental.statusCancelled'),
 }[s] || s);
 
 // --- new rental sheet ---
@@ -88,9 +89,9 @@ function nextUuid() {
 }
 
 async function submitRental() {
-    if (!selectedCustomer.value) { errorMsg.value = 'কাস্টমার বাছাই করুন।'; return; }
+    if (!selectedCustomer.value) { errorMsg.value = t('rental.selectCustomerError'); return; }
     const validItems = items.value.filter((r) => r.product_id && Number(r.qty) > 0);
-    if (!validItems.length) { errorMsg.value = 'অন্তত একটা পণ্য যোগ করুন।'; return; }
+    if (!validItems.length) { errorMsg.value = t('rental.addProductError'); return; }
 
     submitting.value = true;
     errorMsg.value = '';
@@ -111,14 +112,14 @@ async function submitRental() {
         });
         const data = await res.json();
         if (!res.ok) {
-            errorMsg.value = data.message || Object.values(data.errors || {})[0]?.[0] || 'একটা সমস্যা হয়েছে।';
+            errorMsg.value = data.message || Object.values(data.errors || {})[0]?.[0] || t('rental.genericError');
             return;
         }
         pendingUuid = null;
-        toast('✅ রেন্টাল তৈরি হয়েছে: ' + data.rental.invoice_no);
+        toast(t('rental.createdToast', { invoice: data.rental.invoice_no }));
         window.location.href = route('app.rentals.show', data.rental.id);
     } catch (e) {
-        errorMsg.value = 'নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন।';
+        errorMsg.value = t('rental.networkError');
     } finally {
         submitting.value = false;
     }
@@ -126,32 +127,32 @@ async function submitRental() {
 </script>
 
 <template>
-    <Head title="ভাড়া ব্যবস্থাপনা" />
+    <Head :title="t('rental.title')" />
     <AppLayout active="rentals">
-        <div class="pgttl">📅 ভাড়া ব্যবস্থাপনা</div>
-        <div class="pgsub">সেল ও রেন্টাল — দুটোই একসাথে</div>
+        <div class="pgttl">📅 {{ t('rental.title') }}</div>
+        <div class="pgsub">{{ t('rental.subtitle') }}</div>
 
         <div class="grid2" style="margin-bottom:14px">
-            <div class="stat gold"><div class="k">আজকের রেন্টাল</div><div class="v">{{ summary.todayCount }}</div><div class="h">{{ money(summary.todayAmount) }}</div></div>
-            <div class="stat rose"><div class="k">ওভারডিউ ফেরত</div><div class="v">{{ summary.overdueCount }}</div><div class="h">আইটেম</div></div>
-            <div class="stat sky"><div class="k">সক্রিয় রেন্টাল</div><div class="v">{{ summary.activeCount }}</div><div class="h">চলমান</div></div>
-            <div class="stat mint"><div class="k">মোট রেন্টাল ইনকাম</div><div class="v" style="font-size:15px">{{ money(summary.totalIncome) }}</div><div class="h">{{ summary.damagedCount }} ক্ষতিগ্রস্ত ইউনিট</div></div>
+            <div class="stat gold"><div class="k">{{ t('rental.todayRental') }}</div><div class="v">{{ summary.todayCount }}</div><div class="h">{{ money(summary.todayAmount) }}</div></div>
+            <div class="stat rose"><div class="k">{{ t('rental.overdueReturn') }}</div><div class="v">{{ summary.overdueCount }}</div><div class="h">{{ t('rental.items') }}</div></div>
+            <div class="stat sky"><div class="k">{{ t('rental.activeRental') }}</div><div class="v">{{ summary.activeCount }}</div><div class="h">{{ t('rental.ongoing') }}</div></div>
+            <div class="stat mint"><div class="k">{{ t('rental.totalIncome') }}</div><div class="v" style="font-size:15px">{{ money(summary.totalIncome) }}</div><div class="h">{{ t('rental.damagedUnits', { n: summary.damagedCount }) }}</div></div>
         </div>
 
-        <button class="btn" style="margin-bottom:14px" @click="openCreate">+ নতুন রেন্টাল</button>
+        <button class="btn" style="margin-bottom:14px" @click="openCreate">{{ t('rental.newRental') }}</button>
 
         <div class="seg" style="margin-bottom:14px;overflow-x:auto">
-            <Link :href="route('app.rentals.index', { tab: 'active' })" :class="{ on: tab === 'active' }">সক্রিয়</Link>
-            <Link :href="route('app.rentals.index', { tab: 'overdue' })" :class="{ on: tab === 'overdue' }">ওভারডিউ</Link>
-            <Link :href="route('app.rentals.index', { tab: 'today' })" :class="{ on: tab === 'today' }">আজকের</Link>
-            <Link :href="route('app.rentals.index', { tab: 'upcoming' })" :class="{ on: tab === 'upcoming' }">আসন্ন ফেরত</Link>
-            <Link :href="route('app.rentals.index', { tab: 'returned' })" :class="{ on: tab === 'returned' }">সম্পন্ন</Link>
+            <Link :href="route('app.rentals.index', { tab: 'active' })" :class="{ on: tab === 'active' }">{{ t('rental.tabActive') }}</Link>
+            <Link :href="route('app.rentals.index', { tab: 'overdue' })" :class="{ on: tab === 'overdue' }">{{ t('rental.tabOverdue') }}</Link>
+            <Link :href="route('app.rentals.index', { tab: 'today' })" :class="{ on: tab === 'today' }">{{ t('rental.tabToday') }}</Link>
+            <Link :href="route('app.rentals.index', { tab: 'upcoming' })" :class="{ on: tab === 'upcoming' }">{{ t('rental.tabUpcoming') }}</Link>
+            <Link :href="route('app.rentals.index', { tab: 'returned' })" :class="{ on: tab === 'returned' }">{{ t('rental.tabReturned') }}</Link>
         </div>
 
         <Link v-for="r in rentals.data" :key="r.id" :href="route('app.rentals.show', r.id)" class="row">
             <div class="ava">📅</div>
             <div class="mid">
-                <b>{{ r.invoice_no }}</b><span v-if="r.is_overdue" class="pill rose" style="margin-left:6px;font-size:10px">ওভারডিউ</span>
+                <b>{{ r.invoice_no }}</b><span v-if="r.is_overdue" class="pill rose" style="margin-left:6px;font-size:10px">{{ t('rental.overdueBadge') }}</span>
                 <span>{{ r.customer?.name }} • {{ r.rental_date }} → {{ r.expected_return_date }}</span>
             </div>
             <div class="end">
@@ -159,13 +160,13 @@ async function submitRental() {
                 <span class="pill" :class="r.remaining_due > 0 ? 'rose' : 'mint'" style="margin-top:3px">{{ statusLabel(r.status) }}</span>
             </div>
         </Link>
-        <div v-if="!rentals.data.length" class="empty"><div class="big">📅</div>কোনো রেন্টাল নেই</div>
+        <div v-if="!rentals.data.length" class="empty"><div class="big">📅</div>{{ t('rental.noRentals') }}</div>
         <Pagination :links="rentals.links" />
 
-        <Sheet v-model="createSheet" title="নতুন রেন্টাল">
+        <Sheet v-model="createSheet" :title="t('rental.newRentalTitle')">
             <div class="field">
-                <label>কাস্টমার</label>
-                <input v-model="customerQuery" @input="searchCustomer" placeholder="নাম বা ফোন নম্বর">
+                <label>{{ t('rental.customer') }}</label>
+                <input v-model="customerQuery" @input="searchCustomer" :placeholder="t('rental.customerPlaceholder')">
             </div>
             <div v-if="customerResults.length" class="card" style="margin-top:6px">
                 <div v-for="c in customerResults" :key="c.id" class="row" style="width:100%;text-align:left;cursor:pointer" @click="pickCustomer(c)">
@@ -174,32 +175,32 @@ async function submitRental() {
             </div>
 
             <div class="f2" style="margin-top:10px">
-                <div class="field"><label>রেন্টাল তারিখ</label><input type="date" v-model="rentalDate"></div>
-                <div class="field"><label>ফেরতের তারিখ</label><input type="date" v-model="expectedReturnDate"></div>
+                <div class="field"><label>{{ t('rental.rentalDate') }}</label><input type="date" v-model="rentalDate"></div>
+                <div class="field"><label>{{ t('rental.returnDate') }}</label><input type="date" v-model="expectedReturnDate"></div>
             </div>
             <div class="field" style="margin-top:8px">
-                <label>সিকিউরিটি ডিপোজিট <span style="color:var(--dim);font-weight:400">ঐচ্ছিক</span></label>
+                <label>{{ t('rental.securityDeposit') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
                 <input type="number" v-model="securityDeposit" min="0" step="any">
             </div>
 
-            <div style="font-weight:700;margin-top:14px">যা ভাড়া দেওয়া হচ্ছে</div>
+            <div style="font-weight:700;margin-top:14px">{{ t('rental.whatsBeingRented') }}</div>
             <div v-for="(row, idx) in items" :key="idx" class="f2" style="margin-top:8px;align-items:end">
                 <div class="field">
-                    <label>পণ্য</label>
+                    <label>{{ t('rental.product') }}</label>
                     <select v-model="row.product_id" @change="onProductChange(row)">
                         <option value="">—</option>
-                        <option v-for="p in products" :key="p.id" :value="p.id">{{ p.name }} ({{ p.available }} পাওয়া যাবে)</option>
+                        <option v-for="p in products" :key="p.id" :value="p.id">{{ p.name }} ({{ t('rental.availableCount', { n: p.available }) }})</option>
                     </select>
                 </div>
                 <div class="field" v-if="productOf(row.product_id)?.variants?.length">
-                    <label>সাইজ/রং</label>
+                    <label>{{ t('rental.sizeColor') }}</label>
                     <select v-model="row.product_variant_id">
                         <option value="">—</option>
                         <option v-for="v in productOf(row.product_id).variants" :key="v.id" :value="v.id">{{ v.label }} ({{ v.available }})</option>
                     </select>
                 </div>
                 <div class="field">
-                    <label>পরিমাণ × ভাড়া</label>
+                    <label>{{ t('rental.qtyRentPrice') }}</label>
                     <div style="display:flex;gap:6px">
                         <input type="number" v-model="row.qty" min="1" step="1" style="width:60px">
                         <input type="number" v-model="row.rent_price" min="0" step="any">
@@ -207,24 +208,24 @@ async function submitRental() {
                     </div>
                 </div>
             </div>
-            <button class="btn ghost" style="margin-top:8px" @click="addItemRow">+ আরও পণ্য</button>
+            <button class="btn ghost" style="margin-top:8px" @click="addItemRow">{{ t('rental.addMoreProduct') }}</button>
 
             <div class="card" style="margin-top:12px;background:var(--surface2)">
-                <div style="font-weight:700">মোট ভাড়া: {{ money(itemsTotal) }}</div>
+                <div style="font-weight:700">{{ t('rental.totalRent') }}: {{ money(itemsTotal) }}</div>
             </div>
 
             <div class="f2" style="margin-top:10px">
-                <div class="field"><label>অগ্রিম</label><input type="number" v-model="advanceAmount" min="0" step="any"></div>
+                <div class="field"><label>{{ t('rental.advance') }}</label><input type="number" v-model="advanceAmount" min="0" step="any"></div>
                 <div class="field">
-                    <label>পদ্ধতি</label>
-                    <select v-model="advanceMethod"><option value="cash">ক্যাশ</option><option value="bkash">বিকাশ</option><option value="nagad">নগদ</option></select>
+                    <label>{{ t('rental.method') }}</label>
+                    <select v-model="advanceMethod"><option value="cash">{{ t('pay.cash') }}</option><option value="bkash">{{ t('pay.bkash') }}</option><option value="nagad">{{ t('pay.nagad') }}</option></select>
                 </div>
             </div>
 
             <div v-if="errorMsg" style="color:var(--rose);margin-top:10px">{{ errorMsg }}</div>
 
             <button class="btn" style="margin-top:16px" :disabled="submitting" @click="submitRental">
-                {{ submitting ? '...' : 'রেন্টাল তৈরি করুন' }}
+                {{ submitting ? '...' : t('rental.createButton') }}
             </button>
         </Sheet>
     </AppLayout>

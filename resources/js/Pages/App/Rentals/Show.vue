@@ -2,10 +2,12 @@
 import { Head } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import { useI18n } from '@/composables/useI18n';
 import { useToast } from '@/composables/useToast';
 import { fetchWithSessionRetry } from '@/support/fetchWithSessionRetry';
 
 const props = defineProps({ rental: Object, rawItems: Array, returns: Array, payments: Array });
+const { t } = useI18n();
 const { toast } = useToast();
 
 const money = (n) => '৳' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
@@ -46,7 +48,7 @@ async function submitReturn() {
             late_fee: Number(lineState.value[i.id].late_fee || 0),
             damage_charge: Number(lineState.value[i.id].damage_charge || 0),
         }));
-    if (!lines.length) { errorMsg.value = 'অন্তত একটা আইটেম বাছাই করুন।'; return; }
+    if (!lines.length) { errorMsg.value = t('rental.selectAtLeastOneItem'); return; }
 
     submitting.value = true;
     errorMsg.value = '';
@@ -58,14 +60,14 @@ async function submitReturn() {
         });
         const data = await res.json();
         if (!res.ok) {
-            errorMsg.value = data.message || Object.values(data.errors || {})[0]?.[0] || 'একটা সমস্যা হয়েছে।';
+            errorMsg.value = data.message || Object.values(data.errors || {})[0]?.[0] || t('rental.genericError');
             return;
         }
         pendingUuid = null;
-        toast('✅ ফেরত প্রসেস হয়েছে');
+        toast(t('rental.returnProcessedToast'));
         window.location.reload();
     } catch (e) {
-        errorMsg.value = 'নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন।';
+        errorMsg.value = t('rental.networkError');
     } finally {
         submitting.value = false;
     }
@@ -73,61 +75,80 @@ async function submitReturn() {
 </script>
 
 <template>
-    <Head :title="'রেন্টাল — ' + rental.invoice_no" />
+    <Head :title="t('nav.rentals') + ' — ' + rental.invoice_no" />
     <AppLayout active="rentals">
         <div class="pgttl">📅 {{ rental.invoice_no }}</div>
         <div class="pgsub">{{ rental.customer?.name }} • {{ rental.rental_date }} → {{ rental.expected_return_date }}</div>
 
         <div class="card" style="margin-top:10px">
-            <div>মোট ভাড়া: <b>{{ money(rental.total_rent_amount) }}</b></div>
-            <div>পরিশোধিত: {{ money(rental.total_paid) }}</div>
-            <div style="font-weight:700">বাকি আছে: {{ money(rental.remaining_due) }}</div>
+            <div>{{ t('rental.totalRentLabel') }}: <b>{{ money(rental.total_rent_amount) }}</b></div>
+            <div>{{ t('rental.paidLabel') }}: {{ money(rental.total_paid) }}</div>
+            <div style="font-weight:700">{{ t('rental.remainingDue') }}: {{ money(rental.remaining_due) }}</div>
         </div>
 
-        <div class="sechead" style="margin-top:16px"><h2>আইটেম</h2></div>
-        <div v-for="item in rawItems" :key="item.id" class="row" style="width:100%">
-            <div class="mid" style="flex:1">
+        <div class="sechead" style="margin-top:16px"><h2>{{ t('rental.itemsHeading') }}</h2></div>
+        <div v-for="item in rawItems" :key="item.id" class="card" style="margin-bottom:10px">
+            <div class="mid">
                 <b>{{ item.product_name }}</b><span v-if="item.variant_label">{{ item.variant_label }}</span>
-                <span>{{ money(item.rent_price) }} × {{ qty(item.qty) }} • বাকি ফেরত: {{ qty(item.outstanding_qty) }}</span>
+                <span>{{ money(item.rent_price) }} × {{ qty(item.qty) }} • {{ t('rental.outstandingReturn') }}: {{ qty(item.outstanding_qty) }}</span>
             </div>
-            <template v-if="item.outstanding_qty > 0 && lineState[item.id]">
-                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <div v-if="item.outstanding_qty > 0 && lineState[item.id]" style="margin-top:10px">
+                <label style="display:flex;gap:8px;align-items:center;font-weight:700">
                     <input type="checkbox" v-model="lineState[item.id].checked">
-                    <input type="number" v-model="lineState[item.id].qty" :max="item.outstanding_qty" min="0" step="any" style="width:60px" :disabled="!lineState[item.id].checked">
-                    <select v-model="lineState[item.id].condition" style="width:120px" :disabled="!lineState[item.id].checked">
-                        <option value="resalable">ভালো আছে</option>
-                        <option value="damaged">ক্ষতিগ্রস্ত</option>
-                        <option value="lost">হারিয়ে গেছে</option>
-                    </select>
-                    <input type="number" v-model="lineState[item.id].late_fee" placeholder="লেট ফি" min="0" step="any" style="width:80px" :disabled="!lineState[item.id].checked">
-                    <input type="number" v-model="lineState[item.id].damage_charge" placeholder="ক্ষতির চার্জ" min="0" step="any" style="width:90px" :disabled="!lineState[item.id].checked">
-                </div>
-            </template>
+                    {{ t('rental.returningThisItem') }}
+                </label>
+                <template v-if="lineState[item.id].checked">
+                    <div class="f2" style="margin-top:10px">
+                        <div class="field" style="margin:0">
+                            <label>{{ t('rental.qtyMax', { n: qty(item.outstanding_qty) }) }}</label>
+                            <input type="number" v-model="lineState[item.id].qty" :max="item.outstanding_qty" min="0" step="any">
+                        </div>
+                        <div class="field" style="margin:0">
+                            <label>{{ t('rental.condition') }}</label>
+                            <select v-model="lineState[item.id].condition">
+                                <option value="resalable">{{ t('rental.conditionGood') }}</option>
+                                <option value="damaged">{{ t('rental.conditionDamaged') }}</option>
+                                <option value="lost">{{ t('rental.conditionLost') }}</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="f2" style="margin-top:10px">
+                        <div class="field" style="margin:0">
+                            <label>{{ t('rental.lateFee') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
+                            <input type="number" v-model="lineState[item.id].late_fee" min="0" step="any">
+                        </div>
+                        <div class="field" style="margin:0">
+                            <label>{{ t('rental.damageCharge') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
+                            <input type="number" v-model="lineState[item.id].damage_charge" min="0" step="any">
+                        </div>
+                    </div>
+                </template>
+            </div>
         </div>
 
         <div v-if="rental.status !== 'returned'" class="card" style="margin-top:14px;background:var(--surface2)">
-            <div v-if="extraCharge > 0">অতিরিক্ত চার্জ (লেট ফি + ক্ষতি): {{ money(extraCharge) }}</div>
-            <div style="font-weight:700">ফেরতের পর বাকি থাকবে: {{ money(Math.max(0, Number(rental.remaining_due) + extraCharge - Number(paymentAmount || 0))) }}</div>
+            <div v-if="extraCharge > 0">{{ t('rental.extraCharge') }}: {{ money(extraCharge) }}</div>
+            <div style="font-weight:700">{{ t('rental.remainingAfterReturn') }}: {{ money(Math.max(0, Number(rental.remaining_due) + extraCharge - Number(paymentAmount || 0))) }}</div>
 
             <div class="f2" style="margin-top:10px">
-                <div class="field"><label>এখন কত টাকা দিলো</label><input type="number" v-model="paymentAmount" min="0" step="any"></div>
+                <div class="field"><label>{{ t('rental.paymentNowAmount') }}</label><input type="number" v-model="paymentAmount" min="0" step="any"></div>
                 <div class="field">
-                    <label>পদ্ধতি</label>
-                    <select v-model="paymentMethod"><option value="cash">ক্যাশ</option><option value="bkash">বিকাশ</option><option value="nagad">নগদ</option></select>
+                    <label>{{ t('rental.method') }}</label>
+                    <select v-model="paymentMethod"><option value="cash">{{ t('pay.cash') }}</option><option value="bkash">{{ t('pay.bkash') }}</option><option value="nagad">{{ t('pay.nagad') }}</option></select>
                 </div>
             </div>
 
             <div v-if="errorMsg" style="color:var(--rose);margin-top:10px">{{ errorMsg }}</div>
 
             <button class="btn" style="margin-top:12px" :disabled="submitting" @click="submitReturn">
-                {{ submitting ? '...' : 'প্রোডাক্ট ফেরত নিন' }}
+                {{ submitting ? '...' : t('rental.processReturnButton') }}
             </button>
         </div>
 
-        <div class="sechead" style="margin-top:16px"><h2>পেমেন্ট হিস্ট্রি</h2></div>
+        <div class="sechead" style="margin-top:16px"><h2>{{ t('rental.paymentHistory') }}</h2></div>
         <div v-for="p in payments" :key="p.id" class="row">
             <div class="mid"><b>{{ money(p.amount) }}</b><span>{{ p.date }} • {{ p.method }}</span></div>
         </div>
-        <div v-if="!payments.length" class="empty">এখনো কোনো পেমেন্ট নেই</div>
+        <div v-if="!payments.length" class="empty">{{ t('rental.noPayments') }}</div>
     </AppLayout>
 </template>
