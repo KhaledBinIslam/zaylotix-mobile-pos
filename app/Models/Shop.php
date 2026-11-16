@@ -119,6 +119,21 @@ class Shop extends Model
         return $this->parent_shop_id ? ($this->parentShop ?? $this) : $this;
     }
 
+    /**
+     * Invoice numbers used to be a plain counter column on each shop
+     * (branch) row, so two sibling branches independently reach the same
+     * count and print the same "INV-1007" twice — confusing in the
+     * Return/Exchange lookup (reported live: two different sales, same
+     * invoice number, hard to tell apart). Same resolution as
+     * articleSettingsShop()/labelHeader(): a branch's counter lives on its
+     * main/parent shop instead, so every sibling branch shares one running
+     * sequence. A shop with no parent is completely unaffected.
+     */
+    public function invoiceCounterShop(): self
+    {
+        return $this->parent_shop_id ? ($this->parentShop ?? $this) : $this;
+    }
+
     /** docs/ARTICLE_SERIES_PLAN.md §3 — {MFR}-{CAT}-{SERIAL}-{COSTCODE}, e.g. "SMS-L-10001-NSXXZ". */
     public const ARTICLE_BARCODE_TEMPLATE_DEFAULT = '{MFR}-{CAT}-{SERIAL}-{COSTCODE}';
 

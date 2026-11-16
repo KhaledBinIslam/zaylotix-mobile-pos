@@ -7,6 +7,7 @@ import { useI18n } from '@/composables/useI18n';
 import { useHardwareScanner } from '@/composables/useHardwareScanner';
 import { useToast } from '@/composables/useToast';
 import { fetchWithSessionRetry } from '@/support/fetchWithSessionRetry';
+import { matchSaleReturnItem } from '@/support/rentalScan';
 
 const props = defineProps({ returnWindowDays: Number, products: Array });
 const { t } = useI18n();
@@ -131,6 +132,26 @@ function addScannedItem(productId, variantId) {
     }
 }
 
+// --- scan to pick WHICH sold item is being returned (either action) —
+// same continuous-scan, barcode-first pattern as Rentals' return screen
+// (matchSaleReturnItem). Tried before falling through to "add a new
+// exchange item" below, so one scanner button/handler serves both steps:
+// a sold item's own barcode selects it for return; anything else (in
+// exchange mode) is treated as a new item being given to the customer.
+function applySaleReturnMatch(code) {
+    if (!selectedSale.value) return null;
+    const match = matchSaleReturnItem(selectedSale.value.items, code);
+    if (match.status === 'not_found') return null;
+    if (match.status === 'fully_returned') {
+        return '❌ ' + match.item.product_name + ' — ইতিমধ্যে সম্পূর্ণ ফেরত নেওয়া হয়েছে';
+    }
+    const item = match.item;
+    const line = lineState.value[item.id];
+    line.checked = true;
+    line.qty = Math.min(item.returnable_qty, Number(line.qty || 0) + 1);
+    return '✅ ' + item.product_name + (item.variant_label ? ' (' + item.variant_label + ')' : '') + ' × ' + qty(line.qty);
+}
+
 let lastScanCode = '';
 let lastScanAt = 0;
 async function handleScan(decodedText, onFeedback) {
@@ -140,6 +161,17 @@ async function handleScan(decodedText, onFeedback) {
     lastScanAt = now;
     if (navigator.vibrate) navigator.vibrate(40);
     const code = decodedText.trim();
+
+    const returnMatch = applySaleReturnMatch(code);
+    if (returnMatch) {
+        onFeedback(returnMatch);
+        return;
+    }
+
+    if (action.value !== 'exchange') {
+        onFeedback('❌ এই বিলে এই বারকোডের পণ্য পাওয়া যায়নি');
+        return;
+    }
 
     for (const p of props.products) {
         const v = p.variants?.find((variant) => variant.barcode === code);
@@ -187,7 +219,7 @@ async function handleScan(decodedText, onFeedback) {
 // hardware (USB/Bluetooth keyboard-wedge) scanner — only live while the
 // exchange "new item" step is actually on screen, so a fast barcode scan
 // can't get misread as typed text into the invoice search box or anywhere else
-useHardwareScanner((code) => handleScan(code, (msg) => toast(msg)), () => action.value === 'exchange' && !!selectedSale.value);
+useHardwareScanner((code) => handleScan(code, (msg) => toast(msg)), () => !!selectedSale.value);
 
 // camera scanner
 const scannerOpen = ref(false);
@@ -386,7 +418,10 @@ function sendMemoWA() {
                     </label>
                 </div>
 
-                <div style="margin-top:14px;font-weight:700">{{ t('returns.items') }}</div>
+                <div style="margin-top:14px;display:flex;justify-content:space-between;align-items:center">
+                    <div style="font-weight:700">{{ t('returns.items') }}</div>
+                    <button class="btn ghost" style="width:auto;padding:4px 12px;font-size:13px" @click="openScanner">📷 স্ক্যান</button>
+                </div>
                 <div v-for="item in selectedSale.items" :key="item.id" class="row" style="width:100%">
                     <div class="mid" style="flex:1">
                         <b>{{ item.product_name }}</b><span v-if="item.variant_label">{{ item.variant_label }}</span>
@@ -394,9 +429,9 @@ function sendMemoWA() {
                     </div>
                     <template v-if="item.returnable_qty > 0 && lineState[item.id]">
                         <div style="display:flex;gap:8px;align-items:center">
-                            <input type="checkbox" v-model="lineState[item.id].checked">
-                            <input type="number" v-model="lineState[item.id].qty" :max="item.returnable_qty" min="0" step="any" style="width:70px" :disabled="!lineState[item.id].checked">
-                            <select v-model="lineState[item.id].condition" style="width:150px" :disabled="!lineState[item.id].checked">
+                            <input type="checkbox" v-model="lineState[item.id].checked" @change="!lineState[item.id].checked && (lineState[item.id].qty = 0)">
+                            <input type="number" v-model="lineState[item.id].qty" @input="Number(lineState[item.id].qty) > 0 && (lineState[item.id].checked = true)" :max="item.returnable_qty" min="0" step="any" style="width:70px">
+                            <select v-model="lineState[item.id].condition" style="width:150px">
                                 <option value="resalable">{{ t('returns.conditionGood') }}</option>
                                 <option value="damaged">{{ t('returns.conditionDamaged') }}</option>
                                 <option value="lost">{{ t('returns.conditionLost') }}</option>
@@ -437,7 +472,7 @@ function sendMemoWA() {
                     </div>
                     <div style="display:flex;gap:8px;margin-top:8px">
                         <button class="btn ghost" style="flex:1" @click="addNewItemRow">{{ t('returns.addNewItem') }}</button>
-                        <button class="btn ghost" style="width:auto;padding:0 16px" @click="openScanner">📷 স্ক্যান</button>
+                        <button class="btn ghost" style="width:auto;padding:0 16px" @click="openScanner">📷 নতুন পণ্য স্ক্যান</button>
                     </div>
 
                     <div class="field" style="margin-top:10px">

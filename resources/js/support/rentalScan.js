@@ -47,3 +47,24 @@ export function matchRentalReturnItem(rawItems, code) {
     }
     return { status: 'ok', item };
 }
+
+/**
+ * Returns/Index.vue's own scan-to-select — same shape as
+ * matchRentalReturnItem but against a SALE's own `items` list, keyed by
+ * `returnable_qty` (how much of that line hasn't already been returned,
+ * possibly at a sibling branch) instead of a rental's `outstanding_qty`.
+ * Returns one of:
+ *  - { status: 'ok', item }
+ *  - { status: 'fully_returned', item }
+ *  - { status: 'not_found' }
+ */
+export function matchSaleReturnItem(items, code) {
+    const item = items.find((i) => i.barcode === code);
+    if (!item) {
+        return { status: 'not_found' };
+    }
+    if (item.returnable_qty <= 0) {
+        return { status: 'fully_returned', item };
+    }
+    return { status: 'ok', item };
+}

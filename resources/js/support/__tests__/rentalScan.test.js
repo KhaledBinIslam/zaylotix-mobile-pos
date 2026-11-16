@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { matchRentableProduct, matchRentalReturnItem } from '@/support/rentalScan';
+import { matchRentableProduct, matchRentalReturnItem, matchSaleReturnItem } from '@/support/rentalScan';
 
 /**
  * Khaled's explicit ask (2026-11-16): prove the scan-matching logic
@@ -76,6 +76,30 @@ describe('matchRentalReturnItem — scan-to-select-a-return', () => {
 
     it('a barcode that belongs to a DIFFERENT rental entirely (not in this one\'s rawItems) is not found', () => {
         const result = matchRentalReturnItem(rawItems, 'STD-SOME-OTHER-RENTALS-PRODUCT');
+        expect(result.status).toBe('not_found');
+    });
+});
+
+describe('matchSaleReturnItem — Returns/Index.vue scan-to-select', () => {
+    const items = [
+        { id: 201, product_name: 'Pagri', variant_label: null, barcode: 'STD-PGR-10001', returnable_qty: 1 },
+        { id: 202, product_name: 'Mala', variant_label: null, barcode: 'STD-MLA-10001', returnable_qty: 0 },
+    ];
+
+    it('matches a line that still has something returnable', () => {
+        const result = matchSaleReturnItem(items, 'STD-PGR-10001');
+        expect(result.status).toBe('ok');
+        expect(result.item.id).toBe(201);
+    });
+
+    it('a line already fully returned is reported distinctly, not silently matched', () => {
+        const result = matchSaleReturnItem(items, 'STD-MLA-10001');
+        expect(result.status).toBe('fully_returned');
+        expect(result.item.id).toBe(202);
+    });
+
+    it('a barcode not in this sale at all is not found', () => {
+        const result = matchSaleReturnItem(items, 'SOME-OTHER-BARCODE');
         expect(result.status).toBe('not_found');
     });
 });

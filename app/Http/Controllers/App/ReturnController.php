@@ -291,6 +291,11 @@ class ReturnController extends Controller
                     'product_variant_id' => $item->product_variant_id,
                     'product_name' => $item->product_name,
                     'variant_label' => $item->variant_label,
+                    // lets the return screen scan a barcode to pick which
+                    // sold line is being returned, same pattern as Rentals'
+                    // matchRentalReturnItem — a variant's own barcode wins
+                    // over the plain product barcode when both exist.
+                    'barcode' => $item->variant?->barcode ?: $item->product?->barcode,
                     'qty' => (float) $item->qty,
                     'price' => (float) $item->price,
                     'discount' => (float) $item->discount,

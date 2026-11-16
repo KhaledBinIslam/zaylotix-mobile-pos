@@ -1151,19 +1151,31 @@ class PosController extends Controller
                 };
             }
 
-            // invoice number — locked shop row above guarantees no collision.
+            // invoice number — shared across every branch of one business
+            // (invoiceCounterShop() resolves to the main/parent shop, same
+            // pattern as articleSettingsShop()), not a per-branch counter.
+            // Two sibling branches used to each run their own counter from
+            // 1000, so they'd independently reach "INV-1007" at the same
+            // time — indistinguishable in the Return/Exchange lookup (a
+            // real live report). A shop with no parent is unaffected: its
+            // own row IS the counter shop, already locked above.
+            $counterShop = $shop->invoiceCounterShop();
+            if ($counterShop->id !== $shop->id) {
+                $counterShop = Shop::whereKey($counterShop->id)->lockForUpdate()->first();
+            }
             // A wholesale sale gets its own 'WS-' series under wholesale_tiers
             // specifically (see docs/FIX_PLAN.md's Phase 30 design note, Part
             // C) — a wholesale sale on a shop that only has the base
             // wholesale_pricing feature (not the fuller wholesale_tiers)
             // keeps the exact INV- series unchanged, same as retail always has.
             if ($isWholesale && $tiersOn) {
-                $shop->wholesale_invoice_counter += 1;
-                $invoiceNo = 'WS-'.$shop->wholesale_invoice_counter;
+                $counterShop->wholesale_invoice_counter += 1;
+                $invoiceNo = 'WS-'.$counterShop->wholesale_invoice_counter;
             } else {
-                $shop->invoice_counter += 1;
-                $invoiceNo = 'INV-'.$shop->invoice_counter;
+                $counterShop->invoice_counter += 1;
+                $invoiceNo = 'INV-'.$counterShop->invoice_counter;
             }
+            $counterShop->save();
 
             $sale = Sale::create([
                 'shop_id' => $shopId,
