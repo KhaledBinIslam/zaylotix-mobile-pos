@@ -37,6 +37,10 @@ class PaymentController extends Controller
             // this just makes a later per-invoice view possible going
             // forward (see docs/FIX_PLAN.md Phase 3.2).
             'sale_id' => ['nullable', Rule::exists('sales', 'id')->where('customer_id', $customer->id)],
+            // Tagging a payment to a rental (e.g. collecting the rest of a
+            // rental's due later) never changes the due math below either —
+            // it only lets Rental::totalPaid()/remainingDue() find it.
+            'rental_id' => ['nullable', Rule::exists('rentals', 'id')->where('customer_id', $customer->id)],
             // Idempotency key — same pattern as PosController::checkout's
             // client_uuid. Real finding (2026-11-15 audit): a cashier
             // double-tapping "কালেক্ট" on a slow connection used to create
@@ -77,6 +81,7 @@ class PaymentController extends Controller
                 'shop_id' => Tenancy::id(),
                 'sale_id' => $data['sale_id'] ?? null,
                 'installment_plan_id' => $data['installment_plan_id'] ?? null,
+                'rental_id' => $data['rental_id'] ?? null,
                 'user_id' => Auth::guard('web')->id() ?? Auth::guard('sanctum')->id(),
                 'amount' => $amount,
                 // snapshotted here, not re-derived later from other rows —

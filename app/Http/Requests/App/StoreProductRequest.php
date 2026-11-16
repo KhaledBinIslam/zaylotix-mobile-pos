@@ -63,6 +63,12 @@ class StoreProductRequest extends FormRequest
             'price_tiers.*.min_qty' => ['required', 'integer', 'min:1'],
             'price_tiers.*.price' => ['required', 'numeric', 'min:0'],
             'discount_price' => ['nullable', 'numeric', 'min:0', 'lt:price'],
+            // Rental Management (feature: rentals) — accepted from anyone
+            // the same way wholesale_price/moq already are, harmless on a
+            // shop without the feature since Stock/Index.vue never sends
+            // anything but the 'sell_only' default there.
+            'rental_mode' => ['nullable', Rule::in(['sell_only', 'rent_only', 'both'])],
+            'rent_price' => ['nullable', 'numeric', 'min:0'],
             // 'untracked'/'toggle' only make sense for a restaurant's own
             // cooked-food products (see Stock/Index.vue's isRestaurant
             // gate) — accepted from anyone since it's harmless either way,

@@ -18,6 +18,7 @@ class Product extends Model
         'shop_id', 'master_product_id', 'supplier_id', 'brand_id', 'category_id', 'unit_id', 'name', 'name_en', 'generic_name', 'company', 'shelf_location', 'requires_prescription', 'emoji', 'photo_path', 'barcode',
         'sold_by_weight', 'weight_unit', 'track_serial',
         'cost', 'price', 'wholesale_price', 'wholesale_moq', 'discount_price', 'stock', 'stock_mode', 'expiry_date', 'batch_no', 'size', 'color', 'imei',
+        'rental_mode', 'rent_price',
         'option1_label', 'option2_label', // SEAMAN Phase 3 — what this product CALLS its colour/size axes (null = রং/সাইজ, every pre-existing product)
         'reorder_point', 'show_in_catalog', 'search_keywords',
         'internal_note', // SEAMAN Phase 6 — importer's VERIFY remarks; never shown on any customer-facing copy
@@ -40,6 +41,7 @@ class Product extends Model
             'wholesale_price' => 'decimal:2',
             'wholesale_moq' => 'integer',
             'discount_price' => 'decimal:2',
+            'rent_price' => 'decimal:2',
             // 3 decimal places — enough to record a single gram (0.001 kg)
             // or millilitre (0.001 litre) precisely; every other quantity
             // in the system (checkout, stock-in, damage, return, stock
@@ -480,5 +482,51 @@ class Product extends Model
     public function displayName(string $lang = 'bn'): string
     {
         return $lang === 'bn' ? $this->name : ($this->name_en ?: $this->name);
+    }
+
+    public const RENTAL_MODE_SELL_ONLY = 'sell_only';
+
+    public const RENTAL_MODE_RENT_ONLY = 'rent_only';
+
+    public const RENTAL_MODE_BOTH = 'both';
+
+    public function canBeRented(): bool
+    {
+        return in_array($this->rental_mode, [self::RENTAL_MODE_RENT_ONLY, self::RENTAL_MODE_BOTH], true);
+    }
+
+    public function canBeSold(): bool
+    {
+        return $this->rental_mode !== self::RENTAL_MODE_RENT_ONLY;
+    }
+
+    /**
+     * Currently out on rent (qty across every still-open RentalItem for this
+     * product). Renting never decrements `stock` itself — the item is still
+     * shop property, just physically with a customer — so "how many are
+     * actually out right now" has to be computed from rental_items, not
+     * read off a stored column.
+     */
+    public function rentedQty(): float
+    {
+        // whereNull(product_variant_id): a variant's own rentals are
+        // tracked on ProductVariant::rentedQty() instead, so a product
+        // with variants never double-counts them here.
+        return (float) RentalItem::where('product_id', $this->id)->whereNull('product_variant_id')->where('status', 'out')->sum('qty');
+    }
+
+    public function availableForRent(): float
+    {
+        return max(0, (float) $this->stock - $this->rentedQty());
+    }
+
+    public function rentalDamagedQty(): float
+    {
+        return (float) RentalReturn::whereHas('item', fn ($q) => $q->where('product_id', $this->id)->whereNull('product_variant_id'))->where('condition', 'damaged')->sum('qty');
+    }
+
+    public function rentalLostQty(): float
+    {
+        return (float) RentalReturn::whereHas('item', fn ($q) => $q->where('product_id', $this->id)->whereNull('product_variant_id'))->where('condition', 'lost')->sum('qty');
     }
 }

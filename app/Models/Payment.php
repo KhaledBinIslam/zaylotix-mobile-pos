@@ -9,7 +9,7 @@ class Payment extends Model
 {
     use BelongsToTenant;
 
-    protected $fillable = ['shop_id', 'customer_id', 'sale_id', 'installment_plan_id', 'user_id', 'amount', 'due_before', 'due_after', 'method', 'date', 'voided_at', 'voided_by', 'void_of_payment_id', 'client_uuid'];
+    protected $fillable = ['shop_id', 'customer_id', 'sale_id', 'installment_plan_id', 'rental_id', 'user_id', 'amount', 'due_before', 'due_after', 'method', 'date', 'voided_at', 'voided_by', 'void_of_payment_id', 'client_uuid'];
 
     protected function casts(): array
     {
@@ -41,5 +41,10 @@ class Payment extends Model
     public function sale()
     {
         return $this->belongsTo(Sale::class);
+    }
+
+    public function rental()
+    {
+        return $this->belongsTo(Rental::class);
     }
 }

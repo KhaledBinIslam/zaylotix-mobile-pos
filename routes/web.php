@@ -49,6 +49,7 @@ use App\Http\Controllers\App\PartyController;
 use App\Http\Controllers\App\PaymentController;
 use App\Http\Controllers\App\PaymentGatewayController;
 use App\Http\Controllers\App\InstallmentController;
+use App\Http\Controllers\App\RentalController;
 use App\Http\Controllers\App\SeasonController;
 use App\Http\Controllers\App\ServiceTicketController;
 use App\Http\Controllers\App\ShopBackupController;
@@ -477,6 +478,14 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::post('installments/{plan}/cancel', [InstallmentController::class, 'cancel'])->name('installments.cancel');
         Route::post('installments/{plan}/pickup', [InstallmentController::class, 'pickup'])->name('installments.pickup');
         Route::post('installments/{plan}/undo-pickup', [InstallmentController::class, 'undoPickup'])->name('installments.undoPickup');
+    });
+
+    Route::middleware(['perm:rentals', 'feature:rentals'])->group(function () {
+        Route::get('rentals', [RentalController::class, 'index'])->name('rentals.index');
+        Route::get('rentals/lookup', [RentalController::class, 'lookup'])->name('rentals.lookup');
+        Route::post('rentals', [RentalController::class, 'store'])->middleware('throttle:checkout')->name('rentals.store');
+        Route::get('rentals/{rental}', [RentalController::class, 'show'])->name('rentals.show');
+        Route::post('rentals/{rental}/return', [RentalController::class, 'processReturn'])->middleware('throttle:checkout')->name('rentals.processReturn');
     });
 
     Route::middleware('feature:ingredient_tracking')->group(function () {

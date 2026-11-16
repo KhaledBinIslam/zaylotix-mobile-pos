@@ -450,6 +450,7 @@ export const translations = {
     'nav.serviceTickets': { bn: 'সার্ভিস/রিপেয়ার', en: 'Service/Repair' },
     'more.serviceTicketsSub': { bn: 'ডিভাইস রিসিভ করুন, পার্টস/লেবার যোগ করুন, বিল করুন', en: 'Receive a device, add parts/labor, bill it' },
     'nav.installments': { bn: 'কিস্তি প্ল্যান', en: 'Installment Plans' },
+    'nav.rentals': { bn: 'ভাড়া ব্যবস্থাপনা', en: 'Rental Management' },
     'more.installmentsSub': { bn: 'কিস্তির সময়সূচী ও বিলম্ব ফি ট্র্যাক করুন', en: 'Track installment schedules and late fees' },
     'renewal.menuTitle': { bn: 'সাবস্ক্রিপশন রিনিউ', en: 'Subscription renewal' },
     'renewal.menuSub': { bn: 'bKash/SSLCommerz দিয়ে সরাসরি রিনিউ করুন', en: 'Renew directly via bKash/SSLCommerz' },

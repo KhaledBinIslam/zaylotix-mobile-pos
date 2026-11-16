@@ -820,6 +820,13 @@ class PosController extends Controller
                     abort(422, 'পণ্যটি খুঁজে পাওয়া যায়নি — হয়তো এই মুহূর্তে মুছে ফেলা হয়েছে। তালিকা রিলোড করে আবার চেষ্টা করুন।');
                 }
 
+                // rent_only products (see Product::canBeSold() — Rental
+                // Management, 2026-11-15) exist only to be rented, never
+                // sold through the regular POS checkout.
+                if (! $product->canBeSold()) {
+                    abort(422, "{$product->name} শুধুমাত্র ভাড়ার জন্য — POS থেকে বিক্রি করা যাবে না।");
+                }
+
                 // MOQ is a hard gate, not a soft fallback (see docs/
                 // FIX_PLAN.md's Phase 30 design note, Part A) — a wholesale
                 // line below its own product's minimum is rejected outright,

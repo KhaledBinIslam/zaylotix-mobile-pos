@@ -17,7 +17,7 @@ class Shop extends Model
         'sales_mode', 'hardware_scanner_enabled', 'lang', 'plan', 'account_type', 'monthly_fee', 'staff_limit', 'status',
         'subscription_start', 'subscription_expiry',
         'cash_balance', 'bank_balance', 'capital',
-        'vat_mode', 'vat_rate', 'turnover_rate', 'invoice_counter', 'service_charge_rate',
+        'vat_mode', 'vat_rate', 'turnover_rate', 'invoice_counter', 'rental_invoice_counter', 'service_charge_rate',
         'loyalty_earn_rate', 'loyalty_point_value', 'referral_bonus_points', 'return_window_days', 'void_time_limit_days', 'overhead_allocation_rule', 'dead_stock_days', 'catalog_slug', 'default_credit_limit', 'onboarded_at',
         'default_variant_sizes', 'default_variant_colors',
         'article_barcode_template', 'cost_code_digit_map', 'color_code_map', 'kids_shoe_size_groups', 'size_group_category_ids', 'size_group_category_codes',

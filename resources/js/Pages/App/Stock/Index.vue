@@ -240,6 +240,9 @@ const form = useForm({
     // wholesale_tiers (see docs/FIX_PLAN.md's Phase 30 design note); an
     // array of {min_qty, price} rows, empty for a product with none set
     price_tiers: [],
+    // Rental Management (feature: rentals) — sell_only everywhere else,
+    // so a shop without this feature sees zero change.
+    rental_mode: 'sell_only', rent_price: '',
 });
 
 // a blank sheet to append to price_tiers — kept as a plain function (not a
@@ -348,6 +351,7 @@ function openEdit(p) {
     form.photo = null; form.remove_photo = false;
     newPhotoPreview.value = null;
     form.new_category_name = ''; form.new_unit_name = '';
+    form.rental_mode = p.rental_mode || 'sell_only'; form.rent_price = p.rent_price || '';
     productSheet.value = true;
 }
 
@@ -1459,6 +1463,19 @@ useKeyboardShortcuts({
                 </div>
                 <button type="button" class="btn ghost sm" style="width:100%;margin-top:8px" @click="addTier">+ {{ t('stock.addTier') }}</button>
                 <div v-if="form.errors['price_tiers']" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors['price_tiers'] }}</div>
+            </div>
+            <div v-if="features.includes('rentals')" class="field">
+                <label>বিক্রি / ভাড়া</label>
+                <select v-model="form.rental_mode">
+                    <option value="sell_only">শুধু বিক্রি</option>
+                    <option value="rent_only">শুধু ভাড়া</option>
+                    <option value="both">বিক্রি ও ভাড়া দুটোই</option>
+                </select>
+            </div>
+            <div v-if="features.includes('rentals') && form.rental_mode !== 'sell_only'" class="field">
+                <label>ভাড়ার দাম</label>
+                <input v-model="form.rent_price" type="number" min="0" step="0.01">
+                <div v-if="form.errors.rent_price" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors.rent_price }}</div>
             </div>
             <!-- restaurant-only: a cooked dish's "stock" isn't a count anyone
                  can know ahead of time (a pot's yield varies), so this picks

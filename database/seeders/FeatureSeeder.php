@@ -84,6 +84,7 @@ class FeatureSeeder extends Seeder
             // a sale's own leftover due (see the create_installment_plans
             // migration's docblock)
             ['key' => 'installment_sales', 'label_bn' => 'কিস্তিতে বিক্রি (Installment)', 'label_en' => 'Installment sales', 'category' => 'billing', 'description' => 'Split a sale\'s remaining due into a dated schedule, track partial payments against it, and apply a late fee automatically once an installment is overdue.'],
+            ['key' => 'rentals', 'label_bn' => 'পণ্য ভাড়া ব্যবস্থাপনা', 'label_en' => 'Product rental management', 'category' => 'inventory', 'description' => 'Rent out products (sell-only/rent-only/both), track advance/due, process returns with late fees and damage charges, and see what\'s currently out, overdue, or damaged.'],
             // opt-in only, like hr_payroll — a shop connects its OWN Meta
             // WhatsApp Business account (see WhatsappCredentialController),
             // this just gates whether the bulk-send screen is reachable at all

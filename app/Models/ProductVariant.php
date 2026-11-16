@@ -227,4 +227,25 @@ class ProductVariant extends Model
 
         return $newStock;
     }
+
+    /** Variant counterpart of Product::rentedQty()/availableForRent()/rentalDamagedQty()/rentalLostQty() — see those docblocks. rental_mode/rent_price live on the parent Product (one rent price per article, not per size/color), so only the qty-tracking side is duplicated here. */
+    public function rentedQty(): float
+    {
+        return (float) RentalItem::where('product_variant_id', $this->id)->where('status', 'out')->sum('qty');
+    }
+
+    public function availableForRent(): float
+    {
+        return max(0, (float) $this->stock - $this->rentedQty());
+    }
+
+    public function rentalDamagedQty(): float
+    {
+        return (float) RentalReturn::whereHas('item', fn ($q) => $q->where('product_variant_id', $this->id))->where('condition', 'damaged')->sum('qty');
+    }
+
+    public function rentalLostQty(): float
+    {
+        return (float) RentalReturn::whereHas('item', fn ($q) => $q->where('product_variant_id', $this->id))->where('condition', 'lost')->sum('qty');
+    }
 }
