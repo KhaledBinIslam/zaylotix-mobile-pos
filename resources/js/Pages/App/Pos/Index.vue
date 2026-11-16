@@ -1076,6 +1076,12 @@ async function submitCheckout() {
     // this app is used in. An in-app Sheet (checkoutConfirmOpen below)
     // can never be suppressed that way, and matches how every other
     // confirmation in this app already looks.
+    // Sheet.vue's #sheet/#scrim ids aren't scoped per-instance, so two
+    // Sheets open at once (this one + the cart) create duplicate DOM nodes
+    // and the top one's clicks can land on the wrong element. Close the
+    // cart first, same as every other Sheet-to-Sheet transition in this
+    // file (e.g. resetCartAfterCheckout -> receiptOpen).
+    cartOpen.value = false;
     checkoutConfirmOpen.value = true;
 }
 
@@ -1108,6 +1114,7 @@ async function proceedCheckout() {
         if (res.redirected || res.url !== route('app.pos.checkout')) {
             errorMsg.value = t('pos.sessionExpired');
             saveCartForRecovery();
+            cartOpen.value = true;
             setTimeout(() => window.location.reload(), 2500);
             return;
         }
@@ -1121,6 +1128,7 @@ async function proceedCheckout() {
             // this stays the conservative "we can't tell if it went
             // through" message rather than a blind retry.
             errorMsg.value = t('pos.checkoutUnclear');
+            cartOpen.value = true;
             return;
         }
 
@@ -1138,10 +1146,12 @@ async function proceedCheckout() {
             if (res.status === 419) {
                 errorMsg.value = t('pos.sessionExpired');
                 saveCartForRecovery();
+                cartOpen.value = true;
                 setTimeout(() => window.location.reload(), 2500);
                 return;
             }
             errorMsg.value = data.message || Object.values(data.errors || {})[0]?.[0] || t('pos.checkoutError');
+            cartOpen.value = true;
             return;
         }
 
@@ -2334,7 +2344,7 @@ useKeyboardShortcuts({
         <Sheet v-model="checkoutConfirmOpen" :title="t('pos.confirmCheckoutTitle')">
             <p style="font-size:15px;margin-bottom:18px">{{ t('pos.confirmCheckout', { total: money(total) }) }}</p>
             <button class="btn" :disabled="submitting" @click="proceedCheckout">{{ submitting ? t('pos.processing') : t('pos.confirmCheckoutYes') }}</button>
-            <button class="btn ghost" style="margin-top:10px" :disabled="submitting" @click="checkoutConfirmOpen = false">{{ t('common.cancel') }}</button>
+            <button class="btn ghost" style="margin-top:10px" :disabled="submitting" @click="checkoutConfirmOpen = false; cartOpen = true;">{{ t('common.cancel') }}</button>
         </Sheet>
 
         <!-- held carts picker -->
