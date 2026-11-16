@@ -8,6 +8,7 @@ import { useI18n } from '@/composables/useI18n';
 import { useHardwareScanner } from '@/composables/useHardwareScanner';
 import { useToast } from '@/composables/useToast';
 import { fetchWithSessionRetry } from '@/support/fetchWithSessionRetry';
+import { matchRentableProduct } from '@/support/rentalScan';
 
 const props = defineProps({ rentals: Object, tab: String, products: Array, summary: Object });
 const { t } = useI18n();
@@ -96,25 +97,20 @@ function handleScan(decodedText, onFeedback) {
     if (navigator.vibrate) navigator.vibrate(40);
     const code = decodedText.trim();
 
-    for (const p of props.products) {
-        const v = p.variants?.find((variant) => variant.barcode === code);
-        if (v) {
-            addScannedItem(p.id, v.id);
-            onFeedback('✅ ' + p.name + ' (' + v.label + ')');
-            return;
-        }
+    const match = matchRentableProduct(props.products, code);
+    if (match.status === 'variant') {
+        const p = productOf(match.productId);
+        const v = p.variants.find((variant) => variant.id === match.variantId);
+        addScannedItem(match.productId, match.variantId);
+        onFeedback('✅ ' + p.name + ' (' + v.label + ')');
+    } else if (match.status === 'product') {
+        addScannedItem(match.productId, null);
+        onFeedback('✅ ' + productOf(match.productId).name);
+    } else if (match.status === 'needs_variant') {
+        onFeedback('❌ ' + productOf(match.productId).name + ' — ' + t('rental.sizeColor'));
+    } else {
+        onFeedback('❌ ' + t('rental.notFoundOrNotRentable'));
     }
-    const product = props.products.find((p) => p.barcode === code);
-    if (product) {
-        if (product.variants?.length) {
-            onFeedback('❌ ' + product.name + ' — ' + t('rental.sizeColor'));
-            return;
-        }
-        addScannedItem(product.id, null);
-        onFeedback('✅ ' + product.name);
-        return;
-    }
-    onFeedback('❌ ' + t('rental.notFoundOrNotRentable'));
 }
 
 useHardwareScanner((code) => handleScan(code, (msg) => toast(msg)), () => createSheet.value);

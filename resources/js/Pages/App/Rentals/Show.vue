@@ -7,6 +7,7 @@ import { useI18n } from '@/composables/useI18n';
 import { useHardwareScanner } from '@/composables/useHardwareScanner';
 import { useToast } from '@/composables/useToast';
 import { fetchWithSessionRetry } from '@/support/fetchWithSessionRetry';
+import { matchRentalReturnItem } from '@/support/rentalScan';
 
 const props = defineProps({ rental: Object, rawItems: Array, returns: Array, payments: Array });
 const { t } = useI18n();
@@ -42,15 +43,16 @@ function handleScan(decodedText, onFeedback) {
     if (navigator.vibrate) navigator.vibrate(40);
     const code = decodedText.trim();
 
-    const item = props.rawItems.find((i) => i.barcode === code);
-    if (!item) {
+    const match = matchRentalReturnItem(props.rawItems, code);
+    if (match.status === 'not_found') {
         onFeedback('❌ ' + t('rental.scannedNotInThisRental'));
         return;
     }
-    if (item.outstanding_qty <= 0) {
-        onFeedback('❌ ' + item.product_name + ' — ' + t('rental.scannedAlreadyFullyReturned'));
+    if (match.status === 'fully_returned') {
+        onFeedback('❌ ' + match.item.product_name + ' — ' + t('rental.scannedAlreadyFullyReturned'));
         return;
     }
+    const item = match.item;
     const line = lineState.value[item.id];
     line.checked = true;
     line.qty = Math.min(item.outstanding_qty, Number(line.qty || 0) + 1);
