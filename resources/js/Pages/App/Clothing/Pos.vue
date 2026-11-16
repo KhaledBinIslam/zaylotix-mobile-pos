@@ -458,6 +458,17 @@ function buildPayments() {
     return [{ method: payMode.value, amount: total.value }];
 }
 
+// Same rule PosController::performCheckout() enforces server-side — see
+// Pos/Index.vue's identical function. Was being called below without ever
+// being defined here (a real live bug: clicking checkout threw
+// "dueNeedsCustomerPhone is not defined" and silently did nothing).
+function dueNeedsCustomerPhone() {
+    if (payMode.value === 'complimentary') return false;
+    const tendered = buildPayments().reduce((sum, p) => sum + p.amount, 0);
+    const due = Math.max(0, Math.round((total.value - tendered) * 100) / 100);
+    return due > 0 && !customerPhone.value.trim();
+}
+
 function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]')?.content || '';
 }
@@ -562,6 +573,10 @@ async function submitCheckout() {
     // known to get silently auto-dismissed — acts exactly like the cashier
     // tapped Cancel, no error to show — inside some Android WebView/PWA
     // "add to home screen" setups, precisely how this app runs shop-floor.
+    // Sheet.vue's #sheet/#scrim ids aren't scoped per-instance, so two
+    // Sheets open at once (this one + the cart) create duplicate DOM nodes
+    // — close the cart first, same fix as Pos/Index.vue's submitCheckout().
+    cartOpen.value = false;
     checkoutConfirmOpen.value = true;
 }
 
@@ -595,6 +610,7 @@ async function proceedCheckout() {
 
         if (!res.ok) {
             errorMsg.value = data.message || Object.values(data.errors || {})[0]?.[0] || t('pos.checkoutError');
+            cartOpen.value = true;
             return;
         }
 
@@ -621,6 +637,7 @@ async function proceedCheckout() {
         } else {
             console.error('Checkout failed:', e);
             errorMsg.value = `${t('pos.checkoutError')} (${e?.message || e})`;
+            cartOpen.value = true;
         }
     } finally {
         submitting.value = false;
@@ -1096,7 +1113,7 @@ function sendMemoWA() {
         <Sheet v-model="checkoutConfirmOpen" :title="t('pos.confirmCheckoutTitle')">
             <p style="font-size:15px;margin-bottom:18px">{{ t('pos.confirmCheckout', { total: money(total) }) }}</p>
             <button class="btn" :disabled="submitting" @click="proceedCheckout">{{ submitting ? t('pos.processing') : t('pos.confirmCheckoutYes') }}</button>
-            <button class="btn ghost" style="margin-top:10px" :disabled="submitting" @click="checkoutConfirmOpen = false">{{ t('common.cancel') }}</button>
+            <button class="btn ghost" style="margin-top:10px" :disabled="submitting" @click="checkoutConfirmOpen = false; cartOpen = true;">{{ t('common.cancel') }}</button>
         </Sheet>
 
         <!-- barcode scanner -->
