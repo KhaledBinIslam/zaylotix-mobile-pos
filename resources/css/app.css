@@ -384,21 +384,28 @@ body {
 .tab.sell .fab svg { width: 26px; height: 26px; stroke-width: 2.4; stroke: #fff; }
 
 #scrim { position: fixed; inset: 0; background: rgba(4, 6, 20, .6); z-index: 50; }
-/* #sheet itself no longer scrolls — only .sheet-body (the slot content)
-   does, as its own flex child. That keeps .grab/.sheet-close/title/
-   subtitle permanently visible no matter how long the form inside gets
-   (see Sheet.vue's own comment: a long form used to scroll the ✕ button
-   away with the rest of the content, since it was absolutely positioned
-   relative to #sheet, which WAS the thing scrolling). */
-#sheet { position: fixed; left: 50%; transform: translateX(-50%); bottom: 0; z-index: 60; width: 100%; max-width: 430px; background: var(--bg); border-radius: 28px 28px 0 0; border: 1px solid var(--line2); border-bottom: 0; box-shadow: 0 -18px 50px rgba(23, 21, 45, .18); padding: 8px 18px 0; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column; }
-.sheet-body { overflow-y: auto; padding-bottom: calc(40px + env(safe-area-inset-bottom)); flex: 1 1 auto; min-height: 0; }
+/* Back to #sheet itself being the one, single scrolling region — simple
+   block-level overflow, the most broadly compatible pattern across
+   browsers/devices. A flex+nested-scroll-region version of this was tried
+   first (keeping a separate non-scrolling header via flex/min-height:0)
+   and was reported live as making the WHOLE form unscrollable on some
+   devices/browsers ("scroll hocchena", laptop AND mobile, cursor
+   confirmed inside the form) — reverted. .sheet-head below is `position:
+   sticky` instead, which keeps the ✕ button reachable without needing a
+   second scroll container at all. */
+#sheet { position: fixed; left: 50%; transform: translateX(-50%); bottom: 0; z-index: 60; width: 100%; max-width: 430px; background: var(--bg); border-radius: 28px 28px 0 0; border: 1px solid var(--line2); border-bottom: 0; box-shadow: 0 -18px 50px rgba(23, 21, 45, .18); padding: 8px 18px calc(40px + env(safe-area-inset-bottom)); max-height: 90vh; overflow-y: auto; }
 /* on a tablet/desktop-wide viewport, a checkout/cart sheet stuck at the
    phone's 430px width forces a lot of scrolling for what's otherwise a
    normal-length form — widen it in step with #phone's own tablet/desktop
    breakpoints (still a bottom sheet, not a redesign, just more breathing room) */
 @media (min-width: 700px) { #sheet { max-width: 520px; } }
 @media (min-width: 1024px) { #sheet { max-width: 580px; } }
-.grab { width: 44px; height: 5px; border-radius: 99px; background: var(--line2); margin: 8px auto 14px; flex: 0 0 auto; }
+/* sticks to the top of #sheet's own scroll the instant you scroll past
+   it — own background so scrolled-past content doesn't show through
+   behind the grab handle/✕ button, small negative margin to cancel out
+   #sheet's own top padding so it reaches the true top edge. */
+.sheet-head { position: sticky; top: 0; background: var(--bg); z-index: 3; }
+.grab { width: 44px; height: 5px; border-radius: 99px; background: var(--line2); margin: 8px auto 14px; }
 .sheet-close { position: absolute; top: 14px; right: 14px; width: 30px; height: 30px; border-radius: 50%; border: none; background: var(--panel2); color: var(--tx); font-size: 14px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 2; }
 
 /* checkout's actual redesign, not just a wider bottom-drawer (see the note
@@ -413,11 +420,10 @@ body {
         left: 50%; top: 50%; bottom: auto; transform: translate(-50%, -50%);
         width: 92vw; max-width: 880px; max-height: 86vh;
         border-radius: 22px; border-bottom: 1px solid var(--line2);
-        padding: 22px 26px 0;
+        padding: 22px 26px calc(22px + env(safe-area-inset-bottom));
         box-shadow: var(--sh-lg);
     }
     #sheet.wide .grab { display: none; }
-    #sheet.wide .sheet-body { padding-bottom: calc(22px + env(safe-area-inset-bottom)); }
 }
 
 /* the wide sheet's own content — cart/fields on the left, the sticky

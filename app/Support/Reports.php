@@ -552,6 +552,46 @@ class Reports
     }
 
     /**
+     * Read-only, rule-based view of the SAME invoices everyone else sees —
+     * date range + an optional category + an optional invoice/customer
+     * search — never a hand-picked subset of individual invoices (see
+     * this session's conversation: a "pick which invoices count" feature
+     * was explicitly refused as a revenue-concealment risk; this is its
+     * safe replacement). Nothing here writes anything or changes which
+     * invoices/stock/due exist — it only narrows which already-real
+     * invoices this one count/sales/paid/due summary is computed over.
+     *
+     * Paid/due per invoice mirrors the exact same tendered/credit-sale
+     * fallback ReturnController::tenderedFor() already uses, so this never
+     * drifts from how due is computed everywhere else in the app.
+     */
+    public static function filteredInvoiceStats(string $from, string $to, ?int $categoryId = null, ?string $q = null): array
+    {
+        $sales = Sale::whereDate('date', '>=', $from)->whereDate('date', '<=', $to)
+            ->when($categoryId, fn ($query) => $query->whereHas('items.product', fn ($p) => $p->where('category_id', $categoryId)))
+            ->when($q, fn ($query) => $query->where(fn ($qq) => $qq->where('invoice_no', 'like', '%'.$q.'%')
+                ->orWhereHas('customer', fn ($c) => $c->where('name', 'like', '%'.$q.'%')->orWhere('phone', 'like', '%'.$q.'%'))))
+            ->with('payments')
+            ->get(['id', 'total', 'payment_mode', 'customer_id']);
+
+        $salesAmt = 0.0;
+        $paid = 0.0;
+        foreach ($sales as $sale) {
+            $salesAmt += (float) $sale->total;
+            $paid += $sale->payments->isEmpty()
+                ? ($sale->payment_mode === 'credit' ? 0.0 : (float) $sale->total)
+                : (float) $sale->payments->sum('amount');
+        }
+
+        return [
+            'count' => $sales->count(),
+            'sales_amt' => round($salesAmt, 2),
+            'paid' => round($paid, 2),
+            'due' => round(max(0, $salesAmt - $paid), 2),
+        ];
+    }
+
+    /**
      * Profit attributed to whoever rang up the sale (Sale.user_id) — the
      * profit counterpart to cashierCashBreakdown()'s cash-drawer view.
      * Returns reduce the selling user's own profit (SalesReturn.user_id is

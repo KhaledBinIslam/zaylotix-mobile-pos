@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\App;
 
 use App\Http\Controllers\Controller;
+use App\Models\ProductCategory;
 use App\Models\Sale;
 use App\Models\Shop;
 use App\Support\Activity;
@@ -15,19 +16,35 @@ use Inertia\Inertia;
 
 class SalesController extends Controller
 {
-    /** Full sales history: search by invoice number, or filter to only the logged-in staff member's own sales. */
+    /**
+     * Full sales history: search by invoice number/customer name/phone,
+     * filter to only the logged-in staff member's own sales, or narrow by
+     * date range/category. Every filter here only controls which of the
+     * SAME real invoices are shown — it never changes a sale, its stock,
+     * payments or due, and never produces a separate/alternate total (see
+     * this session's conversation: a "pick which invoices count" feature
+     * was explicitly refused for exactly that reason; this is its safe,
+     * rule-based replacement — date/invoice/customer/category only).
+     */
     public function index(Request $request)
     {
         $q = trim((string) $request->get('q', ''));
         $mine = $request->boolean('mine');
+        $from = $request->get('from');
+        $to = $request->get('to');
+        $categoryId = $request->get('category_id');
 
         // withVoided() — a voided sale still needs to be findable/visible in
         // history (with a badge, see Sales/Index.vue), it just must never
         // count toward revenue anywhere else (Sale's default scope already
         // handles that for every other query in the app).
         $sales = Sale::withVoided()->with(['customer', 'user'])
-            ->when($q !== '', fn ($query) => $query->where('invoice_no', 'like', "%{$q}%"))
+            ->when($q !== '', fn ($query) => $query->where(fn ($qq) => $qq->where('invoice_no', 'like', "%{$q}%")
+                ->orWhereHas('customer', fn ($c) => $c->where('name', 'like', "%{$q}%")->orWhere('phone', 'like', "%{$q}%"))))
             ->when($mine, fn ($query) => $query->where('user_id', Auth::guard('web')->id()))
+            ->when($from, fn ($query) => $query->whereDate('date', '>=', $from))
+            ->when($to, fn ($query) => $query->whereDate('date', '<=', $to))
+            ->when($categoryId, fn ($query) => $query->whereHas('items.product', fn ($p) => $p->where('category_id', $categoryId)))
             ->latest('id')
             ->paginate(50)
             ->withQueryString();
@@ -36,6 +53,10 @@ class SalesController extends Controller
             'sales' => $sales,
             'q' => $q,
             'mine' => $mine,
+            'from' => $from,
+            'to' => $to,
+            'category_id' => $categoryId ? (int) $categoryId : null,
+            'categories' => ProductCategory::orderBy('name')->get(['id', 'name', 'emoji']),
         ]);
     }
 

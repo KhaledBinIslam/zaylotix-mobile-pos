@@ -68,28 +68,32 @@ onBeforeUnmount(() => window.removeEventListener('popstate', onPopState));
     <Teleport to="body">
         <div v-if="modelValue" id="scrim" style="display: block" @click="$emit('update:modelValue', false)" />
         <div v-if="modelValue" id="sheet" :class="{ wide }" style="display: block">
-            <div class="grab" />
-            <!-- reported with screenshots: closing relied entirely on tapping
-                 the dimmed backdrop, an invisible affordance nobody could be
-                 expected to discover on their own. The backdrop tap still
-                 works, but this is now the primary, always-visible way out
-                 of any sheet in the app, not just the ones with a title.
-
-                 Pinned OUTSIDE .sheet-body (which is the only part that
-                 actually scrolls now) — reported live: on a long form
-                 (Supplier Return's, specifically) this button used to
-                 scroll away with the rest of the content since it was
-                 absolutely positioned relative to #sheet itself, which
-                 WAS the scrolling box. A tap on "where ✕ used to be" then
-                 landed on form content instead, and only closed the sheet
-                 once the user happened to scroll back up first — reported
-                 as "have to click the ✕ several times". -->
-            <button type="button" class="sheet-close" :aria-label="t('common.close')" @click="$emit('update:modelValue', false)">✕</button>
+            <!-- #sheet itself is the one scrolling box again (simple,
+                 single-region scroll — the most broadly compatible
+                 pattern). .sheet-head is `position: sticky; top: 0`, so
+                 the grab handle + ✕ button stay visible and clickable at
+                 the top no matter how far down a long form (Supplier
+                 Return's, Rental's "নতুন রেন্টাল") the user has scrolled —
+                 reported live: closing used to need several taps because
+                 this button scrolled away with the rest of the content.
+                 A flex+nested-scroll-region version of this fix shipped
+                 first and was reported as making the WHOLE form
+                 unscrollable on some devices/browsers; sticky positioning
+                 inside one plain scrolling container avoids that failure
+                 mode entirely. -->
+            <div class="sheet-head">
+                <div class="grab" />
+                <!-- reported with screenshots: closing relied entirely on
+                     tapping the dimmed backdrop, an invisible affordance
+                     nobody could be expected to discover on their own. The
+                     backdrop tap still works, but this is now the primary,
+                     always-visible way out of any sheet in the app, not
+                     just the ones with a title. -->
+                <button type="button" class="sheet-close" :aria-label="t('common.close')" @click="$emit('update:modelValue', false)">✕</button>
+            </div>
             <div v-if="title" class="shttl">{{ title }}</div>
             <div v-if="subtitle" class="shsub">{{ subtitle }}</div>
-            <div class="sheet-body">
-                <slot />
-            </div>
+            <slot />
         </div>
     </Teleport>
 </template>

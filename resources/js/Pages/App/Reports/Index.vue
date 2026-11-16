@@ -17,6 +17,7 @@ const props = defineProps({
     salespersonProfitReport: { type: Array, default: () => [] },
     branchProductProfitReport: { type: Array, default: () => [] },
     branchVariantProfitReport: { type: Array, default: () => [] },
+    filterCategoryId: Number, filterQ: String, filteredStats: Object, filterCategories: { type: Array, default: () => [] },
 });
 const { t } = useI18n();
 
@@ -44,8 +45,27 @@ function setPreset(p) {
 
 function applyCustomRange() {
     if (!customFrom.value || !customTo.value) return;
-    router.get(route('app.reports'), { preset: 'custom', from: customFrom.value, to: customTo.value }, { preserveState: true });
+    router.get(route('app.reports'), { preset: 'custom', from: customFrom.value, to: customTo.value, category_id: filterCategoryId.value || undefined, invoice_q: filterQ.value || undefined }, { preserveState: true });
 }
+
+// --- rule-based invoice filter (date range above + category + invoice/
+// customer search) — never a hand-picked subset of individual invoices.
+// See Reports::filteredInvoiceStats()'s own docblock. ---
+const filterCategoryId = ref(props.filterCategoryId || '');
+const filterQ = ref(props.filterQ || '');
+function applyInvoiceFilter() {
+    router.get(route('app.reports'), {
+        preset: props.preset === 'custom' ? 'custom' : props.preset,
+        from: props.from, to: props.to,
+        category_id: filterCategoryId.value || undefined,
+        invoice_q: filterQ.value || undefined,
+    }, { preserveState: true });
+}
+function clearInvoiceFilter() {
+    filterCategoryId.value = ''; filterQ.value = '';
+    router.get(route('app.reports'), { preset: props.preset === 'custom' ? 'custom' : props.preset, from: props.from, to: props.to }, { preserveState: true });
+}
+const hasInvoiceFilter = computed(() => !!(filterCategoryId.value || filterQ.value));
 
 function exportReport(kind, fmt) {
     window.open(route('app.export', kind) + '?format=' + fmt, '_blank');
@@ -114,6 +134,35 @@ function heatColor(count) {
         </div>
 
         <div style="text-align:center;font-size:12px;color:var(--dim);margin-bottom:12px">{{ from }} — {{ to }} • {{ stats.count }} {{ t('rep.bills') }}</div>
+
+        <!-- Rule-based invoice filter (same date range above + category +
+             invoice/customer search) — a separate, clearly-labeled
+             summary over the SAME real invoices, never a hand-picked
+             subset. See Reports::filteredInvoiceStats()'s own docblock. -->
+        <div class="card" style="margin-bottom:14px;border-color:var(--line2)">
+            <div style="font-size:11px;font-weight:800;color:var(--dim);text-transform:uppercase;margin-bottom:8px">{{ t('rep.filteredSummaryTitle') }}</div>
+            <div class="f2" style="margin-bottom:8px">
+                <div class="field" style="margin:0">
+                    <label>{{ t('rep.filterCategory') }}</label>
+                    <select v-model="filterCategoryId" @change="applyInvoiceFilter">
+                        <option value="">{{ t('sales.allCategories') }}</option>
+                        <option v-for="c in filterCategories" :key="c.id" :value="c.id">{{ c.emoji }} {{ c.name }}</option>
+                    </select>
+                </div>
+                <div class="field" style="margin:0">
+                    <label>{{ t('rep.filterInvoiceOrCustomer') }}</label>
+                    <input v-model="filterQ" @keyup.enter="applyInvoiceFilter" :placeholder="t('sales.searchPlaceholder')">
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:10px">
+                <button class="btn sm" style="flex:1" @click="applyInvoiceFilter">{{ t('rep.applyFilter') }}</button>
+                <button v-if="hasInvoiceFilter" class="btn ghost sm" style="flex:1" @click="clearInvoiceFilter">✕ {{ t('sales.clearFilters') }}</button>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:4px 0"><span>{{ t('rep.filteredInvoiceCount') }}</span><b>{{ filteredStats.count }}</b></div>
+            <div style="display:flex;justify-content:space-between;padding:4px 0"><span>{{ t('rep.filteredSales') }}</span><b>{{ money(filteredStats.sales_amt) }}</b></div>
+            <div style="display:flex;justify-content:space-between;padding:4px 0"><span>{{ t('rep.filteredPaid') }}</span><b style="color:var(--green)">{{ money(filteredStats.paid) }}</b></div>
+            <div style="display:flex;justify-content:space-between;padding:4px 0"><span>{{ t('rep.filteredDue') }}</span><b style="color:var(--rose)">{{ money(filteredStats.due) }}</b></div>
+        </div>
 
         <div class="grid2" style="margin-bottom:14px">
             <div class="stat gold"><div class="k">{{ t('rep.sales') }}</div><div class="v">{{ money(stats.salesAmt) }}</div></div>

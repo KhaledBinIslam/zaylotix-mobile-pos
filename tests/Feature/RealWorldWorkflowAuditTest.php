@@ -263,17 +263,15 @@ class RealWorldWorkflowAuditTest extends TestCase
     }
 
     /**
-     * FINDING: Sales History (/app/sales, SalesController::index) only
-     * supports `q` (invoice substring) and `mine` — no date-range filter
-     * and no customer-name search on this page itself (confirmed by
-     * reading the controller: it builds the query with only those two
-     * `when()` clauses). Khaled's spec asks for both. This is not a bug
-     * in existing behavior — it is a feature gap. This test pins today's
-     * real behavior (an unsupported `from`/`to` query string is silently
-     * ignored, not an error) so it can't be mistaken for "already works"
-     * later.
+     * FIXED (2026-11-16 audit): Sales History (/app/sales,
+     * SalesController::index) now supports a date-range filter and a
+     * customer-name/phone search (alongside the existing invoice
+     * substring search) — the exact, rule-based replacement Khaled asked
+     * for after the hidden-invoice-exclusion request was declined. A
+     * date range outside the sale's own date must exclude it; the same
+     * real sale within range must still show up.
      */
-    public function test_sales_history_has_no_date_range_or_customer_name_filter_yet(): void
+    public function test_sales_history_date_range_filter_actually_filters(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();
         $product = Product::create(['shop_id' => $shop->id, 'name' => 'Test Product', 'cost' => 250, 'price' => 400, 'stock' => 10]);
@@ -283,12 +281,86 @@ class RealWorldWorkflowAuditTest extends TestCase
             'payments' => [['method' => 'cash', 'amount' => 400]],
         ]);
 
-        // these params are not validated/consumed anywhere in SalesController::index
-        $response = $this->actingAs($owner, 'web')->get('/app/sales?from=2020-01-01&to=2020-01-02&customer=NoSuchCustomer');
+        // a range that cannot include today's sale must exclude it
+        $this->actingAs($owner, 'web')->get('/app/sales?from=2020-01-01&to=2020-01-02')
+            ->assertInertia(fn ($page) => $page->has('sales.data', fn ($sales) => $sales->count(0)->etc()));
 
-        // the sale still shows up — proving `from`/`to`/`customer` were
-        // silently ignored rather than actually filtering anything out
-        $response->assertInertia(fn ($page) => $page->has('sales.data', fn ($sales) => $sales->count(1)->etc()));
+        // the same real sale, searched with no date restriction, still shows up
+        $this->actingAs($owner, 'web')->get('/app/sales')
+            ->assertInertia(fn ($page) => $page->has('sales.data', fn ($sales) => $sales->count(1)->etc()));
+    }
+
+    /** Customer-name/phone search on Sales History — the other half of the same fix. */
+    public function test_sales_history_customer_search_finds_by_name_or_phone(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Test Product', 'cost' => 250, 'price' => 400, 'stock' => 10]);
+        $customer = Customer::create(['shop_id' => $shop->id, 'name' => 'Karim Mia', 'phone' => '01799998877', 'due' => 0]);
+        $this->actingAs($owner, 'web')->postJson('/app/pos/checkout', [
+            'client_uuid' => (string) Str::uuid(),
+            'items' => [['product_id' => $product->id, 'qty' => 1]],
+            'customer_id' => $customer->id,
+            'payments' => [['method' => 'cash', 'amount' => 400]],
+        ]);
+
+        $this->actingAs($owner, 'web')->get('/app/sales?q=Karim')
+            ->assertInertia(fn ($page) => $page->has('sales.data', fn ($sales) => $sales->count(1)->etc()));
+        $this->actingAs($owner, 'web')->get('/app/sales?q=01799998877')
+            ->assertInertia(fn ($page) => $page->has('sales.data', fn ($sales) => $sales->count(1)->etc()));
+        $this->actingAs($owner, 'web')->get('/app/sales?q=NoSuchCustomer')
+            ->assertInertia(fn ($page) => $page->has('sales.data', fn ($sales) => $sales->count(0)->etc()));
+    }
+
+    /** Category-wise filter — must only show sales containing at least one item from that category, never change stock/payments/due. */
+    public function test_sales_history_category_filter_shows_only_matching_sales(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $catA = \App\Models\ProductCategory::create(['shop_id' => $shop->id, 'name' => 'Category A']);
+        $catB = \App\Models\ProductCategory::create(['shop_id' => $shop->id, 'name' => 'Category B']);
+        $productA = Product::create(['shop_id' => $shop->id, 'category_id' => $catA->id, 'name' => 'A Product', 'cost' => 50, 'price' => 100, 'stock' => 10]);
+        $productB = Product::create(['shop_id' => $shop->id, 'category_id' => $catB->id, 'name' => 'B Product', 'cost' => 50, 'price' => 100, 'stock' => 10]);
+
+        $this->actingAs($owner, 'web')->postJson('/app/pos/checkout', [
+            'client_uuid' => (string) Str::uuid(), 'items' => [['product_id' => $productA->id, 'qty' => 1]], 'payments' => [['method' => 'cash', 'amount' => 100]],
+        ])->assertOk();
+        $this->actingAs($owner, 'web')->postJson('/app/pos/checkout', [
+            'client_uuid' => (string) Str::uuid(), 'items' => [['product_id' => $productB->id, 'qty' => 1]], 'payments' => [['method' => 'cash', 'amount' => 100]],
+        ])->assertOk();
+
+        $this->actingAs($owner, 'web')->get('/app/sales?category_id='.$catA->id)
+            ->assertInertia(fn ($page) => $page->has('sales.data', fn ($sales) => $sales->count(1)->etc()));
+
+        $this->assertEquals(9, $productA->fresh()->stock);
+        $this->assertEquals(9, $productB->fresh()->stock);
+    }
+
+    /** Reports' own filtered summary (count/sales/paid/due) — same rule-based filters, never a hand-picked invoice subset. */
+    public function test_reports_filtered_invoice_stats_match_date_and_category_filters(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $cat = \App\Models\ProductCategory::create(['shop_id' => $shop->id, 'name' => 'Filtered Category']);
+        $product = Product::create(['shop_id' => $shop->id, 'category_id' => $cat->id, 'name' => 'Filtered Product', 'cost' => 50, 'price' => 1000, 'stock' => 10]);
+        $otherCat = \App\Models\ProductCategory::create(['shop_id' => $shop->id, 'name' => 'Other Category']);
+        $otherProduct = Product::create(['shop_id' => $shop->id, 'category_id' => $otherCat->id, 'name' => 'Other Product', 'cost' => 50, 'price' => 500, 'stock' => 10]);
+
+        // one fully paid sale in the target category, partially paid (due)
+        $this->actingAs($owner, 'web')->postJson('/app/pos/checkout', [
+            'client_uuid' => (string) Str::uuid(), 'items' => [['product_id' => $product->id, 'qty' => 1]],
+            'customer_id' => Customer::create(['shop_id' => $shop->id, 'name' => 'Due Customer', 'due' => 0])->id,
+            'payments' => [['method' => 'cash', 'amount' => 600]],
+        ])->assertOk();
+        // a sale in a DIFFERENT category, must not be counted
+        $this->actingAs($owner, 'web')->postJson('/app/pos/checkout', [
+            'client_uuid' => (string) Str::uuid(), 'items' => [['product_id' => $otherProduct->id, 'qty' => 1]], 'payments' => [['method' => 'cash', 'amount' => 500]],
+        ])->assertOk();
+
+        $today = now()->toDateString();
+        $stats = \App\Support\Reports::filteredInvoiceStats($today, $today, $cat->id, null);
+
+        $this->assertEquals(1, $stats['count']);
+        $this->assertEquals(1000.0, $stats['sales_amt']);
+        $this->assertEquals(600.0, $stats['paid']);
+        $this->assertEquals(400.0, $stats['due']);
     }
 
     /**

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\App;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\ProductBatch;
+use App\Models\ProductCategory;
 use App\Models\Sale;
 use App\Models\Shop;
 use App\Models\Supplier;
@@ -22,6 +23,14 @@ class ReportController extends Controller
 
         $stats = Reports::rangeStats($from, $to);
         $shop = Tenancy::shop();
+
+        // Rule-based filters only (date range already above + category +
+        // invoice/customer search) — never a hand-picked subset of
+        // individual invoices. See Reports::filteredInvoiceStats()'s own
+        // docblock for why this exists instead of the originally-requested
+        // "pick which invoices count" feature.
+        $filterCategoryId = $request->get('category_id');
+        $filterQ = trim((string) $request->get('invoice_q', ''));
 
         return Inertia::render('App/Reports/Index', [
             'from' => $from,
@@ -85,6 +94,10 @@ class ReportController extends Controller
                 'supplier_payable_total' => $shop?->hasFeature('suppliers') ? round((float) Supplier::sum('payable'), 2) : null,
                 'supplier_payable_count' => $shop?->hasFeature('suppliers') ? Supplier::where('payable', '>', 0)->count() : null,
             ],
+            'filterCategoryId' => $filterCategoryId ? (int) $filterCategoryId : null,
+            'filterQ' => $filterQ,
+            'filteredStats' => Reports::filteredInvoiceStats($from, $to, $filterCategoryId ? (int) $filterCategoryId : null, $filterQ ?: null),
+            'filterCategories' => ProductCategory::orderBy('name')->get(['id', 'name', 'emoji']),
         ]);
     }
 
