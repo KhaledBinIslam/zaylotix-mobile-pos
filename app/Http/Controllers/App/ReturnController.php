@@ -226,9 +226,17 @@ class ReturnController extends Controller
             return response()->json(['sales' => []]);
         }
 
+        // A scanned label usually encodes a ZV/ZC/ZL short code (see
+        // BarcodeResolver), not a literal stored `barcode` column value —
+        // resolve it to a product/variant id first so that scan, not just
+        // a typed invoice number/phone/plain barcode, finds the sale.
+        $resolved = \App\Support\BarcodeResolver::resolve($q);
+        $resolvedProductId = ($resolved['found'] ?? false) ? $resolved['product']->id : null;
+        $resolvedVariantId = $resolved['variant_id'] ?? null;
+
         $sales = Sale::withoutGlobalScopes()
             ->whereIn('shop_id', $businessShopIds)
-            ->where(function ($query) use ($q) {
+            ->where(function ($query) use ($q, $resolvedProductId, $resolvedVariantId) {
                 // dot-notation whereHas('items.product', ...) only drops
                 // scopes on the FINAL relation in the chain — the
                 // intermediate `items` (SaleItem) hop still carries its own
@@ -240,6 +248,14 @@ class ReturnController extends Controller
                     ->orWhereHas('customer', fn ($c) => $c->where('phone', $q))
                     ->orWhereHas('items', fn ($i) => $i->withoutGlobalScopes()->whereHas('product', fn ($p) => $p->withoutGlobalScopes()->where('barcode', $q)))
                     ->orWhereHas('items', fn ($i) => $i->withoutGlobalScopes()->whereHas('variant', fn ($v) => $v->withoutGlobalScopes()->where('barcode', $q)));
+                if ($resolvedProductId) {
+                    $query->orWhereHas('items', function ($i) use ($resolvedProductId, $resolvedVariantId) {
+                        $i->withoutGlobalScopes()->where('product_id', $resolvedProductId);
+                        if ($resolvedVariantId) {
+                            $i->where('product_variant_id', $resolvedVariantId);
+                        }
+                    });
+                }
             })
             ->with(['customer', 'payments', 'items' => fn ($q) => $q->withoutGlobalScopes()])
             ->latest('id')

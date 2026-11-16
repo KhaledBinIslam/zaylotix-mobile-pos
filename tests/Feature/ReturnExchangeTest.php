@@ -808,6 +808,33 @@ class ReturnExchangeTest extends TestCase
         $response->assertOk()->assertJson(['sales' => [['id' => $sale->id, 'tendered' => 120.0]]]);
     }
 
+    /**
+     * Live report (Baby Park, scanning a label to find the original bill
+     * before even opening it): a printed label usually encodes a ZV short
+     * code (BarcodeResolver), not the product/variant's own `barcode`
+     * column — lookup()'s `$q` search used to only ever string-match that
+     * column, so scanning never found the sale at all.
+     */
+    public function test_lookup_finds_a_sale_by_a_scanned_zv_short_code(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'returns');
+        $variant = ProductVariant::create([
+            'shop_id' => $shop->id,
+            'product_id' => Product::create(['shop_id' => $shop->id, 'name' => 'Shoe', 'cost' => 50, 'price' => 100, 'stock' => 3])->id,
+            'size' => '42', 'color' => 'Black', 'stock' => 3,
+        ]);
+        $sale = $this->makeSale($shop->id);
+        SaleItem::create([
+            'shop_id' => $shop->id, 'sale_id' => $sale->id, 'product_id' => $variant->product_id, 'product_variant_id' => $variant->id,
+            'product_name' => 'Shoe', 'variant_label' => '42 / Black', 'unit_factor' => 1, 'qty' => 1, 'price' => 100, 'discount' => 0, 'cost' => 50,
+        ]);
+
+        $response = $this->actingAs($owner, 'web')->getJson('/app/returns/lookup?q=ZV'.$variant->id);
+
+        $response->assertOk()->assertJsonPath('sales.0.id', $sale->id);
+    }
+
     /** The memo (print + WhatsApp) needs the exchange's new item(s) and the signed price difference — both must come back in the JSON response, not just the bare exchange sale total. */
     public function test_exchange_response_includes_new_items_and_signed_net_settlement_for_the_memo(): void
     {

@@ -179,14 +179,9 @@ async function handleScan(decodedText, onFeedback) {
         return;
     }
 
-    if (action.value !== 'exchange') {
-        onFeedback('❌ এই বিলে এই বারকোডের পণ্য পাওয়া যায়নি');
-        return;
-    }
-
     for (const p of props.products) {
         const v = p.variants?.find((variant) => variant.barcode === code);
-        if (v) {
+        if (v && action.value === 'exchange') {
             addScannedItem(p.id, v.id);
             onFeedback('✅ ' + p.name + ' (' + v.label + ')');
             return;
@@ -194,7 +189,7 @@ async function handleScan(decodedText, onFeedback) {
     }
 
     const product = props.products.find((p) => p.barcode === code);
-    if (product) {
+    if (product && action.value === 'exchange') {
         if (product.variants?.length) {
             onFeedback('❌ ' + product.name + ' — সাইজ/রং বাছাই করুন');
             return;
@@ -204,10 +199,33 @@ async function handleScan(decodedText, onFeedback) {
         return;
     }
 
+    // Didn't literally match a stored `barcode` column — most printed
+    // labels actually encode a ZV/ZC/ZL short code (see BarcodeResolver)
+    // that resolves to a product/variant id dynamically rather than being
+    // a stored column value, so matchSaleReturnItem's plain string compare
+    // above can never catch it. Resolve it the same way the exchange "new
+    // item" picker already does, then match THIS sale's own items by id.
     try {
         const res = await fetch(route('app.returns.barcode', code), { headers: { Accept: 'application/json' } });
         const data = await res.json();
         if (data.found) {
+            const item = selectedSale.value.items.find((i) => i.product_id === data.product.id
+                && (data.variant_id ? i.product_variant_id === data.variant_id : !i.product_variant_id));
+            if (item) {
+                if (item.returnable_qty <= 0) {
+                    onFeedback('❌ ' + item.product_name + ' — ইতিমধ্যে সম্পূর্ণ ফেরত নেওয়া হয়েছে');
+                    return;
+                }
+                const line = lineState.value[item.id];
+                line.checked = true;
+                line.qty = Math.min(item.returnable_qty, Number(line.qty || 0) + 1);
+                onFeedback('✅ ' + item.product_name + (item.variant_label ? ' (' + item.variant_label + ')' : '') + ' × ' + qty(line.qty));
+                return;
+            }
+            if (action.value !== 'exchange') {
+                onFeedback('❌ এই বিলে এই বারকোডের পণ্য পাওয়া যায়নি');
+                return;
+            }
             props.products.push(data.product);
             if (data.variant_id) {
                 const v = data.product.variants?.find((variant) => variant.id === data.variant_id);
