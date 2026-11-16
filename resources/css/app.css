@@ -426,14 +426,23 @@ body {
     #sheet.wide .grab { display: none; }
 }
 
-/* the wide sheet's own content — cart/fields on the left, the sticky
-   subtotal/total/buttons block on the right, side by side instead of
-   stacked, matching the "one view, no internal scrollbar" desktop spec.
-   Same 700px breakpoint as #sheet.wide itself, deliberately not a Tailwind
-   lg:/md: utility, so the two can never fall out of step with each other. */
+/* the wide sheet's own content — cart/fields on the left, the subtotal/
+   total/checkout block on the right, side by side instead of stacked.
+   Same 700px breakpoint as #sheet.wide itself, deliberately not a
+   Tailwind lg:/md: utility, so the two can never fall out of step with
+   each other.
+   Real bug, reported live: `position: static` here assumed the right
+   column was always short enough to just sit fully in view — true for a
+   short cart, false for a long one (confirmed on a live screenshot: a
+   cart with several items pushed the whole grid, checkout button
+   included, up past the top as the LEFT column scrolled, since #sheet
+   itself is the only thing that scrolls and both grid columns move
+   together). `position: sticky; top: 0` keeps the right column pinned to
+   the top of #sheet's own scroll regardless of how long the cart gets —
+   same technique .sheet-head already uses for the same reason. */
 @media (min-width: 700px) {
     .checkout-cols { display: grid; grid-template-columns: 1fr 320px; gap: 22px; align-items: start; }
-    .checkout-cols .sticky-footer { position: static; }
+    .checkout-cols .sticky-footer { position: sticky; top: 0; }
 }
 
 /* notification bell dropdown — small panel anchored near the bell, not the
