@@ -104,17 +104,17 @@ class SetupGlobalTouch extends Command
      * not IMEI-format-validated, so this is a faithful reuse, not a hack.
      */
     private const SERIAL_PRODUCTS = [
-        ['Samsung Galaxy A16 6/128', 'স্মার্টফোন', 18999, 17300, 6, 3, 3, 50, 'imei:86010011300100'],
-        ['Samsung Galaxy A26 8/128', 'স্মার্টফোন', 28999, 26500, 4, 1, 3, 40, 'imei:86010011300200'],
-        ['Samsung Galaxy S24 FE', 'স্মার্টফোন', 84999, 79000, 2, 1, 3, 28, 'imei:86010011300300'],
-        ['iPhone 15 128GB', 'স্মার্টফোন', 94999, 89500, 2, 1, 3, 22, 'imei:35901099910100'],
-        ['Redmi Note 13 8/256', 'স্মার্টফোন', 24999, 22800, 5, 2, 0, 45, 'imei:86020022400100'],
-        ['Dell Vostro 3520 i5', 'ল্যাপটপ ও কম্পিউটার', 68500, 61000, 3, 1, 4, 35, 'serial:DELLVOS-2026-001'],
-        ['HP 15 Core i3 12th Gen', 'ল্যাপটপ ও কম্পিউটার', 52500, 46500, 4, 2, 4, 30, 'serial:HP15-2026-001'],
-        ['Lenovo IdeaPad Slim 3', 'ল্যাপটপ ও কম্পিউটার', 58900, 52000, 3, 1, 4, 24, 'serial:LEN-IDPD-2026-001'],
-        ['Hikvision 4CH DVR Kit (2MP x4)', 'ডিভিআর/এনভিআর', 18500, 15800, 5, 2, 1, 42, 'serial:HIKDVR4CH-2026-001'],
-        ['Hikvision 8CH NVR Kit (4MP x8)', 'ডিভিআর/এনভিআর', 42500, 37000, 3, 1, 1, 33, 'serial:HIKNVR8CH-2026-001'],
-        ['Dahua 4CH DVR Kit (2MP x4)', 'ডিভিআর/এনভিআর', 16900, 14200, 4, 2, 1, 27, 'serial:DAHDVR4CH-2026-001'],
+        ['Samsung Galaxy A16 6/128', 'স্মার্টফোন', 18999, 17300, 16, 11, 3, 172, 'imei:86010011300100'],
+        ['Samsung Galaxy A26 8/128', 'স্মার্টফোন', 28999, 26500, 12, 7, 3, 168, 'imei:86010011300200'],
+        ['Samsung Galaxy S24 FE', 'স্মার্টফোন', 84999, 79000, 8, 5, 3, 160, 'imei:86010011300300'],
+        ['iPhone 15 128GB', 'স্মার্টফোন', 94999, 89500, 6, 4, 3, 150, 'imei:35901099910100'],
+        ['Redmi Note 13 8/256', 'স্মার্টফোন', 24999, 22800, 14, 9, 0, 165, 'imei:86020022400100'],
+        ['Dell Vostro 3520 i5', 'ল্যাপটপ ও কম্পিউটার', 68500, 61000, 9, 6, 4, 155, 'serial:DELLVOS-2026-001'],
+        ['HP 15 Core i3 12th Gen', 'ল্যাপটপ ও কম্পিউটার', 52500, 46500, 11, 7, 4, 145, 'serial:HP15-2026-001'],
+        ['Lenovo IdeaPad Slim 3', 'ল্যাপটপ ও কম্পিউটার', 58900, 52000, 8, 5, 4, 135, 'serial:LEN-IDPD-2026-001'],
+        ['Hikvision 4CH DVR Kit (2MP x4)', 'ডিভিআর/এনভিআর', 18500, 15800, 13, 8, 1, 162, 'serial:HIKDVR4CH-2026-001'],
+        ['Hikvision 8CH NVR Kit (4MP x8)', 'ডিভিআর/এনভিআর', 42500, 37000, 9, 5, 1, 148, 'serial:HIKNVR8CH-2026-001'],
+        ['Dahua 4CH DVR Kit (2MP x4)', 'ডিভিআর/এনভিআর', 16900, 14200, 11, 7, 1, 140, 'serial:DAHDVR4CH-2026-001'],
     ];
 
     /** Quantity-based accessories: name, category, price, cost, stock, emoji */
@@ -163,25 +163,33 @@ class SetupGlobalTouch extends Command
         ['তৌহিদুল ইসলাম', '01911300002', 'টেকনিশিয়ান', 'monthly', 22000, 120],
     ];
 
-    /** Accessory sales: [daysAgo, payment_mode, customer index (null = walk-in), [[accessory index, qty], ...]] */
-    private const ACCESSORY_SALES = [
-        [46, 'cash', null, [[9, 1], [4, 1]]],
-        [43, 'bkash', 0, [[12, 1]]],
-        [40, 'cash', null, [[16, 1], [15, 1]]],
-        [37, 'nagad', 1, [[21, 2]]],
-        [34, 'credit', 2, [[23, 1], [6, 1]]],
-        [31, 'cash', null, [[0, 2], [4, 1]]],
-        [28, 'bkash', 3, [[10, 1]]],
-        [25, 'cash', 4, [[17, 1]]],
-        [22, 'credit', 5, [[1, 1], [5, 1]]],
-        [19, 'nagad', null, [[22, 1]]],
-        [16, 'cash', 6, [[13, 1], [14, 1]]],
-        [13, 'bkash', 7, [[2, 1]]],
-        [10, 'cash', null, [[18, 2], [4, 1]]],
-        [7, 'credit', 8, [[11, 1]]],
-        [4, 'cash', 9, [[8, 1], [3, 1]]],
-        [2, 'nagad', null, [[25, 1], [17, 1]]],
-    ];
+    /**
+     * Generates ~180 days of accessory sales (3-4 a week, deterministic —
+     * no real randomness so --dry-run/re-run stays predictable) instead of
+     * a short hand-written list, so the Business Dashboard's 6-month
+     * revenue trend and Branch Leaderboard actually have 6 real months of
+     * variation to show (Khaled's explicit ask: "6 mas er dummy data dio
+     * jate boji ki korche" — a ~50-day-deep demo couldn't show that).
+     * Returns the same shape the old hand-written ACCESSORY_SALES had:
+     * [daysAgo, payment_mode, customer index (null = walk-in), [[accessory index, qty], ...]].
+     */
+    private static function accessorySales(int $accessoryCount, int $customerCount): array
+    {
+        $modes = ['cash', 'cash', 'bkash', 'nagad', 'credit'];
+        $sales = [];
+        for ($day = 178; $day >= 1; $day -= 2) {
+            $seed = $day * 7;
+            $lineCount = 1 + ($seed % 2);
+            $items = [];
+            for ($l = 0; $l < $lineCount; $l++) {
+                $items[] = [($seed + $l * 11) % $accessoryCount, 1 + ($seed % 3)];
+            }
+            $custIdx = ($seed % 4 === 0) ? null : ($seed % $customerCount);
+            $sales[] = [$day, $modes[$seed % count($modes)], $custIdx, $items];
+        }
+
+        return $sales;
+    }
 
     public function handle(): int
     {
@@ -198,7 +206,7 @@ class SetupGlobalTouch extends Command
         $this->info('--- '.self::SHOP_NAME.' সেটআপ ---');
         $this->line('Shop: '.($existing ? "আগেই আছে (ID {$existing->id})" : "নতুন তৈরি হবে (ফোন: {$phone})"));
         $this->line("{$serialModelCount}টা সিরিয়াল/IMEI-ট্র্যাকড মডেল (মোট {$serialUnitCount} ইউনিট) + ".count(self::ACCESSORIES).'টা এক্সেসরিজ/ইকুইপমেন্ট');
-        $this->line(count(self::SUPPLIERS).' সাপ্লায়ার · '.count(self::CUSTOMERS).' কাস্টমার · '.count(self::EMPLOYEES).' স্টাফ · ১ শাখা · কেনা-বেচার হিস্ট্রি গত ~২ মাস জুড়ে');
+        $this->line(count(self::SUPPLIERS).' সাপ্লায়ার · '.count(self::CUSTOMERS).' কাস্টমার · '.count(self::EMPLOYEES).' স্টাফ · ১ শাখা (নিজস্ব বিক্রি-সহ) · কেনা-বেচার হিস্ট্রি গত ~৬ মাস জুড়ে');
 
         if ($this->option('dry-run')) {
             $this->newLine();
@@ -400,7 +408,12 @@ class SetupGlobalTouch extends Command
             for ($u = 0; $u < $sold; $u++) {
                 $custIdx = ($pi + $u) % count($customers);
                 $mode = $modes[($pi + $u) % count($modes)];
-                $saleDaysAgo = max(0, $daysAgo - 4 - $u * 6);
+                // spread evenly across the ~6 months since this batch arrived,
+                // instead of clustering right after purchase — a real shop
+                // sells a batch gradually over its whole shelf life, and the
+                // Business Dashboard's revenue trend needs real month-to-month
+                // variation to actually demonstrate anything.
+                $saleDaysAgo = max(1, $daysAgo - 5 - (int) round(($u + 1) * ($daysAgo - 5) / ($sold + 1)));
                 $serialValue = $kind === 'imei' ? self::imei($seed, $u) : $seed.'-'.str_pad((string) ($u + 1), 2, '0', STR_PAD_LEFT);
                 $this->createSale($shop, 'INV-'.$invoice++, $saleDaysAgo, $mode, $customers[$custIdx], [
                     ['product' => $serialModels[$pi], 'qty' => 1, 'serial' => $serialValue],
@@ -408,7 +421,7 @@ class SetupGlobalTouch extends Command
             }
         }
 
-        foreach (self::ACCESSORY_SALES as [$daysAgo, $mode, $custIdx, $items]) {
+        foreach (self::accessorySales(count(self::ACCESSORIES), count($customers)) as [$daysAgo, $mode, $custIdx, $items]) {
             $lines = array_map(fn ($it) => ['product' => $accModels[$it[0]], 'qty' => $it[1], 'serial' => null], $items);
             $this->createSale($shop, 'INV-'.$invoice++, $daysAgo, $mode, $custIdx !== null ? $customers[$custIdx] : null, $lines, $customerTotals, $custIdx);
         }
@@ -497,30 +510,94 @@ class SetupGlobalTouch extends Command
             ->where('parent_shop_id', $mainShop->id)
             ->where('name', self::SHOP_NAME.' - উত্তরা শাখা')
             ->first();
-        if ($branch) {
-            return;
+
+        if (! $branch) {
+            $branch = Shop::create([
+                'name' => self::SHOP_NAME.' - উত্তরা শাখা',
+                'phone' => 'PENDING-'.Str::random(8),
+                'area' => 'উত্তরা, ঢাকা',
+                'parent_shop_id' => $mainShop->id,
+                'business_type_id' => $mainShop->business_type_id,
+                'name_en' => $mainShop->name_en.' - Uttara Branch',
+                'owner_name' => $mainShop->owner_name,
+                'sales_mode' => $mainShop->sales_mode,
+                'lang' => $mainShop->lang,
+                'plan' => $mainShop->plan,
+                'account_type' => $mainShop->account_type,
+                'status' => 'active',
+                'subscription_start' => $mainShop->subscription_start,
+                'subscription_expiry' => $mainShop->subscription_expiry,
+                'vat_mode' => $mainShop->vat_mode,
+                'invoice_counter' => 1000,
+                'onboarded_at' => now(),
+            ]);
+            $branch->features()->sync(Feature::whereIn('key', self::FEATURE_KEYS)->pluck('id'));
         }
 
-        $branch = Shop::create([
-            'name' => self::SHOP_NAME.' - উত্তরা শাখা',
-            'phone' => 'PENDING-'.Str::random(8),
-            'area' => 'উত্তরা, ঢাকা',
-            'parent_shop_id' => $mainShop->id,
-            'business_type_id' => $mainShop->business_type_id,
-            'name_en' => $mainShop->name_en.' - Uttara Branch',
-            'owner_name' => $mainShop->owner_name,
-            'sales_mode' => $mainShop->sales_mode,
-            'lang' => $mainShop->lang,
-            'plan' => $mainShop->plan,
-            'account_type' => $mainShop->account_type,
-            'status' => 'active',
-            'subscription_start' => $mainShop->subscription_start,
-            'subscription_expiry' => $mainShop->subscription_expiry,
-            'vat_mode' => $mainShop->vat_mode,
-            'invoice_counter' => 1000,
-            'onboarded_at' => now(),
-        ]);
-        $branch->features()->sync(Feature::whereIn('key', self::FEATURE_KEYS)->pluck('id'));
+        $this->seedBranchSales($branch);
+    }
+
+    /**
+     * The branch had zero of its own sales/stock — the Business Dashboard's
+     * Branch Leaderboard always showed "৳0" for it (real live gap, caught
+     * only by actually checking the demo, same as the hr_payroll/
+     * service_billing feature gap earlier). Each branch keeps its own
+     * independent Product rows (no shared catalog row across branches in
+     * this codebase), so a smaller parallel accessory catalog + 6 months
+     * of its own walk-in sales is seeded directly here rather than via
+     * CatalogSync (keeps this command self-contained, same style as the
+     * main shop's own product creation above).
+     */
+    private function seedBranchSales(Shop $branch): void
+    {
+        $pieceUnitId = Unit::withoutGlobalScopes()->where('shop_id', $branch->id)
+            ->where('name', 'like', '%পিস%')->value('id');
+        $catName = 'চার্জার ও ক্যাবল';
+        $cat = ProductCategory::withoutGlobalScopes()->updateOrCreate(
+            ['shop_id' => $branch->id, 'name' => $catName], ['emoji' => '🔌']
+        );
+
+        $accessories = array_slice(self::ACCESSORIES, 0, 12);
+        $accModels = [];
+        foreach ($accessories as $ai => [$name, , $price, $cost, $stock, $emoji]) {
+            $accModels[$ai] = Product::withoutGlobalScopes()->updateOrCreate(
+                ['shop_id' => $branch->id, 'name' => $name],
+                ['category_id' => $cat->id, 'unit_id' => $pieceUnitId, 'emoji' => $emoji, 'barcode' => 'GT-UTR-'.str_pad((string) ($ai + 1), 3, '0', STR_PAD_LEFT), 'cost' => $cost, 'price' => $price, 'stock' => $stock, 'deleted_at' => null]
+            );
+        }
+
+        Purchase::withoutGlobalScopes()->firstOrCreate(
+            ['shop_id' => $branch->id, 'memo' => 'PINV-UTR-0001'],
+            ['supplier' => 'Global Electronics Distribution', 'amount' => 65000, 'method' => 'bank', 'date' => now()->subDays(170)->toDateString()]
+        );
+
+        $invoice = $branch->invoice_counter ?: 1000;
+        $modes = ['cash', 'cash', 'bkash', 'nagad'];
+        for ($day = 175; $day >= 1; $day -= 5) {
+            $seed = $day * 5;
+            $accIdx = $seed % count($accessories);
+            $qty = 1 + ($seed % 3);
+            $product = $accModels[$accIdx];
+            $subtotal = $product->price * $qty;
+            $invoiceNo = 'INV-'.(++$invoice);
+            $sale = Sale::withoutGlobalScopes()->firstOrCreate(
+                ['shop_id' => $branch->id, 'invoice_no' => $invoiceNo],
+                [
+                    'date' => now()->subDays($day)->toDateString(),
+                    'time' => sprintf('%02d:%02d:00', 10 + ($day % 9), ($day * 7) % 60),
+                    'subtotal' => $subtotal, 'discount' => 0, 'vat' => 0, 'total' => $subtotal,
+                    'profit' => ($product->price - $product->cost) * $qty, 'payment_mode' => $modes[$seed % count($modes)],
+                ]
+            );
+            if ($sale->wasRecentlyCreated) {
+                SaleItem::create([
+                    'shop_id' => $branch->id, 'sale_id' => $sale->id, 'product_id' => $product->id,
+                    'product_name' => $product->name, 'qty' => $qty, 'price' => $product->price, 'cost' => $product->cost,
+                ]);
+            }
+        }
+
+        Shop::withoutGlobalScopes()->whereKey($branch->id)->update(['invoice_counter' => $invoice]);
     }
 
     /** @param  array<int, array{product: Product, qty: int, serial: ?string}>  $lines */
