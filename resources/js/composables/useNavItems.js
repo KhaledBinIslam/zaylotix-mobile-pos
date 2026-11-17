@@ -55,6 +55,12 @@ export function useNavItems(active = null) {
                 { key: 'kds', label: t('nav.kds'), href: route('app.kds.index'), icon: 'pot', on: active === 'kds', show: hasPerm('pos') && isRestaurant.value && hasFeature('restaurant_tables') },
                 { key: 'cds', label: t('nav.cds'), href: route('app.cds.index'), icon: 'monitor', on: active === 'cds', show: hasPerm('pos') && isRestaurant.value && hasFeature('restaurant_tables') },
                 { key: 'sales', label: t('nav.salesHistory'), navLabel: t('nav.salesHistoryShort'), href: route('app.sales'), icon: 'receipt', on: active === 'sales', show: hasPerm('sales_history') },
+                // Khaled's explicit, repeated ask from the start of this
+                // thread: the REAL invoice-linked return/exchange screen
+                // (Returns/Index.vue), prominent in the Sales group — moved
+                // here from Inventory (where it used to sit near the bottom,
+                // easy to miss) since return/exchange is a sales action.
+                { key: 'return', label: t('nav.return'), href: route('app.returns.index'), icon: 'undo', on: active === 'returns', show: hasPerm('returns') && hasFeature('returns') },
                 { key: 'due', label: t('nav.dueFull'), navLabel: t('nav.due'), href: route('app.customers'), icon: 'invoice', on: active === 'due', show: hasPerm('customers') },
                 { key: 'customerList', label: t('customerList.title'), navLabel: t('customerList.titleShort'), href: route('app.customerList.index'), icon: 'users', on: active === 'customerList', show: hasPerm('customers') },
                 { key: 'promotions', label: t('nav.promotions'), navLabel: t('nav.promotionsShort'), href: route('app.promotions.index'), icon: 'gift', on: active === 'promotions', show: hasPerm('promotions') && hasFeature('promotions') },
@@ -83,12 +89,6 @@ export function useNavItems(active = null) {
                 { key: 'purchaseOrders', label: t('purchaseOrder.title'), href: route('app.purchaseOrders.index'), icon: 'invoice', on: page.url.startsWith('/app/purchase-orders'), show: hasPerm('purchases') && hasFeature('purchase_orders') },
                 { key: 'serials', label: t('nav.serials'), href: route('app.serials.index'), icon: 'phone', on: active === 'serials', show: hasPerm('stock') && hasFeature('serial_tracking') },
                 { key: 'damage', label: t('nav.damage'), href: moreLink('damage'), icon: 'trash', on: isMoreLinkActive('damage'), show: hasPerm('damages') && hasFeature('damages') },
-                // Khaled's explicit, repeated ask from the start of this: the
-                // REAL invoice-linked return/exchange screen (Returns/Index.vue)
-                // on the Home dashboard quick-actions grid — this used to point
-                // at the old no-invoice Sales Return sheet inside More.vue
-                // instead, so it never actually showed what was asked for.
-                { key: 'return', label: t('nav.return'), href: route('app.returns.index'), icon: 'undo', on: active === 'returns', show: hasPerm('returns') && hasFeature('returns') },
                 { key: 'count', label: t('nav.stockCount'), href: moreLink('count'), icon: 'hash', on: isMoreLinkActive('count'), show: hasPerm('stock_count') && hasFeature('stock_count') },
                 { key: 'ingredients', label: t('nav.ingredients'), href: route('app.ingredients.index'), icon: 'flask', on: active === 'ingredients', show: hasPerm('stock') && hasFeature('ingredient_tracking') },
                 { key: 'preparations', label: t('nav.preparations'), href: route('app.preparations.index'), icon: 'pan', on: active === 'preparations', show: hasPerm('stock') && hasFeature('ingredient_tracking') },
