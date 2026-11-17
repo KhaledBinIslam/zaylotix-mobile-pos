@@ -20,6 +20,7 @@ use App\Models\SalaryPayment;
 use App\Models\ServiceTicket;
 use App\Models\ServiceTicketItem;
 use App\Models\Shop;
+use App\Models\StockTransfer;
 use App\Models\Supplier;
 use App\Models\Unit;
 use App\Models\User;
@@ -206,7 +207,7 @@ class SetupGlobalTouch extends Command
         $this->info('--- '.self::SHOP_NAME.' সেটআপ ---');
         $this->line('Shop: '.($existing ? "আগেই আছে (ID {$existing->id})" : "নতুন তৈরি হবে (ফোন: {$phone})"));
         $this->line("{$serialModelCount}টা সিরিয়াল/IMEI-ট্র্যাকড মডেল (মোট {$serialUnitCount} ইউনিট) + ".count(self::ACCESSORIES).'টা এক্সেসরিজ/ইকুইপমেন্ট');
-        $this->line(count(self::SUPPLIERS).' সাপ্লায়ার · '.count(self::CUSTOMERS).' কাস্টমার · '.count(self::EMPLOYEES).' স্টাফ · ১ শাখা (নিজস্ব বিক্রি-সহ) · কেনা-বেচার হিস্ট্রি গত ~৬ মাস জুড়ে');
+        $this->line(count(self::SUPPLIERS).' সাপ্লায়ার · '.count(self::CUSTOMERS).' কাস্টমার · '.count(self::EMPLOYEES).' স্টাফ · ১ শাখা + ১ ওয়্যারহাউজ (নিজস্ব স্টক/বিক্রি-সহ) · ওয়্যারহাউজ→শাখা ও শাখা→শাখা ট্রান্সফার · কেনা-বেচার হিস্ট্রি গত ~৬ মাস জুড়ে');
 
         if ($this->option('dry-run')) {
             $this->newLine();
@@ -535,6 +536,133 @@ class SetupGlobalTouch extends Command
         }
 
         $this->seedBranchSales($branch);
+
+        $warehouse = $this->seedWarehouse($mainShop);
+        $this->seedTransfers($mainShop, $warehouse, $branch);
+    }
+
+    /**
+     * A warehouse is just a normal branch with is_warehouse=true (pure
+     * label/icon — see the migration's own docblock, confirmed to Khaled:
+     * it does NOT restrict selling or force stock through it in this
+     * codebase) — so the demo shows that literally, instead of inventing
+     * special warehouse behavior that doesn't exist anywhere else.
+     */
+    private function seedWarehouse(Shop $mainShop): Shop
+    {
+        $warehouse = Shop::withoutGlobalScopes()
+            ->where('parent_shop_id', $mainShop->id)
+            ->where('name', self::SHOP_NAME.' - সেন্ট্রাল ওয়্যারহাউজ')
+            ->first();
+
+        if ($warehouse) {
+            return $warehouse;
+        }
+
+        $warehouse = Shop::create([
+            'name' => self::SHOP_NAME.' - সেন্ট্রাল ওয়্যারহাউজ',
+            'phone' => 'PENDING-'.Str::random(8),
+            'area' => 'তেজগাঁও, ঢাকা',
+            'parent_shop_id' => $mainShop->id,
+            'business_type_id' => $mainShop->business_type_id,
+            'name_en' => $mainShop->name_en.' - Central Warehouse',
+            'owner_name' => $mainShop->owner_name,
+            'sales_mode' => $mainShop->sales_mode,
+            'lang' => $mainShop->lang,
+            'plan' => $mainShop->plan,
+            'account_type' => $mainShop->account_type,
+            'status' => 'active',
+            'is_warehouse' => true,
+            'subscription_start' => $mainShop->subscription_start,
+            'subscription_expiry' => $mainShop->subscription_expiry,
+            'vat_mode' => $mainShop->vat_mode,
+            'invoice_counter' => 1000,
+            'onboarded_at' => now(),
+        ]);
+        $warehouse->features()->sync(Feature::whereIn('key', self::FEATURE_KEYS)->pluck('id'));
+
+        // stocked here first, like a real distributor-fed warehouse, before
+        // any of it moves out to a selling branch
+        $pieceUnitId = Unit::withoutGlobalScopes()->where('shop_id', $warehouse->id)->where('name', 'like', '%পিস%')->value('id');
+        $cat = ProductCategory::withoutGlobalScopes()->updateOrCreate(['shop_id' => $warehouse->id, 'name' => 'সিসিটিভি ক্যামেরা'], ['emoji' => '📹']);
+        foreach (array_slice(self::ACCESSORIES, 0, 4) as $ai => [$name, , $price, $cost, , $emoji]) {
+            Product::withoutGlobalScopes()->updateOrCreate(
+                ['shop_id' => $warehouse->id, 'name' => $name],
+                ['category_id' => $cat->id, 'unit_id' => $pieceUnitId, 'emoji' => $emoji, 'barcode' => 'GT-WH-'.str_pad((string) ($ai + 1), 3, '0', STR_PAD_LEFT), 'cost' => $cost, 'price' => $price, 'stock' => 60, 'deleted_at' => null]
+            );
+        }
+        Purchase::withoutGlobalScopes()->firstOrCreate(
+            ['shop_id' => $warehouse->id, 'memo' => 'PINV-WH-0001'],
+            ['supplier' => 'Dhaka CCTV Wholesale', 'amount' => 180000, 'method' => 'bank', 'date' => now()->subDays(165)->toDateString()]
+        );
+
+        return $warehouse;
+    }
+
+    /**
+     * Real StockTransfer rows (not raw stock edits) demonstrating both
+     * directions Khaled explicitly asked to see: warehouse->branch and
+     * branch->branch. Replicates StockTransferController::store()'s own
+     * stock effect (decrement source, increment/create destination by
+     * barcode-then-name match) directly rather than bootstrapping a full
+     * HTTP+Auth context inside a console command — same reasoning as every
+     * other direct-model seeding in this file.
+     */
+    private function seedTransfers(Shop $mainShop, Shop $warehouse, Shop $branch): void
+    {
+        $owner = User::where('shop_id', $mainShop->id)->where('role', 'owner')->first();
+
+        // W -> B: warehouse sends CCTV cameras to the Uttara branch
+        $whProduct = Product::withoutGlobalScopes()->where('shop_id', $warehouse->id)->where('barcode', 'GT-WH-001')->first();
+        if ($whProduct && ! StockTransfer::withoutGlobalScopes()->where('from_shop_id', $warehouse->id)->where('to_shop_id', $branch->id)->exists()) {
+            DB::transaction(function () use ($warehouse, $branch, $whProduct, $owner) {
+                $qty = 15;
+                $whProduct->decrement('stock', $qty);
+                // stock is only initialized to 0 when this is the branch's
+                // FIRST time receiving this product — never reset an
+                // existing row (it may already carry stock from
+                // seedBranchSales or an earlier transfer).
+                $existing = Product::withoutGlobalScopes()->where('shop_id', $branch->id)->where('name', $whProduct->name)->first();
+                $attrs = ['category_id' => ProductCategory::withoutGlobalScopes()->firstOrCreate(['shop_id' => $branch->id, 'name' => 'সিসিটিভি ক্যামেরা'], ['emoji' => '📹'])->id,
+                    'unit_id' => $whProduct->unit_id, 'emoji' => $whProduct->emoji, 'barcode' => $whProduct->barcode,
+                    'cost' => $whProduct->cost, 'price' => $whProduct->price];
+                if (! $existing) {
+                    $attrs['stock'] = 0;
+                }
+                $branchProduct = Product::withoutGlobalScopes()->updateOrCreate(['shop_id' => $branch->id, 'name' => $whProduct->name], $attrs);
+                $branchProduct->increment('stock', $qty);
+                StockTransfer::create([
+                    'shop_id' => $warehouse->id, 'from_shop_id' => $warehouse->id, 'to_shop_id' => $branch->id,
+                    'from_product_id' => $whProduct->id, 'to_product_id' => $branchProduct->id,
+                    'product_name' => $whProduct->name, 'qty' => $qty, 'user_id' => $owner?->id, 'status' => 'completed',
+                    'created_at' => now()->subDays(60), 'updated_at' => now()->subDays(60),
+                ]);
+            });
+        }
+
+        // B -> B: main shop sends a laptop to the Uttara branch
+        $mainProduct = Product::withoutGlobalScopes()->where('shop_id', $mainShop->id)->where('name', 'HP 15 Core i3 12th Gen')->first();
+        if ($mainProduct && $mainProduct->stock > 1 && ! StockTransfer::withoutGlobalScopes()->where('from_shop_id', $mainShop->id)->where('to_shop_id', $branch->id)->exists()) {
+            DB::transaction(function () use ($mainShop, $branch, $mainProduct, $owner) {
+                $qty = 1;
+                $mainProduct->decrement('stock', $qty);
+                $existing = Product::withoutGlobalScopes()->where('shop_id', $branch->id)->where('name', $mainProduct->name)->first();
+                $attrs = ['category_id' => ProductCategory::withoutGlobalScopes()->firstOrCreate(['shop_id' => $branch->id, 'name' => 'ল্যাপটপ ও কম্পিউটার'], ['emoji' => '💻'])->id,
+                    'unit_id' => $mainProduct->unit_id, 'emoji' => $mainProduct->emoji, 'barcode' => $mainProduct->barcode,
+                    'cost' => $mainProduct->cost, 'price' => $mainProduct->price];
+                if (! $existing) {
+                    $attrs['stock'] = 0;
+                }
+                $branchProduct = Product::withoutGlobalScopes()->updateOrCreate(['shop_id' => $branch->id, 'name' => $mainProduct->name], $attrs);
+                $branchProduct->increment('stock', $qty);
+                StockTransfer::create([
+                    'shop_id' => $mainShop->id, 'from_shop_id' => $mainShop->id, 'to_shop_id' => $branch->id,
+                    'from_product_id' => $mainProduct->id, 'to_product_id' => $branchProduct->id,
+                    'product_name' => $mainProduct->name, 'qty' => $qty, 'user_id' => $owner?->id, 'status' => 'completed',
+                    'created_at' => now()->subDays(30), 'updated_at' => now()->subDays(30),
+                ]);
+            });
+        }
     }
 
     /**
@@ -560,10 +688,16 @@ class SetupGlobalTouch extends Command
         $accessories = array_slice(self::ACCESSORIES, 0, 12);
         $accModels = [];
         foreach ($accessories as $ai => [$name, , $price, $cost, $stock, $emoji]) {
-            $accModels[$ai] = Product::withoutGlobalScopes()->updateOrCreate(
-                ['shop_id' => $branch->id, 'name' => $name],
-                ['category_id' => $cat->id, 'unit_id' => $pieceUnitId, 'emoji' => $emoji, 'barcode' => 'GT-UTR-'.str_pad((string) ($ai + 1), 3, '0', STR_PAD_LEFT), 'cost' => $cost, 'price' => $price, 'stock' => $stock, 'deleted_at' => null]
-            );
+            // stock is only ever set on first creation — a re-run must NOT
+            // reset it, since seedTransfers() may have since incremented
+            // this exact product via a warehouse/branch transfer (real bug
+            // caught live: a re-run was silently undoing the transfer).
+            $product = Product::withoutGlobalScopes()->where('shop_id', $branch->id)->where('name', $name)->first();
+            $attrs = ['category_id' => $cat->id, 'unit_id' => $pieceUnitId, 'emoji' => $emoji, 'barcode' => 'GT-UTR-'.str_pad((string) ($ai + 1), 3, '0', STR_PAD_LEFT), 'cost' => $cost, 'price' => $price, 'deleted_at' => null];
+            if (! $product) {
+                $attrs['stock'] = $stock;
+            }
+            $accModels[$ai] = Product::withoutGlobalScopes()->updateOrCreate(['shop_id' => $branch->id, 'name' => $name], $attrs);
         }
 
         Purchase::withoutGlobalScopes()->firstOrCreate(
@@ -681,12 +815,19 @@ class SetupGlobalTouch extends Command
         }
 
         DB::transaction(function () use ($shop) {
-            $branch = Shop::withoutGlobalScopes()->where('parent_shop_id', $shop->id)->first();
-            if ($branch) {
-                $branch->features()->detach();
-                $branch->delete();
+            // both the Uttara branch AND the central warehouse are children here
+            foreach (Shop::withoutGlobalScopes()->where('parent_shop_id', $shop->id)->get() as $child) {
+                SaleItem::withoutGlobalScopes()->where('shop_id', $child->id)->delete();
+                Sale::withoutGlobalScopes()->where('shop_id', $child->id)->delete();
+                Purchase::withoutGlobalScopes()->where('shop_id', $child->id)->delete();
+                StockTransfer::withoutGlobalScopes()->where('from_shop_id', $child->id)->orWhere('to_shop_id', $child->id)->delete();
+                Product::withoutGlobalScopes()->where('shop_id', $child->id)->forceDelete();
+                ProductCategory::withoutGlobalScopes()->where('shop_id', $child->id)->delete();
+                $child->features()->detach();
+                $child->delete();
             }
 
+            StockTransfer::withoutGlobalScopes()->where('from_shop_id', $shop->id)->orWhere('to_shop_id', $shop->id)->delete();
             ServiceTicketItem::withoutGlobalScopes()->where('shop_id', $shop->id)->delete();
             ServiceTicket::withoutGlobalScopes()->where('shop_id', $shop->id)->delete();
             SalaryPayment::withoutGlobalScopes()->where('shop_id', $shop->id)->delete();
