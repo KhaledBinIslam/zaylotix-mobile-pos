@@ -73,7 +73,7 @@ class SetupGlobalTouch extends Command
         // specifically, separate from 'accounts'/'purchases' etc.) — a real
         // gap found only by actually checking the demo, not assuming the
         // other feature keys covered it.
-        'hr_payroll', 'service_billing',
+        'hr_payroll', 'service_billing', 'purchase_orders',
     ];
 
     /** name, emoji — in nav order */
