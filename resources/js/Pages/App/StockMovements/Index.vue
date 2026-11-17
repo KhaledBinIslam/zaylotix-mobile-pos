@@ -21,6 +21,17 @@ function applyFilters() {
     router.get(route('app.stockMovements'), { product: product.value, type: type.value }, { preserveState: true, preserveScroll: true });
 }
 
+// Owner-customizable PDF top/bottom margin (mm) — same reasoning as
+// Business Dashboard's export (pre-printed letterhead/pad shops).
+const marginTop = ref(10);
+const marginBottom = ref(10);
+
+function exportMovements(format) {
+    let url = route('app.export', 'stock_movement') + '?format=' + format + '&product=' + encodeURIComponent(product.value) + '&type=' + type.value;
+    if (format === 'pdf') url += '&margin_top=' + marginTop.value + '&margin_bottom=' + marginBottom.value;
+    window.open(url, '_blank');
+}
+
 const typeBadge = { purchase: 'mint', sale: 'rose', return: 'sky', damage: 'rose', transfer: 'gold' };
 </script>
 
@@ -43,7 +54,7 @@ const typeBadge = { purchase: 'mint', sale: 'rose', return: 'sky', damage: 'rose
             </div>
         </div>
 
-        <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+        <div class="no-print" style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
             <input v-model="product" @keyup.enter="applyFilters" placeholder="প্রোডাক্ট নাম খুঁজুন..." style="flex:1;min-width:160px">
             <select v-model="type" @change="applyFilters" style="width:auto">
                 <option value="all">সব ধরন</option>
@@ -54,6 +65,15 @@ const typeBadge = { purchase: 'mint', sale: 'rose', return: 'sky', damage: 'rose
                 <option value="transfer">ট্রান্সফার</option>
             </select>
             <button class="btn" style="width:auto;padding:0 18px" @click="applyFilters">খুঁজুন</button>
+            <button class="btn ghost" style="width:auto;padding:0 14px" @click="exportMovements('xlsx')">⬇ Excel</button>
+            <button class="btn ghost" style="width:auto;padding:0 14px" @click="exportMovements('pdf')">⬇ PDF</button>
+            <button class="btn ghost" style="width:auto;padding:0 14px" @click="window.print()">🖨 A4 প্রিন্ট</button>
+        </div>
+
+        <div class="no-print" style="display:flex;gap:10px;align-items:center;margin-top:8px;font-size:12px;color:var(--mut)">
+            <span>PDF margin (mm):</span>
+            <span>উপরে <input type="number" v-model="marginTop" min="0" max="80" style="width:55px;display:inline-block"></span>
+            <span>নিচে <input type="number" v-model="marginBottom" min="0" max="80" style="width:55px;display:inline-block"></span>
         </div>
 
         <div v-if="!movements.length" class="empty" style="margin-top:16px">কোনো মুভমেন্ট পাওয়া যায়নি</div>
@@ -70,3 +90,9 @@ const typeBadge = { purchase: 'mint', sale: 'rose', return: 'sky', damage: 'rose
         </div>
     </AppLayout>
 </template>
+
+<style scoped>
+@media print {
+    @page { size: A4; margin: 14mm; }
+}
+</style>

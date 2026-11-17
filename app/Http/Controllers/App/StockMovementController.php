@@ -33,12 +33,27 @@ class StockMovementController extends Controller
     {
         abort_unless($request->user()->role === 'owner', 403);
 
+        $productQuery = trim((string) $request->get('product', ''));
+        $typeFilter = $request->get('type', 'all');
+        $sorted = $this->rowsFor($productQuery, $typeFilter);
+
+        return Inertia::render('App/StockMovements/Index', [
+            'movements' => $sorted,
+            'filters' => ['product' => $productQuery, 'type' => $typeFilter],
+            'totals' => [
+                'in' => round($sorted->sum('qty_in'), 2),
+                'out' => round($sorted->sum('qty_out'), 2),
+            ],
+        ]);
+    }
+
+    /** Shared by index() and ExportController::stockMovementRows() so the export always matches exactly what the screen shows for the same filters. */
+    public function rowsFor(string $productQuery, string $typeFilter)
+    {
         $shop = Tenancy::shop();
         $shopIds = Tenancy::businessShopIds($shop->id);
         $shopNames = Shop::withoutGlobalScopes()->whereIn('id', $shopIds)->pluck('name', 'id');
-
-        $productQuery = trim((string) $request->get('product', ''));
-        $typeFilter = $request->get('type', 'all');
+        $productQuery = trim($productQuery);
         $limit = 80;
 
         $rows = collect();
@@ -123,15 +138,6 @@ class StockMovementController extends Controller
             }
         }
 
-        $sorted = $rows->sortByDesc('date')->values()->take(200);
-
-        return Inertia::render('App/StockMovements/Index', [
-            'movements' => $sorted,
-            'filters' => ['product' => $productQuery, 'type' => $typeFilter],
-            'totals' => [
-                'in' => round($sorted->sum('qty_in'), 2),
-                'out' => round($sorted->sum('qty_out'), 2),
-            ],
-        ]);
+        return $rows->sortByDesc('date')->values()->take(200);
     }
 }

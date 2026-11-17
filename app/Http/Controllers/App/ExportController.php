@@ -25,6 +25,7 @@ class ExportController extends Controller
         'sales' => 'বিক্রয় হিসাব', 'stock' => 'স্টক তালিকা', 'due' => 'বাকির খাতা',
         'exp' => 'খরচ হিসাব', 'damage' => 'ক্ষতির হিসাব', 'return' => 'ফেরত হিসাব', 'pl' => 'লাভ-ক্ষতি',
         'branch_breakdown' => 'শাখাভিত্তিক হিসাব',
+        'stock_movement' => 'স্টক মুভমেন্ট রেজিস্টার',
     ];
 
     public function download(Request $request, string $kind)
@@ -38,11 +39,12 @@ class ExportController extends Controller
             'return' => [$this->returnRows(), 'ferot-hisab'],
             'pl' => [$this->plRows(), 'labh-khoti'],
             'branch_breakdown' => [$this->branchBreakdownRows(), 'shakha-hisab'],
+            'stock_movement' => [$this->stockMovementRows($request), 'stock-movement'],
             default => abort(404),
         };
 
         if ($request->get('format') === 'pdf') {
-            return $this->downloadPdf($rows, $name, self::TITLES[$kind]);
+            return $this->downloadPdf($rows, $name, self::TITLES[$kind], $request);
         }
 
         $format = $request->get('format', 'xlsx') === 'csv' ? ExcelFormat::CSV : ExcelFormat::XLSX;
@@ -67,7 +69,7 @@ class ExportController extends Controller
         return Excel::download(new AllReportsExport($sheets), 'sob-report-eksathe.xlsx');
     }
 
-    private function downloadPdf(array $rows, string $name, string $title)
+    private function downloadPdf(array $rows, string $name, string $title, ?Request $request = null)
     {
         $shop = Tenancy::shop();
 
@@ -80,12 +82,21 @@ class ExportController extends Controller
             $logoUrl = 'data:'.$mime.';base64,'.base64_encode(Storage::disk('public')->get($shop->logo_path));
         }
 
+        // Owner-customizable top/bottom margin (mm) — some shops print on
+        // pre-printed letterhead/pad with its own header/footer space, so a
+        // fixed margin never fit everyone. Clamped to a sane range so a bad
+        // value can't push content off the page entirely.
+        $marginTop = max(0, min(80, (float) ($request?->get('margin_top') ?? 10)));
+        $marginBottom = max(0, min(80, (float) ($request?->get('margin_bottom') ?? 10)));
+
         $pdf = Pdf::loadView('exports.pdf', [
             'rows' => $rows,
             'title' => $title,
             'shopName' => $shop?->name ?? 'Zaylotix POS',
             'logoUrl' => $logoUrl,
             'generatedAt' => now()->format('d M Y, h:i A'),
+            'marginTop' => $marginTop,
+            'marginBottom' => $marginBottom,
         ])->setPaper('a4', 'portrait');
 
         return $pdf->download("{$name}.pdf");
@@ -116,6 +127,21 @@ class ExportController extends Controller
                 $b['expenses_total'], $b['customer_due'], $b['supplier_payable'], $b['employee_count'],
                 $b['low_stock_count'], $b['out_of_stock_count'],
             ];
+        }
+
+        return $rows;
+    }
+
+    /** Same unified feed as StockMovementController::index(), flattened for export — identical filters (product/type) so "export what I'm looking at" actually matches the screen. */
+    private function stockMovementRows(Request $request): array
+    {
+        $movements = app(StockMovementController::class)->rowsFor(
+            $request->get('product', ''), $request->get('type', 'all')
+        );
+
+        $rows = [['Date', 'Type', 'Product', 'Branch', 'Qty In', 'Qty Out', 'Reference', 'Note']];
+        foreach ($movements as $m) {
+            $rows[] = [$m['date'], $m['type_label'], $m['product_name'], $m['branch'], $m['qty_in'], $m['qty_out'], $m['ref'], $m['note']];
         }
 
         return $rows;

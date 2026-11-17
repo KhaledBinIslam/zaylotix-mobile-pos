@@ -3,6 +3,12 @@
 <head>
     <meta charset="utf-8">
     <style>
+        /* Owner-customizable top/bottom margin (Khaled's explicit ask — some
+           shops print on pre-printed letterhead/pad with its own header
+           space, so a fixed margin never fit everyone). Dompdf reads @page
+           margin CSS natively; left/right stay fixed since that's not what
+           was asked for. Values are mm, passed in from ExportController. */
+        @page { margin-top: {{ $marginTop }}mm; margin-bottom: {{ $marginBottom }}mm; margin-left: 12mm; margin-right: 12mm; }
         /* dompdf needs a font that actually has Bengali glyphs — DejaVu Sans
            is the one it ships with that covers Bengali script; the default
            Helvetica/Arial substitution renders every বাংলা character as a

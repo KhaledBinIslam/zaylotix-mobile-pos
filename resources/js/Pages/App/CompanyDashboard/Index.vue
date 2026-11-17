@@ -1,6 +1,7 @@
 <script setup>
 import { Head } from '@inertiajs/vue3';
 import { router } from '@inertiajs/vue3';
+import { ref } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useI18n } from '@/composables/useI18n';
 
@@ -25,8 +26,16 @@ function setRange(r) {
 
 const maxTrend = Math.max(1, ...props.revenueTrend.map((m) => m.total));
 
+// Owner-customizable top/bottom margin (mm) for the PDF export — some
+// shops print on pre-printed letterhead/pad with its own header/footer
+// space, so a fixed margin never fit everyone (Khaled's explicit ask).
+const marginTop = ref(10);
+const marginBottom = ref(10);
+
 function exportBreakdown(format) {
-    window.open(route('app.export', 'branch_breakdown') + '?format=' + format, '_blank');
+    let url = route('app.export', 'branch_breakdown') + '?format=' + format;
+    if (format === 'pdf') url += '&margin_top=' + marginTop.value + '&margin_bottom=' + marginBottom.value;
+    window.open(url, '_blank');
 }
 </script>
 
@@ -39,12 +48,21 @@ function exportBreakdown(format) {
                     <div class="pgttl">🏢 Business Dashboard</div>
                     <div class="pgsub">{{ businessName }} • সব শাখা একসাথে — রিয়েল-টাইম ওভারভিউ</div>
                 </div>
-                <div style="display:flex;gap:6px">
+                <div class="no-print" style="display:flex;gap:6px;flex-wrap:wrap">
                     <button v-for="r in ['today','week','month','year']" :key="r" class="btn ghost" style="width:auto;padding:4px 12px;font-size:12px" :class="{ active: range === r }" @click="setRange(r)">
                         {{ { today: 'আজ', week: '৭ দিন', month: 'এই মাস', year: 'এই বছর' }[r] }}
                     </button>
                     <button class="btn ghost" style="width:auto;padding:4px 12px;font-size:12px" @click="exportBreakdown('xlsx')">⬇ Excel</button>
+                    <button class="btn ghost" style="width:auto;padding:4px 12px;font-size:12px" @click="exportBreakdown('pdf')">⬇ PDF</button>
+                    <button class="btn ghost" style="width:auto;padding:4px 12px;font-size:12px" @click="window.print()">🖨 A4 প্রিন্ট</button>
                 </div>
+            </div>
+
+            <!-- PDF-er top/bottom margin customize — pre-printed letterhead/pad e print korar jonno -->
+            <div class="no-print" style="display:flex;gap:10px;align-items:center;margin-top:8px;font-size:12px;color:var(--mut)">
+                <span>PDF margin (mm):</span>
+                <span>উপরে <input type="number" v-model="marginTop" min="0" max="80" style="width:55px;display:inline-block"></span>
+                <span>নিচে <input type="number" v-model="marginBottom" min="0" max="80" style="width:55px;display:inline-block"></span>
             </div>
 
             <div class="grid2">
@@ -141,3 +159,9 @@ function exportBreakdown(format) {
         </div>
     </AppLayout>
 </template>
+
+<style scoped>
+@media print {
+    @page { size: A4; margin: 14mm; }
+}
+</style>
