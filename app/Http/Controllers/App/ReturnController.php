@@ -311,7 +311,19 @@ class ReturnController extends Controller
                     // sold line is being returned, same pattern as Rentals'
                     // matchRentalReturnItem — a variant's own barcode wins
                     // over the plain product barcode when both exist.
-                    'barcode' => $item->variant?->barcode ?: $item->product?->barcode,
+                    //
+                    // Real live bug (Baby Park, a cross-branch return — the
+                    // whole point of this screen): $item->variant/$item->
+                    // product are normal BelongsTo relations, which carry
+                    // the default tenant global scope even though $item
+                    // itself was fetched withoutGlobalScopes() — when the
+                    // CASHIER's active branch differs from the SALE's own
+                    // branch, that scope silently filtered the product/
+                    // variant row out, so this always came back null and
+                    // scanning could never match anything. Looked up
+                    // explicitly unscoped instead of trusting the relation.
+                    'barcode' => ProductVariant::withoutGlobalScopes()->whereKey($item->product_variant_id)->value('barcode')
+                        ?: Product::withoutGlobalScopes()->whereKey($item->product_id)->value('barcode'),
                     'qty' => (float) $item->qty,
                     'price' => (float) $item->price,
                     'discount' => (float) $item->discount,

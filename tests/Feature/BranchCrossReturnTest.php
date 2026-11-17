@@ -76,6 +76,39 @@ class BranchCrossReturnTest extends TestCase
         $this->assertSame('INV-CROSS1', $response->json('sales.0.invoice_no'));
     }
 
+    /**
+     * Real live bug (Baby Park): the lookup response's per-item 'barcode'
+     * field — what Returns/Index.vue scans against to pick a line — used
+     * $item->variant?->barcode / $item->product?->barcode, plain BelongsTo
+     * relations that still carry the default tenant scope even though the
+     * Sale/SaleItem themselves were fetched withoutGlobalScopes(). Looked
+     * up from the branch B cashier's side (the branch, not the sale's own
+     * origin), that silently returned null, so scanning never matched
+     * anything on a cross-branch return — exactly the scenario this whole
+     * screen exists for.
+     */
+    public function test_lookup_from_a_sibling_branch_still_exposes_the_items_own_barcode(): void
+    {
+        [$main] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'returns');
+        $branchA = $this->createBranch($main);
+        $branchB = $this->createBranch($main);
+        $product = Product::create(['shop_id' => $branchA->id, 'name' => 'Shoe', 'cost' => 50, 'price' => 100, 'stock' => 3]);
+        $variant = ProductVariant::create([
+            'shop_id' => $branchA->id, 'product_id' => $product->id,
+            'size' => '42', 'color' => 'Black', 'barcode' => 'D-L-10041-RXXZ-BLACK-42', 'stock' => 3,
+        ]);
+        $sale = $this->makeSale($branchA->id, ['invoice_no' => 'INV-CROSSBARCODE']);
+        $this->makeItem($sale, $product, ['product_variant_id' => $variant->id, 'variant_label' => '42 / Black', 'qty' => 1]);
+        $branchBOwner = User::withoutGlobalScopes()->where('shop_id', $branchB->id)->first();
+
+        \App\Support\Tenancy::set($branchB->id);
+        $response = $this->actingAs($branchBOwner, 'web')->getJson('/app/returns/lookup?q=INV-CROSSBARCODE');
+
+        $response->assertOk();
+        $this->assertSame('D-L-10041-RXXZ-BLACK-42', $response->json('sales.0.items.0.barcode'));
+    }
+
     public function test_refund_processed_at_a_sibling_branch_restocks_and_pays_from_that_branch_not_the_origin(): void
     {
         [$main] = $this->createShopWithOwner();
