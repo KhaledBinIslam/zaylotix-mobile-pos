@@ -402,7 +402,7 @@ function sendMemoWA() {
 
 <template>
     <Head :title="t('returns.pageTitle')" />
-    <AppLayout active="more">
+    <AppLayout active="returns">
         <div class="pgttl">{{ t('returns.pageTitle') }}</div>
 
         <div v-if="!resultSummary">
@@ -460,7 +460,7 @@ function sendMemoWA() {
                     </div>
                     <template v-if="item.returnable_qty > 0 && lineState[item.id]">
                         <div style="display:flex;gap:8px;align-items:center">
-                            <input type="checkbox" v-model="lineState[item.id].checked" @change="!lineState[item.id].checked && (lineState[item.id].qty = 0)">
+                            <input type="checkbox" v-model="lineState[item.id].checked" @change="lineState[item.id].checked ? (Number(lineState[item.id].qty) <= 0 && (lineState[item.id].qty = Math.min(1, item.returnable_qty))) : (lineState[item.id].qty = 0)">
                             <input type="number" v-model="lineState[item.id].qty" @input="Number(lineState[item.id].qty) > 0 && (lineState[item.id].checked = true)" :max="item.returnable_qty" min="0" step="any" style="width:70px">
                             <select v-model="lineState[item.id].condition" style="width:150px">
                                 <option value="resalable">{{ t('returns.conditionGood') }}</option>

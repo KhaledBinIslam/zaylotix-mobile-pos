@@ -32,6 +32,22 @@ class CheckoutTransactionTest extends TestCase
         $this->assertEquals(1000 + 450, (float) $shop->fresh()->cash_balance);
     }
 
+    /** A warehouse branch is stock-only (Khaled's explicit ask) — it must never be able to ring up a sale, even though is_warehouse is otherwise just a label everywhere else. */
+    public function test_a_warehouse_branch_cannot_check_out_a_sale(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['is_warehouse' => true]);
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 100, 'price' => 150, 'stock' => 10]);
+
+        $response = $this->actingAs($owner, 'web')->postJson('/app/pos/checkout', [
+            'items' => [['product_id' => $product->id, 'qty' => 1]],
+            'payments' => [['method' => 'cash', 'amount' => 150]],
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertSame(10.0, (float) $product->fresh()->stock);
+        $this->assertSame(0, Sale::count());
+    }
+
     /** Phase 1.2 — see docs/FIX_PLAN.md: a replayed checkout (same client_uuid) must never double-sell or double-decrement stock. */
     public function test_replaying_the_same_client_uuid_returns_the_original_sale_instead_of_creating_a_duplicate(): void
     {

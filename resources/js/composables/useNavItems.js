@@ -47,7 +47,10 @@ export function useNavItems(active = null) {
         {
             label: t('nav.category.sales'),
             items: [
-                { key: 'sell', label: t('nav.sellFull'), href: mobileSellHref.value, icon: 'cart', on: mobileSellActive.value, show: hasPerm('pos') },
+                // a warehouse branch is stock-only (Khaled's explicit ask) —
+                // never offer the sell shortcut there, same reasoning as the
+                // server-side checkout() guard
+                { key: 'sell', label: t('nav.sellFull'), href: mobileSellHref.value, icon: 'cart', on: mobileSellActive.value, show: hasPerm('pos') && !shop.value?.is_warehouse },
                 { key: 'reservations', label: t('nav.reservations'), href: route('app.reservations.index'), icon: 'calendar', on: active === 'reservations', show: hasPerm('pos') && isRestaurant.value && hasFeature('restaurant_tables') },
                 { key: 'kds', label: t('nav.kds'), href: route('app.kds.index'), icon: 'pot', on: active === 'kds', show: hasPerm('pos') && isRestaurant.value && hasFeature('restaurant_tables') },
                 { key: 'cds', label: t('nav.cds'), href: route('app.cds.index'), icon: 'monitor', on: active === 'cds', show: hasPerm('pos') && isRestaurant.value && hasFeature('restaurant_tables') },
@@ -80,7 +83,12 @@ export function useNavItems(active = null) {
                 { key: 'purchaseOrders', label: t('purchaseOrder.title'), href: route('app.purchaseOrders.index'), icon: 'invoice', on: page.url.startsWith('/app/purchase-orders'), show: hasPerm('purchases') && hasFeature('purchase_orders') },
                 { key: 'serials', label: t('nav.serials'), href: route('app.serials.index'), icon: 'phone', on: active === 'serials', show: hasPerm('stock') && hasFeature('serial_tracking') },
                 { key: 'damage', label: t('nav.damage'), href: moreLink('damage'), icon: 'trash', on: isMoreLinkActive('damage'), show: hasPerm('damages') && hasFeature('damages') },
-                { key: 'return', label: t('nav.return'), href: moreLink('return'), icon: 'undo', on: isMoreLinkActive('return'), show: hasPerm('returns') && hasFeature('returns') },
+                // Khaled's explicit, repeated ask from the start of this: the
+                // REAL invoice-linked return/exchange screen (Returns/Index.vue)
+                // on the Home dashboard quick-actions grid — this used to point
+                // at the old no-invoice Sales Return sheet inside More.vue
+                // instead, so it never actually showed what was asked for.
+                { key: 'return', label: t('nav.return'), href: route('app.returns.index'), icon: 'undo', on: active === 'returns', show: hasPerm('returns') && hasFeature('returns') },
                 { key: 'count', label: t('nav.stockCount'), href: moreLink('count'), icon: 'hash', on: isMoreLinkActive('count'), show: hasPerm('stock_count') && hasFeature('stock_count') },
                 { key: 'ingredients', label: t('nav.ingredients'), href: route('app.ingredients.index'), icon: 'flask', on: active === 'ingredients', show: hasPerm('stock') && hasFeature('ingredient_tracking') },
                 { key: 'preparations', label: t('nav.preparations'), href: route('app.preparations.index'), icon: 'pan', on: active === 'preparations', show: hasPerm('stock') && hasFeature('ingredient_tracking') },

@@ -645,7 +645,7 @@ const mobileNavSlots = computed(() => {
                         <svg viewBox="0 0 24 24" v-html="ICONS[mobileNavSlots[0].icon]"></svg>
                         <span>{{ mobileNavSlots[0].label }}</span>
                     </Link>
-                    <Link v-if="hasPerm('pos')" :href="mobileSellHref" class="tab sell" :class="{ on: mobileSellActive }">
+                    <Link v-if="hasPerm('pos') && !shop?.is_warehouse" :href="mobileSellHref" class="tab sell" :class="{ on: mobileSellActive }">
                         <span class="fab"><svg viewBox="0 0 24 24"><path d="M4 7V5a1 1 0 0 1 1-1h2M4 17v2a1 1 0 0 0 1 1h2M20 7V5a1 1 0 0 0-1-1h-2M20 17v2a1 1 0 0 1-1 1h-2M4 12h16" /></svg></span>
                         <span>{{ t('nav.sell') }}</span>
                     </Link>

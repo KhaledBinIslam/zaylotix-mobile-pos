@@ -40,7 +40,7 @@ export const translations = {
     'nav.receiptLabelSettings': { bn: 'মেমো ও লেবেল সেটিংস', en: 'Receipt & Label Settings' },
     'nav.purchase': { bn: 'ক্রয়/স্টক কেনা', en: 'Purchases' },
     'nav.damage': { bn: 'ক্ষতি/নষ্ট পণ্য', en: 'Damages' },
-    'nav.return': { bn: 'বিক্রয় ফেরত', en: 'Sales Returns' },
+    'nav.return': { bn: 'ফেরত / এক্সচেঞ্জ', en: 'Return / Exchange' },
     'nav.stockCount': { bn: 'স্টক গণনা', en: 'Stock Count' },
     'nav.cashier': { bn: 'স্টাফ', en: 'Staff' },
     'nav.activity': { bn: 'অ্যাক্টিভিটি লগ', en: 'Activity log' },
