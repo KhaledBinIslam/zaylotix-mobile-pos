@@ -24,6 +24,7 @@ class ExportController extends Controller
     private const TITLES = [
         'sales' => 'বিক্রয় হিসাব', 'stock' => 'স্টক তালিকা', 'due' => 'বাকির খাতা',
         'exp' => 'খরচ হিসাব', 'damage' => 'ক্ষতির হিসাব', 'return' => 'ফেরত হিসাব', 'pl' => 'লাভ-ক্ষতি',
+        'branch_breakdown' => 'শাখাভিত্তিক হিসাব',
     ];
 
     public function download(Request $request, string $kind)
@@ -36,6 +37,7 @@ class ExportController extends Controller
             'damage' => [$this->damageRows(), 'khoti-hisab'],
             'return' => [$this->returnRows(), 'ferot-hisab'],
             'pl' => [$this->plRows(), 'labh-khoti'],
+            'branch_breakdown' => [$this->branchBreakdownRows(), 'shakha-hisab'],
             default => abort(404),
         };
 
@@ -94,6 +96,26 @@ class ExportController extends Controller
         $rows = [['Invoice', 'Date', 'Time', 'Customer', 'Payment', 'Total', 'Profit']];
         foreach (Sale::with('customer')->orderByDesc('id')->get() as $s) {
             $rows[] = [$s->invoice_no, $s->date->toDateString(), $s->time, $s->customer?->name, $s->payment_mode, $s->total, $s->profit];
+        }
+
+        return $rows;
+    }
+
+    /** Business Dashboard's per-branch breakdown, same figures/formulas as Reports::companyBranchBreakdown(), just flattened into export rows for the whole business group. */
+    private function branchBreakdownRows(): array
+    {
+        $shop = Tenancy::shop();
+        $shopIds = Tenancy::businessShopIds($shop->id);
+        $from = now()->startOfMonth()->toDateString();
+        $to = now()->toDateString();
+
+        $rows = [['Branch', 'Sales (this month)', 'Bills', 'Profit', 'Stock Value', 'Expenses (this month)', 'Customer Due', 'Supplier Payable', 'Employees', 'Low Stock', 'Out of Stock']];
+        foreach (Reports::companyBranchBreakdown($shopIds, $from, $to) as $b) {
+            $rows[] = [
+                $b['shop_name'], $b['sales_total'], $b['sales_count'], $b['profit'], $b['stock_value'],
+                $b['expenses_total'], $b['customer_due'], $b['supplier_payable'], $b['employee_count'],
+                $b['low_stock_count'], $b['out_of_stock_count'],
+            ];
         }
 
         return $rows;

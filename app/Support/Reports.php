@@ -3,9 +3,11 @@
 namespace App\Support;
 
 use App\Models\Damage;
+use App\Models\Employee;
 use App\Models\Expense;
 use App\Models\Payment;
 use App\Models\PreparationItem;
+use App\Models\Product;
 use App\Models\ProductBatch;
 use App\Models\ProductVariant;
 use App\Models\Purchase;
@@ -14,6 +16,8 @@ use App\Models\SaleItem;
 use App\Models\SaleRating;
 use App\Models\SalesReturn;
 use App\Models\Shop;
+use App\Models\Supplier;
+use App\Models\Customer;
 use App\Models\User;
 
 class Reports
@@ -147,6 +151,71 @@ class Reports
         return compact('grossSales', 'returnsTotal', 'salesAmt', 'cogs', 'grossProfit', 'exp', 'dmg', 'vat', 'net', 'byBranch') + [
             'count' => (clone $countedSalesQuery)->count(),
         ];
+    }
+
+    /**
+     * Company Dashboard (multi-branch "Business Dashboard" view, Khaled's
+     * explicit ask): one row per branch in the business group — sales/
+     * profit for the given range (reusing combinedRangeStats's byBranch
+     * shape, but keyed by shop_id here so it can be merged with the
+     * point-in-time figures below), plus stock value, expenses (same
+     * range), customer due, supplier payable, employee count, and
+     * low-stock/out-of-stock counts. Every figure uses the same formula
+     * already used elsewhere (stock value: ExportController::stockRows(),
+     * due/payable: ReportController's summary, low-stock: Product's own
+     * scopes) — nothing reinvented, just broken out per shop_id instead
+     * of summed company-wide.
+     *
+     * @param  array<int>  $shopIds
+     * @return array<int, array{shop_id:int, shop_name:string, sales_total:float, sales_count:int, profit:float, stock_value:float, expenses_total:float, customer_due:float, supplier_payable:float, employee_count:int, low_stock_count:int, out_of_stock_count:int}>
+     */
+    public static function companyBranchBreakdown(array $shopIds, string $from, string $to): array
+    {
+        $shops = Shop::withoutGlobalScopes()->whereIn('id', $shopIds)->get(['id', 'name']);
+
+        $salesByBranch = Sale::withoutGlobalScopes()->whereIn('shop_id', $shopIds)
+            ->where('sale_type', '!=', 'exchange')
+            ->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)
+            ->selectRaw('shop_id, COUNT(*) as cnt, SUM(total) as total_sum, SUM(profit) as profit_sum')
+            ->groupBy('shop_id')->get()->keyBy('shop_id');
+
+        $expenseByBranch = Expense::withoutGlobalScopes()->whereIn('shop_id', $shopIds)
+            ->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)
+            ->selectRaw('shop_id, SUM(amount) as total')->groupBy('shop_id')->get()->keyBy('shop_id');
+
+        $dueByBranch = Customer::withoutGlobalScopes()->whereIn('shop_id', $shopIds)
+            ->selectRaw('shop_id, SUM(due) as total')->groupBy('shop_id')->get()->keyBy('shop_id');
+
+        $payableByBranch = Supplier::withoutGlobalScopes()->whereIn('shop_id', $shopIds)
+            ->selectRaw('shop_id, SUM(payable) as total')->groupBy('shop_id')->get()->keyBy('shop_id');
+
+        $employeeByBranch = Employee::withoutGlobalScopes()->whereIn('shop_id', $shopIds)
+            ->where('status', 'active')
+            ->selectRaw('shop_id, COUNT(*) as cnt')->groupBy('shop_id')->get()->keyBy('shop_id');
+
+        $stockValueByBranch = Product::withoutGlobalScopes()->whereIn('shop_id', $shopIds)
+            ->selectRaw('shop_id, SUM(cost * stock) as total')->groupBy('shop_id')->get()->keyBy('shop_id');
+
+        $lowStockByBranch = Product::withoutGlobalScopes()->whereIn('shop_id', $shopIds)
+            ->lowStock()->selectRaw('shop_id, COUNT(*) as cnt')->groupBy('shop_id')->get()->keyBy('shop_id');
+
+        $outOfStockByBranch = Product::withoutGlobalScopes()->whereIn('shop_id', $shopIds)
+            ->outOfStock()->selectRaw('shop_id, COUNT(*) as cnt')->groupBy('shop_id')->get()->keyBy('shop_id');
+
+        return $shops->map(fn (Shop $s) => [
+            'shop_id' => $s->id,
+            'shop_name' => $s->name,
+            'sales_total' => round((float) ($salesByBranch->get($s->id)->total_sum ?? 0), 2),
+            'sales_count' => (int) ($salesByBranch->get($s->id)->cnt ?? 0),
+            'profit' => round((float) ($salesByBranch->get($s->id)->profit_sum ?? 0), 2),
+            'stock_value' => round((float) ($stockValueByBranch->get($s->id)->total ?? 0), 2),
+            'expenses_total' => round((float) ($expenseByBranch->get($s->id)->total ?? 0), 2),
+            'customer_due' => round((float) ($dueByBranch->get($s->id)->total ?? 0), 2),
+            'supplier_payable' => round((float) ($payableByBranch->get($s->id)->total ?? 0), 2),
+            'employee_count' => (int) ($employeeByBranch->get($s->id)->cnt ?? 0),
+            'low_stock_count' => (int) ($lowStockByBranch->get($s->id)->cnt ?? 0),
+            'out_of_stock_count' => (int) ($outOfStockByBranch->get($s->id)->cnt ?? 0),
+        ])->sortByDesc('sales_total')->values()->all();
     }
 
     /**

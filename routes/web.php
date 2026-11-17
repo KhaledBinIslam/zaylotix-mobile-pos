@@ -27,6 +27,7 @@ use App\Http\Controllers\App\CashTransactionController;
 use App\Http\Controllers\App\EmployeeController;
 use App\Http\Controllers\App\HeldCartController;
 use App\Http\Controllers\App\HelpController;
+use App\Http\Controllers\App\CompanyDashboardController;
 use App\Http\Controllers\App\HomeController;
 use App\Http\Controllers\App\LandingController;
 use App\Http\Controllers\App\LoanController;
@@ -158,6 +159,7 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
 
     // always reachable regardless of permission grants
     Route::get('home', [HomeController::class, 'index'])->name('home');
+    Route::get('company-dashboard', [CompanyDashboardController::class, 'index'])->name('companyDashboard');
     Route::get('more', [MoreController::class, 'index'])->name('more');
     Route::get('help', [HelpController::class, 'index'])->name('help');
     Route::get('onboarding', [OnboardingController::class, 'index'])->name('onboarding');
