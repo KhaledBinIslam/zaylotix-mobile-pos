@@ -230,6 +230,9 @@ class SetupGlobalTouch extends Command
             if ($existing) {
                 $shop = $existing;
                 $shop->features()->sync(Feature::whereIn('key', self::FEATURE_KEYS)->pluck('id'));
+                if (! $shop->is_head_office) {
+                    $shop->update(['is_head_office' => true]);
+                }
                 if ($this->option('password')) {
                     User::where('shop_id', $shop->id)->where('role', 'owner')->update(['password' => bcrypt($this->option('password'))]);
                 }
@@ -253,6 +256,10 @@ class SetupGlobalTouch extends Command
                         'cash_balance' => 60000, 'bank_balance' => 180000, 'capital' => 800000,
                         'vat_mode' => 'none', 'invoice_counter' => 3000,
                         'onboarded_at' => now(),
+                        // this is the Head Office — real selling only
+                        // happens at the Uttara branch / via the warehouse,
+                        // never here directly (Khaled's explicit ask)
+                        'is_head_office' => true,
                     ],
                     'ডেমো ওনার', $phone, null, $password, self::FEATURE_KEYS
                 );

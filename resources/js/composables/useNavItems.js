@@ -50,7 +50,7 @@ export function useNavItems(active = null) {
                 // a warehouse branch is stock-only (Khaled's explicit ask) —
                 // never offer the sell shortcut there, same reasoning as the
                 // server-side checkout() guard
-                { key: 'sell', label: t('nav.sellFull'), href: mobileSellHref.value, icon: 'cart', on: mobileSellActive.value, show: hasPerm('pos') && !shop.value?.is_warehouse },
+                { key: 'sell', label: t('nav.sellFull'), href: mobileSellHref.value, icon: 'cart', on: mobileSellActive.value, show: hasPerm('pos') && !shop.value?.is_warehouse && !shop.value?.is_head_office },
                 { key: 'reservations', label: t('nav.reservations'), href: route('app.reservations.index'), icon: 'calendar', on: active === 'reservations', show: hasPerm('pos') && isRestaurant.value && hasFeature('restaurant_tables') },
                 { key: 'kds', label: t('nav.kds'), href: route('app.kds.index'), icon: 'pot', on: active === 'kds', show: hasPerm('pos') && isRestaurant.value && hasFeature('restaurant_tables') },
                 { key: 'cds', label: t('nav.cds'), href: route('app.cds.index'), icon: 'monitor', on: active === 'cds', show: hasPerm('pos') && isRestaurant.value && hasFeature('restaurant_tables') },

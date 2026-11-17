@@ -364,13 +364,13 @@ class PosController extends Controller
     {
         $shopId = Tenancy::id();
 
-        // A warehouse branch is stock-only — it exists to receive and hand
-        // off inventory to selling branches, never to ring up a customer
-        // sale itself (Khaled's explicit ask, after noticing Global Touch's
-        // warehouse could otherwise check out exactly like any branch —
-        // is_warehouse was, until now, purely a label with no behavioral
-        // effect anywhere, see that migration's own docblock).
-        abort_if(Tenancy::shop()?->is_warehouse, 422, 'এটি একটি ওয়্যারহাউজ — এখান থেকে সরাসরি বিক্রি করা যায় না, শুধু স্টক ট্রান্সফার করা যায়।');
+        // A warehouse branch is stock-only, and a Head Office root shop is
+        // central-accounting-only — neither ever rings up a customer sale
+        // itself (Khaled's explicit ask for both). Actual selling happens
+        // only at real selling branches.
+        $currentShop = Tenancy::shop();
+        abort_if($currentShop?->is_warehouse, 422, 'এটি একটি ওয়্যারহাউজ — এখান থেকে সরাসরি বিক্রি করা যায় না, শুধু স্টক ট্রান্সফার করা যায়।');
+        abort_if($currentShop?->is_head_office, 422, 'এটি হেড অফিস — এখান থেকে সরাসরি বিক্রি করা যায় না, শাখা থেকে বিক্রি করুন।');
         $userId = Auth::guard('web')->id() ?? Auth::guard('sanctum')->id();
         $data = $request->validated();
 

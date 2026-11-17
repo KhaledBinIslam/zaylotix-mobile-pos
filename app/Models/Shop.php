@@ -13,7 +13,7 @@ class Shop extends Model
     // Shop itself is NOT tenant-scoped (it *is* the tenant) — access control
     // happens via ShopPolicy (owner can only see their own; admin sees all).
     protected $fillable = [
-        'parent_shop_id', 'brought_by_ambassador_id', 'is_warehouse', 'business_type_id', 'name', 'name_en', 'label_header', 'phone', 'email', 'website', 'kitchen_whatsapp', 'payment_timing', 'kitchen_print_order', 'area', 'owner_name', 'support_contact_name', 'support_contact_phone', 'logo_path', 'receipt_footer', 'bin_no', 'trade_license_no', 'tin_no', 'memo_settings', 'label_settings', 'mobile_nav_items', 'offline_sync_mode', 'notify_owner_on_sale', 'sale_notification_email',
+        'parent_shop_id', 'brought_by_ambassador_id', 'is_warehouse', 'is_head_office', 'business_type_id', 'name', 'name_en', 'label_header', 'phone', 'email', 'website', 'kitchen_whatsapp', 'payment_timing', 'kitchen_print_order', 'area', 'owner_name', 'support_contact_name', 'support_contact_phone', 'logo_path', 'receipt_footer', 'bin_no', 'trade_license_no', 'tin_no', 'memo_settings', 'label_settings', 'mobile_nav_items', 'offline_sync_mode', 'notify_owner_on_sale', 'sale_notification_email',
         'sales_mode', 'hardware_scanner_enabled', 'lang', 'plan', 'account_type', 'monthly_fee', 'staff_limit', 'status',
         'subscription_start', 'subscription_expiry',
         'cash_balance', 'bank_balance', 'capital',
@@ -236,6 +236,7 @@ class Shop extends Model
         return [
             'hardware_scanner_enabled' => 'boolean',
             'is_warehouse' => 'boolean',
+            'is_head_office' => 'boolean',
             'notify_owner_on_sale' => 'boolean',
             'memo_settings' => 'array',
             'label_settings' => 'array',

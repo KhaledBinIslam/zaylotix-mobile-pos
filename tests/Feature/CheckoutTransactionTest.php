@@ -48,6 +48,22 @@ class CheckoutTransactionTest extends TestCase
         $this->assertSame(0, Sale::count());
     }
 
+    /** A Head Office root shop is central-accounting-only (Khaled's explicit ask, mirroring the warehouse rule) — real selling happens only at its branches. */
+    public function test_a_head_office_shop_cannot_check_out_a_sale(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner(['is_head_office' => true]);
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 100, 'price' => 150, 'stock' => 10]);
+
+        $response = $this->actingAs($owner, 'web')->postJson('/app/pos/checkout', [
+            'items' => [['product_id' => $product->id, 'qty' => 1]],
+            'payments' => [['method' => 'cash', 'amount' => 150]],
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertSame(10.0, (float) $product->fresh()->stock);
+        $this->assertSame(0, Sale::count());
+    }
+
     /** Phase 1.2 — see docs/FIX_PLAN.md: a replayed checkout (same client_uuid) must never double-sell or double-decrement stock. */
     public function test_replaying_the_same_client_uuid_returns_the_original_sale_instead_of_creating_a_duplicate(): void
     {
