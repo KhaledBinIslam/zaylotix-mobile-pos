@@ -516,6 +516,9 @@ onMounted(() => {
             <Link v-if="isOwner && branches" :href="route('app.companyDashboard')" class="row">
                 <div class="ava">🏢</div><div class="mid"><b>{{ t('nav.companyDashboard') }}</b><span>{{ t('more.companyDashboardSub') }}</span></div><div class="end">›</div>
             </Link>
+            <Link v-if="isOwner" :href="route('app.stockMovements')" class="row">
+                <div class="ava">🔁</div><div class="mid"><b>{{ t('nav.stockMovements') }}</b><span>{{ t('more.stockMovementsSub') }}</span></div><div class="end">›</div>
+            </Link>
             <Link v-if="hasPerm('service_billing') && features.includes('service_billing')" :href="route('app.serviceTickets.index')" class="row">
                 <div class="ava">🛠</div><div class="mid"><b>{{ t('nav.serviceTickets') }}</b><span>{{ t('more.serviceTicketsSub') }}</span></div><div class="end">›</div>
             </Link>

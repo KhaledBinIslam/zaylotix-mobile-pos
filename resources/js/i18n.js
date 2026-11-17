@@ -449,6 +449,8 @@ export const translations = {
     'more.stockTransferSub': { bn: 'শাখার মধ্যে সরাসরি স্টক পাঠান', en: 'Send stock directly between branches' },
     'nav.companyDashboard': { bn: 'বিজনেস ড্যাশবোর্ড', en: 'Business Dashboard' },
     'more.companyDashboardSub': { bn: 'সব শাখার বিক্রি, স্টক, খরচ, বাকি একসাথে দেখুন', en: 'All branches’ sales, stock, expenses, due — together' },
+    'nav.stockMovements': { bn: 'স্টক মুভমেন্ট রেজিস্টার', en: 'Stock Movement Register' },
+    'more.stockMovementsSub': { bn: 'প্রতিটা ইউনিট ইন/আউট — ক্রয়, বিক্রয়, ফেরত, ক্ষতি, ট্রান্সফার', en: 'Every unit in/out — purchase, sale, return, damage, transfer' },
     'nav.serviceTickets': { bn: 'সার্ভিস/রিপেয়ার', en: 'Service/Repair' },
     'more.serviceTicketsSub': { bn: 'ডিভাইস রিসিভ করুন, পার্টস/লেবার যোগ করুন, বিল করুন', en: 'Receive a device, add parts/labor, bill it' },
     'nav.installments': { bn: 'কিস্তি প্ল্যান', en: 'Installment Plans' },
