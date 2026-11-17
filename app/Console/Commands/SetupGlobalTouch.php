@@ -67,6 +67,13 @@ class SetupGlobalTouch extends Command
         'export', 'barcode_printing', 'purchases', 'returns', 'damages',
         'stock_count', 'activity_log', 'suppliers', 'low_stock_alerts',
         'cashier_management', 'serial_tracking', 'quotations',
+        // without these two, Employees/Payroll and ServiceTickets have real
+        // seeded data but never show up in the nav at all (useNavItems.js
+        // gates them on hasFeature('hr_payroll')/hasFeature('service_billing')
+        // specifically, separate from 'accounts'/'purchases' etc.) — a real
+        // gap found only by actually checking the demo, not assuming the
+        // other feature keys covered it.
+        'hr_payroll', 'service_billing',
     ];
 
     /** name, emoji — in nav order */
