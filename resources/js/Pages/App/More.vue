@@ -1131,7 +1131,7 @@ onMounted(() => {
         <Sheet v-model="exportSheet" :title="t('export.sheetTitle')">
             <button class="btn" style="width:100%;margin-bottom:4px" @click="downloadAll">{{ t('export.downloadAll') }}</button>
             <div style="font-size:12px;color:var(--mut);margin-bottom:14px">{{ t('export.downloadAllSub') }}</div>
-            <div v-for="[kind, labelKey, em] in [['sales','export.sales','🧾'],['stock','export.stock','📦'],['due','export.due','🧳'],['exp','export.exp','💸'],['damage','export.damage','🗑'],['return','export.return','↩'],['pl','export.pl','📊']]" :key="kind" class="row" style="box-shadow:none">
+            <div v-for="[kind, labelKey, em] in [['sales','export.sales','🧾'],['stock','export.stock','📦'],['due','export.due','🧳'],['exp','export.exp','💸'],['damage','export.damage','🗑'],['return','export.return','↩'],['pl','export.pl','📊'],['supplier','export.supplier','🏭'],['purchase','export.purchase','🛒'],['customer_ledger','export.customerLedger','📒'],['supplier_ledger','export.supplierLedger','📕'],['payroll','export.payroll','👥'],['service_report','export.serviceReport','🛠']]" :key="kind" class="row" style="box-shadow:none">
                 <div class="ava">{{ em }}</div>
                 <div class="mid"><b>{{ t(labelKey) }}</b></div>
                 <button class="btn sm" @click="download(kind, 'xlsx')">Excel</button>

@@ -7,10 +7,17 @@ use App\Exports\ArrayExport;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\Damage;
+use App\Models\Employee;
 use App\Models\Expense;
+use App\Models\Payment;
 use App\Models\Product;
+use App\Models\Purchase;
 use App\Models\Sale;
+use App\Models\SalaryPayment;
 use App\Models\SalesReturn;
+use App\Models\ServiceTicket;
+use App\Models\Supplier;
+use App\Models\SupplierPayment;
 use App\Support\Reports;
 use App\Support\Tenancy;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -26,6 +33,9 @@ class ExportController extends Controller
         'exp' => 'খরচ হিসাব', 'damage' => 'ক্ষতির হিসাব', 'return' => 'ফেরত হিসাব', 'pl' => 'লাভ-ক্ষতি',
         'branch_breakdown' => 'শাখাভিত্তিক হিসাব',
         'stock_movement' => 'স্টক মুভমেন্ট রেজিস্টার',
+        'supplier' => 'সাপ্লায়ার তালিকা', 'purchase' => 'ক্রয় হিসাব',
+        'customer_ledger' => 'কাস্টমার লেজার', 'supplier_ledger' => 'সাপ্লায়ার লেজার',
+        'payroll' => 'বেতন হিসাব', 'service_report' => 'সার্ভিস/ওয়ারেন্টি রিপোর্ট',
     ];
 
     public function download(Request $request, string $kind)
@@ -40,6 +50,12 @@ class ExportController extends Controller
             'pl' => [$this->plRows(), 'labh-khoti'],
             'branch_breakdown' => [$this->branchBreakdownRows(), 'shakha-hisab'],
             'stock_movement' => [$this->stockMovementRows($request), 'stock-movement'],
+            'supplier' => [$this->supplierRows(), 'supplier-talika'],
+            'purchase' => [$this->purchaseRows(), 'kroy-hisab'],
+            'customer_ledger' => [$this->customerLedgerRows(), 'customer-ledger'],
+            'supplier_ledger' => [$this->supplierLedgerRows(), 'supplier-ledger'],
+            'payroll' => [$this->payrollRows(), 'betan-hisab'],
+            'service_report' => [$this->serviceReportRows(), 'service-warranty'],
             default => abort(404),
         };
 
@@ -142,6 +158,92 @@ class ExportController extends Controller
         $rows = [['Date', 'Type', 'Product', 'Branch', 'Qty In', 'Qty Out', 'Reference', 'Note']];
         foreach ($movements as $m) {
             $rows[] = [$m['date'], $m['type_label'], $m['product_name'], $m['branch'], $m['qty_in'], $m['qty_out'], $m['ref'], $m['note']];
+        }
+
+        return $rows;
+    }
+
+    private function supplierRows(): array
+    {
+        $rows = [['Supplier', 'Phone', 'Address', 'Lifetime Purchase', 'Payable Balance']];
+        foreach (Supplier::all() as $s) {
+            $lifetime = Purchase::where('supplier_id', $s->id)->sum('amount');
+            $rows[] = [$s->name, $s->phone, $s->address, round($lifetime, 2), (float) $s->payable];
+        }
+
+        return $rows;
+    }
+
+    private function purchaseRows(): array
+    {
+        $rows = [['Memo', 'Date', 'Supplier', 'Product', 'Qty', 'Amount', 'Method', 'Status']];
+        foreach (Purchase::with('product:id,name')->orderByDesc('date')->get() as $p) {
+            $rows[] = [$p->memo, $p->date->toDateString(), $p->supplier, $p->product?->name, $p->qty, (float) $p->amount, $p->method, $p->status];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * A real date-wise, running-balance ledger per customer — distinct
+     * from dueRows()'s plain summary-per-customer row (that one only ever
+     * showed a lifetime total, never the individual sales/payments that
+     * added up to it).
+     */
+    private function customerLedgerRows(): array
+    {
+        $rows = [['Date', 'Customer', 'Type', 'Description', 'Amount', 'Due After']];
+        $entries = collect();
+
+        foreach (Sale::with('customer:id,name')->whereNotNull('customer_id')->where('payment_mode', '!=', 'cash')->get() as $s) {
+            $entries->push(['date' => $s->date, 'customer' => $s->customer?->name, 'type' => 'বিক্রয়', 'desc' => $s->invoice_no, 'amount' => (float) $s->total, 'due_after' => null]);
+        }
+        foreach (Payment::with('customer:id,name')->whereNull('voided_at')->get() as $p) {
+            $entries->push(['date' => $p->date, 'customer' => $p->customer?->name, 'type' => 'পেমেন্ট', 'desc' => 'Payment', 'amount' => -(float) $p->amount, 'due_after' => (float) $p->due_after]);
+        }
+
+        foreach ($entries->sortBy('date') as $e) {
+            $rows[] = [$e['date']?->toDateString(), $e['customer'], $e['type'], $e['desc'], $e['amount'], $e['due_after']];
+        }
+
+        return $rows;
+    }
+
+    /** Same date-wise ledger shape as customerLedgerRows(), for suppliers. */
+    private function supplierLedgerRows(): array
+    {
+        $rows = [['Date', 'Supplier', 'Type', 'Description', 'Amount', 'Payable After']];
+        $entries = collect();
+
+        foreach (Purchase::where('method', 'credit')->get() as $p) {
+            $entries->push(['date' => $p->date, 'supplier' => $p->supplier, 'type' => 'ক্রয় (বাকি)', 'desc' => $p->memo, 'amount' => (float) $p->amount, 'payable_after' => null]);
+        }
+        foreach (SupplierPayment::with('supplier:id,name')->get() as $p) {
+            $entries->push(['date' => $p->date, 'supplier' => $p->supplier?->name, 'type' => 'পেমেন্ট', 'desc' => 'Payment', 'amount' => -(float) $p->amount, 'payable_after' => (float) $p->payable_after]);
+        }
+
+        foreach ($entries->sortBy('date') as $e) {
+            $rows[] = [$e['date']?->toDateString(), $e['supplier'], $e['type'], $e['desc'], $e['amount'], $e['payable_after']];
+        }
+
+        return $rows;
+    }
+
+    private function payrollRows(): array
+    {
+        $rows = [['Employee', 'Designation', 'Salary Type', 'Basic Salary', 'Month', 'Present Days', 'Absent Days', 'Net Paid', 'Paid Date']];
+        foreach (SalaryPayment::with('employee:id,name,designation,salary_type')->orderByDesc('paid_date')->get() as $p) {
+            $rows[] = [$p->employee?->name, $p->employee?->designation, $p->employee?->salary_type, (float) $p->basic_salary, $p->month, $p->present_days, $p->absent_days, (float) $p->net_paid, $p->paid_date->toDateString()];
+        }
+
+        return $rows;
+    }
+
+    private function serviceReportRows(): array
+    {
+        $rows = [['Device', 'Customer', 'Product', 'Technician', 'Status', 'Warranty Claim', 'Received', 'Delivered']];
+        foreach (ServiceTicket::with(['customer:id,name', 'product:id,name'])->orderByDesc('received_at')->get() as $t) {
+            $rows[] = [$t->device_label, $t->customer?->name, $t->product?->name, $t->technician_name, $t->status, $t->is_warranty_claim ? 'হ্যাঁ' : 'না', $t->received_at?->toDateString(), $t->delivered_at?->toDateString()];
         }
 
         return $rows;

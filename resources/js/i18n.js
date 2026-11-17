@@ -1425,6 +1425,12 @@ export const translations = {
     'export.damage': { bn: 'ক্ষতির হিসাব', en: 'Damage report' },
     'export.return': { bn: 'ফেরতের হিসাব', en: 'Returns report' },
     'export.pl': { bn: 'লাভ-ক্ষতি', en: 'Profit & loss' },
+    'export.supplier': { bn: 'সাপ্লায়ার তালিকা', en: 'Supplier list' },
+    'export.purchase': { bn: 'ক্রয় হিসাব', en: 'Purchase report' },
+    'export.customerLedger': { bn: 'কাস্টমার লেজার', en: 'Customer ledger' },
+    'export.supplierLedger': { bn: 'সাপ্লায়ার লেজার', en: 'Supplier ledger' },
+    'export.payroll': { bn: 'বেতন হিসাব (HR)', en: 'Payroll (HR)' },
+    'export.serviceReport': { bn: 'সার্ভিস/ওয়ারেন্টি রিপোর্ট', en: 'Service/warranty report' },
 
     // ---- POS ----
     'pos.title': { bn: '🛒 দ্রুত বিক্রি', en: '🛒 Quick Sale' },
