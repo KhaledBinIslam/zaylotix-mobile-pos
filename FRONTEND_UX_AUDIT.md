@@ -48,13 +48,29 @@ No new instance of this bug class found.
 
 ---
 
-## What section 12 asks for that this document could NOT cover — BLOCKED BY MISSING ACCESS
+## 7. Real browser verification (added after Khaled asked directly — "browser open kore test kore nao")
 
-Section 12 explicitly asks for testing across "Desktop. Mobile. Tablet. Chrome. Android mobile browsers... Verify that every visible button and action actually works... Identify broken links, JavaScript errors, console errors and frontend/backend mismatches" — i.e. real, interactive, rendered-browser testing. **This environment has no connected browser-automation tool** (no Playwright/Puppeteer/Selenium session, no device lab) for this audit to drive a real browser with. Every finding above is static-code-level — it proves the code is internally consistent (no dead handler, no dead link, guards present, empty states exist), but it cannot observe:
+No browser-automation tool was pre-connected in this environment, but one could be installed on demand: Playwright + headless Chromium (`npm install --no-save playwright` + `npx playwright install chromium`, not persisted to `package.json` — removed again after this check, so the project's own dependency tree is unaffected).
 
-- Actual rendered layout/overflow/wrapping issues on a specific viewport size.
-- Real JavaScript console errors/warnings during live use.
-- Cross-browser rendering differences (the two already-fixed bugs this session were BOTH found via Khaled's own live use reports, not static analysis — static analysis is a real, useful safety net but not a substitute for a human or an automated browser actually clicking through the app).
-- Touch-interaction-specific issues (tap targets, scroll behavior) that only manifest on a real mobile device.
+**Method**: a real headless Chromium session against the LIVE production site (`https://pos.zaylotix.com`), logged in as the Standard demo shop (a non-paying demo account — no real customer data touched), mobile viewport (390×844, matching this app's mobile-first design). Console errors, uncaught page errors, and failed network requests were all captured listener-side (not inferred), plus a full-page screenshot at each stop, visually reviewed.
 
-**This is the honest limit of what was done here** — it closes the specific "dead button from a typo/missing function" and "dead link from a typo'd route name" bug classes completely (zero found across the entire page tree), which is real, meaningful coverage, but it is not a substitute for the actual device/browser walkthrough section 12 describes. If Khaled wants that specific coverage, it needs either manual QA time or a browser-automation tool connected to this environment.
+**Pages visited, all VERIFIED PASS (200 status, correct page title, zero console/page/network errors, screenshot visually confirmed correctly rendered, not blank)**:
+- `/login` — renders correctly logged-out.
+- Login submit → redirected to `/app/pos` (this shop's configured default landing page).
+- `/app/home` — dashboard, stat tiles and quick-action grid all correct, "Home" tab correctly shows active-state styling.
+- `/app/pos` — Sell screen, product grid, the HowToHint banner, bottom nav all correct.
+- `/app/returns` — the Return/Exchange page fixed earlier this session — loads cleanly, search field present, no leftover error state.
+- `/app/stock` — Stock & Products, stat tiles, Add Product/CSV Import buttons, HowToHint banner all correct.
+
+**One visual question resolved by reading the code, not left ambiguous**: the bottom-nav "Sell" button looks the same prominent orange in every screenshot regardless of which page is actually open. Checked `AppLayout.vue` (`class="tab sell"` with its own `<span class="fab">` wrapper) — this is a deliberate floating-action-button style, permanently prominent by design, not an active-tab indicator bug; the real active-tab indicator (confirmed visually on `/app/home` and `/app/stock`, where "Home"/"Stock" correctly show the lighter highlighted state) works correctly and independently of the Sell button's own styling.
+
+**Honest scope of this real-browser check**: 6 page-loads, 1 shop (Standard, the `clothing` business type), 1 viewport, desktop headless Chromium standing in for a real device — not the full "desktop/mobile/tablet/Chrome/Android, every business type" matrix section 12 describes, and no actual data-mutating action (checkout, a return, a stock edit) was performed, only navigation/page-load. It is real evidence, not an inference, for exactly the pages and actions it covered — and it found nothing wrong.
+
+## What section 12 still couldn't fully cover
+
+- Other business types' distinct UI (restaurant/KDS, service/repair, wholesale, Online Business) — not visited this pass.
+- Tablet-sized viewports, and real Android/iOS native browser quirks (the above used desktop headless Chromium at a phone-sized viewport, not an actual device).
+- Any data-mutating interactive flow (completing a real sale, a return, editing stock) — only page-loads were checked, not full click-through-to-submit journeys.
+- A systematic sweep of every page in the app this way (108 pages) — section 1-6 above already closed the two highest-value bug classes (dead handlers, dead links) exhaustively via static analysis; this real-browser pass is a trust-building sample on top of that, not a second exhaustive pass.
+
+If Khaled wants the remaining gap closed, the next increment would be the same tool (now proven to work in this environment) pointed at 2-3 more business types' key screens, or a real data-mutating journey (e.g. a full demo-shop checkout) rather than just page-loads.
