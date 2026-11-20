@@ -42,8 +42,13 @@ class SubscriptionController extends Controller
         $payment = SubscriptionPayment::create($data);
 
         // extend / reactivate the shop's subscription based on this payment
+        // -- resolved via subscriptionShop() so recording a payment against
+        // EITHER half of a billing_follows_parent pair (e.g. picking Baby
+        // Park's branch by mistake) always lands on the one combined row
+        // both shops actually read their status from.
         if (! empty($data['next_due'])) {
-            Shop::whereKey($data['shop_id'])->update([
+            $billedShopId = Shop::findOrFail($data['shop_id'])->subscriptionShop()->id;
+            Shop::whereKey($billedShopId)->update([
                 'subscription_expiry' => $data['next_due'],
                 'plan' => $data['plan'],
                 'status' => 'active',

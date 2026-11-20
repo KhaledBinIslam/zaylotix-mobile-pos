@@ -9,6 +9,7 @@ const props = defineProps({
     ambassadors: { type: Array, default: null }, currentAmbassadorId: { type: Number, default: null },
     customization: { type: Object, default: () => ({}) }, canEditCustomization: Boolean,
     isSuperAdmin: Boolean, owner: { type: Object, default: null },
+    parentShopInfo: { type: Object, default: null },
 });
 
 // owner's login phone/email reset -- its own endpoint, same
@@ -38,9 +39,9 @@ function saveAmbassador() {
 }
 
 // only present when `shop` itself is a main shop (parent_shop_id null) --
-// see ShopController::edit(). Billing fields mirror the main form above
-// since a branch carries its own independent subscription, exactly like
-// any other shop -- no separate billing mechanism needed.
+// see ShopController::edit(). Billing fields mirror the main form above --
+// a new branch bills independently by default, same as any other shop;
+// "billing_follows_parent" below is the opt-in exception to that.
 const branchForm = useForm({
     name: '', area: '', phone: '', plan: 'monthly', monthly_fee: '',
     subscription_start: new Date().toISOString().slice(0, 10), subscription_expiry: '', is_warehouse: false,
@@ -58,6 +59,7 @@ const form = useForm({
     business_type_id: props.shop.business_type_id, sales_mode: props.shop.sales_mode,
     plan: props.shop.plan, account_type: props.shop.account_type, monthly_fee: props.shop.monthly_fee, staff_limit: props.shop.staff_limit, status: props.shop.status, lang: props.shop.lang,
     subscription_start: props.shop.subscription_start, subscription_expiry: props.shop.subscription_expiry,
+    billing_follows_parent: props.shop.billing_follows_parent || false,
     features: [...props.shopFeatureKeys],
 });
 
@@ -210,7 +212,14 @@ const sourceBadgeClass = (source) => ({
                 <div v-if="form.errors.account_type" class="text-rose-600 text-xs mt-1">{{ form.errors.account_type }}</div>
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <label v-if="shop.parent_shop_id && parentShopInfo" class="flex items-center gap-2 text-sm text-gray-600 mb-2">
+                <input type="checkbox" v-model="form.billing_follows_parent" class="rounded">
+                🔗 এই শাখা <b>{{ parentShopInfo.name }}</b>-এর সাথে একই সাবস্ক্রিপশনে বিল হবে (নিচের তারিখ তখন আর ব্যবহার হবে না)
+            </label>
+            <div v-if="form.billing_follows_parent" class="text-xs text-emerald-700 bg-emerald-50 rounded-lg p-2 mb-4">
+                এই শাখা এখন <b>{{ parentShopInfo.name }}</b>-এর সাবস্ক্রিপশন অনুসরণ করছে — বর্তমানে তা শেষ হবে <b>{{ parentShopInfo.subscription_expiry }}</b>-এ। রিনিউ করতে হলে {{ parentShopInfo.name }}-এর নিজের Edit পেজ থেকে করুন।
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4" :class="{ 'opacity-40 pointer-events-none': form.billing_follows_parent }">
                 <div><label class="text-sm font-medium text-gray-600">Subscription start</label><input v-model="form.subscription_start" type="date" class="mt-1 w-full rounded-lg border-gray-300"></div>
                 <div>
                     <label class="text-sm font-medium text-gray-600">Subscription expiry</label>

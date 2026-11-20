@@ -38,6 +38,9 @@ class UpdateShopRequest extends FormRequest
             'status' => ['required', 'in:active,inactive'],
             'subscription_start' => ['required', 'date'],
             'subscription_expiry' => ['required', 'date', 'after_or_equal:subscription_start'],
+            // only meaningful for a branch (parent_shop_id set) — see
+            // Shop::subscriptionShop(); harmless/ignored on a main shop
+            'billing_follows_parent' => ['nullable', 'boolean'],
             'lang' => ['required', 'in:bn,en'],
 
             'features' => ['nullable', 'array'],

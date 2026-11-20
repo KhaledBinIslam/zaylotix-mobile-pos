@@ -192,7 +192,14 @@ class GatewayWebhookController extends Controller
      */
     private function confirmSubscriptionRenewal(GatewayPayment $locked, array $verified): void
     {
-        $shop = Shop::whereKey($locked->shop_id)->lockForUpdate()->first();
+        // resolved via subscriptionShop() -- an owner who happened to be
+        // switched into a billing_follows_parent branch when they tapped
+        // "renew" still extends the one combined row both shops actually
+        // bill from, not that branch's own unused column (re-fetched by id
+        // rather than reusing the lazy relation, so the row we lock is the
+        // same row we then update).
+        $billedShopId = Shop::whereKey($locked->shop_id)->firstOrFail()->subscriptionShop()->id;
+        $shop = Shop::whereKey($billedShopId)->lockForUpdate()->first();
         $months = (int) ($locked->checkout_payload['months'] ?? 1);
 
         // extends from whichever is later: today, or a still-active

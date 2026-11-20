@@ -13,7 +13,7 @@ class Shop extends Model
     // Shop itself is NOT tenant-scoped (it *is* the tenant) — access control
     // happens via ShopPolicy (owner can only see their own; admin sees all).
     protected $fillable = [
-        'parent_shop_id', 'brought_by_ambassador_id', 'is_warehouse', 'is_head_office', 'business_type_id', 'name', 'name_en', 'label_header', 'phone', 'email', 'website', 'kitchen_whatsapp', 'payment_timing', 'kitchen_print_order', 'area', 'owner_name', 'support_contact_name', 'support_contact_phone', 'logo_path', 'receipt_footer', 'bin_no', 'trade_license_no', 'tin_no', 'memo_settings', 'label_settings', 'mobile_nav_items', 'offline_sync_mode', 'notify_owner_on_sale', 'sale_notification_email',
+        'parent_shop_id', 'brought_by_ambassador_id', 'is_warehouse', 'is_head_office', 'billing_follows_parent', 'business_type_id', 'name', 'name_en', 'label_header', 'phone', 'email', 'website', 'kitchen_whatsapp', 'payment_timing', 'kitchen_print_order', 'area', 'owner_name', 'support_contact_name', 'support_contact_phone', 'logo_path', 'receipt_footer', 'bin_no', 'trade_license_no', 'tin_no', 'memo_settings', 'label_settings', 'mobile_nav_items', 'offline_sync_mode', 'notify_owner_on_sale', 'sale_notification_email',
         'sales_mode', 'hardware_scanner_enabled', 'lang', 'plan', 'account_type', 'monthly_fee', 'staff_limit', 'status',
         'subscription_start', 'subscription_expiry',
         'cash_balance', 'bank_balance', 'capital',
@@ -134,6 +134,22 @@ class Shop extends Model
         return $this->parent_shop_id ? ($this->parentShop ?? $this) : $this;
     }
 
+    /**
+     * Opt-in (see billing_follows_parent migration note) — unlike
+     * invoiceCounterShop()/articleSettingsShop() above, which ALWAYS
+     * resolve to the parent for any branch, independent per-branch billing
+     * is itself a deliberate, pre-existing feature (some multi-branch
+     * clients genuinely pay separately per shop). This only redirects to
+     * the parent when a branch has explicitly been flagged as sharing one
+     * combined subscription with it (e.g. Baby Park's 2 shops, billed as
+     * one from 2026-11-20) — every other branch's isActive()/daysLeft()
+     * keeps reading its own row, unchanged.
+     */
+    public function subscriptionShop(): self
+    {
+        return ($this->parent_shop_id && $this->billing_follows_parent) ? ($this->parentShop ?? $this) : $this;
+    }
+
     /** docs/ARTICLE_SERIES_PLAN.md §3 — {MFR}-{CAT}-{SERIAL}-{COSTCODE}, e.g. "SMS-L-10001-NSXXZ". */
     public const ARTICLE_BARCODE_TEMPLATE_DEFAULT = '{MFR}-{CAT}-{SERIAL}-{COSTCODE}';
 
@@ -237,6 +253,7 @@ class Shop extends Model
             'hardware_scanner_enabled' => 'boolean',
             'is_warehouse' => 'boolean',
             'is_head_office' => 'boolean',
+            'billing_follows_parent' => 'boolean',
             'notify_owner_on_sale' => 'boolean',
             'memo_settings' => 'array',
             'label_settings' => 'array',
@@ -430,6 +447,14 @@ class Shop extends Model
         // what a barcode label actually prints -- see labelHeader().
         $data['resolved_label_header'] = $this->labelHeader();
 
+        // no owner-facing form ever edits subscription_expiry (admin-only
+        // field), so unlike label_header above there's no "raw value a
+        // settings form needs" to preserve — safe to replace outright with
+        // the effective one, so a billing_follows_parent branch's own
+        // expiry banner/countdown matches what isActive()/daysLeft() (and
+        // CheckSubscriptionActive) actually enforce, not its own unused column.
+        $data['subscription_expiry'] = $this->subscriptionShop()->subscription_expiry?->toDateString();
+
         return $data;
     }
 
@@ -446,11 +471,13 @@ class Shop extends Model
 
     public function isActive(): bool
     {
-        if ($this->status !== 'active') {
+        $shop = $this->subscriptionShop();
+
+        if ($shop->status !== 'active') {
             return false;
         }
 
-        if ($this->subscription_expiry && $this->subscription_expiry->isPast()) {
+        if ($shop->subscription_expiry && $shop->subscription_expiry->isPast()) {
             return false;
         }
 
@@ -459,11 +486,13 @@ class Shop extends Model
 
     public function daysLeft(): ?int
     {
-        if (! $this->subscription_expiry) {
+        $shop = $this->subscriptionShop();
+
+        if (! $shop->subscription_expiry) {
             return null;
         }
 
-        return now()->startOfDay()->diffInDays($this->subscription_expiry->startOfDay(), false);
+        return now()->startOfDay()->diffInDays($shop->subscription_expiry->startOfDay(), false);
     }
 
     protected function logoUrl(): Attribute

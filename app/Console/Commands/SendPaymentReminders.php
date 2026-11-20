@@ -19,8 +19,14 @@ class SendPaymentReminders extends Command
         // constant; how many days out the warning starts firing
         $reminderDays = (int) (SiteSetting::current()->reminder_days ?? 3);
 
+        // a billing_follows_parent branch has no owner row of its own
+        // (createBranch() reuses the main shop's login) so this already
+        // naturally skips it below -- excluded here too for clarity, since
+        // its own subscription_expiry column is unused (Shop::subscriptionShop())
+        // and the parent's row generates the real reminder on its own turn
         $shops = Shop::with('owner')
             ->where('status', 'active')
+            ->where('billing_follows_parent', false)
             ->whereNotNull('subscription_expiry')
             ->whereBetween('subscription_expiry', [now()->toDateString(), now()->addDays($reminderDays)->toDateString()])
             ->get();

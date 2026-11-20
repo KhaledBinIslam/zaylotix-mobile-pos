@@ -37,7 +37,11 @@ class ShopController extends Controller
                 'monthly_fee' => (float) $shop->monthly_fee,
                 'status' => $shop->status,
                 'sales_mode' => $shop->sales_mode,
-                'subscription_expiry' => $shop->subscription_expiry?->toDateString(),
+                // effective (resolved) value — a billing_follows_parent
+                // branch shows its parent's own expiry here, not its own
+                // now-unused column, so the list never looks stale again
+                // the way Baby Park's branch did before this existed.
+                'subscription_expiry' => $shop->subscriptionShop()->subscription_expiry?->toDateString(),
                 'days_left' => $shop->daysLeft(),
                 'is_active' => $shop->isActive(),
                 'created_at' => $shop->created_at->toDateString(),
@@ -113,6 +117,14 @@ class ShopController extends Controller
             // only a main shop (parent_shop_id null) can have branches of
             // its own -- a branch's edit page just never shows this section
             'branches' => $shop->parent_shop_id ? null : $shop->branches()->get(['id', 'name', 'area', 'status', 'is_warehouse', 'created_at']),
+            // only meaningful for a branch — lets the edit form show
+            // "follows <parent>'s subscription, expires <date>" instead of
+            // a stale, no-longer-consulted date field when the checkbox is on
+            'parentShopInfo' => $shop->parentShop ? [
+                'id' => $shop->parentShop->id,
+                'name' => $shop->parentShop->name,
+                'subscription_expiry' => $shop->parentShop->subscription_expiry?->toDateString(),
+            ] : null,
             'ambassadors' => $isSuperAdmin ? \App\Models\Ambassador::where('status', 'active')->orderBy('name')->get(['id', 'name', 'employee_id']) : null,
             'currentAmbassadorId' => $isSuperAdmin ? $shop->currentAmbassador()?->id : null,
             'isSuperAdmin' => $isSuperAdmin,
