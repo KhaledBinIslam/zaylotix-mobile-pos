@@ -19,6 +19,7 @@ Part of the full technical audit (section 16, deliverable #9).
 - **`SECURITY_AUDIT.md`**: 11 categories checked via safe code/config inspection (no live exploitation attempted). Zero P0/P1. One P2 (dependency CVEs, triaged — the two most severe confirmed not exploitable in this app's actual config).
 - **`PERFORMANCE_AUDIT.md`**: 5 real timing/query-count measurements taken against production's largest real dataset (Global Touch, 6 months of data) — all sub-20ms wall time, single-digit query counts, no N+1 observed.
 - **`TENANT_CUSTOMIZATION_ISOLATION_AUDIT.md`** (completed earlier, referenced not repeated): 9 directly-relevant test files, 72/72 passing at the time; one P2 found and fixed (`FIX-001`).
+- **`FRONTEND_UX_AUDIT.md`**: all 108 Vue pages (125 including shared Components/Layouts) checked for the two highest-certainty bug classes — zero dead click-handlers across 345 handler call-sites, zero broken `route()` references across 512 call sites. Real interactive browser/device/console-error testing is logged as BLOCKED BY MISSING ACCESS (no browser-automation tool connected in this environment) rather than claimed.
 
 ## Stress / load testing (section 10)
 
