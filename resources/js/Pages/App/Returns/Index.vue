@@ -382,20 +382,22 @@ function sendMemoWA() {
     if (!r) return;
     const phone = r.sale.customer?.phone || '';
     const num = phone ? '88' + phone.replace(/\D/g, '').replace(/^88/, '') : '';
-    const shopName = shop.value?.name || 'Zaylotix POS';
+    // Khaled's explicit ask: the memo is always English, and shop name
+    // always uses the shop's English name.
+    const shopName = shop.value?.name_en || shop.value?.name || 'Zaylotix POS';
 
-    let lines = `*${shopName}*\n${'─'.repeat(16)}\nআসল ইনভয়েস: ${r.sale.invoice_no}\n${'─'.repeat(16)}\nযা ফেরত নেওয়া হলো:\n`;
-    lines += r.returns.map((ret) => `${conditionEmoji(ret.condition)} ${qty(ret.qty)} ইউনিট — ${money(ret.refund)}`).join('\n');
-    lines += `\nমোট ফেরত: ${money(r.total_refund)}`;
+    let lines = `*${shopName}*\n${'─'.repeat(16)}\nOriginal Invoice: ${r.sale.invoice_no}\n${'─'.repeat(16)}\nReturned:\n`;
+    lines += r.returns.map((ret) => `${conditionEmoji(ret.condition)} ${qty(ret.qty)} unit — ${money(ret.refund)}`).join('\n');
+    lines += `\nTotal Refund: ${money(r.total_refund)}`;
 
     if (r.exchange_sale) {
-        lines += `\n${'─'.repeat(16)}\nযা দেওয়া হলো:\n`;
+        lines += `\n${'─'.repeat(16)}\nGiven:\n`;
         lines += (r.exchange_sale.items || []).map((it) => `🔄 ${it.product_name}${it.variant_label ? ' (' + it.variant_label + ')' : ''} — ${qty(it.qty)} × ${money(it.price)}`).join('\n');
         const net = Number(r.exchange_sale.net_settlement || 0);
-        lines += `\nদামের পার্থক্য: ${net > 0 ? 'আপনি দিয়েছেন ' + money(net) : net < 0 ? 'আপনি পেয়েছেন ' + money(Math.abs(net)) : 'কোনো পার্থক্য নেই'}`;
+        lines += `\nPrice Difference: ${net > 0 ? 'You paid ' + money(net) : net < 0 ? 'You received ' + money(Math.abs(net)) : 'No difference'}`;
     }
 
-    lines += `\n\nধন্যবাদ 🙏`;
+    lines += `\n\nThank you 🙏`;
     window.open('https://wa.me/' + num + '?text=' + encodeURIComponent(lines), '_blank');
 }
 </script>
@@ -548,32 +550,35 @@ function sendMemoWA() {
         </div>
 
         <div v-else class="card" id="returnMemo">
-            <div style="text-align:center;font-weight:800;font-size:18px">{{ t('returns.success') }}</div>
-            <div style="margin-top:10px">আসল ইনভয়েস: <b>{{ resultSummary.sale.invoice_no }}</b></div>
-            <div style="margin-top:6px;font-weight:700">যা ফেরত নেওয়া হলো:</div>
+            <!-- Khaled's explicit ask: the memo (this is what actually
+                 prints) is always English, regardless of the shop's own
+                 UI language — plain English literals here, not t(). -->
+            <div style="text-align:center;font-weight:800;font-size:18px">Return Successful</div>
+            <div style="margin-top:10px">Original Invoice: <b>{{ resultSummary.sale.invoice_no }}</b></div>
+            <div style="margin-top:6px;font-weight:700">Returned:</div>
             <div v-for="r in resultSummary.returns" :key="r.id">
-                {{ conditionEmoji(r.condition) }} {{ qty(r.qty) }} ইউনিট — {{ money(r.refund) }}
+                {{ conditionEmoji(r.condition) }} {{ qty(r.qty) }} unit — {{ money(r.refund) }}
             </div>
-            <div style="margin-top:8px;font-weight:700">{{ t('returns.totalRefund') }}: {{ money(resultSummary.total_refund) }}
-                <span v-if="resultSummary.refund_due_portion > 0" style="color:var(--mut);font-size:12px">{{ t('returns.appliedToDue') }}</span>
+            <div style="margin-top:8px;font-weight:700">Total Refund: {{ money(resultSummary.total_refund) }}
+                <span v-if="resultSummary.refund_due_portion > 0" style="color:var(--mut);font-size:12px">Applied to due balance</span>
             </div>
             <template v-if="resultSummary.exchange_sale">
-                <div style="margin-top:8px;font-weight:700">যা দেওয়া হলো:</div>
+                <div style="margin-top:8px;font-weight:700">Given:</div>
                 <div v-for="(it, idx) in resultSummary.exchange_sale.items" :key="idx">
                     🔄 {{ it.product_name }}{{ it.variant_label ? ' ('+it.variant_label+')' : '' }} — {{ qty(it.qty) }} × {{ money(it.price) }}
                 </div>
-                <div v-if="resultSummary.exchange_sale.discount > 0" style="margin-top:4px">ডিসকাউন্ট দেওয়া হয়েছে: {{ money(resultSummary.exchange_sale.discount) }}</div>
-                <div style="margin-top:4px">নতুন ইনভয়েস: <b>{{ resultSummary.exchange_sale.invoice_no }}</b> — {{ money(resultSummary.exchange_sale.total) }}</div>
+                <div v-if="resultSummary.exchange_sale.discount > 0" style="margin-top:4px">Discount given: {{ money(resultSummary.exchange_sale.discount) }}</div>
+                <div style="margin-top:4px">New Invoice: <b>{{ resultSummary.exchange_sale.invoice_no }}</b> — {{ money(resultSummary.exchange_sale.total) }}</div>
                 <div style="margin-top:4px;font-weight:700">
-                    দামের পার্থক্য:
+                    Price Difference:
                     {{ resultSummary.exchange_sale.net_settlement > 0
-                        ? 'কাস্টমার দিয়েছেন ' + money(resultSummary.exchange_sale.net_settlement)
+                        ? 'Customer paid ' + money(resultSummary.exchange_sale.net_settlement)
                         : resultSummary.exchange_sale.net_settlement < 0
-                            ? 'কাস্টমার পেয়েছেন ' + money(Math.abs(resultSummary.exchange_sale.net_settlement))
-                            : 'কোনো পার্থক্য নেই' }}
+                            ? 'Customer received ' + money(Math.abs(resultSummary.exchange_sale.net_settlement))
+                            : 'No difference' }}
                 </div>
             </template>
-            <div v-if="resultSummary.points_deducted" style="margin-top:6px;color:var(--mut);font-size:13px">লয়্যালটি পয়েন্ট কমানো হয়েছে: {{ resultSummary.points_deducted }}</div>
+            <div v-if="resultSummary.points_deducted" style="margin-top:6px;color:var(--mut);font-size:13px">Loyalty points deducted: {{ resultSummary.points_deducted }}</div>
 
             <div class="no-print" style="margin-top:16px;display:flex;gap:10px">
                 <button class="btn" @click="printMemo">{{ t('returns.print') }}</button>

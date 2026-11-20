@@ -48,6 +48,28 @@ class CheckoutTransactionTest extends TestCase
         $this->assertSame(0, Sale::count());
     }
 
+    /**
+     * Tenant-isolation audit finding (P2): the warehouse/head-office guard
+     * used to live only in PosController::checkout() — the payment-gateway
+     * webhook path (and two other internal callers) call
+     * performCheckout() directly and would have skipped it entirely.
+     * Moved into performCheckout() itself; this test calls that static
+     * method directly, bypassing the HTTP checkout() route entirely, so it
+     * can only pass if the guard is enforced at the shared choke point.
+     */
+    public function test_performcheckout_itself_blocks_a_warehouse_regardless_of_caller(): void
+    {
+        [$shop] = $this->createShopWithOwner(['is_warehouse' => true]);
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Rice', 'cost' => 100, 'price' => 150, 'stock' => 10]);
+
+        $this->expectException(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+
+        \App\Http\Controllers\App\PosController::performCheckout(
+            ['items' => [['product_id' => $product->id, 'qty' => 1]], 'payments' => [['method' => 'cash', 'amount' => 150]]],
+            $shop->id, null
+        );
+    }
+
     /** A Head Office root shop is central-accounting-only (Khaled's explicit ask, mirroring the warehouse rule) — real selling happens only at its branches. */
     public function test_a_head_office_shop_cannot_check_out_a_sale(): void
     {

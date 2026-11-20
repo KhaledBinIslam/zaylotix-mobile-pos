@@ -1,6 +1,5 @@
 <script setup>
 import { computed, onMounted, watch, nextTick } from 'vue';
-import { useI18n } from '@/composables/useI18n';
 
 /**
  * The actual printed/WhatsApp-matching memo markup — used both by
@@ -17,11 +16,16 @@ const props = defineProps({
     showBarcodeAndQr: { type: Boolean, default: true },
 });
 
-const { t } = useI18n();
+// Khaled's explicit ask: the printed/shared memo is ALWAYS English,
+// regardless of the shop's own UI language (shop.lang) — a customer-
+// facing receipt, unlike the rest of the app, which stays per-shop i18n.
+// So this component deliberately does NOT use useI18n()'s t() for any
+// memo content — every label here is a literal English string.
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 
 const settings = computed(() => props.shop?.memo_settings || {});
 const tableOrder = computed(() => props.sale.tableOrder || props.sale.table_order);
+const shopDisplayName = computed(() => props.shop?.name_en || props.shop?.name || 'Zaylotix POS');
 
 const dueRemainder = computed(() => {
     const tendered = (props.sale.payments || []).reduce((sum, p) => sum + Number(p.amount), 0);
@@ -30,9 +34,9 @@ const dueRemainder = computed(() => {
 const tenderedTotal = computed(() => (props.sale.payments || []).reduce((sum, p) => sum + Number(p.amount), 0));
 const changeReturned = computed(() => Math.max(0, tenderedTotal.value - Number(props.sale.total)));
 
-const paymentMethodLabel = computed(() => ({
-    cash: t('pay.cash'), bkash: t('pay.bkash'), nagad: t('pay.nagad'), credit: t('pay.credit'), split: t('pay.split'),
-}[props.sale.payment_mode] || props.sale.payment_mode));
+const PAYMENT_LABELS = { cash: 'Cash', bkash: 'bKash', nagad: 'Nagad', credit: 'Credit', split: 'Split' };
+const paymentMethodLabel = computed(() => PAYMENT_LABELS[props.sale.payment_mode] || props.sale.payment_mode);
+const ORDER_SOURCE_LABELS = { delivery: 'Delivery', takeaway: 'Takeaway', dine_in: 'Dine-in' };
 
 const barcodeId = computed(() => 'memo-barcode-svg' + props.idSuffix);
 const qrId = computed(() => 'memo-rating-qr' + props.idSuffix);
@@ -81,7 +85,7 @@ watch(() => [props.sale.id, props.sale.invoice_no, settings.value.show_shop_qr, 
 <template>
     <div class="receipt-memo" :class="['paper-' + (settings.paper_width || '58mm').replace('mm', ''), { 'rm-framed': settings.show_frame }]">
         <img v-if="shop?.logo_url && settings.show_logo !== false" :src="shop.logo_url" class="rm-logo">
-        <h3>{{ shop?.name || 'Zaylotix POS' }}</h3>
+        <h3>{{ shopDisplayName }}</h3>
         <div class="rc-sub">
             📞 {{ shop?.phone }}<template v-if="shop?.area"> • {{ shop.area }}</template>
             <template v-if="settings.show_email && shop?.email"><br>✉ {{ shop.email }}</template>
@@ -89,44 +93,44 @@ watch(() => [props.sale.id, props.sale.invoice_no, settings.value.show_shop_qr, 
             <template v-if="settings.show_bin && shop?.bin_no && sale.vat > 0"><br>BIN: {{ shop.bin_no }}</template>
             <template v-if="settings.show_trade_license && shop?.trade_license_no"><br>Trade License: {{ shop.trade_license_no }}</template>
             <template v-if="settings.show_tin && shop?.tin_no"><br>TIN: {{ shop.tin_no }}</template>
-            <br>মেমো — {{ sale.invoice_no }} • {{ sale.date }} {{ sale.time }}
-            <template v-if="sale.isOfflinePending"><br><span class="rm-offline-pending">⏳ অফলাইন বিল — সিঙ্কের পর চূড়ান্ত নম্বর পাবেন</span></template>
-            <template v-if="settings.show_cashier && sale.user?.name"><br>বিক্রেতা: {{ sale.user.name }}</template>
+            <br>Memo — {{ sale.invoice_no }} • {{ sale.date }} {{ sale.time }}
+            <template v-if="sale.isOfflinePending"><br><span class="rm-offline-pending">⏳ Offline bill — final number after sync</span></template>
+            <template v-if="settings.show_cashier && sale.user?.name"><br>Served by: {{ sale.user.name }}</template>
             <template v-if="tableOrder">
-                <br>{{ t('restaurant.orderNo', { id: tableOrder.id }) }} • {{ tableOrder.order_source === 'delivery' ? t('restaurant.sourceDelivery') : tableOrder.order_source === 'takeaway' ? t('restaurant.sourceTakeaway') : t('restaurant.sourceDineIn') }}{{ tableOrder.table?.name ? ' — ' + tableOrder.table.name : '' }}
+                <br>Order #{{ tableOrder.id }} • {{ ORDER_SOURCE_LABELS[tableOrder.order_source] || 'Dine-in' }}{{ tableOrder.table?.name ? ' — ' + tableOrder.table.name : '' }}
                 <template v-if="tableOrder.waiter_name"> • {{ tableOrder.waiter_name }}</template>
             </template>
         </div>
         <div class="rm-customer">
-            কাস্টমার: {{ sale.customer?.name || 'নগদ কাস্টমার' }}<template v-if="settings.show_customer_phone && sale.customer?.phone"> • {{ sale.customer.phone }}</template>
+            Customer: {{ sale.customer?.name || 'Walk-in customer' }}<template v-if="settings.show_customer_phone && sale.customer?.phone"> • {{ sale.customer.phone }}</template>
         </div>
         <div v-for="l in sale.items" :key="l.id" class="rc-l">
             <span>
                 {{ l.product_name }}{{ (l.unit_label || l.variant_label) ? ' (' + (l.unit_label || l.variant_label) + ')' : '' }} ×{{ l.qty }}
-                <template v-if="l.discount > 0"><br><span class="rm-item-discount">ছাড় −{{ money(l.discount) }}</span></template>
+                <template v-if="l.discount > 0"><br><span class="rm-item-discount">Discount −{{ money(l.discount) }}</span></template>
             </span>
             <b>{{ money(l.price * l.qty - (l.discount || 0)) }}</b>
         </div>
         <div class="rm-subtotal"><span>Subtotal</span><span>{{ money(sale.subtotal) }}</span></div>
-        <div v-if="sale.discount > 0" class="rc-l"><span>ছাড়{{ sale.coupon_code ? ` (${sale.coupon_code})` : '' }}</span><b>− {{ money(sale.discount) }}</b></div>
-        <div v-if="sale.service_charge > 0" class="rc-l"><span>{{ t('pos.serviceCharge') }}</span><b>+ {{ money(sale.service_charge) }}</b></div>
-        <div v-if="sale.vat > 0" class="rc-l"><span>VAT<template v-if="settings.show_vat_inclusive_note"> (দামের মধ্যে অন্তর্ভুক্ত)</template></span><b>{{ money(sale.vat) }}</b></div>
-        <div class="rc-t"><span>মোট</span><span>{{ money(sale.total) }}</span></div>
-        <div v-if="settings.show_payment_method" class="rm-meta-line"><span>পেমেন্ট মাধ্যম</span><b>{{ paymentMethodLabel }}</b></div>
-        <div v-if="settings.show_tendered_change && tenderedTotal > 0" class="rm-meta-line"><span>দিয়েছেন</span><b>{{ money(tenderedTotal) }}</b></div>
-        <div v-if="settings.show_tendered_change && changeReturned > 0" class="rm-meta-line"><span>ফেরত</span><b>{{ money(changeReturned) }}</b></div>
+        <div v-if="sale.discount > 0" class="rc-l"><span>Discount{{ sale.coupon_code ? ` (${sale.coupon_code})` : '' }}</span><b>− {{ money(sale.discount) }}</b></div>
+        <div v-if="sale.service_charge > 0" class="rc-l"><span>Service Charge</span><b>+ {{ money(sale.service_charge) }}</b></div>
+        <div v-if="sale.vat > 0" class="rc-l"><span>VAT<template v-if="settings.show_vat_inclusive_note"> (included in price)</template></span><b>{{ money(sale.vat) }}</b></div>
+        <div class="rc-t"><span>Total</span><span>{{ money(sale.total) }}</span></div>
+        <div v-if="settings.show_payment_method" class="rm-meta-line"><span>Payment Method</span><b>{{ paymentMethodLabel }}</b></div>
+        <div v-if="settings.show_tendered_change && tenderedTotal > 0" class="rm-meta-line"><span>Tendered</span><b>{{ money(tenderedTotal) }}</b></div>
+        <div v-if="settings.show_tendered_change && changeReturned > 0" class="rm-meta-line"><span>Change</span><b>{{ money(changeReturned) }}</b></div>
         <div v-if="sale.points_redeemed || sale.points_earned" class="rm-points">
-            <span v-if="sale.points_redeemed">{{ t('pos.pointsRedeemedReceipt', { n: sale.points_redeemed }) }} </span>
-            <span v-if="sale.points_earned">{{ t('pos.pointsEarnedReceipt', { n: sale.points_earned }) }}</span>
+            <span v-if="sale.points_redeemed">{{ sale.points_redeemed }} points redeemed </span>
+            <span v-if="sale.points_earned">{{ sale.points_earned }} points earned</span>
         </div>
-        <div v-if="dueRemainder > 0" class="rm-due">বাকি বিল — {{ money(dueRemainder) }}</div>
-        <div class="rc-f">{{ shop?.receipt_footer || 'ধন্যবাদ! আবার আসবেন' }}</div>
+        <div v-if="dueRemainder > 0" class="rm-due">Due balance — {{ money(dueRemainder) }}</div>
+        <div class="rc-f">{{ shop?.receipt_footer || 'Thank you! Please come again' }}</div>
         <div v-if="settings.show_exchange_policy && settings.exchange_policy_text" class="rm-exchange">{{ settings.exchange_policy_text }}</div>
         <template v-if="showBarcodeAndQr">
             <div class="rm-barcode-wrap"><svg :id="barcodeId"></svg></div>
             <div v-if="sale.rating_url" class="rm-qr-wrap">
                 <canvas :id="qrId"></canvas>
-                <div class="rm-qr-hint">{{ t('sales.rateHint') }}</div>
+                <div class="rm-qr-hint">Rate your experience</div>
             </div>
             <div v-if="settings.show_shop_qr && shopQrUrl" class="rm-qr-wrap">
                 <canvas :id="shopQrId"></canvas>

@@ -9,6 +9,7 @@ import { useToast } from '@/composables/useToast';
 import { usePermissions } from '@/composables/usePermissions';
 import { buildVoidPreview } from '@/support/saleVoidPreview';
 import { canBluetoothPrintMemo, printMemoViaBluetooth } from '@/support/bluetoothMemoPrint';
+import { buildReceiptWhatsAppText, whatsAppUrlFor } from '@/support/receiptMessage';
 
 const props = defineProps({ sale: Object, collectedTotal: Number, hasReturn: Boolean, returned: Object, returns: { type: Array, default: () => [] } });
 
@@ -102,49 +103,14 @@ function createInstallmentPlan() {
 // memo_settings toggles) — previously this built its own much shorter
 // text (shop name, items, total only), so a customer's WhatsApp copy and
 // their printed copy showed different information.
+// Used to duplicate buildReceiptWhatsAppText()'s logic by hand here —
+// a real drift risk (this copy and the shared one could silently diverge).
+// Now just calls the one shared builder, same as Pos/Index.vue and
+// Clothing/Pos.vue already do, so there's exactly one place that decides
+// what a memo's WhatsApp text looks like.
 function sendMemoWA() {
-    const s = props.sale;
-    const settings = shop.value?.memo_settings || {};
-    const phone = s.customer?.phone || '';
-    const num = phone ? '88' + phone.replace(/\D/g, '').replace(/^88/, '') : '';
-
-    const headerLines = [`*${shop.value?.name || 'Zaylotix POS'}*`];
-    if (shop.value?.phone) headerLines.push(`📞 ${shop.value.phone}${shop.value?.area ? ' • ' + shop.value.area : ''}`);
-    if (settings.show_email && shop.value?.email) headerLines.push(`✉ ${shop.value.email}`);
-    if (settings.show_website && shop.value?.website) headerLines.push(`🌐 ${shop.value.website}`);
-    if (settings.show_bin && shop.value?.bin_no && s.vat > 0) headerLines.push(`BIN: ${shop.value.bin_no}`);
-    if (settings.show_trade_license && shop.value?.trade_license_no) headerLines.push(`Trade License: ${shop.value.trade_license_no}`);
-    if (settings.show_tin && shop.value?.tin_no) headerLines.push(`TIN: ${shop.value.tin_no}`);
-    if (settings.show_cashier && s.user?.name) headerLines.push(`বিক্রেতা: ${s.user.name}`);
-
-    const customerLine = `কাস্টমার: ${s.customer?.name || 'নগদ কাস্টমার'}${settings.show_customer_phone && s.customer?.phone ? ' • ' + s.customer.phone : ''}`;
-
-    const lines = s.items.map((l) => `${l.product_name}${(l.unit_label || l.variant_label) ? ' (' + (l.unit_label || l.variant_label) + ')' : ''}  ${l.qty}×${l.price} = ${money(l.price * l.qty - (l.discount || 0))}${l.discount > 0 ? ' (ছাড় −' + money(l.discount) + ')' : ''}`).join('\n');
-
-    const totals = [`Subtotal: ${money(s.subtotal)}`];
-    if (s.discount > 0) totals.push(`ছাড়: − ${money(s.discount)}`);
-    if (s.service_charge > 0) totals.push(`${t('pos.serviceCharge')}: + ${money(s.service_charge)}`);
-    if (s.vat > 0) totals.push(`VAT${settings.show_vat_inclusive_note ? ' (দামের মধ্যে অন্তর্ভুক্ত)' : ''}: ${money(s.vat)}`);
-    totals.push(`*মোট: ${money(s.total)}*`);
-
-    const tendered = (s.payments || []).reduce((sum, p) => sum + Number(p.amount), 0);
-    const change = Math.max(0, tendered - Number(s.total));
-    const due = dueRemainder.value;
-    if (settings.show_payment_method) totals.push(`পেমেন্ট: ${payModeLabel.value[s.payment_mode]}`);
-    if (settings.show_tendered_change && tendered > 0) totals.push(`দিয়েছেন: ${money(tendered)}`);
-    if (settings.show_tendered_change && change > 0) totals.push(`ফেরত: ${money(change)}`);
-    if (due > 0) totals.push(`বাকি বিল: ${money(due)}`);
-
-    const footerLines = [shop.value?.receipt_footer || 'ধন্যবাদ! আবার আসবেন'];
-    if (settings.show_exchange_policy && settings.exchange_policy_text) footerLines.push(settings.exchange_policy_text);
-
-    const divider = '─'.repeat(16);
-    const text = [
-        ...headerLines, divider, `মেমো: ${s.invoice_no} • ${s.date} ${s.time}`, customerLine, divider,
-        lines, divider, ...totals, '', ...footerLines,
-    ].join('\n');
-
-    window.open('https://wa.me/' + num + '?text=' + encodeURIComponent(text), '_blank');
+    const text = buildReceiptWhatsAppText(shop.value, props.sale);
+    window.open(whatsAppUrlFor(props.sale, text), '_blank');
 }
 
 // only present when this sale came from billing a restaurant table order —

@@ -363,14 +363,6 @@ class PosController extends Controller
     public function checkout(CheckoutRequest $request)
     {
         $shopId = Tenancy::id();
-
-        // A warehouse branch is stock-only, and a Head Office root shop is
-        // central-accounting-only — neither ever rings up a customer sale
-        // itself (Khaled's explicit ask for both). Actual selling happens
-        // only at real selling branches.
-        $currentShop = Tenancy::shop();
-        abort_if($currentShop?->is_warehouse, 422, 'এটি একটি ওয়্যারহাউজ — এখান থেকে সরাসরি বিক্রি করা যায় না, শুধু স্টক ট্রান্সফার করা যায়।');
-        abort_if($currentShop?->is_head_office, 422, 'এটি হেড অফিস — এখান থেকে সরাসরি বিক্রি করা যায় না, শাখা থেকে বিক্রি করুন।');
         $userId = Auth::guard('web')->id() ?? Auth::guard('sanctum')->id();
         $data = $request->validated();
 
@@ -593,6 +585,16 @@ class PosController extends Controller
     {
         return DB::transaction(function () use ($data, $shopId, $userId, $forcedPayments, $autoCoverTotal) {
             $shop = Shop::whereKey($shopId)->lockForUpdate()->first();
+
+            // A warehouse branch is stock-only, and a Head Office root shop
+            // is central-accounting-only — neither ever rings up a customer
+            // sale itself (Khaled's explicit ask for both). Enforced HERE,
+            // not just in checkout() above it — a real gap an isolation
+            // audit caught: the payment-gateway webhook path and its own
+            // checkout-initiation route both call performCheckout()
+            // directly and would otherwise skip this guard entirely.
+            abort_if($shop?->is_warehouse, 422, 'এটি একটি ওয়্যারহাউজ — এখান থেকে সরাসরি বিক্রি করা যায় না, শুধু স্টক ট্রান্সফার করা যায়।');
+            abort_if($shop?->is_head_office, 422, 'এটি হেড অফিস — এখান থেকে সরাসরি বিক্রি করা যায় না, শাখা থেকে বিক্রি করুন।');
 
             // Idempotency: a client-generated UUID identifies "this one
             // checkout attempt" across retries. Without it, the offline
