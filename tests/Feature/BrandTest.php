@@ -113,6 +113,51 @@ class BrandTest extends TestCase
         $this->assertEquals(550, $variantB->fresh()->cost);
     }
 
+    /**
+     * Audit finding INV-1 (2026-11-20, confirmed live on SEAMAN): a variant
+     * restocked via a recorded Purchase (the normal supplier-bill path) used
+     * to always plain-overwrite its cost, completely ignoring
+     * weighted_average_costing, even though the manual Stock-page stock-in
+     * route (pinned above) correctly blends it. The two routes must never
+     * disagree about the same shop's same costing policy.
+     */
+    public function test_a_purchase_of_a_variant_respects_weighted_average_costing_the_same_way_stockin_does(): void
+    {
+        // WITH the feature: 1 @1600 + 5 @1750 -> 1725, same as the stockIn route
+        [$shop, $owner] = $this->aBrandShop();
+        $this->grantFeature($shop, 'weighted_average_costing');
+        $this->grantFeature($shop, 'purchases');
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'Power X', 'cost' => 1600, 'price' => 2290, 'stock' => 1]);
+        $variant = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => '42', 'stock' => 1, 'cost' => 1600]);
+
+        $response = $this->actingAs($owner, 'web')->post(route('app.purchases.store'), [
+            'amount' => 8750, 'method' => 'cash',
+            'product_id' => $product->id, 'product_variant_id' => $variant->id,
+            'qty' => 5, 'cost' => 1750,
+        ]);
+        $response->assertSessionHasNoErrors();
+        $response->assertRedirect();
+        $this->assertEquals(1725, $variant->fresh()->cost);
+        $this->assertEquals(6, $variant->fresh()->stock);
+
+        // WITHOUT it (Baby Park's world): the new cost overwrites, exactly as before
+        [$shopB, $ownerB] = $this->createShopWithOwner();
+        $this->grantFeature($shopB, 'product_variants');
+        $this->grantFeature($shopB, 'purchases');
+        $productB = Product::create(['shop_id' => $shopB->id, 'name' => 'L-10001', 'cost' => 500, 'price' => 900, 'stock' => 2]);
+        $variantB = ProductVariant::create(['shop_id' => $shopB->id, 'product_id' => $productB->id, 'size' => '36', 'stock' => 2, 'cost' => 500]);
+
+        $responseB = $this->actingAs($ownerB, 'web')->post(route('app.purchases.store'), [
+            'amount' => 2200, 'method' => 'cash',
+            'product_id' => $productB->id, 'product_variant_id' => $variantB->id,
+            'qty' => 4, 'cost' => 550,
+        ]);
+        $responseB->assertSessionHasNoErrors();
+        $responseB->assertRedirect();
+        $this->assertEquals(550, $variantB->fresh()->cost);
+        $this->assertEquals(6, $variantB->fresh()->stock);
+    }
+
     public function test_brand_report_prefers_the_variants_brand_and_collects_nil(): void
     {
         [$shop, $owner] = $this->aBrandShop();

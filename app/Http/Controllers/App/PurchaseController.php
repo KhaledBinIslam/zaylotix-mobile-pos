@@ -192,10 +192,7 @@ class PurchaseController extends Controller
             if (! empty($data['product_variant_id'])) {
                 // a variant's own stock, unlike the base product, is always a
                 // whole-unit count (no weight-based/batch/serial variant path
-                // exists — see ProductVariantController for the same scope),
-                // and its cost is a plain overwrite, not a weighted average,
-                // matching ProductVariantController::stockIn exactly so a
-                // purchase-linked stock-in and a manual one never disagree
+                // exists — see ProductVariantController for the same scope).
                 $lockedVariant = ProductVariant::whereKey($data['product_variant_id'])
                     ->where('product_id', $lockedProduct->id)
                     ->lockForUpdate()->first();
@@ -207,22 +204,47 @@ class PurchaseController extends Controller
                     abort(422, "{$lockedProduct->name} ({$lockedVariant->label()})-এর পরিমাণ পূর্ণ সংখ্যা হতে হবে।");
                 }
 
-                $lockedVariant->applyStockDelta($data['qty']);
-                $lockedVariant->update(['cost' => $data['cost'] ?? $lockedVariant->cost]);
-                $lockedProduct->applyStockDelta($data['qty']);
-
-                // a line-tracked shop's purchase is a receipt from THIS
-                // supplier — the same merge-or-create every other stock-in
-                // path uses, or the supplier filter/per-lot sticker never
-                // learns about purchase-received stock (see ProductSource)
+                // Cost resolution mirrors ProductVariantController::stockIn()
+                // exactly. Bug fix (2026-11-20, audit finding INV-1): this used
+                // to always plain-overwrite the cost here, silently ignoring
+                // weighted_average_costing — confirmed live on SEAMAN (a real
+                // paying shop with that feature on), every variant restocked
+                // via Purchase recorded the wrong cost while the manual
+                // Stock-page stock-in route correctly blended it. A
+                // purchase-linked stock-in and a manual one must never disagree.
+                $line = null;
                 if (Tenancy::shop()?->hasFeature('source_lines')) {
-                    \App\Models\ProductSource::upsertLine(
+                    // a line-tracked shop's purchase is a receipt from THIS
+                    // supplier — the same merge-or-create every other stock-in
+                    // path uses, or the supplier filter/per-lot sticker never
+                    // learns about purchase-received stock (see ProductSource)
+                    $paidCostForLine = isset($data['cost']) ? (float) $data['cost'] : (float) ($lockedVariant->cost ?? $lockedProduct->cost ?? 0);
+                    $line = \App\Models\ProductSource::upsertLine(
                         Tenancy::id(), $lockedProduct->id, $lockedVariant->id,
                         ! empty($data['supplier_id']) ? (int) $data['supplier_id'] : null, null,
-                        (float) $data['qty'],
-                        isset($data['cost']) ? (float) $data['cost'] : (float) ($lockedVariant->cost ?? $lockedProduct->cost ?? 0),
-                        null, (float) ($lockedVariant->price ?? $lockedProduct->price ?? 0)
+                        (float) $data['qty'], $paidCostForLine, null,
+                        (float) ($lockedVariant->price ?? $lockedProduct->price ?? 0)
                     );
+                    $newCost = $line->cost;
+                } else {
+                    $newCost = $lockedVariant->cost;
+                    if (isset($data['cost'])) {
+                        $oldStock = (float) $lockedVariant->stock;
+                        $oldCost = (float) ($lockedVariant->cost ?? $lockedProduct->cost ?? 0);
+                        $usesAverage = Tenancy::shop()?->usesWeightedAverageCosting();
+                        $newCost = ($usesAverage && ($oldStock + $data['qty']) > 0 && $oldStock > 0)
+                            ? round((($oldStock * $oldCost) + ($data['qty'] * (float) $data['cost'])) / ($oldStock + $data['qty']), 2)
+                            : $data['cost'];
+                    }
+                }
+
+                $lockedVariant->applyStockDelta($data['qty']);
+                $lockedVariant->update(['cost' => $newCost]);
+                $lockedProduct->applyStockDelta($data['qty']);
+                if ($line) {
+                    // mirror cost rides the line's cost on a line-tracked shop,
+                    // same as the dedicated 🚚 variant stock-in does
+                    $lockedProduct->update(['cost' => $line->cost]);
                 }
 
                 return;
