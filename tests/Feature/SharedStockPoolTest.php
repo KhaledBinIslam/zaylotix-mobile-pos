@@ -283,4 +283,118 @@ class SharedStockPoolTest extends TestCase
         $this->assertEquals(45, (float) $branchAProduct->refresh()->stock);
         $this->assertEquals(50, (float) $siblingProduct->refresh()->stock);
     }
+
+    /**
+     * Real incident, Baby Park, 2026-11-22: a branch deleted its own copy
+     * of a pooled product (owner's intentional "don't need this anymore"
+     * delete) and the main shop's copy — and the ~15.5 lakh of stock value
+     * genuinely shared with it — stayed completely untouched, so the two
+     * shops' Accounts pages instantly disagreed about one physical stock.
+     * Deleting ANY pool member must delete them ALL, no confirmation
+     * needed (Khaled's explicit final requirement).
+     */
+    public function test_deleting_a_branchs_pooled_copy_deletes_the_master_and_every_sibling_branch(): void
+    {
+        [$main, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'shared_stock_pool');
+        $branchA = $this->createBranch($main);
+        $branchB = $this->createBranch($main);
+        $branchAOwner = $branchA->users()->first();
+
+        $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'B-20025', 'cost' => 1450, 'price' => 2000, 'stock' => 0]);
+        $branchAProduct = $this->linkBranch($main, $branchA, $mainProduct, 1050);
+        $branchBProduct = $this->linkBranch($main, $branchB, $mainProduct, 1050);
+        Product::withoutGlobalScopes()->whereKey($mainProduct->id)->update(['stock' => 1050]);
+
+        $this->actingAs($branchAOwner, 'web')
+            ->delete(route('app.products.destroy', $branchAProduct->id))
+            ->assertSessionHasNoErrors();
+
+        $this->assertTrue($branchAProduct->fresh()->trashed());
+        $this->assertTrue(Product::withoutGlobalScopes()->whereKey($mainProduct->id)->first()->trashed());
+        $this->assertTrue(Product::withoutGlobalScopes()->whereKey($branchBProduct->id)->first()->trashed());
+    }
+
+    /**
+     * Same cascade, reached via the Admin support tool
+     * (ShopDataController::destroyProduct) — not just the owner-facing
+     * route. Calls the controller method directly (not over HTTP): it's
+     * the exact same `$product->delete()` call relying on the exact same
+     * model event as the owner-facing route already proven above, so
+     * this only needs to confirm that second call site reaches it too,
+     * without fighting admin-route/middleware test setup unrelated to
+     * this fix.
+     */
+    public function test_admin_deleting_a_pooled_product_also_cascades(): void
+    {
+        [$main] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'shared_stock_pool');
+        $branchA = $this->createBranch($main);
+
+        $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Rice', 'cost' => 50, 'price' => 100, 'stock' => 100]);
+        $branchAProduct = $this->linkBranch($main, $branchA, $mainProduct, 100);
+
+        (new \App\Http\Controllers\Admin\ShopDataController())->destroyProduct($branchA, $branchAProduct->id);
+
+        $this->assertTrue($branchAProduct->fresh()->trashed());
+        $this->assertTrue($mainProduct->fresh()->trashed());
+    }
+
+    /** A plain (non-pooled) shop keeps today's exact behavior -- deleting one branch's own product never touches an unrelated sibling. */
+    public function test_deleting_a_non_pooled_products_copy_never_cascades(): void
+    {
+        [$main] = $this->createShopWithOwner(); // shared_stock_pool NOT granted
+        $this->grantFeature($main, 'shared_catalog');
+        $branchA = $this->createBranch($main);
+        $branchAOwner = $branchA->users()->first();
+
+        $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Rice', 'cost' => 50, 'price' => 100, 'stock' => 100]);
+        CatalogSync::syncProductToBranches($main, $mainProduct);
+        $branchAProduct = Product::withoutGlobalScopes()->where('shop_id', $branchA->id)->where('master_product_id', $mainProduct->id)->first();
+
+        $this->actingAs($branchAOwner, 'web')
+            ->delete(route('app.products.destroy', $branchAProduct->id))
+            ->assertSessionHasNoErrors();
+
+        $this->assertTrue($branchAProduct->fresh()->trashed());
+        $this->assertFalse($mainProduct->fresh()->trashed());
+    }
+
+    public function test_restoring_a_branchs_pooled_copy_restores_the_master_and_every_sibling_branch(): void
+    {
+        [$main] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'shared_stock_pool');
+        $branchA = $this->createBranch($main);
+        $branchB = $this->createBranch($main);
+        $branchAOwner = $branchA->users()->first();
+
+        $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Rice', 'cost' => 50, 'price' => 100, 'stock' => 100]);
+        $branchAProduct = $this->linkBranch($main, $branchA, $mainProduct, 100);
+        $branchBProduct = $this->linkBranch($main, $branchB, $mainProduct, 100);
+
+        $this->actingAs($branchAOwner, 'web')->delete(route('app.products.destroy', $branchAProduct->id))->assertSessionHasNoErrors();
+        $this->assertTrue($mainProduct->fresh()->trashed());
+
+        $mainProduct->fresh()->restore();
+
+        $this->assertFalse($mainProduct->fresh()->trashed());
+        $this->assertFalse(Product::withoutGlobalScopes()->whereKey($branchAProduct->id)->first()->trashed());
+        $this->assertFalse(Product::withoutGlobalScopes()->whereKey($branchBProduct->id)->first()->trashed());
+    }
+
+    public function test_a_cascaded_delete_writes_an_activity_log_entry_on_every_affected_shop(): void
+    {
+        [$main] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'shared_stock_pool');
+        $branchA = $this->createBranch($main);
+        $branchAOwner = $branchA->users()->first();
+
+        $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Rice', 'cost' => 50, 'price' => 100, 'stock' => 100]);
+        $branchAProduct = $this->linkBranch($main, $branchA, $mainProduct, 100);
+
+        $this->actingAs($branchAOwner, 'web')->delete(route('app.products.destroy', $branchAProduct->id))->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('activity_logs', ['shop_id' => $main->id, 'action' => 'product.pool_delete_cascade', 'subject_id' => $mainProduct->id]);
+        $this->assertDatabaseHas('activity_logs', ['shop_id' => $branchA->id, 'action' => 'product.pool_delete_cascade', 'subject_id' => $branchAProduct->id]);
+    }
 }

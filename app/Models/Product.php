@@ -106,6 +106,27 @@ class Product extends Model
             foreach (static::withoutGlobalScopes()->onlyTrashed()->where('master_product_id', $product->id)->get() as $copy) {
                 $copy->restore();
             }
+
+            // mirror of deleteBranchCopies()'s own symmetric fix — restoring
+            // a pooled BRANCH copy must bring the master (and every other
+            // sibling the delete took down with it) back too, or they stay
+            // stuck deleted on every other shop forever
+            if ($product->master_product_id !== null) {
+                $master = static::withoutGlobalScopes()->find($product->master_product_id);
+                if ($master && $master->shop?->hasFeature('shared_stock_pool')) {
+                    $siblings = static::withoutGlobalScopes()
+                        ->onlyTrashed()
+                        ->where(fn ($q) => $q->whereKey($product->master_product_id)->orWhere('master_product_id', $product->master_product_id))
+                        ->where('id', '!=', $product->id)
+                        ->get();
+
+                    if ($siblings->isNotEmpty()) {
+                        static::logPoolCascade('product.pool_restore_cascade', $product, $siblings, 'ফিরিয়ে আনা হয়েছে');
+                    }
+
+                    $siblings->each(fn (self $sibling) => $sibling->restore());
+                }
+            }
         });
     }
 
@@ -165,15 +186,73 @@ class Product extends Model
      *
      * withoutGlobalScopes() because the copies belong to the BRANCH's
      * shop_id — a tenant-scoped query from the main shop sees none of them.
+     *
+     * Real incident, Baby Park, 2026-11-22: a branch deleted ITS OWN copy
+     * of a pooled article (shared_stock_pool, not just shared_catalog) —
+     * this cascade used to only run master -> branches, so the master
+     * shop's row (and the ~15.5 lakh of stock value genuinely shared with
+     * it) was left completely untouched, and the two branches' Accounts
+     * pages instantly disagreed about the same physical stock. For a
+     * shop with shared_stock_pool on, deletion must be symmetric in
+     * EITHER direction — it's one shared product, not a one-way catalog
+     * push, so removing it anywhere removes it everywhere. Plain
+     * shared_catalog (no pool) keeps the original one-way master-only
+     * cascade unchanged — every explicit whereNull('deleted_at') below
+     * guards against the resulting recursion (deleting a sibling re-fires
+     * this same hook on it) ever looping past rows already handled.
      */
     public function deleteBranchCopies(): void
     {
         if ($this->master_product_id !== null) {
-            return; // already a branch copy — nothing hangs off it
+            $master = static::withoutGlobalScopes()->find($this->master_product_id);
+            if ($master && ! $master->trashed() && $master->shop?->hasFeature('shared_stock_pool')) {
+                $siblings = static::withoutGlobalScopes()
+                    ->whereNull('deleted_at')
+                    ->where(fn ($q) => $q->whereKey($this->master_product_id)->orWhere('master_product_id', $this->master_product_id))
+                    ->where('id', '!=', $this->id)
+                    ->get();
+
+                if ($siblings->isNotEmpty()) {
+                    static::logPoolCascade('product.pool_delete_cascade', $this, $siblings, 'মুছে ফেলা হয়েছে');
+                }
+
+                $siblings->each(fn (self $sibling) => $sibling->delete());
+            }
+
+            return; // a plain (non-pooled) branch copy has nothing else hanging off it
         }
 
-        foreach (static::withoutGlobalScopes()->where('master_product_id', $this->id)->get() as $copy) {
+        foreach (static::withoutGlobalScopes()->whereNull('deleted_at')->where('master_product_id', $this->id)->get() as $copy) {
             $copy->delete();
+        }
+    }
+
+    /**
+     * One ActivityLog row per shop touched by a pool-wide cascade (delete
+     * or restore), explicit shop_id per row since Activity::log()'s own
+     * Tenancy::id() shortcut would attribute every row to whichever shop
+     * happens to be the active tenant, not the shop the row actually
+     * belongs to — wrong for every sibling but the one that triggered this.
+     */
+    private static function logPoolCascade(string $action, self $trigger, Collection $siblings, string $verbBn): void
+    {
+        $userId = \Illuminate\Support\Facades\Auth::guard('web')->id() ?? \Illuminate\Support\Facades\Auth::guard('sanctum')->id();
+        $all = $siblings->push($trigger)->unique('id')->values();
+        $shopNames = $all->mapWithKeys(fn (self $p) => [$p->shop_id => $p->shop?->name ?? "Shop #{$p->shop_id}"]);
+        $branchList = $shopNames->values()->implode('، ');
+        $affectedIds = $all->pluck('id')->values()->all();
+
+        foreach ($all as $row) {
+            \App\Models\ActivityLog::create([
+                'shop_id' => $row->shop_id,
+                'user_id' => $userId,
+                'action' => $action,
+                'subject_type' => self::class,
+                'subject_id' => $row->id,
+                'description' => "পণ্য '{$trigger->name}' শেয়ার্ড স্টক পুল-এ থাকা সব শাখায় {$verbBn} — {$branchList}।",
+                'meta' => ['triggered_by_product_id' => $trigger->id, 'triggered_by_shop_id' => $trigger->shop_id, 'affected_product_ids' => $affectedIds],
+                'created_at' => now(),
+            ]);
         }
     }
 
