@@ -64,12 +64,21 @@ class ProductsReconcileDeletedPool extends Command
         $apply = (bool) $this->option('apply');
 
         // every product in the pool group: the main shop's own rows, plus
-        // every branch copy pointing at one of them -- INCLUDING already-
-        // trashed rows on both sides, since that's exactly what this
-        // command needs to compare
+        // every GENUINE branch copy pointing at one of them -- INCLUDING
+        // already-trashed rows on both sides, since that's exactly what
+        // this command needs to compare. "Genuine" excludes a product
+        // whose master_product_id happens to point here but whose own
+        // shop isn't actually a branch of $shop (or is a demo account) --
+        // real incident, 2026-11-22: two demo shops cloned from Baby Park
+        // and SEAMAN kept master_product_id pointing at the real shops.
         $mainProducts = Product::withoutGlobalScopes()->withTrashed()->where('shop_id', $shop->id)->get();
         $mainIds = $mainProducts->pluck('id');
-        $branchCopies = Product::withoutGlobalScopes()->withTrashed()->whereIn('master_product_id', $mainIds)->get();
+        $validBranchShopIds = \App\Models\Shop::withoutGlobalScopes()
+            ->where('parent_shop_id', $shop->id)->where('account_type', '!=', 'demo')->pluck('id');
+        $branchCopies = Product::withoutGlobalScopes()->withTrashed()
+            ->whereIn('master_product_id', $mainIds)
+            ->whereIn('shop_id', $validBranchShopIds)
+            ->get();
 
         $groups = $mainProducts->map(fn (Product $m) => $branchCopies->where('master_product_id', $m->id)->push($m));
 

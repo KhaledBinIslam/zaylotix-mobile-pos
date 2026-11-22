@@ -103,21 +103,38 @@ class Product extends Model
             // articles:regenerate-barcodes to mint fresh ones
             $product->variants()->withTrashed()->restore();
 
-            foreach (static::withoutGlobalScopes()->onlyTrashed()->where('master_product_id', $product->id)->get() as $copy) {
-                $copy->restore();
+            if ($product->master_product_id === null) {
+                $thisShop = Tenancy::id() === $product->shop_id ? Tenancy::shop() : $product->shop;
+                if ($thisShop && $thisShop->hasFeature('shared_stock_pool')) {
+                    foreach (static::withoutGlobalScopes()->onlyTrashed()->whereIn('id', static::validBranchCopyIds($product->id, $thisShop->id))->get() as $copy) {
+                        $copy->restore();
+                    }
+                } else {
+                    // shared_catalog-only: original unconditional behavior
+                    foreach (static::withoutGlobalScopes()->onlyTrashed()->where('master_product_id', $product->id)->get() as $copy) {
+                        $copy->restore();
+                    }
+                }
             }
 
             // mirror of deleteBranchCopies()'s own symmetric fix — restoring
             // a pooled BRANCH copy must bring the master (and every other
             // sibling the delete took down with it) back too, or they stay
-            // stuck deleted on every other shop forever
+            // stuck deleted on every other shop forever. Same validity check
+            // as deleteBranchCopies() — never inferred from master_product_id
+            // alone (see validBranchCopyIds() docblock).
             if ($product->master_product_id !== null) {
                 $master = static::withoutGlobalScopes()->find($product->master_product_id);
-                if ($master && $master->shop?->hasFeature('shared_stock_pool')) {
+                $thisShop = $product->shop;
+                $thisIsValidSibling = $thisShop && $thisShop->parent_shop_id === $master?->shop_id && $thisShop->account_type !== 'demo';
+
+                if ($master && $master->shop?->hasFeature('shared_stock_pool') && $thisIsValidSibling) {
+                    $validIds = static::validBranchCopyIds($product->master_product_id, $master->shop_id)
+                        ->reject(fn ($id) => $id === $product->id);
+
                     $siblings = static::withoutGlobalScopes()
                         ->onlyTrashed()
-                        ->where(fn ($q) => $q->whereKey($product->master_product_id)->orWhere('master_product_id', $product->master_product_id))
-                        ->where('id', '!=', $product->id)
+                        ->where(fn ($q) => $q->whereKey($product->master_product_id)->orWhereIn('id', $validIds))
                         ->get();
 
                     if ($siblings->isNotEmpty()) {
@@ -205,11 +222,19 @@ class Product extends Model
     {
         if ($this->master_product_id !== null) {
             $master = static::withoutGlobalScopes()->find($this->master_product_id);
-            if ($master && ! $master->trashed() && $master->shop?->hasFeature('shared_stock_pool')) {
+            $thisShop = $this->shop;
+            $poolOn = $master && ! $master->trashed() && $master->shop?->hasFeature('shared_stock_pool');
+            // $this itself must be a genuine branch of $master, never inferred
+            // from master_product_id alone (see validBranchCopyIds() docblock)
+            $thisIsValidSibling = $thisShop && $thisShop->parent_shop_id === $master?->shop_id && $thisShop->account_type !== 'demo';
+
+            if ($poolOn && $thisIsValidSibling) {
+                $validIds = static::validBranchCopyIds($this->master_product_id, $master->shop_id)
+                    ->reject(fn ($id) => $id === $this->id);
+
                 $siblings = static::withoutGlobalScopes()
                     ->whereNull('deleted_at')
-                    ->where(fn ($q) => $q->whereKey($this->master_product_id)->orWhere('master_product_id', $this->master_product_id))
-                    ->where('id', '!=', $this->id)
+                    ->where(fn ($q) => $q->whereKey($this->master_product_id)->orWhereIn('id', $validIds))
                     ->get();
 
                 if ($siblings->isNotEmpty()) {
@@ -219,10 +244,23 @@ class Product extends Model
                 $siblings->each(fn (self $sibling) => $sibling->delete());
             }
 
-            return; // a plain (non-pooled) branch copy has nothing else hanging off it
+            return; // a plain (non-pooled, or non-sibling) branch copy has nothing else hanging off it
         }
 
-        foreach (static::withoutGlobalScopes()->whereNull('deleted_at')->where('master_product_id', $this->id)->get() as $copy) {
+        $thisShop = Tenancy::id() === $this->shop_id ? Tenancy::shop() : $this->shop;
+        if (! $thisShop || ! $thisShop->hasFeature('shared_stock_pool')) {
+            // shared_catalog-only (no pool): keep the original, unconditional
+            // one-way cascade -- every existing branch copy comes down,
+            // demo-cloning risk doesn't apply here since it's catalog push,
+            // not a shared stock number
+            foreach (static::withoutGlobalScopes()->whereNull('deleted_at')->where('master_product_id', $this->id)->get() as $copy) {
+                $copy->delete();
+            }
+
+            return;
+        }
+
+        foreach (static::withoutGlobalScopes()->whereIn('id', static::validBranchCopyIds($this->id, $thisShop->id))->whereNull('deleted_at')->get() as $copy) {
             $copy->delete();
         }
     }
@@ -425,7 +463,7 @@ class Product extends Model
             }
 
             return collect([$masterId])
-                ->merge(static::withoutGlobalScopes()->where('master_product_id', $masterId)->pluck('id'))
+                ->merge(static::validBranchCopyIds($masterId, $master->shop_id))
                 ->unique()
                 ->values();
         }
@@ -453,12 +491,40 @@ class Product extends Model
         // genuinely rare in practice, one query to learn whether it has
         // any branch copies at all (and reuse the result if so, rather
         // than querying it again).
-        $branchCopyIds = static::withoutGlobalScopes()->where('master_product_id', $this->id)->pluck('id');
+        $branchCopyIds = static::validBranchCopyIds($this->id, $shop->id);
         if ($branchCopyIds->isEmpty()) {
             return collect([$this->id]);
         }
 
         return collect([$this->id])->merge($branchCopyIds)->unique()->values();
+    }
+
+    /**
+     * Real incident, 2026-11-22: two demo shops (cloned FROM Baby Park and
+     * SEAMAN for sales demos) kept their products' master_product_id
+     * pointing at those real shops' real products — 211 rows platform-wide
+     * — so a plain `where('master_product_id', $masterId)` treated an
+     * unrelated demo account as a genuine pool sibling. Confirmed live
+     * contamination both directions: real sales inside the demo shop
+     * decremented the real shop's pooled stock, and editing the real
+     * shop's stock pushed a value into the demo shop's copy.
+     *
+     * A product is only a genuine pool sibling if its OWN shop is an
+     * actual branch of the master's shop (`parent_shop_id` matches) AND
+     * isn't a demo/internal account — never inferred from
+     * master_product_id alone. Every reader of master_product_id for
+     * pooling purposes (this method, deleteBranchCopies(), restored(),
+     * ProductsReconcileDeletedPool) goes through this one query so the
+     * definition can't drift between them again.
+     */
+    private static function validBranchCopyIds(int $masterId, int $masterShopId): Collection
+    {
+        return static::withoutGlobalScopes()
+            ->join('shops', 'shops.id', '=', 'products.shop_id')
+            ->where('products.master_product_id', $masterId)
+            ->where('shops.parent_shop_id', $masterShopId)
+            ->where('shops.account_type', '!=', 'demo')
+            ->pluck('products.id');
     }
 
     /**

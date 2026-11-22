@@ -382,6 +382,50 @@ class SharedStockPoolTest extends TestCase
         $this->assertFalse(Product::withoutGlobalScopes()->whereKey($branchBProduct->id)->first()->trashed());
     }
 
+    /**
+     * Real incident, 2026-11-22: two demo shops cloned from real paying
+     * shops kept their products' master_product_id pointing at the real
+     * shop's products (the clone never reset it) -- 211 rows platform-
+     * wide. A product is only a genuine pool sibling if its own shop is
+     * an ACTUAL branch of the master's shop (parent_shop_id matches) and
+     * isn't a demo account -- never inferred from master_product_id
+     * alone, since a coincidental/leftover value there must never link
+     * two otherwise-unrelated shops.
+     */
+    public function test_a_demo_shops_product_sharing_a_master_product_id_by_accident_is_never_pooled(): void
+    {
+        [$main] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'shared_stock_pool');
+        $branch = $this->createBranch($main);
+        $branchOwner = $branch->users()->first();
+        // NOT a branch of $main (parent_shop_id null) and flagged demo --
+        // simulates the real clone-contamination bug exactly
+        [$demoShop] = $this->createShopWithOwner(['account_type' => 'demo']);
+
+        $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Rice', 'cost' => 50, 'price' => 100, 'stock' => 100]);
+        $branchProduct = $this->linkBranch($main, $branch, $mainProduct, 100);
+        // the accidental link: demo shop's own product, master_product_id
+        // pointing at the real main shop's product, despite not being a branch
+        $demoProduct = Product::create(['shop_id' => $demoShop->id, 'master_product_id' => $mainProduct->id, 'name' => 'Rice', 'cost' => 50, 'price' => 100, 'stock' => 999]);
+
+        // selling in the real branch must NOT move the demo shop's stock
+        $this->sell($branch, $branchOwner, $branchProduct, 5);
+        $this->assertEquals(95, (float) $branchProduct->refresh()->stock);
+        $this->assertEquals(95, (float) $mainProduct->refresh()->stock);
+        $this->assertEquals(999, (float) $demoProduct->refresh()->stock); // untouched
+
+        // deleting the demo shop's product must NOT cascade to the real shops
+        $demoProduct->delete();
+        $this->assertFalse($mainProduct->fresh()->trashed());
+        $this->assertFalse($branchProduct->fresh()->trashed());
+
+        // deleting the REAL branch's product must still cascade to the real
+        // master, and must NOT touch the unrelated demo product at all
+        $branchProduct->fresh()->delete();
+        $this->assertTrue($mainProduct->fresh()->trashed());
+        $this->assertDatabaseMissing('activity_logs', ['shop_id' => $demoShop->id, 'action' => 'product.pool_delete_cascade']);
+    }
+
     public function test_a_cascaded_delete_writes_an_activity_log_entry_on_every_affected_shop(): void
     {
         [$main] = $this->createShopWithOwner();
