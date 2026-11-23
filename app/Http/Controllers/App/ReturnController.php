@@ -214,7 +214,12 @@ class ReturnController extends Controller
         // empty (the items genuinely belong to the OTHER branch, not the
         // currently-active one), so it's unscoped explicitly here too.
         if ($saleId = $request->get('sale_id')) {
+            // withoutGlobalScopes() drops the TENANT scope on purpose (a
+            // cross-branch bill) — but it drops Sale's own 'active' scope
+            // too, so the void filter has to come back by hand: a cancelled
+            // bill must never be offered for return (audit, 2026-11-23)
             $sale = Sale::withoutGlobalScopes()->whereIn('shop_id', $businessShopIds)
+                ->whereNull('voided_at')
                 ->with(['customer', 'payments', 'items' => fn ($q) => $q->withoutGlobalScopes()])
                 ->find($saleId);
 
@@ -236,6 +241,7 @@ class ReturnController extends Controller
 
         $sales = Sale::withoutGlobalScopes()
             ->whereIn('shop_id', $businessShopIds)
+            ->whereNull('voided_at') // same reason as the sale_id lookup above
             ->where(function ($query) use ($q, $resolvedProductId, $resolvedVariantId) {
                 // dot-notation whereHas('items.product', ...) only drops
                 // scopes on the FINAL relation in the chain — the
@@ -386,6 +392,12 @@ class ReturnController extends Controller
             if (! $sale) {
                 abort(404, 'এই বিলটি পাওয়া যায়নি।');
             }
+            // withoutGlobalScopes() above also dropped Sale's 'active'
+            // scope (cross-branch bills need the tenant scope gone), so the
+            // void check is explicit: a cancelled bill has nothing to return
+            // against — real stock and cash would move for no sale
+            // (found by the 2026-11-23 pool-correctness audit)
+            abort_if($sale->isVoided(), 422, 'এই বিলটি বাতিল করা হয়েছে, ফেরত নেওয়া যাবে না।');
             $isCrossBranch = $sale->shop_id !== $shopId;
 
             $ageDays = (int) \Carbon\Carbon::parse($sale->date)->diffInDays(now());

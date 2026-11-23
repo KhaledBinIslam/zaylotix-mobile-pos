@@ -50,8 +50,10 @@ class SupplierReturnController extends Controller
             ]);
         }
 
-        DB::transaction(function () use ($data) {
-            $totalAmount = 0.0;
+        $totalAmount = 0.0;
+        $lineCount = 0;
+
+        DB::transaction(function () use ($data, &$totalAmount, &$lineCount) {
             $sourceLinesOn = Tenancy::shop()?->hasFeature('source_lines');
 
             foreach (array_values($data['lines']) as $i => $line) {
@@ -139,6 +141,7 @@ class SupplierReturnController extends Controller
                 ]);
 
                 $totalAmount += (float) $line['amount'];
+                $lineCount++;
             }
 
             if ($data['settlement_method'] === 'payable') {
@@ -149,6 +152,15 @@ class SupplierReturnController extends Controller
             }
         });
 
-        return back()->with('success', 'সাপ্লায়ার রিটার্ন রেকর্ড করা হয়েছে।');
+        // the Stock sheet toasts this straight after the save, so it says
+        // what actually moved: how much, and where the value went
+        $amountText = '৳'.number_format($totalAmount, 2);
+        $effect = match ($data['settlement_method']) {
+            'payable' => 'সাপ্লায়ারের বকেয়া থেকে '.$amountText.' বাদ গেছে',
+            'cash' => 'ক্যাশে '.$amountText.' যোগ হয়েছে',
+            default => 'ব্যাংকে '.$amountText.' যোগ হয়েছে',
+        };
+
+        return back()->with('success', "সাপ্লায়ার রিটার্ন রেকর্ড করা হয়েছে — {$lineCount}টি লাইন, {$effect}।");
     }
 }

@@ -678,6 +678,89 @@ function savePrice() {
     });
 }
 
+// Return to supplier straight from the article sheet — one variant row,
+// or the whole article (a qty per size/color) in ONE submission. The SAME
+// backend as the More-page supplier return: SupplierReturnController::
+// store()'s lines[] payload, `force` for a below-zero result, payable/
+// cash/bank settlement. Nothing new on the server, so stock leaves through
+// applyStockDelta (variant + product, once) and a pooled sibling drops by
+// the same qty.
+const supplierReturnSheet = ref(false);
+const supplierReturnMode = ref('variant'); // 'variant' | 'article'
+const supplierReturnTarget = ref(null); // { label }
+const supplierReturnRows = ref([]); // [{ variant, qty, cost }] — what the owner is typing
+const supplierReturnForm = useForm({ supplier_id: '', reason: '', settlement_method: 'payable', force: false, lines: [] });
+function supplierReturnUnitCost(v) {
+    // a size's own buying price, else the article's — same fallback as
+    // every profit/stock-value figure (ProductVariant::effectiveCost())
+    return Number(v.cost ?? editing.value?.cost ?? 0);
+}
+function openSupplierReturnVariant(v) {
+    supplierReturnMode.value = 'variant';
+    supplierReturnTarget.value = { label: variantLabel(v) };
+    supplierReturnRows.value = [{ variant: v, qty: '1', cost: String(supplierReturnUnitCost(v)) }];
+    resetSupplierReturnForm();
+}
+function openSupplierReturnArticle() {
+    if (!editing.value) return;
+    supplierReturnMode.value = 'article';
+    supplierReturnTarget.value = { label: editing.value.name };
+    supplierReturnRows.value = (editing.value.variants || []).map((v) => ({ variant: v, qty: '', cost: String(supplierReturnUnitCost(v)) }));
+    resetSupplierReturnForm();
+}
+function resetSupplierReturnForm() {
+    supplierReturnForm.reset();
+    supplierReturnForm.clearErrors();
+    supplierReturnForm.supplier_id = editing.value?.supplier_id || '';
+    supplierReturnForm.settlement_method = 'payable';
+    supplierReturnSheet.value = true;
+}
+// blank/0 rows are simply not sent — "return the whole article or any subset"
+const supplierReturnLines = computed(() => supplierReturnRows.value
+    .filter((r) => Number(r.qty) > 0)
+    .map((r) => ({
+        product_id: editing.value?.id,
+        product_variant_id: r.variant.id,
+        qty: Math.floor(Number(r.qty)),
+        amount: Math.round(Math.floor(Number(r.qty)) * Number(r.cost || 0) * 100) / 100,
+    })));
+const supplierReturnTotal = computed(() => supplierReturnLines.value.reduce((s, l) => s + l.amount, 0));
+const supplierReturnErrorText = computed(() => {
+    const e = supplierReturnForm.errors || {};
+    const key = Object.keys(e).find((k) => k !== 'force');
+    return key ? e[key] : '';
+});
+function submitSupplierReturn(force = false) {
+    if (!supplierReturnLines.value.length) { toast('⚠ ' + t('supplierReturn.nothingToReturn')); return; }
+    const productId = editing.value?.id;
+    const total = supplierReturnTotal.value;
+    const method = supplierReturnForm.settlement_method;
+    supplierReturnForm.lines = supplierReturnLines.value;
+    supplierReturnForm.force = force;
+    supplierReturnForm.post(route('app.supplierReturns.store'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            supplierReturnSheet.value = false;
+            // the sheet reads from `editing`, a snapshot taken on open —
+            // point it at the just-reloaded product so the new stock shows
+            // at once, no close/re-open needed
+            const list = props.products?.data ?? props.products ?? [];
+            const fresh = list.find((p) => p.id === productId);
+            if (fresh) editing.value = fresh;
+            const effect = method === 'payable'
+                ? t('supplierReturn.settlementPayable')
+                : (method === 'cash' ? t('supplierReturn.settlementCash') : t('supplierReturn.settlementBank'));
+            toast('✅ ' + t('supplierReturn.totalLabel') + ' ' + money(total) + ' — ' + effect);
+        },
+        onError: (errors) => {
+            // the server refuses a below-zero result until the owner says
+            // so explicitly — same confirm-then-force shape as More.vue
+            if (errors.force && !force && confirm(errors.force)) submitSupplierReturn(true);
+        },
+        onFinish: () => { supplierReturnForm.force = false; },
+    });
+}
+
 // per-variant history — fetched on open, not preloaded with the page
 const historySheet = ref(false);
 const historyTarget = ref(null);
@@ -1737,6 +1820,9 @@ useKeyboardShortcuts({
                     </div>
                 </div>
 
+                <!-- whole article back to the supplier: every size/color listed, a qty each, one submission -->
+                <button v-if="hasPerm('purchases') && features.includes('suppliers') && (editing?.variants || []).length" class="btn sm ghost" style="width:auto;margin-bottom:10px;color:var(--rose)" @click="openSupplierReturnArticle()">{{ t('supplierReturn.articleBtn') }}</button>
+
                 <div v-for="g in editingColorGroups()" :key="g.color ?? '_'" style="margin-bottom:10px">
                     <div v-if="g.color" style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
                         <img v-if="g.photoUrl" :src="g.photoUrl" style="width:30px;height:30px;border-radius:6px;object-fit:cover">
@@ -1789,6 +1875,8 @@ useKeyboardShortcuts({
                                 <button class="btn sm ghost" style="width:auto;padding:2px 0;border:none;background:none;color:var(--sky);font-size:11px" @click="openExact(v)">{{ t('stock.setExactBtn') }}</button>
                                 <button class="btn sm ghost" style="width:auto;padding:2px 0;border:none;background:none;color:var(--gold2);font-size:11px" @click="openPriceEdit(v)">✏️ দাম</button>
                                 <button class="btn sm ghost" style="width:auto;padding:2px 0;border:none;background:none;color:var(--mut);font-size:11px" @click="openHistory(v)">{{ t('stock.historyBtn') }}</button>
+                                <!-- same gate as the More-page entry (perm:purchases + feature:suppliers) -->
+                                <button v-if="hasPerm('purchases') && features.includes('suppliers')" class="btn sm ghost" style="width:auto;padding:2px 0;border:none;background:none;color:var(--rose);font-size:11px" @click="openSupplierReturnVariant(v)">{{ t('supplierReturn.variantBtn') }}</button>
                             </div>
                             <button v-if="hasSourceLines" class="btn sm ghost" style="margin-top:6px;width:auto" @click="openSourceStockIn('variant', v)">🚚 {{ t('os.addSourceStock') }}</button>
                         </div>
@@ -2072,6 +2160,39 @@ useKeyboardShortcuts({
         </Sheet>
 
         <!-- Stock − : take a WRONG qty off a variant, with a reason — never a silent wipe -->
+        <!-- Return to supplier from the article sheet: one variant row, or every size/color at once -->
+        <Sheet v-model="supplierReturnSheet" :title="(supplierReturnMode === 'article' ? t('supplierReturn.articleSheetTitle') : t('supplierReturn.sheetTitle')) + (supplierReturnTarget ? ' — ' + supplierReturnTarget.label : '')">
+            <div v-if="supplierReturnMode === 'article'" style="font-size:12px;color:var(--mut);margin-bottom:8px">{{ t('supplierReturn.qtyPerVariantHint') }}</div>
+            <div v-for="r in supplierReturnRows" :key="r.variant.id" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:8px">
+                <div style="flex:1;min-width:0">
+                    <b style="font-size:12.5px">{{ variantLabel(r.variant) }}</b>
+                    <div style="font-size:11px;color:var(--mut)">{{ t('supplierReturn.currentStock') }}: {{ r.variant.stock }}</div>
+                </div>
+                <div class="field" style="margin:0;width:84px"><label>{{ t('supplierReturn.qtyLabel') }}</label><input v-model="r.qty" type="number" min="0"></div>
+                <div class="field" style="margin:0;width:110px"><label>{{ t('supplierReturn.unitCostLabel') }}</label><input v-model="r.cost" type="number" min="0" step="0.01"></div>
+            </div>
+            <div class="field">
+                <label>{{ t('supplierReturn.supplierLabel') }}</label>
+                <select v-model="supplierReturnForm.supplier_id">
+                    <option value="">{{ t('supplierReturn.supplierPick') }}</option>
+                    <option v-for="s in (suppliers || [])" :key="s.id" :value="s.id">{{ s.name }}</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>{{ t('supplierReturn.settlementLabel') }}</label>
+                <select v-model="supplierReturnForm.settlement_method">
+                    <option value="payable">{{ t('supplierReturn.settlementPayable') }}</option>
+                    <option value="cash">{{ t('supplierReturn.settlementCash') }}</option>
+                    <option value="bank">{{ t('supplierReturn.settlementBank') }}</option>
+                </select>
+            </div>
+            <div class="field"><label>{{ t('supplierReturn.noteLabel') }}</label><input v-model="supplierReturnForm.reason"></div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:10px"><span>{{ t('supplierReturn.totalLabel') }}</span><b>{{ money(supplierReturnTotal) }}</b></div>
+            <div v-if="supplierReturnErrorText" style="color:var(--rose);font-size:12.5px;margin-bottom:10px">{{ supplierReturnErrorText }}</div>
+            <button class="btn" :disabled="supplierReturnForm.processing" @click="submitSupplierReturn()">{{ supplierReturnForm.processing ? '...' : t('supplierReturn.submit') }}</button>
+            <button class="btn ghost" style="margin-top:10px" @click="supplierReturnSheet = false">{{ t('common.cancel') }}</button>
+        </Sheet>
+
         <Sheet v-model="decreaseSheet" :title="t('stock.decreaseTitle') + (decreaseTarget ? ' — ' + decreaseTarget.label : '')">
             <HowToHint :text="t('stock.decreaseHowTo')" />
             <div class="field"><label>{{ t('os.howManyPieces') }}</label><input v-model="decreaseForm.qty" type="number" min="1"></div>
