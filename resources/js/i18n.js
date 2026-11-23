@@ -1410,6 +1410,8 @@ export const translations = {
     'supplierReturn.settlementLabel': { bn: 'টাকা কিভাবে সমন্বয় হবে', en: 'How is the value settled' },
     'supplierReturn.settlementPayable': { bn: 'বকেয়া থেকে বাদ', en: 'Deduct from payable' },
     'supplierReturn.submit': { bn: 'রিটার্ন যোগ করুন', en: 'Add return' },
+    'supplierReturn.addLine': { bn: '+ আরেকটি পণ্য যোগ করুন', en: '+ Add another product' },
+    'supplierReturn.removeLine': { bn: 'লাইনটি বাদ দিন', en: 'Remove line' },
     'count.sheetTitle': { bn: '🔢 স্টক গণনা', en: '🔢 Stock Count' },
     'count.sheetSub': { bn: 'গণনা সংখ্যা লিখুন', en: 'Enter the counted quantity' },
     'count.systemLabel': { bn: 'সিস্টেমে', en: 'System' },

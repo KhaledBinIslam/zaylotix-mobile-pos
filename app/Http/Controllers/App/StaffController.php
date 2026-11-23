@@ -106,14 +106,18 @@ class StaffController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['required', 'string', 'max:20', Rule::unique('users', 'phone')->ignore($staff->id)],
             'password' => ['nullable', 'string', 'min:4'],
-            'permissions' => ['array'],
+            'permissions' => ['sometimes', 'array'],
             'permissions.*' => ['string', Rule::in(array_keys(config('staff_permissions')))],
         ]);
 
         $staff->update([
             'name' => $data['name'],
             'phone' => $data['phone'],
-            'permissions' => $data['permissions'] ?? [],
+            // 'sometimes' above means an edit that doesn't send permissions[]
+            // at all (e.g. a name/phone-only save) leaves the staff member's
+            // permissions untouched. A real incident: every partial staff
+            // edit was silently wiping the stored list to [] (2026-11-23).
+            ...(array_key_exists('permissions', $data) ? ['permissions' => $data['permissions']] : []),
             ...(! empty($data['password']) ? ['password' => $data['password']] : []),
         ]);
 

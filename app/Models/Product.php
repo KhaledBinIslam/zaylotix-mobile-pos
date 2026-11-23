@@ -31,6 +31,16 @@ class Product extends Model
 
     public const STOCK_MODE_TOGGLE = 'toggle';
 
+    /**
+     * Set only around CatalogSync::upsertBranchProduct()'s own restore of a
+     * re-entered article's tombstoned branch copy — CatalogSync runs its
+     * OWN variant revival + stock-reset-to-new-article logic right after
+     * (syncVariantsOfProduct()), keyed on the variant still being trashed
+     * at that point. Everywhere else, restored() keeps restoring a
+     * product's own variants automatically (2026-11-23 fix).
+     */
+    public static bool $suppressAutoVariantRestore = false;
+
     protected $appends = ['photo_url'];
 
     protected function casts(): array
@@ -100,8 +110,18 @@ class Product extends Model
         static::restored(function (Product $product) {
             // the variants come back; their barcodes don't, since the
             // serial may well have been reissued in the meantime — run
-            // articles:regenerate-barcodes to mint fresh ones
-            $product->variants()->withTrashed()->restore();
+            // articles:regenerate-barcodes to mint fresh ones.
+            //
+            // withoutGlobalScopes(), not the $product->variants() relation:
+            // ProductVariant carries the tenant global scope, so the plain
+            // relation silently restores NOTHING when this fires for a
+            // DIFFERENT shop than the ambient Tenancy::id() -- exactly the
+            // case when this event fires for the master/sibling products a
+            // branch restore just cascaded to (2026-11-23 fix; found by the
+            // new cross-shop restore test, not previously exercised).
+            if (! static::$suppressAutoVariantRestore) {
+                ProductVariant::withoutGlobalScopes()->where('product_id', $product->id)->onlyTrashed()->get()->each->restore();
+            }
 
             if ($product->master_product_id === null) {
                 $thisShop = Tenancy::id() === $product->shop_id ? Tenancy::shop() : $product->shop;
@@ -517,7 +537,7 @@ class Product extends Model
      * ProductsReconcileDeletedPool) goes through this one query so the
      * definition can't drift between them again.
      */
-    private static function validBranchCopyIds(int $masterId, int $masterShopId): Collection
+    public static function validBranchCopyIds(int $masterId, int $masterShopId): Collection
     {
         return static::withoutGlobalScopes()
             ->join('shops', 'shops.id', '=', 'products.shop_id')

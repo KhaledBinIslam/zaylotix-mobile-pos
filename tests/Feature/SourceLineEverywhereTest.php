@@ -204,8 +204,8 @@ class SourceLineEverywhereTest extends TestCase
         $buluLine = ProductSource::create(['shop_id' => $shop->id, 'product_id' => $p->id, 'supplier_id' => $bulu->id, 'cost' => 30, 'price' => 60, 'stock' => 4]);
 
         $this->post(route('app.supplierReturns.store'), [
-            'supplier_id' => $sujon->id, 'product_id' => $p->id, 'qty' => 4,
-            'settlement_method' => 'payable', 'amount' => 120,
+            'supplier_id' => $sujon->id, 'settlement_method' => 'payable',
+            'lines' => [['product_id' => $p->id, 'qty' => 4, 'amount' => 120]],
         ])->assertSessionHasNoErrors();
 
         $this->assertEquals(2.0, (float) $sujonLine->fresh()->stock); // his lot shrank

@@ -467,7 +467,22 @@ class CatalogSync
              * row now effectively is.
              */
             if ($wasTrashed) {
-                $existing->restore();
+                // Suppress ONLY Product::restored()'s automatic variant
+                // revival here -- it would race ahead of this method's own
+                // syncVariantsOfProduct() pass (called right after) and
+                // defeat ITS $wasTrashed check, leaving the stale pre-delete
+                // stock in place instead of resetting it to the new
+                // article's count. The product-level pool cascade + its
+                // activity log stay live (still correct: this product's own
+                // siblings aren't trashed in this flow, so that check is a
+                // harmless no-op here, but a genuine cross-branch restore
+                // elsewhere still gets the real cascade).
+                Product::$suppressAutoVariantRestore = true;
+                try {
+                    $existing->restore();
+                } finally {
+                    Product::$suppressAutoVariantRestore = false;
+                }
                 $existing->forceFill(['stock' => $startingStock])->saveQuietly();
             }
 

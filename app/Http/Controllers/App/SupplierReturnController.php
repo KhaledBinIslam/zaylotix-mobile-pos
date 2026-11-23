@@ -4,6 +4,7 @@ namespace App\Http\Controllers\App;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\Shop;
 use App\Models\Supplier;
 use App\Models\SupplierReturn;
@@ -21,11 +22,16 @@ class SupplierReturnController extends Controller
         $data = $request->validate([
             'supplier_id' => ['nullable', Rule::exists('suppliers', 'id')->where('shop_id', Tenancy::id())],
             'supplier' => ['nullable', 'string', 'max:255'],
-            'product_id' => ['required', Rule::exists('products', 'id')->where('shop_id', Tenancy::id())],
-            'qty' => ['required', 'integer', 'min:1'],
             'reason' => ['nullable', 'string', 'max:255'],
             'settlement_method' => ['required', 'in:cash,bank,payable'],
-            'amount' => ['required', 'numeric', 'min:0'],
+            // set by the frontend only after the owner has explicitly
+            // confirmed the "stock will go negative" dialog
+            'force' => ['nullable', 'boolean'],
+            'lines' => ['required', 'array', 'min:1'],
+            'lines.*.product_id' => ['required', Rule::exists('products', 'id')->where('shop_id', Tenancy::id())],
+            'lines.*.product_variant_id' => ['nullable', 'integer'],
+            'lines.*.qty' => ['required', 'integer', 'min:1'],
+            'lines.*.amount' => ['required', 'numeric', 'min:0'],
         ]);
 
         // Confirmed bug (see docs/FIX_PLAN.md Phase 4.7), same root cause as
@@ -45,62 +51,102 @@ class SupplierReturnController extends Controller
         }
 
         DB::transaction(function () use ($data) {
-            $product = Product::whereKey($data['product_id'])->lockForUpdate()->firstOrFail();
+            $totalAmount = 0.0;
+            $sourceLinesOn = Tenancy::shop()?->hasFeature('source_lines');
 
-            // same invariant-safety reasoning as DamageController/ReturnController
-            if ($product->variants()->exists()) {
-                throw ValidationException::withMessages([
-                    'qty' => "{$product->name} ভ্যারিয়েন্ট পণ্য — এখানে ফেরত দেওয়া যাবে না, স্টক পেজ থেকে নির্দিষ্ট ভ্যারিয়েন্টের স্টক কমান।",
+            foreach (array_values($data['lines']) as $i => $line) {
+                $product = Product::withCount('variants')->whereKey($line['product_id'])->lockForUpdate()->firstOrFail();
+
+                // same invariant-safety rules as DamageController: a variant
+                // product's own `stock` is the live sum of its variants', so
+                // the specific size/color must be named — and a named
+                // variant must really belong to this product
+                $variant = null;
+                if ($product->variants_count > 0 && empty($line['product_variant_id'])) {
+                    throw ValidationException::withMessages([
+                        "lines.{$i}.product_variant_id" => "{$product->name} ভ্যারিয়েন্ট পণ্য — কোন সাইজ/রং ফেরত যাচ্ছে সেটি বেছে নিন।",
+                    ]);
+                }
+                if (! empty($line['product_variant_id'])) {
+                    if ($product->variants_count === 0) {
+                        throw ValidationException::withMessages([
+                            "lines.{$i}.product_variant_id" => "{$product->name}-এর কোনো ভ্যারিয়েন্ট নেই।",
+                        ]);
+                    }
+                    $variant = ProductVariant::whereKey($line['product_variant_id'])->lockForUpdate()->first();
+                    if (! $variant || $variant->product_id !== $product->id) {
+                        throw ValidationException::withMessages([
+                            "lines.{$i}.product_variant_id" => 'এই ভ্যারিয়েন্টটি সঠিক নয়।',
+                        ]);
+                    }
+                }
+
+                // unlike a customer return (bounded by what was ever sold), a
+                // supplier return is bounded by what's physically on the
+                // shelf — going below zero needs the owner's explicit
+                // confirmation (force), it is never silently allowed
+                $available = $variant ? (float) $variant->stock : (float) $product->stock;
+                if ($line['qty'] > $available && empty($data['force'])) {
+                    $label = $variant ? "{$product->name} ({$variant->label()})" : $product->name;
+                    throw ValidationException::withMessages([
+                        'force' => "{$label} — বর্তমান স্টক {$available}, ফেরত দিলে স্টক মাইনাসে চলে যাবে। তবুও এগোতে চাইলে নিশ্চিত করুন।",
+                    ]);
+                }
+
+                if ($variant) {
+                    // products.stock is maintained as the live sum of its
+                    // variants' stock — both move together, same two-call
+                    // shape as PosController checkout / DamageController
+                    $variant->applyStockDelta(-$line['qty']);
+                    $product->applyStockDelta(-$line['qty']);
+                } else {
+                    $product->applyStockDelta(-$line['qty']);
+                }
+
+                // line-tracked shop: the returned units leave THIS supplier's
+                // own lot first (that's whose goods went back), spilling
+                // oldest-first across the rest only if theirs runs out —
+                // otherwise the lines drift above the mirror forever
+                if ($sourceLinesOn) {
+                    $supplierIdForLines = $data['supplier_id'] ?? null;
+                    $sourceLines = \App\Models\ProductSource::where('product_id', $product->id)
+                        ->when($variant,
+                            fn ($q) => $q->where('product_variant_id', $variant->id),
+                            fn ($q) => $q->whereNull('product_variant_id'))
+                        ->orderBy('id')->lockForUpdate()->get()
+                        ->sortBy([
+                            fn ($a, $b) => (int) ($b->supplier_id === $supplierIdForLines) <=> (int) ($a->supplier_id === $supplierIdForLines),
+                            fn ($a, $b) => $a->id <=> $b->id,
+                        ])->values();
+                    \App\Models\ProductSource::applyFifoDelta($sourceLines, -(float) $line['qty']);
+                }
+
+                SupplierReturn::create([
+                    'supplier_id' => $data['supplier_id'] ?? null,
+                    'supplier' => $data['supplier'] ?? null,
+                    'product_id' => $product->id,
+                    'product_variant_id' => $variant?->id,
+                    'qty' => $line['qty'],
+                    'reason' => $data['reason'] ?? null,
+                    'settlement_method' => $data['settlement_method'],
+                    'amount' => $line['amount'],
+                    'date' => now()->toDateString(),
                 ]);
-            }
 
-            // unlike a customer return (bounded by what was ever sold), a
-            // supplier return is bounded by what's physically still on the
-            // shelf right now — can't send back more than you actually have
-            if ($data['qty'] > $product->stock) {
-                throw ValidationException::withMessages([
-                    'qty' => "বর্তমান স্টকের বেশি ফেরত দেওয়া যাবে না (আছে {$product->stock})।",
+                $label = $variant ? "{$product->name} ({$variant->label()})" : $product->name;
+                Activity::log('supplier.return', "'{$label}' সাপ্লায়ারকে ফেরত দেওয়া হয়েছে — {$line['qty']} ইউনিট, ".number_format((float) $line['amount'], 2).' টাকা।', $product, [
+                    'qty' => $line['qty'], 'amount' => $line['amount'], 'product_variant_id' => $variant?->id,
                 ]);
+
+                $totalAmount += (float) $line['amount'];
             }
-
-            $product->applyStockDelta(-$data['qty']);
-
-            // line-tracked shop: the returned units leave THIS supplier's
-            // own lot first (that's whose goods went back), spilling
-            // oldest-first across the rest only if theirs runs out —
-            // otherwise the lines drift above the mirror forever
-            if (Tenancy::shop()?->hasFeature('source_lines')) {
-                $supplierIdForLines = $data['supplier_id'] ?? null;
-                $lines = \App\Models\ProductSource::where('product_id', $product->id)
-                    ->whereNull('product_variant_id')->orderBy('id')->lockForUpdate()->get()
-                    ->sortBy([
-                        fn ($a, $b) => (int) ($b->supplier_id === $supplierIdForLines) <=> (int) ($a->supplier_id === $supplierIdForLines),
-                        fn ($a, $b) => $a->id <=> $b->id,
-                    ])->values();
-                \App\Models\ProductSource::applyFifoDelta($lines, -(float) $data['qty']);
-            }
-
-            SupplierReturn::create([
-                'supplier_id' => $data['supplier_id'] ?? null,
-                'supplier' => $data['supplier'] ?? null,
-                'product_id' => $product->id,
-                'qty' => $data['qty'],
-                'reason' => $data['reason'] ?? null,
-                'settlement_method' => $data['settlement_method'],
-                'amount' => $data['amount'],
-                'date' => now()->toDateString(),
-            ]);
 
             if ($data['settlement_method'] === 'payable') {
-                Supplier::whereKey($data['supplier_id'])->decrement('payable', $data['amount']);
+                Supplier::whereKey($data['supplier_id'])->decrement('payable', $totalAmount);
             } else {
                 $field = $data['settlement_method'] === 'cash' ? 'cash_balance' : 'bank_balance';
-                Shop::whereKey(Tenancy::id())->increment($field, $data['amount']);
+                Shop::whereKey(Tenancy::id())->increment($field, $totalAmount);
             }
-
-            Activity::log('supplier.return', "'{$product->name}' সাপ্লায়ারকে ফেরত দেওয়া হয়েছে — {$data['qty']} ইউনিট, ".number_format((float) $data['amount'], 2).' টাকা।', $product, [
-                'qty' => $data['qty'], 'amount' => $data['amount'],
-            ]);
         });
 
         return back()->with('success', 'সাপ্লায়ার রিটার্ন রেকর্ড করা হয়েছে।');

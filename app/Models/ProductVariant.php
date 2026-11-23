@@ -113,23 +113,101 @@ class ProductVariant extends Model
     public function deleteBranchCopies(): void
     {
         $product = Product::withoutGlobalScopes()->whereKey($this->product_id)->first();
-        if (! $product || $product->master_product_id !== null) {
-            return; // already a branch copy — nothing hangs off it
-        }
-
-        $branchProductIds = Product::withoutGlobalScopes()->where('master_product_id', $product->id)->pluck('id');
-        if ($branchProductIds->isEmpty()) {
+        if (! $product) {
             return;
         }
+
+        if ($product->master_product_id === null) {
+            $branchProductIds = Product::validBranchCopyIds($product->id, $product->shop_id);
+            if ($branchProductIds->isEmpty()) {
+                return;
+            }
+
+            $pooled = $product->stockPoolMemberIds()->count() > 1;
+
+            $siblings = static::withoutGlobalScopes()->whereNull('deleted_at')
+                ->whereIn('product_id', $branchProductIds)->get();
+
+            $this->cascadeDeleteTo($siblings, $pooled);
+
+            return;
+        }
+
+        // Real incident, 2026-11-22: a variant deleted on a BRANCH's own
+        // side (L-10016's "225/CK" size) left the master's matching
+        // variant live and fully stocked — this used to only run
+        // master -> branches, same one-way gap Product::deleteBranchCopies()
+        // had before its own 2026-11-23 fix. Symmetric here too, through
+        // the same validBranchCopyIds() definition (genuine branch, not a
+        // demo clone) so a variant deleted in an unrelated demo shop can
+        // never reach a real sibling's row.
+        $master = Product::withoutGlobalScopes()->find($product->master_product_id);
+        $thisShop = Shop::withoutGlobalScopes()->find($product->shop_id);
+        $thisIsValidSibling = $master && $thisShop
+            && (int) $thisShop->parent_shop_id === (int) $master->shop_id
+            && $thisShop->account_type !== 'demo';
+
+        if (! $master || ! $master->shop?->hasFeature('shared_stock_pool') || ! $thisIsValidSibling) {
+            return;
+        }
+
+        $validProductIds = Product::validBranchCopyIds($master->id, $master->shop_id)
+            ->reject(fn ($id) => $id === $product->id)
+            ->push($master->id);
 
         $pooled = $product->stockPoolMemberIds()->count() > 1;
 
         $siblings = static::withoutGlobalScopes()->whereNull('deleted_at')
-            ->whereIn('product_id', $branchProductIds)->get();
+            ->whereIn('product_id', $validProductIds)->get();
 
+        $this->cascadeDeleteTo($siblings, $pooled);
+    }
+
+    /** Same shape as Product::logPoolCascade() (one ActivityLog row per affected shop) adapted to variant fields -- variants don't carry a shop relation as directly as Product does. */
+    private static function logVariantPoolCascade(self $trigger, Collection $siblings): void
+    {
+        $userId = \Illuminate\Support\Facades\Auth::guard('web')->id() ?? \Illuminate\Support\Facades\Auth::guard('sanctum')->id();
+        $all = $siblings->push($trigger)->unique('id')->values();
+        $shopNames = $all->mapWithKeys(fn (self $v) => [$v->shop_id => Shop::withoutGlobalScopes()->find($v->shop_id)?->name ?? "Shop #{$v->shop_id}"]);
+        $branchList = $shopNames->values()->implode('، ');
+        $label = $trigger->label() ?: "variant #{$trigger->id}";
+
+        foreach ($all as $row) {
+            ActivityLog::create([
+                'shop_id' => $row->shop_id,
+                'user_id' => $userId,
+                'action' => 'variant.pool_delete_cascade',
+                'subject_type' => self::class,
+                'subject_id' => $row->id,
+                'description' => "ভ্যারিয়েন্ট '{$label}' শেয়ার্ড স্টক পুল-এ থাকা সব শাখায় মুছে ফেলা হয়েছে — {$branchList}।",
+                'meta' => ['triggered_by_variant_id' => $trigger->id, 'triggered_by_shop_id' => $trigger->shop_id, 'affected_variant_ids' => $all->pluck('id')->values()->all()],
+                'created_at' => now(),
+            ]);
+        }
+    }
+
+    /**
+     * Shared by both directions of deleteBranchCopies() -- matches a
+     * sibling product's variants the way CatalogSync/the pool already do
+     * (barcode first; else size+color, now case/whitespace-insensitive so
+     * "Brown" and "BROWN", or " Navy " and "navy", are the same cell —
+     * see cellKey()). Deliberately NOT normalizing punctuation
+     * ("PURPLE BLACK" vs "PURPLE-BLACK" stay distinct): a genuine
+     * spelling/typo difference is a data-cleanup item for the owner to
+     * merge deliberately, not something a delete cascade should guess at
+     * and auto-match.
+     */
+    private function cascadeDeleteTo(Collection $siblings, bool $pooled): void
+    {
         $matches = filled($this->barcode)
             ? $siblings->filter(fn (ProductVariant $v) => $v->barcode === $this->barcode)
-            : $siblings->filter(fn (ProductVariant $v) => $v->size === $this->size && $v->color === $this->color);
+            : $siblings->filter(fn (ProductVariant $v) => self::cellKey($v->color, $v->size) === self::cellKey($this->color, $this->size));
+
+        if ($matches->isEmpty()) {
+            return;
+        }
+
+        self::logVariantPoolCascade($this, $matches);
 
         foreach ($matches as $copy) {
             static::withoutGlobalScopes()->whereKey($copy->id)

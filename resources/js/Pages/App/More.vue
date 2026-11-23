@@ -392,10 +392,33 @@ function saveReturn() {
 }
 
 // --- supplier return (damaged/expired stock back to supplier) ---
+// multi-line: several products/variants go back in one submission, each
+// line with its own qty+amount; supplier/settlement/reason are shared
 const supplierReturnSheet = ref(false);
-const supplierReturnForm = useForm({ supplier_id: '', supplier: '', product_id: '', qty: '', reason: '', settlement_method: 'payable', amount: '' });
+const supplierReturnForm = useForm({ supplier_id: '', supplier: '', reason: '', settlement_method: 'payable', force: false, lines: [{ product_id: '', product_variant_id: '', qty: '', amount: '' }] });
+function addSupplierReturnLine() {
+    supplierReturnForm.lines.push({ product_id: '', product_variant_id: '', qty: '', amount: '' });
+}
+function removeSupplierReturnLine(i) {
+    supplierReturnForm.lines.splice(i, 1);
+}
 function saveSupplierReturn() {
-    supplierReturnForm.post(route('app.supplierReturns.store'), { onSuccess: () => { supplierReturnSheet.value = false; supplierReturnForm.reset(); } });
+    supplierReturnForm.post(route('app.supplierReturns.store'), {
+        onSuccess: () => { supplierReturnSheet.value = false; supplierReturnForm.reset(); supplierReturnForm.lines = [{ product_id: '', product_variant_id: '', qty: '', amount: '' }]; },
+        onError: (errors) => {
+            // negative-stock guard: the server refuses with a `force`
+            // message until the owner explicitly confirms going below zero
+            if (errors.force && window.confirm(errors.force)) {
+                supplierReturnForm.force = true;
+                supplierReturnForm.post(route('app.supplierReturns.store'), {
+                    onSuccess: () => { supplierReturnSheet.value = false; supplierReturnForm.reset(); supplierReturnForm.lines = [{ product_id: '', product_variant_id: '', qty: '', amount: '' }]; },
+                    onFinish: () => { supplierReturnForm.force = false; },
+                });
+            } else {
+                supplierReturnForm.force = false;
+            }
+        },
+    });
 }
 
 // --- stock count ---
@@ -1076,22 +1099,39 @@ onMounted(() => {
                 <div v-if="supplierReturnForm.errors.supplier_id" style="color:var(--rose);font-size:12px;margin-top:6px">{{ supplierReturnForm.errors.supplier_id }}</div>
             </div>
             <div class="field"><label>{{ t('purchase.supplier') }}</label><input v-model="supplierReturnForm.supplier"></div>
-            <div class="field">
-                <label>{{ t('damage.selectProduct') }}</label>
-                <select v-model="supplierReturnForm.product_id">
-                    <option :value="''">{{ t('damage.selectPlaceholder') }}</option>
-                    <option v-for="p in products" :key="p.id" :value="p.id">{{ p.emoji }} {{ p.name }} — {{ t('damage.stockLabel') }}: {{ p.stock }}</option>
-                </select>
-                <div v-if="supplierReturnForm.errors.product_id" style="color:var(--rose);font-size:12px;margin-top:6px">{{ supplierReturnForm.errors.product_id }}</div>
-            </div>
-            <div class="f2">
+            <div v-for="(line, i) in supplierReturnForm.lines" :key="i" style="border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:10px">
                 <div class="field">
-                    <label>{{ t('return.qty') }}</label>
-                    <input v-model="supplierReturnForm.qty" type="number">
-                    <div v-if="supplierReturnForm.errors.qty" style="color:var(--rose);font-size:12px;margin-top:6px">{{ supplierReturnForm.errors.qty }}</div>
+                    <label>{{ t('damage.selectProduct') }}</label>
+                    <select v-model="line.product_id" @change="line.product_variant_id = ''">
+                        <option :value="''">{{ t('damage.selectPlaceholder') }}</option>
+                        <option v-for="p in products" :key="p.id" :value="p.id">{{ p.emoji }} {{ p.name }} — {{ t('damage.stockLabel') }}: {{ p.stock }}</option>
+                    </select>
+                    <div v-if="supplierReturnForm.errors[`lines.${i}.product_id`]" style="color:var(--rose);font-size:12px;margin-top:6px">{{ supplierReturnForm.errors[`lines.${i}.product_id`] }}</div>
                 </div>
-                <div class="field"><label>{{ t('damage.reason') }}</label><input v-model="supplierReturnForm.reason" :placeholder="t('damage.reasonPlaceholder')"></div>
+                <div v-if="hasVariants && variantsOf(line.product_id).length" class="field">
+                    <label>{{ t('damage.variantLabel') }}</label>
+                    <select v-model="line.product_variant_id">
+                        <option :value="''">{{ t('damage.selectPlaceholder') }}</option>
+                        <option v-for="v in variantsOf(line.product_id)" :key="v.id" :value="v.id">{{ variantLabel(v) }} — {{ t('damage.stockLabel') }}: {{ v.stock }}</option>
+                    </select>
+                    <div v-if="supplierReturnForm.errors[`lines.${i}.product_variant_id`]" style="color:var(--rose);font-size:12px;margin-top:6px">{{ supplierReturnForm.errors[`lines.${i}.product_variant_id`] }}</div>
+                </div>
+                <div class="f2">
+                    <div class="field">
+                        <label>{{ t('return.qty') }}</label>
+                        <input v-model="line.qty" type="number">
+                        <div v-if="supplierReturnForm.errors[`lines.${i}.qty`]" style="color:var(--rose);font-size:12px;margin-top:6px">{{ supplierReturnForm.errors[`lines.${i}.qty`] }}</div>
+                    </div>
+                    <div class="field">
+                        <label>{{ t('purchase.amount') }}</label>
+                        <input v-model="line.amount" type="number">
+                        <div v-if="supplierReturnForm.errors[`lines.${i}.amount`]" style="color:var(--rose);font-size:12px;margin-top:6px">{{ supplierReturnForm.errors[`lines.${i}.amount`] }}</div>
+                    </div>
+                </div>
+                <button v-if="supplierReturnForm.lines.length > 1" type="button" class="btn ghost" style="margin-top:4px" @click="removeSupplierReturnLine(i)">{{ t('supplierReturn.removeLine') }}</button>
             </div>
+            <button type="button" class="btn ghost" style="margin-bottom:10px" @click="addSupplierReturnLine">{{ t('supplierReturn.addLine') }}</button>
+            <div class="field"><label>{{ t('damage.reason') }}</label><input v-model="supplierReturnForm.reason" :placeholder="t('damage.reasonPlaceholder')"></div>
             <div class="field">
                 <label>{{ t('supplierReturn.settlementLabel') }}</label>
                 <div class="seg">
@@ -1100,11 +1140,6 @@ onMounted(() => {
                     <button type="button" :class="{ on: supplierReturnForm.settlement_method === 'bank' }" @click="supplierReturnForm.settlement_method = 'bank'">{{ t('purchase.methodBank') }}</button>
                 </div>
                 <div v-if="supplierReturnForm.errors.settlement_method" style="color:var(--rose);font-size:12px;margin-top:6px">{{ supplierReturnForm.errors.settlement_method }}</div>
-            </div>
-            <div class="field">
-                <label>{{ t('purchase.amount') }}</label>
-                <input v-model="supplierReturnForm.amount" type="number">
-                <div v-if="supplierReturnForm.errors.amount" style="color:var(--rose);font-size:12px;margin-top:6px">{{ supplierReturnForm.errors.amount }}</div>
             </div>
             <button class="btn rose" :disabled="supplierReturnForm.processing" @click="saveSupplierReturn">
                 {{ supplierReturnForm.processing ? '...' : t('supplierReturn.submit') }}

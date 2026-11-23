@@ -9,7 +9,7 @@ class SupplierReturn extends Model
 {
     use BelongsToTenant;
 
-    protected $fillable = ['shop_id', 'supplier_id', 'supplier', 'product_id', 'qty', 'reason', 'settlement_method', 'amount', 'date'];
+    protected $fillable = ['shop_id', 'supplier_id', 'supplier', 'product_id', 'product_variant_id', 'qty', 'reason', 'settlement_method', 'amount', 'date'];
 
     protected function casts(): array
     {
@@ -27,5 +27,10 @@ class SupplierReturn extends Model
     public function product()
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function variant()
+    {
+        return $this->belongsTo(ProductVariant::class, 'product_variant_id');
     }
 }

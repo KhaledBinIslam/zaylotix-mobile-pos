@@ -162,4 +162,61 @@ class StaffPermissionTest extends TestCase
         $response->assertStatus(404);
         $this->assertSame('B Cashier', $cashierB->fresh()->name);
     }
+
+    /**
+     * Real incident, 2026-11-23 (Baby Park): every partial staff edit that
+     * didn't re-send permissions[] silently wiped the stored list to [],
+     * so the owner had to re-grant access "again and again". An edit
+     * without the key must leave permissions exactly as they were.
+     */
+    public function test_editing_a_cashier_without_the_permissions_key_keeps_their_permissions(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'cashier_management');
+        $cashier = User::create([
+            'shop_id' => $shop->id, 'name' => 'Cashier', 'phone' => '01900004444',
+            'password' => 'secret1', 'role' => 'staff', 'permissions' => ['pos', 'stock'], 'lang' => 'bn',
+        ]);
+
+        $this->actingAs($owner, 'web')->put("/app/staff/{$cashier->id}", [
+            'name' => 'Renamed Cashier', 'phone' => '01900004444',
+        ])->assertRedirect();
+
+        $fresh = $cashier->fresh();
+        $this->assertSame('Renamed Cashier', $fresh->name);
+        $this->assertSame(['pos', 'stock'], $fresh->permissions);
+    }
+
+    public function test_editing_a_cashier_with_the_permissions_key_updates_them(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'cashier_management');
+        $cashier = User::create([
+            'shop_id' => $shop->id, 'name' => 'Cashier', 'phone' => '01900004444',
+            'password' => 'secret1', 'role' => 'staff', 'permissions' => ['pos'], 'lang' => 'bn',
+        ]);
+
+        $this->actingAs($owner, 'web')->put("/app/staff/{$cashier->id}", [
+            'name' => 'Cashier', 'phone' => '01900004444', 'permissions' => ['stock', 'reports'],
+        ])->assertRedirect();
+
+        $this->assertSame(['stock', 'reports'], $cashier->fresh()->permissions);
+    }
+
+    /** The edit form always sends the full array, so an empty one is a deliberate "remove everything" — it must still clear. */
+    public function test_editing_a_cashier_with_an_explicit_empty_permissions_list_clears_them(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'cashier_management');
+        $cashier = User::create([
+            'shop_id' => $shop->id, 'name' => 'Cashier', 'phone' => '01900004444',
+            'password' => 'secret1', 'role' => 'staff', 'permissions' => ['pos', 'stock'], 'lang' => 'bn',
+        ]);
+
+        $this->actingAs($owner, 'web')->put("/app/staff/{$cashier->id}", [
+            'name' => 'Cashier', 'phone' => '01900004444', 'permissions' => [],
+        ])->assertRedirect();
+
+        $this->assertSame([], $cashier->fresh()->permissions);
+    }
 }

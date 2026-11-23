@@ -426,6 +426,153 @@ class SharedStockPoolTest extends TestCase
         $this->assertDatabaseMissing('activity_logs', ['shop_id' => $demoShop->id, 'action' => 'product.pool_delete_cascade']);
     }
 
+    /**
+     * Real incident, 2026-11-22: L-10016's "225/CK" variant was deleted on
+     * the BRANCH's own side; master's matching variant stayed fully live
+     * and stocked (ProductVariant::deleteBranchCopies() used to only run
+     * master -> branches, same gap as Product's own pre-fix bug).
+     */
+    public function test_deleting_a_branchs_pooled_variant_deletes_the_masters_matching_variant(): void
+    {
+        [$main] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'shared_stock_pool');
+        $branch = $this->createBranch($main);
+        $branchOwner = $branch->users()->first();
+
+        $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Shoe', 'cost' => 650, 'price' => 1200, 'stock' => 0]);
+        $branchProduct = Product::create(['shop_id' => $branch->id, 'master_product_id' => $mainProduct->id, 'name' => 'Shoe', 'cost' => 650, 'price' => 1200, 'stock' => 0]);
+        $mainVariant = ProductVariant::create(['shop_id' => $main->id, 'product_id' => $mainProduct->id, 'size' => '225', 'color' => 'CK', 'stock' => 1]);
+        $branchVariant = ProductVariant::create(['shop_id' => $branch->id, 'product_id' => $branchProduct->id, 'size' => '225', 'color' => 'CK', 'stock' => 1]);
+
+        $branchVariant->delete();
+
+        $this->assertTrue($branchVariant->fresh()->trashed());
+        $this->assertTrue(ProductVariant::withoutGlobalScopes()->whereKey($mainVariant->id)->first()->trashed());
+        $this->assertDatabaseHas('activity_logs', ['action' => 'variant.pool_delete_cascade', 'shop_id' => $main->id]);
+    }
+
+    /** Case/whitespace-insensitive match (cellKey()) -- "Brown" and " BROWN " are the same cell for cascade purposes. */
+    public function test_variant_delete_cascade_matches_case_and_whitespace_insensitively(): void
+    {
+        [$main] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'shared_stock_pool');
+        $branch = $this->createBranch($main);
+        $branchOwner = $branch->users()->first();
+
+        $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Shoe', 'cost' => 500, 'price' => 1000, 'stock' => 0]);
+        $branchProduct = Product::create(['shop_id' => $branch->id, 'master_product_id' => $mainProduct->id, 'name' => 'Shoe', 'cost' => 500, 'price' => 1000, 'stock' => 0]);
+        $mainVariant = ProductVariant::create(['shop_id' => $main->id, 'product_id' => $mainProduct->id, 'size' => '22', 'color' => 'Brown', 'stock' => 1]);
+        $branchVariant = ProductVariant::create(['shop_id' => $branch->id, 'product_id' => $branchProduct->id, 'size' => ' 22 ', 'color' => ' BROWN ', 'stock' => 1]);
+
+        $branchVariant->delete();
+
+        $this->assertTrue(ProductVariant::withoutGlobalScopes()->whereKey($mainVariant->id)->first()->trashed());
+    }
+
+    /** Punctuation differences are NOT auto-matched -- "PURPLE BLACK" vs "PURPLE-BLACK" is a data-cleanup item, never guessed at. */
+    public function test_variant_delete_cascade_never_auto_matches_punctuation_differences(): void
+    {
+        [$main] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'shared_stock_pool');
+        $branch = $this->createBranch($main);
+        $branchOwner = $branch->users()->first();
+
+        $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Shoe', 'cost' => 400, 'price' => 800, 'stock' => 0]);
+        $branchProduct = Product::create(['shop_id' => $branch->id, 'master_product_id' => $mainProduct->id, 'name' => 'Shoe', 'cost' => 400, 'price' => 800, 'stock' => 0]);
+        $mainVariant = ProductVariant::create(['shop_id' => $main->id, 'product_id' => $mainProduct->id, 'size' => '38-39', 'color' => 'PURPLE BLACK', 'stock' => 1]);
+        $branchVariant = ProductVariant::create(['shop_id' => $branch->id, 'product_id' => $branchProduct->id, 'size' => '38-39', 'color' => 'PURPLE-BLACK', 'stock' => 1]);
+
+        $branchVariant->delete();
+
+        $this->assertFalse(ProductVariant::withoutGlobalScopes()->whereKey($mainVariant->id)->first()->trashed(), 'a punctuation-only difference must never auto-cascade a delete');
+    }
+
+    /** Same contamination guard as the product-level fix -- a demo shop's variant delete must never reach a real sibling. */
+    public function test_a_demo_shops_variant_delete_never_cascades_to_the_real_master(): void
+    {
+        [$main] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'shared_stock_pool');
+        [$demoShop] = $this->createShopWithOwner(['account_type' => 'demo']);
+
+        $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Shoe', 'cost' => 500, 'price' => 1000, 'stock' => 0]);
+        $demoProduct = Product::create(['shop_id' => $demoShop->id, 'master_product_id' => $mainProduct->id, 'name' => 'Shoe', 'cost' => 500, 'price' => 1000, 'stock' => 0]);
+        $mainVariant = ProductVariant::create(['shop_id' => $main->id, 'product_id' => $mainProduct->id, 'size' => '22', 'color' => 'Brown', 'stock' => 1]);
+        $demoVariant = ProductVariant::create(['shop_id' => $demoShop->id, 'product_id' => $demoProduct->id, 'size' => '22', 'color' => 'Brown', 'stock' => 1]);
+
+        $demoVariant->delete();
+
+        $this->assertFalse(ProductVariant::withoutGlobalScopes()->whereKey($mainVariant->id)->first()->trashed());
+    }
+
+    /**
+     * Restoring a BRANCH's own variant (deleted alongside its product via
+     * the product-level cascade) must bring the master's variant back too
+     * -- transitively, through Product::restored()'s existing
+     * $product->variants()->withTrashed()->restore() call on every pool
+     * member it restores, not a separate variant-level restore path
+     * (none exists standalone -- a variant only comes back as part of its
+     * product coming back).
+     */
+    public function test_restoring_a_branchs_product_restores_its_pooled_variant_and_the_masters(): void
+    {
+        [$main] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'shared_stock_pool');
+        $branch = $this->createBranch($main);
+        $branchOwner = $branch->users()->first();
+
+        $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Shoe', 'cost' => 650, 'price' => 1200, 'stock' => 0]);
+        $branchProduct = Product::create(['shop_id' => $branch->id, 'master_product_id' => $mainProduct->id, 'name' => 'Shoe', 'cost' => 650, 'price' => 1200, 'stock' => 0]);
+        $mainVariant = ProductVariant::create(['shop_id' => $main->id, 'product_id' => $mainProduct->id, 'size' => '225', 'color' => 'CK', 'stock' => 1]);
+        $branchVariant = ProductVariant::create(['shop_id' => $branch->id, 'product_id' => $branchProduct->id, 'size' => '225', 'color' => 'CK', 'stock' => 1]);
+
+        $this->actingAs($branchOwner, 'web')->delete(route('app.products.destroy', $branchProduct->id))->assertSessionHasNoErrors();
+        $this->assertTrue($mainVariant->fresh()->trashed());
+
+        $branchProduct->fresh()->restore();
+
+        $this->assertFalse($mainProduct->fresh()->trashed());
+        $this->assertFalse(ProductVariant::withoutGlobalScopes()->whereKey($mainVariant->id)->first()->trashed());
+        $this->assertFalse(ProductVariant::withoutGlobalScopes()->whereKey($branchVariant->id)->first()->trashed());
+    }
+
+    /**
+     * Real question raised about the double "1 -> 0 -> -1" pattern found
+     * in Baby Park's own data: PosController::performCheckout() calls
+     * applyStockDelta() once on the line's variant AND once on its
+     * product (PosController.php ~line 1246-1247) -- two DIFFERENT
+     * numbers (variant.stock and product.stock each have their own,
+     * separate pool), not the same number decremented twice. This proves
+     * a qty-1 sale removes exactly 1 unit from the VARIANT pool, across
+     * however many genuine siblings share it (2 real branches here) --
+     * the real data's double deduction was two SEPARATE sales 4+ days
+     * apart, confirmed in the forensic report, not a code bug.
+     */
+    public function test_a_single_sale_decrements_the_variant_pool_exactly_once_per_unit(): void
+    {
+        [$main] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'shared_stock_pool');
+        $branch = $this->createBranch($main);
+        $branchOwner = $branch->users()->first();
+
+        $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Shoe', 'cost' => 500, 'price' => 1000, 'stock' => 1]);
+        $branchProduct = $this->linkBranch($main, $branch, $mainProduct, 1);
+        $mainVariant = ProductVariant::create(['shop_id' => $main->id, 'product_id' => $mainProduct->id, 'size' => '40', 'color' => 'Black', 'barcode' => 'SHOE-40-BLK', 'stock' => 1]);
+        $branchVariant = ProductVariant::create(['shop_id' => $branch->id, 'product_id' => $branchProduct->id, 'size' => '40', 'color' => 'Black', 'barcode' => 'SHOE-40-BLK', 'stock' => 1]);
+
+        $response = $this->actingAs($branchOwner, 'web')->postJson('/app/pos/checkout', [
+            'items' => [['product_id' => $branchProduct->id, 'product_variant_id' => $branchVariant->id, 'qty' => 1]],
+            'payments' => [['method' => 'cash', 'amount' => 1000]],
+        ]);
+        $response->assertOk();
+
+        // exactly one unit gone from the variant pool, not two
+        $this->assertEquals(0, (float) $branchVariant->refresh()->stock);
+        $this->assertEquals(0, (float) $mainVariant->refresh()->stock);
+        // the product-level pool (a SEPARATE number) also moved exactly once
+        $this->assertEquals(0, (float) $branchProduct->refresh()->stock);
+        $this->assertEquals(0, (float) $mainProduct->refresh()->stock);
+    }
+
     public function test_a_cascaded_delete_writes_an_activity_log_entry_on_every_affected_shop(): void
     {
         [$main] = $this->createShopWithOwner();
@@ -440,5 +587,82 @@ class SharedStockPoolTest extends TestCase
 
         $this->assertDatabaseHas('activity_logs', ['shop_id' => $main->id, 'action' => 'product.pool_delete_cascade', 'subject_id' => $mainProduct->id]);
         $this->assertDatabaseHas('activity_logs', ['shop_id' => $branchA->id, 'action' => 'product.pool_delete_cascade', 'subject_id' => $branchAProduct->id]);
+    }
+
+    /**
+     * An exchange's replacement item (ReturnController::createExchangeSale(),
+     * app/Http/Controllers/App/ReturnController.php:817-818) must decrement
+     * the variant pool exactly once, same shape as a plain POS sale -- not
+     * the whole return/refund flow, just this one stock-moving step.
+     */
+    public function test_an_exchanges_replacement_item_decrements_the_pool_exactly_once(): void
+    {
+        [$main] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'shared_stock_pool');
+        $branch = $this->createBranch($main);
+
+        $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Shirt', 'cost' => 300, 'price' => 700, 'stock' => 1]);
+        $branchProduct = $this->linkBranch($main, $branch, $mainProduct, 1);
+        $mainVariant = ProductVariant::create(['shop_id' => $main->id, 'product_id' => $mainProduct->id, 'size' => 'L', 'color' => 'White', 'stock' => 1]);
+        $branchVariant = ProductVariant::create(['shop_id' => $branch->id, 'product_id' => $branchProduct->id, 'size' => 'L', 'color' => 'White', 'stock' => 1]);
+
+        $customer = \App\Models\Customer::create(['shop_id' => $branch->id, 'name' => 'Walk-in', 'phone' => '0100', 'due' => 0]);
+        $originalSale = \App\Models\Sale::create([
+            'shop_id' => $branch->id, 'customer_id' => $customer->id, 'invoice_no' => 'INV-TEST-1',
+            'date' => now()->toDateString(), 'time' => now()->toTimeString(),
+            'subtotal' => 700, 'discount' => 0, 'service_charge' => 0, 'vat' => 0, 'total' => 700, 'profit' => 400,
+            'payment_mode' => 'cash',
+        ]);
+
+        \App\Support\Tenancy::set($branch->id);
+
+        $method = new \ReflectionMethod(\App\Http\Controllers\App\ReturnController::class, 'createExchangeSale');
+        $method->setAccessible(true);
+        $controller = app(\App\Http\Controllers\App\ReturnController::class);
+        $method->invoke($controller, [
+            'new_items' => [['product_id' => $branchProduct->id, 'product_variant_id' => $branchVariant->id, 'qty' => 1]],
+        ], $branch->id, null, $branch, $customer, 700.0, $originalSale);
+
+        // exactly one unit gone from the variant pool, not two
+        $this->assertEquals(0, (float) $branchVariant->refresh()->stock);
+        $this->assertEquals(0, (float) $mainVariant->refresh()->stock);
+        $this->assertEquals(0, (float) $branchProduct->refresh()->stock);
+        $this->assertEquals(0, (float) $mainProduct->refresh()->stock);
+    }
+
+    /**
+     * An online order's line (OnlineOrderController::createOrder(),
+     * app/Http/Controllers/App/OnlineOrderController.php:382-383) must
+     * decrement the variant pool exactly once.
+     */
+    public function test_an_online_order_line_decrements_the_pool_exactly_once(): void
+    {
+        [$main] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'shared_stock_pool');
+        $branch = $this->createBranch($main);
+
+        $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Bag', 'cost' => 400, 'price' => 900, 'stock' => 1]);
+        $branchProduct = $this->linkBranch($main, $branch, $mainProduct, 1);
+        $mainVariant = ProductVariant::create(['shop_id' => $main->id, 'product_id' => $mainProduct->id, 'size' => 'M', 'color' => 'Tan', 'stock' => 1]);
+        $branchVariant = ProductVariant::create(['shop_id' => $branch->id, 'product_id' => $branchProduct->id, 'size' => 'M', 'color' => 'Tan', 'stock' => 1]);
+
+        $channel = \App\Models\SalesChannel::create(['shop_id' => $branch->id, 'name' => 'Facebook', 'platform_type' => 'facebook', 'active' => true, 'order_prefix' => 'OL']);
+
+        \App\Support\Tenancy::set($branch->id);
+
+        $method = new \ReflectionMethod(\App\Http\Controllers\App\OnlineOrderController::class, 'createOrder');
+        $method->setAccessible(true);
+        $controller = app(\App\Http\Controllers\App\OnlineOrderController::class);
+        $method->invoke($controller, [
+            'channel_id' => $channel->id,
+            'customer_phone' => '0100', 'customer_name' => 'Walk-in',
+            'items' => [['product_id' => $branchProduct->id, 'product_variant_id' => $branchVariant->id, 'qty' => 1]],
+        ], $branch->id);
+
+        // exactly one unit gone from the variant pool, not two
+        $this->assertEquals(0, (float) $branchVariant->refresh()->stock);
+        $this->assertEquals(0, (float) $mainVariant->refresh()->stock);
+        $this->assertEquals(0, (float) $branchProduct->refresh()->stock);
+        $this->assertEquals(0, (float) $mainProduct->refresh()->stock);
     }
 }
