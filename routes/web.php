@@ -534,6 +534,8 @@ Route::middleware(['shop', 'subscription'])->prefix('app')->name('app.')->group(
         Route::get('online-orders', [OnlineOrderController::class, 'index'])->name('onlineOrders.index');
         Route::get('online-orders/create', [OnlineOrderController::class, 'create'])->name('onlineOrders.create');
         Route::get('online-orders/customer-risk', [OnlineOrderController::class, 'customerRisk'])->name('onlineOrders.customerRisk');
+        // scan-to-add's server fallback (sibling-branch ZV/ZC stickers) — see OnlineOrderController::barcode()
+        Route::get('online-orders/barcode/{barcode}', [OnlineOrderController::class, 'barcode'])->name('onlineOrders.barcode');
         Route::post('online-orders/csv-preview', [OnlineOrderController::class, 'csvPreview'])->name('onlineOrders.csvPreview');
         Route::post('online-orders/csv-import', [OnlineOrderController::class, 'csvImport'])->name('onlineOrders.csvImport');
         Route::post('online-orders', [OnlineOrderController::class, 'store'])->name('onlineOrders.store');

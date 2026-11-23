@@ -8,6 +8,8 @@ import CameraScanner from '@/Components/CameraScanner.vue';
 import { useI18n } from '@/composables/useI18n';
 import { useHardwareScanner } from '@/composables/useHardwareScanner';
 import { useToast } from '@/composables/useToast';
+import { resolveScannedCode } from '@/support/onlineOrderScan';
+import { fetchWithSessionRetry } from '@/support/fetchWithSessionRetry';
 
 const props = defineProps({ channels: Array, products: Array, couriers: { type: Array, default: () => [] } });
 const { t } = useI18n();
@@ -80,69 +82,46 @@ function onProductChange(line) {
  * a duplicate one, same as a repeat scan in POS.
  */
 const scanInput = ref('');
-function handleBarcode(code) {
-    const trimmed = code.trim();
-    if (!trimmed) return;
 
-    // docs/ARTICLE_SERIES_PLAN.md §10 — a short printed-symbol code
-    // (ZV{variantId}/ZC{colorBarcodeId}), decoupled from the full
-    // descriptive text still printed on the label below it.
-    const zv = trimmed.match(/^ZV(\d+)$/);
-    if (zv) {
-        const vid = Number(zv[1]);
-        for (const p of props.products) {
-            const v = p.variants?.find((variant) => variant.id === vid);
-            if (v) {
-                addScannedLine(p.id, v.id, `${p.name} (${[v.size, v.color].filter(Boolean).join(', ')})`);
-                return;
-            }
-        }
-    }
-    const zc = trimmed.match(/^ZC(\d+)$/);
-    if (zc) {
-        const cid = Number(zc[1]);
-        for (const p of props.products) {
-            const cb = p.color_barcodes?.find((c) => c.id === cid);
-            if (cb) {
-                openScanColorPicker(p, cb.color);
-                return;
-            }
-        }
-    }
+// The server-side resolver (OnlineOrderController::barcode -> BarcodeResolver)
+// for a code the page cannot place locally — above all a ZV{id} sticker
+// printed at the SIBLING branch: its variant id is not in this shop's list,
+// but its barcode string resolves to this shop's matching size there.
+// Baby Park live, 2026-11-23: a shop-81 sticker scanned at shop 80 showed
+// "No products found" here while POS (which has this fallback) found it.
+async function lookupOnServer(code) {
+    const res = await fetchWithSessionRetry(route('app.onlineOrders.barcode', code), { headers: { Accept: 'application/json' } });
+    return res.ok ? res.json() : { found: false };
+}
 
-    for (const p of props.products) {
-        const v = p.variants?.find((variant) => variant.barcode === trimmed);
-        if (v) {
-            addScannedLine(p.id, v.id, `${p.name} (${[v.size, v.color].filter(Boolean).join(', ')})`);
-            return;
-        }
-    }
+/** One path for the camera, the hardware scanner and the typed field — see support/onlineOrderScan.js for the match order. */
+async function handleBarcode(code, { typed = false } = {}) {
+    const result = await resolveScannedCode({ code, products: props.products, lookup: lookupOnServer, typed });
 
-    // tier 2 — docs/ARTICLE_SERIES_PLAN.md §9's color-level barcode
-    for (const p of props.products) {
-        const cb = p.color_barcodes?.find((c) => c.barcode === trimmed);
-        if (cb) {
-            openScanColorPicker(p, cb.color);
-            return;
-        }
-    }
-
-    const product = props.products.find((p) => p.barcode === trimmed);
-    if (product) {
-        // the ARTICLE's own barcode (e.g. a shelf tag) is ambiguous — which
-        // size/color? Open the picker instead of leaving a half-filled line.
-        if (product.variants?.length) {
-            closeCamera();
-            scanVariantProduct.value = product;
-            scanVariantOnlyColor.value = null;
-            scanVariantSheetOpen.value = true;
-            return;
-        }
-        addScannedLine(product.id, '', product.name);
+    if (result.type === 'notFound') {
+        toast('❌ ' + t('pos.notFound'));
         return;
     }
+    if (result.fromServer && !props.products.some((p) => p.id === result.product.id)) {
+        props.products.push(result.product); // same as POS: now it's local for the next scan
+    }
 
-    toast('❌ ' + t('pos.notFound'));
+    const product = result.product;
+    if (result.type === 'line') {
+        const v = result.variant;
+        addScannedLine(product.id, v ? v.id : '', v ? `${product.name} (${[v.size, v.color].filter(Boolean).join(', ')})` : product.name);
+        return;
+    }
+    if (result.type === 'color') {
+        openScanColorPicker(product, result.color);
+        return;
+    }
+    // the ARTICLE's own barcode (e.g. a shelf tag) is ambiguous — which
+    // size/color? Open the picker instead of leaving a half-filled line.
+    closeCamera();
+    scanVariantProduct.value = product;
+    scanVariantOnlyColor.value = null;
+    scanVariantSheetOpen.value = true;
 }
 const scanVariantSheetOpen = ref(false);
 const scanVariantProduct = ref(null);
@@ -183,7 +162,8 @@ function addScannedLine(productId, variantId, label, qty = 1) {
     toast('✅ ' + label);
 }
 function onScanInputEnter() {
-    handleBarcode(scanInput.value);
+    // the only entry point that is a human typing — forgiving on case/spaces
+    handleBarcode(scanInput.value, { typed: true });
     scanInput.value = '';
 }
 

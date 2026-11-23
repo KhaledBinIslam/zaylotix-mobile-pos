@@ -72,6 +72,24 @@ class OnlineOrderController extends Controller
     }
 
     /**
+     * Scan-to-add's server fallback for the order form. Orders/Create.vue
+     * matches a scanned code against the products it was handed first; a
+     * code it cannot place locally — above all a ZV{id} sticker printed at
+     * the SIBLING branch, whose variant id does not exist in this shop —
+     * comes here. Same shared resolver as POS and Returns (ZL/ZV/ZC,
+     * variant, colour and product barcodes, cross-branch via
+     * Tenancy::sameBusiness), same JSON shape; its own route because
+     * pos.barcode sits behind perm:pos + sales.mode, which an online-
+     * business user need not have.
+     */
+    public function barcode(string $barcode)
+    {
+        $result = \App\Support\BarcodeResolver::resolve($barcode);
+
+        return response()->json($result, $result['found'] ? 200 : 404);
+    }
+
+    /**
      * Repeat-customer / fake-order risk check — a warning, never a hard
      * block (see docs/FIX_PLAN.md's Phase 32 design note). Its own small
      * endpoint rather than extending the shared `customers.lookup` POS
