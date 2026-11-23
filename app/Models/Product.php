@@ -104,6 +104,14 @@ class Product extends Model
                 return;
             }
 
+            // a bulk writer (import) collects the rows and mirrors them
+            // once at the end — see CatalogSync::deferAutoAdopt()
+            if (\App\Support\CatalogSync::isDeferring()) {
+                \App\Support\CatalogSync::noteDeferred($product->id, $product->shop_id);
+
+                return;
+            }
+
             $shop = \App\Support\CatalogSync::creationHookShop($product->shop_id);
             if (! $shop) {
                 return;

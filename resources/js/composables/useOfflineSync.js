@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue';
-import { usePage } from '@inertiajs/vue3';
+import { usePage, router } from '@inertiajs/vue3';
 import { enqueueSale, removeFromQueue, markFailed, markShopMismatch, retryEntry, remapQueuedItem, dropQueuedItem, editQueuedEntry, pendingCount, failedCount, offlineSyncFailureKind } from '@/support/offlineQueue';
 import { kvGet, kvSet, KEYS } from '@/support/offlineDb';
 import { shouldAutoSync } from '@/support/syncModeDecision';
@@ -62,6 +62,7 @@ async function trySync() {
     if (!pending.length) return;
 
     syncing.value = true;
+    let syncedAny = false;
     try {
         for (const entry of pending) {
             // Real bug (see docs/FIX_PLAN.md): a sale queued under one
@@ -116,6 +117,7 @@ async function trySync() {
                 const data = await res.json().catch(() => ({}));
 
                 if (res.ok) {
+                    syncedAny = true;
                     queue.value = removeFromQueue(queue.value, entry.id);
                     // the cashier who rang this sale up offline has long
                     // since moved on to the next customer — this is the
@@ -175,6 +177,11 @@ async function trySync() {
             }
             await persist();
         }
+        // The queued sales' stock left the server the moment each one
+        // replayed, but the POS tiles were last loaded before that (and
+        // in 'review' mode this flush may be hours later) — one partial
+        // reload brings the catalogue back in line with what just synced.
+        if (syncedAny) router.reload({ only: ['products'] });
     } finally {
         syncing.value = false;
     }

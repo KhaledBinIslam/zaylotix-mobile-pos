@@ -1110,7 +1110,13 @@ function deleteProduct() {
     if (!editing.value) return;
     if (!confirm(`"${editing.value.name}" ${t('stock.deleteConfirm')}`)) return;
     router.delete(route('app.products.destroy', editing.value.id), {
+        preserveScroll: true,
         onSuccess: () => (productSheet.value = false),
+        // a server-side refusal (ProductController::destroy's logged
+        // catch) used to land in page.props.errors with nothing on this
+        // page reading it — the sheet just sat there, which reads as
+        // "delete does nothing". Surface it.
+        onError: (errors) => toast('❌ ' + (errors.delete || Object.values(errors)[0] || t('stock.deleteFailed'))),
     });
 }
 

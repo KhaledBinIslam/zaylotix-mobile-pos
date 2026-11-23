@@ -456,7 +456,29 @@ class ProductController extends Controller
     public function destroy(Product $product)
     {
         $this->authorize('delete', $product);
-        $product->delete(); // soft delete — keeps historical sale_items intact
+
+        // Baby Park live (2026-11-23): "cannot delete a product" with
+        // nothing in laravel.log to go on. The soft delete fans out
+        // (Product::deleted(): barcode release, pooled-sibling cascade with
+        // activity logs) — any failure in that chain must leave BOTH a
+        // log line that names the product and a message the owner can
+        // read, never a half-done cascade or a silent no-op.
+        try {
+            DB::transaction(fn () => $product->delete()); // soft delete — keeps historical sale_items intact
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('product.delete failed', [
+                'product_id' => $product->id,
+                'shop_id' => $product->shop_id,
+                'user_id' => auth()->id(),
+                'exception' => get_class($e),
+                'message' => $e->getMessage(),
+                'trace' => collect(explode("\n", $e->getTraceAsString()))->take(6)->implode(' | '),
+            ]);
+
+            return back()->withErrors([
+                'delete' => "পণ্যটি মুছা যায়নি — '{$product->name}' (#{$product->id})। কারিগরি ত্রুটি লগ করা হয়েছে, আবার চেষ্টা করুন বা অ্যাডমিনকে জানান।",
+            ]);
+        }
 
         return back()->with('success', 'Product removed.');
     }

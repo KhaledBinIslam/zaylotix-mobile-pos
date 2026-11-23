@@ -1825,6 +1825,7 @@ export const translations = {
     'stock.addPackSize': { bn: '＋ প্যাক সাইজ যোগ করুন', en: '＋ Add pack size' },
     'stock.deleteProduct': { bn: '🗑 পণ্য মুছুন', en: '🗑 Delete product' },
     'stock.deleteConfirm': { bn: 'মুছে ফেলতে চান? পুরনো বিক্রির হিসাব ঠিক থাকবে।', en: 'Delete this product? Old sales records stay intact.' },
+    'stock.deleteFailed': { bn: 'পণ্যটি মুছা যায়নি — আবার চেষ্টা করুন বা অ্যাডমিনকে জানান।', en: 'Could not delete the product — try again or contact the admin.' },
     'stock.removePackConfirm': { bn: 'প্যাক সাইজ মুছবেন?', en: 'Remove this pack size?' },
     'stock.stockInTitle': { bn: '📥 স্টক ঢোকান', en: '📥 Add Stock' },
     'stock.currentStock': { bn: 'বর্তমান স্টক:', en: 'Current stock:' },

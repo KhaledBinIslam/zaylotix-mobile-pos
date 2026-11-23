@@ -168,6 +168,14 @@ class ProductVariant extends Model
             return;
         }
 
+        // a bulk writer (import) collects the parent products and mirrors
+        // them — sizes included — once at the end (CatalogSync::deferAutoAdopt())
+        if (\App\Support\CatalogSync::isDeferring()) {
+            \App\Support\CatalogSync::noteDeferred($this->product_id, $this->shop_id);
+
+            return;
+        }
+
         $targetIds = $this->pooledTargetProductIds();
         if ($targetIds === null) {
             return;

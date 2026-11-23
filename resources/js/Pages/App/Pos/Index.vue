@@ -16,6 +16,7 @@ import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts';
 import { useOfflineSync } from '@/composables/useOfflineSync';
 import { useOfflineCatalog } from '@/composables/useOfflineCatalog';
 import { usePollingReload } from '@/composables/usePollingReload';
+import { applySoldLines } from '@/support/applySoldLines';
 import { fetchWithSessionRetry } from '@/support/fetchWithSessionRetry';
 import { isStaleAutoFill } from '@/support/customerAutoFill';
 import { buildOfflineSaleSnapshot } from '@/support/offlineSaleSnapshot';
@@ -1156,6 +1157,14 @@ async function proceedCheckout() {
         }
 
         lastSale.value = data.sale;
+        // The server already took these units off inside the sale's own
+        // transaction — show that NOW, before the reload below confirms
+        // it, instead of leaving the tiles on the pre-sale number until
+        // the next poll (which the open receipt sheet suppresses: the
+        // "stock only drops after WhatsApp" report). Both lists, since
+        // 'search' mode tiles read searchResults; shared refs are only
+        // counted once (see applySoldLines).
+        applySoldLines([...props.products, ...searchResults.value], payload.items);
         resetCartAfterCheckout();
         receiptOpen.value = true;
         router.reload({ only: ['products'] });
@@ -1175,6 +1184,11 @@ async function proceedCheckout() {
             // the router.reload() — there's nothing to reload from offline.
             lastSale.value = buildOfflineSaleSnapshot(payload);
             await offlineSync.queueSale(payload, { userId: page.props.auth?.user?.id, userName: page.props.auth?.user?.name });
+            // same optimistic decrement as the online path — the sale is
+            // real (queued, will replay), so the tiles must not keep
+            // showing units that are already sold; the catalogue reload
+            // happens later, once useOfflineSync's flush succeeds
+            applySoldLines([...props.products, ...searchResults.value], payload.items);
             resetCartAfterCheckout();
             receiptOpen.value = true;
             toast(t('pos.savedOffline'));

@@ -10,6 +10,9 @@ use App\Models\ProductPriceTier;
 use App\Models\ProductVariant;
 use App\Models\Shop;
 use App\Models\Unit;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Copies a main shop's Product/ProductCategory/Unit/ProductVariant rows into
@@ -89,6 +92,293 @@ class CatalogSync
         }
 
         return $shop;
+    }
+
+    /*
+     * ---- Deferred (bulk) mode for imports ----------------------------
+     *
+     * Per-row mirroring is right for a cashier adding one article, and
+     * wrong for a 300-row CSV: measured, the import went from ~1,305
+     * queries to ~8,955 with the hooks firing per row. Inside
+     * deferAutoAdopt() the hooks only NOTE which products were touched;
+     * when the work is done, bulkMirror() does the whole batch with set
+     * queries and bulk inserts — same matching rules as the per-row path
+     * (master link → barcode → name, one copy per shop; sizes by barcode →
+     * size+color), same pooled starting stock, same products.stock-is-the-
+     * sum rule — so the RESULT is identical, only the query count isn't.
+     */
+    private static bool $deferring = false;
+
+    /** @var array<int,int> product id => shop id, noted by the hooks while deferring */
+    private static array $deferred = [];
+
+    public static function isDeferring(): bool
+    {
+        return static::$deferring;
+    }
+
+    public static function noteDeferred(int $productId, int $shopId): void
+    {
+        static::$deferred[$productId] = $shopId;
+    }
+
+    /** Runs $work with the creation hooks in note-only mode, then mirrors every noted product once, in bulk. The flush never breaks the caller: it logs and moves on. */
+    public static function deferAutoAdopt(callable $work)
+    {
+        if (static::$deferring) {
+            return $work(); // nested: the outermost call flushes
+        }
+
+        static::$deferring = true;
+        static::$deferred = [];
+        $thrown = null;
+        $result = null;
+        try {
+            $result = $work();
+        } catch (\Throwable $e) {
+            $thrown = $e;
+        } finally {
+            $pending = static::$deferred;
+            static::$deferring = false;
+            static::$deferred = [];
+        }
+
+        // rows the work already committed stay mirrored even if it later threw
+        $byShop = [];
+        foreach ($pending as $productId => $shopId) {
+            $byShop[$shopId][] = $productId;
+        }
+        foreach ($byShop as $shopId => $productIds) {
+            try {
+                $shop = static::creationHookShop((int) $shopId); // kill switch / demo / non-pooled → null
+                if ($shop) {
+                    static::bulkMirror($shop, $productIds);
+                }
+            } catch (\Throwable $e) {
+                Log::error('pool_auto_adopt: deferred bulk mirror failed', [
+                    'shop_id' => $shopId, 'products' => count($productIds), 'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        if ($thrown) {
+            throw $thrown;
+        }
+
+        return $result;
+    }
+
+    /** The batch counterpart of syncOneProduct(): lift (if the writer is a branch) then push to every real branch, for all affected products at once. */
+    private static function bulkMirror(Shop $shop, array $productIds): void
+    {
+        $mainShop = $shop->parent_shop_id ? Shop::withoutGlobalScopes()->find($shop->parent_shop_id) : $shop;
+        if (! $mainShop || ! $mainShop->hasFeature('shared_catalog')) {
+            return; // same gate as syncOneProduct()
+        }
+        $branches = static::branchesOf($mainShop);
+        if ($branches->isEmpty()) {
+            return;
+        }
+
+        $prev = static::$syncing;
+        static::$syncing = true;
+        try {
+            $products = Product::withoutGlobalScopes()->whereIn('id', $productIds)->whereNull('deleted_at')->get();
+            if ($products->isEmpty()) {
+                return;
+            }
+
+            $masters = (int) $shop->id === (int) $mainShop->id
+                ? $products
+                : static::bulkLift($mainShop, $shop, $products);
+
+            foreach ($branches as $branch) {
+                static::bulkPush($mainShop, $branch, $masters);
+            }
+        } finally {
+            static::$syncing = $prev;
+        }
+    }
+
+    /** liftOneFromBranch() for many rows: masters matched/created, branch rows linked, sizes lifted in one insert. Returns the masters. */
+    private static function bulkLift(Shop $mainShop, Shop $branch, Collection $bps): Collection
+    {
+        $linked = Product::withoutGlobalScopes()->whereIn('id', $bps->pluck('master_product_id')->filter())->whereNull('deleted_at')->get()->keyBy('id');
+        $byBarcode = Product::withoutGlobalScopes()->where('shop_id', $mainShop->id)->whereNull('deleted_at')
+            ->whereIn('barcode', $bps->pluck('barcode')->filter()->unique()->values())->get()->keyBy('barcode');
+        $byName = Product::withoutGlobalScopes()->where('shop_id', $mainShop->id)->whereNull('deleted_at')
+            ->whereIn('name', $bps->pluck('name')->unique()->values())->get()->groupBy('name');
+        // the one-copy-per-shop rule: a master that already has a live copy
+        // in this branch (other than the row itself) is not a name match
+        $copiesByMaster = Product::withoutGlobalScopes()->where('shop_id', $branch->id)->whereNull('deleted_at')
+            ->whereIn('master_product_id', $byName->flatten()->pluck('id'))->get()->groupBy('master_product_id');
+
+        // category/unit by NAME at the main shop, never created here (same as liftOneFromBranch)
+        $branchCatNames = ProductCategory::withoutGlobalScopes()->whereIn('id', $bps->pluck('category_id')->filter()->unique())->pluck('name', 'id');
+        $mainCatIds = ProductCategory::withoutGlobalScopes()->where('shop_id', $mainShop->id)->whereIn('name', $branchCatNames->values())->pluck('id', 'name');
+        $branchUnitNames = Unit::withoutGlobalScopes()->whereIn('id', $bps->pluck('unit_id')->filter()->unique())->pluck('name', 'id');
+        $mainUnitIds = Unit::withoutGlobalScopes()->where('shop_id', $mainShop->id)->whereIn('name', $branchUnitNames->values())->pluck('id', 'name');
+        // barcodes already spoken for at the main shop (trashed rows hold theirs too — unique index)
+        $takenBarcodes = Product::withoutGlobalScopes()->where('shop_id', $mainShop->id)
+            ->whereIn('barcode', $bps->pluck('barcode')->filter()->unique()->values())->pluck('barcode')->flip();
+
+        $masters = collect();
+        $sourceToMaster = [];
+        foreach ($bps as $bp) {
+            $master = $linked->get($bp->master_product_id)
+                ?? (filled($bp->barcode) ? $byBarcode->get($bp->barcode) : null)
+                ?? ($byName->get($bp->name) ?? collect())->first(
+                    fn (Product $m) => ! ($copiesByMaster->get($m->id) ?? collect())->contains(fn (Product $c) => $c->id !== $bp->id)
+                );
+
+            if (! $master) {
+                $barcodeFree = filled($bp->barcode) && ! $takenBarcodes->has($bp->barcode);
+                $master = Product::create([
+                    'shop_id' => $mainShop->id,
+                    'category_id' => $bp->category_id ? ($mainCatIds->get($branchCatNames->get($bp->category_id)) ?? null) : null,
+                    'unit_id' => $bp->unit_id ? ($mainUnitIds->get($branchUnitNames->get($bp->unit_id)) ?? null) : null,
+                    'name' => $bp->name, 'name_en' => $bp->name_en, 'generic_name' => $bp->generic_name,
+                    'company' => $bp->company, 'shelf_location' => $bp->shelf_location,
+                    'requires_prescription' => $bp->requires_prescription ?? false, 'emoji' => $bp->emoji ?: '📦',
+                    'photo_path' => $bp->photo_path,
+                    'barcode' => $barcodeFree ? $bp->barcode : null,
+                    'sold_by_weight' => $bp->sold_by_weight ?? false, 'weight_unit' => $bp->weight_unit,
+                    'cost' => $bp->cost, 'price' => $bp->price, 'wholesale_price' => $bp->wholesale_price,
+                    'wholesale_moq' => $bp->wholesale_moq, 'discount_price' => $bp->discount_price,
+                    'reorder_point' => $bp->reorder_point,
+                    'stock' => $bp->stock,
+                ]);
+                if ($barcodeFree) {
+                    $takenBarcodes[$bp->barcode] = true;
+                }
+                // visible to a later same-named row — which must then get its OWN master
+                $byName[$bp->name] = ($byName->get($bp->name) ?? collect())->push($master);
+            }
+            $copiesByMaster[$master->id] = ($copiesByMaster->get($master->id) ?? collect())->push($bp);
+
+            if ((int) $bp->master_product_id !== (int) $master->id) {
+                Product::withoutGlobalScopes()->whereKey($bp->id)->update(['master_product_id' => $master->id]);
+                $bp->master_product_id = $master->id;
+            }
+            $masters->put($master->id, $master);
+            $sourceToMaster[$bp->id] = $master->id;
+        }
+
+        static::bulkMirrorVariants($mainShop, $sourceToMaster, copyStock: true);
+
+        return $masters->values();
+    }
+
+    /** upsertBranchProduct()+syncVariantsOfProduct() for many masters into one branch: linked copies updated, missing ones created, sizes pushed in one insert. */
+    private static function bulkPush(Shop $mainShop, Shop $branch, Collection $masters): void
+    {
+        $categoryMap = static::syncCategories($mainShop, $branch);
+        $unitMap = static::syncUnits($mainShop, $branch);
+        $pooled = $mainShop->hasFeature('shared_stock_pool');
+
+        $copies = Product::withoutGlobalScopes()->where('shop_id', $branch->id)
+            ->whereIn('master_product_id', $masters->pluck('id'))->get()->keyBy('master_product_id');
+
+        $masterToCopy = [];
+        foreach ($masters as $master) {
+            $existing = $copies->get($master->id)
+                ?? static::findExistingBranchProduct($branch, $master); // barcode/name fallback for an unlinked row
+
+            if ($existing && $existing->deleted_at !== null) {
+                // a tombstone being re-attached has its own revive-and-
+                // reset-stock rules — leave that exact path to the per-row
+                // code rather than re-implementing it here
+                $existing = static::upsertBranchProduct($mainShop, $branch, $master, $existing, $categoryMap, $unitMap);
+            } elseif ($existing) {
+                $existing->update(static::branchProductAttrs($master, $categoryMap, $unitMap)); // stock deliberately excluded, same as upsertBranchProduct()
+            } else {
+                $existing = Product::create([
+                    'shop_id' => $branch->id,
+                    'stock' => $pooled ? (float) $master->stock : 0,
+                    ...static::branchProductAttrs($master, $categoryMap, $unitMap),
+                ]);
+            }
+            $masterToCopy[$master->id] = $existing->id;
+        }
+
+        static::bulkMirrorVariants($branch, $masterToCopy, copyStock: $pooled);
+
+        // tiers and colour barcodes are rare on a fresh import — only the
+        // masters that actually have some go through the per-product path
+        $withTiers = ProductPriceTier::withoutGlobalScopes()->whereIn('product_id', $masters->pluck('id'))->distinct()->pluck('product_id');
+        $withColorBarcodes = ProductColorBarcode::withoutGlobalScopes()->whereIn('product_id', $masters->pluck('id'))->distinct()->pluck('product_id');
+        foreach ($masters as $master) {
+            if ($withTiers->contains($master->id)) {
+                static::syncPriceTiersForProduct($master, Product::withoutGlobalScopes()->find($masterToCopy[$master->id]));
+            }
+            if ($withColorBarcodes->contains($master->id)) {
+                static::syncColorBarcodesOfProduct($mainShop, $branch, $master->id, $masterToCopy[$master->id]);
+            }
+        }
+    }
+
+    /**
+     * Every size the target products lack, in one insert — matched the way
+     * syncVariantsOfProduct()/liftVariantsFromBranch() match (barcode first,
+     * else exact size+colour), a barcode already held in the target shop
+     * left off, then products.stock realigned to the live sum.
+     *
+     * @param  array<int,int>  $sourceToTarget  source product id => target product id
+     */
+    private static function bulkMirrorVariants(Shop $targetShop, array $sourceToTarget, bool $copyStock): void
+    {
+        if (! $sourceToTarget) {
+            return;
+        }
+
+        $sourceVariants = ProductVariant::withoutGlobalScopes()->whereIn('product_id', array_keys($sourceToTarget))
+            ->whereNull('deleted_at')->orderBy('id')->get()->groupBy('product_id');
+        if ($sourceVariants->isEmpty()) {
+            return;
+        }
+        $targetVariants = ProductVariant::withoutGlobalScopes()->whereIn('product_id', array_values($sourceToTarget))
+            ->whereNull('deleted_at')->get()->groupBy('product_id');
+        $takenBarcodes = ProductVariant::withoutGlobalScopes()->where('shop_id', $targetShop->id)
+            ->whereIn('barcode', $sourceVariants->flatten()->pluck('barcode')->filter()->unique()->values())->pluck('barcode')->flip();
+
+        $rows = [];
+        $touched = [];
+        $now = now();
+        foreach ($sourceToTarget as $sourceId => $targetId) {
+            $existing = $targetVariants->get($targetId) ?? collect();
+            foreach ($sourceVariants->get($sourceId) ?? [] as $sv) {
+                $match = (filled($sv->barcode) ? $existing->firstWhere('barcode', $sv->barcode) : null)
+                    ?? $existing->first(fn ($v) => (string) $v->size === (string) $sv->size && (string) $v->color === (string) $sv->color);
+                if ($match) {
+                    continue;
+                }
+                $barcode = (filled($sv->barcode) && ! $takenBarcodes->has($sv->barcode)) ? $sv->barcode : null;
+                if ($barcode) {
+                    $takenBarcodes[$barcode] = true;
+                }
+                $rows[] = [
+                    'shop_id' => $targetShop->id, 'product_id' => $targetId,
+                    'size' => $sv->size, 'color' => $sv->color, 'barcode' => $barcode,
+                    'stock' => $copyStock ? $sv->stock : 0, 'reorder_point' => $sv->reorder_point,
+                    'price' => $sv->price, 'cost' => $sv->cost, 'photo_path' => $sv->photo_path,
+                    'created_at' => $now, 'updated_at' => $now,
+                ];
+                $touched[$targetId] = true;
+                $existing->push((object) ['barcode' => $barcode, 'size' => $sv->size, 'color' => $sv->color]);
+            }
+        }
+
+        foreach (array_chunk($rows, 200) as $chunk) {
+            ProductVariant::insert($chunk);
+        }
+
+        if ($touched) {
+            // products.stock is the live sum of its sizes — same direct write,
+            // never applyStockDelta(), as liftVariantsFromBranch()
+            Product::withoutGlobalScopes()->whereIn('id', array_keys($touched))->update([
+                'stock' => DB::raw('(select coalesce(sum(pv.stock), 0) from product_variants pv where pv.product_id = products.id and pv.deleted_at is null)'),
+            ]);
+        }
     }
 
     /** Every branch of this main shop that syncing may touch — a demo clone is never one of them, whatever its parent_shop_id says (same rule as Product::validBranchCopyIds()). */
@@ -518,18 +808,10 @@ class CatalogSync
      * here on a first-ever match) — durable across a later rename on
      * either side, unlike barcode/name alone.
      */
-    private static function upsertBranchProduct(Shop $mainShop, Shop $branch, Product $p, ?Product $existing, array $categoryMap, array $unitMap): Product
+    /** The attribute set a branch copy mirrors from its master — one list, shared by the per-row upsert and the bulk push so they can never drift. */
+    private static function branchProductAttrs(Product $p, array $categoryMap, array $unitMap): array
     {
-        // emoji/requires_prescription/sold_by_weight fall back here because
-        // a Product instance fresh off Product::create() never reflects a
-        // column's DB-level default (migration defaults only apply when the
-        // INSERT omits the column entirely — $p's own in-memory attribute
-        // stays null unless it was explicitly passed in). Every real product
-        // created through ProductController::store() always sets these
-        // explicitly, so this only ever matters for a product built
-        // directly (tests, console seeders) — never silently insert a NULL
-        // into a NOT NULL column on the branch side.
-        $attrs = [
+        return [
             'category_id' => $p->category_id ? ($categoryMap[$p->category_id] ?? null) : null,
             'unit_id' => $p->unit_id ? ($unitMap[$p->unit_id] ?? null) : null,
             'name' => $p->name, 'name_en' => $p->name_en, 'generic_name' => $p->generic_name,
@@ -542,6 +824,20 @@ class CatalogSync
             'discount_price' => $p->discount_price, 'reorder_point' => $p->reorder_point,
             'master_product_id' => $p->id,
         ];
+    }
+
+    private static function upsertBranchProduct(Shop $mainShop, Shop $branch, Product $p, ?Product $existing, array $categoryMap, array $unitMap): Product
+    {
+        // emoji/requires_prescription/sold_by_weight fall back here because
+        // a Product instance fresh off Product::create() never reflects a
+        // column's DB-level default (migration defaults only apply when the
+        // INSERT omits the column entirely — $p's own in-memory attribute
+        // stays null unless it was explicitly passed in). Every real product
+        // created through ProductController::store() always sets these
+        // explicitly, so this only ever matters for a product built
+        // directly (tests, console seeders) — never silently insert a NULL
+        // into a NOT NULL column on the branch side.
+        $attrs = static::branchProductAttrs($p, $categoryMap, $unitMap);
 
         // see this class's own docblock -- a brand-new pooled row must start
         // already equal to the main shop's current count, never an empty 0

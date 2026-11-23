@@ -96,6 +96,12 @@ class ProductImportController extends Controller
         $skipped = [];
         $rowNum = 1;
 
+        // Pooled shops: the Product/ProductVariant created() hooks would
+        // otherwise mirror every row to every pool member one at a time
+        // (measured: ~1,305 -> ~8,955 queries for 300 rows). Inside this
+        // block they only note the touched products; one bulk mirror runs
+        // when the loop is done — same result, a fraction of the queries.
+        CatalogSync::deferAutoAdopt(function () use ($handle, $columns, $hasVariants, &$categoryCache, &$unitCache, &$productGroupCache, &$added, &$updated, &$variantsAdded, &$variantsUpdated, &$skipped, &$rowNum) {
         while (($row = fgetcsv($handle)) !== false) {
             $rowNum++;
             if (count(array_filter($row, fn ($v) => trim((string) $v) !== '')) === 0) {
@@ -273,6 +279,7 @@ class ProductImportController extends Controller
                 }
             });
         }
+        });
 
         fclose($handle);
 
@@ -283,8 +290,12 @@ class ProductImportController extends Controller
         // already covers, so just run the same sync once at the end
         // instead of per-row, same gating (main shop, has real branches,
         // feature on) as that button.
+        // A pooled main is already fully mirrored by deferAutoAdopt()'s
+        // bulk flush above (products, sizes, every real branch) — walking
+        // the WHOLE catalogue again here would only repeat that work, so
+        // this catalogue-wide pass stays for shared_catalog-only mains.
         $shop = Tenancy::shop();
-        if (($added || $updated || $variantsAdded || $variantsUpdated) && $shop && ! $shop->parent_shop_id && $shop->hasFeature('shared_catalog')) {
+        if (($added || $updated || $variantsAdded || $variantsUpdated) && $shop && ! $shop->parent_shop_id && $shop->hasFeature('shared_catalog') && ! $shop->hasFeature('shared_stock_pool')) {
             $branches = Shop::withoutGlobalScopes()->where('parent_shop_id', $shop->id)->get();
             foreach ($branches as $branch) {
                 CatalogSync::syncToBranch($shop, $branch);
