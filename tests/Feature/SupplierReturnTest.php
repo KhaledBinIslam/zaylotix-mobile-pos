@@ -196,7 +196,8 @@ class SupplierReturnTest extends TestCase
         $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Shoe', 'cost' => 500, 'price' => 1000, 'stock' => 10]);
         $branchProduct = Product::create(['shop_id' => $branch->id, 'master_product_id' => $mainProduct->id, 'name' => 'Shoe', 'cost' => 500, 'price' => 1000, 'stock' => 10]);
         $mainVariant = ProductVariant::create(['shop_id' => $main->id, 'product_id' => $mainProduct->id, 'size' => '40', 'color' => 'Black', 'barcode' => 'SHOE-40-B', 'stock' => 10, 'cost' => 500, 'price' => 1000]);
-        $branchVariant = ProductVariant::create(['shop_id' => $branch->id, 'product_id' => $branchProduct->id, 'size' => '40', 'color' => 'Black', 'barcode' => 'SHOE-40-B', 'stock' => 10, 'cost' => 500, 'price' => 1000]);
+        // mirrored into the branch by the created() hook, barcode and all
+        $branchVariant = ProductVariant::withoutGlobalScopes()->where('product_id', $branchProduct->id)->firstOrFail();
 
         $response = $this->actingAs($mainOwner, 'web')->post('/app/supplier-returns', [
             'supplier' => 'ABC Traders',

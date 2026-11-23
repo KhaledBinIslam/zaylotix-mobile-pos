@@ -42,6 +42,65 @@ use App\Models\Unit;
 class CatalogSync
 {
     /**
+     * True while any sync entry point here is running, so the
+     * Product/ProductVariant created() hooks (which call back INTO this
+     * class for pooled shops) know the row being created is this class's
+     * own work — a master being lifted, a branch copy being pushed — and
+     * never start a second, re-entrant sync of their own.
+     */
+    public static bool $syncing = false;
+
+    /**
+     * The gate every creation hook passes first. Returns the creating
+     * shop when the hooks should act (pool_auto_adopt on, not this
+     * class's own write, a real — never demo — member of a group whose
+     * MAIN shop has shared_stock_pool), null otherwise.
+     *
+     * Deliberately cheap on the paths that run for every shop on the
+     * platform: the config flag and $syncing cost nothing, and a demo
+     * shop or a non-pooled shop bails after one or two plain lookups.
+     *
+     * Always a FRESH, uncached lookup — never Tenancy::shop() or a
+     * relation already loaded on it. A real bug this caused (2026-11-23,
+     * found by SourceLineCorrectionTest's own barcode-label-feature
+     * test): calling hasFeature() on the memoized ambient shop during
+     * Product::create() caches its features relation right then: a
+     * LATER grantFeature() in the same request changes the pivot table
+     * through a DIFFERENT, freshly-queried Shop instance, which that
+     * cached relation never sees, so the next feature-gated request
+     * (still reading the same memoized, now-stale instance) 403s even
+     * though the grant succeeded. A model-creation hook must never be
+     * the thing that prematurely caches or memoizes the ambient tenant.
+     */
+    public static function creationHookShop(int $shopId): ?Shop
+    {
+        if (! config('pos.pool_auto_adopt', true) || static::$syncing) {
+            return null;
+        }
+
+        $shop = Shop::withoutGlobalScopes()->find($shopId);
+        if (! $shop || $shop->account_type === 'demo') {
+            return null;
+        }
+
+        $main = $shop->parent_shop_id ? Shop::withoutGlobalScopes()->find($shop->parent_shop_id) : $shop;
+        if (! $main || $main->account_type === 'demo' || ! $main->hasFeature('shared_stock_pool')) {
+            return null;
+        }
+
+        return $shop;
+    }
+
+    /** Every branch of this main shop that syncing may touch — a demo clone is never one of them, whatever its parent_shop_id says (same rule as Product::validBranchCopyIds()). */
+    private static function branchesOf(Shop $mainShop): \Illuminate\Database\Eloquent\Collection
+    {
+        return Shop::withoutGlobalScopes()
+            ->where('parent_shop_id', $mainShop->id)
+            ->where('account_type', '!=', 'demo')
+            ->get();
+    }
+
+    /**
      * One catalog for the whole business, whichever shop it was entered
      * at.
      *
@@ -68,19 +127,25 @@ class CatalogSync
             return;
         }
 
-        $branches = Shop::withoutGlobalScopes()->where('parent_shop_id', $mainShop->id)->get();
+        $branches = static::branchesOf($mainShop);
         if ($branches->isEmpty()) {
             return;
         }
 
-        // every branch's own rows go up first, so the push back down
-        // carries them to the OTHER branches too
-        foreach ($branches as $branch) {
-            static::liftFromBranch($mainShop, $branch);
-        }
+        $prev = static::$syncing;
+        static::$syncing = true;
+        try {
+            // every branch's own rows go up first, so the push back down
+            // carries them to the OTHER branches too
+            foreach ($branches as $branch) {
+                static::liftFromBranch($mainShop, $branch);
+            }
 
-        foreach ($branches as $branch) {
-            static::syncToBranch($mainShop, $branch);
+            foreach ($branches as $branch) {
+                static::syncToBranch($mainShop, $branch);
+            }
+        } finally {
+            static::$syncing = $prev;
         }
     }
 
@@ -111,36 +176,48 @@ class CatalogSync
             return;
         }
 
-        $branches = Shop::withoutGlobalScopes()->where('parent_shop_id', $mainShop->id)->get();
+        $branches = static::branchesOf($mainShop);
         if ($branches->isEmpty()) {
             return;
         }
 
-        $master = $product;
-        if ((int) $product->shop_id !== (int) $mainShop->id) {
-            $master = static::liftOneFromBranch($mainShop, $shop, $product);
-            if (! $master) {
-                return;
+        $prev = static::$syncing;
+        static::$syncing = true;
+        try {
+            $master = $product;
+            if ((int) $product->shop_id !== (int) $mainShop->id) {
+                $master = static::liftOneFromBranch($mainShop, $shop, $product);
+                if (! $master) {
+                    return;
+                }
             }
-        }
 
-        foreach ($branches as $branch) {
-            $categoryMap = static::syncCategories($mainShop, $branch);
-            $unitMap = static::syncUnits($mainShop, $branch);
-            $existing = static::findExistingBranchProduct($branch, $master);
-            $branchProduct = static::upsertBranchProduct($mainShop, $branch, $master, $existing, $categoryMap, $unitMap);
-            static::syncPriceTiersForProduct($master, $branchProduct);
-            static::syncVariantsOfProduct($mainShop, $branch, $master->id, $branchProduct->id);
-            static::syncColorBarcodesOfProduct($mainShop, $branch, $master->id, $branchProduct->id);
+            foreach ($branches as $branch) {
+                $categoryMap = static::syncCategories($mainShop, $branch);
+                $unitMap = static::syncUnits($mainShop, $branch);
+                $existing = static::findExistingBranchProduct($branch, $master);
+                $branchProduct = static::upsertBranchProduct($mainShop, $branch, $master, $existing, $categoryMap, $unitMap);
+                static::syncPriceTiersForProduct($master, $branchProduct);
+                static::syncVariantsOfProduct($mainShop, $branch, $master->id, $branchProduct->id);
+                static::syncColorBarcodesOfProduct($mainShop, $branch, $master->id, $branchProduct->id);
+            }
+        } finally {
+            static::$syncing = $prev;
         }
     }
 
     public static function syncToBranch(Shop $mainShop, Shop $branch): void
     {
-        $categoryMap = static::syncCategories($mainShop, $branch);
-        $unitMap = static::syncUnits($mainShop, $branch);
-        $productMap = static::syncProducts($mainShop, $branch, $categoryMap, $unitMap);
-        static::syncVariants($mainShop, $branch, $productMap);
+        $prev = static::$syncing;
+        static::$syncing = true;
+        try {
+            $categoryMap = static::syncCategories($mainShop, $branch);
+            $unitMap = static::syncUnits($mainShop, $branch);
+            $productMap = static::syncProducts($mainShop, $branch, $categoryMap, $unitMap);
+            static::syncVariants($mainShop, $branch, $productMap);
+        } finally {
+            static::$syncing = $prev;
+        }
     }
 
     /**
@@ -153,14 +230,18 @@ class CatalogSync
      */
     public static function syncProductToBranches(Shop $mainShop, Product $product): void
     {
-        $branches = Shop::withoutGlobalScopes()->where('parent_shop_id', $mainShop->id)->get();
-
-        foreach ($branches as $branch) {
-            $categoryMap = static::syncCategories($mainShop, $branch);
-            $unitMap = static::syncUnits($mainShop, $branch);
-            $existing = static::findExistingBranchProduct($branch, $product);
-            $branchProduct = static::upsertBranchProduct($mainShop, $branch, $product, $existing, $categoryMap, $unitMap);
-            static::syncPriceTiersForProduct($product, $branchProduct);
+        $prev = static::$syncing;
+        static::$syncing = true;
+        try {
+            foreach (static::branchesOf($mainShop) as $branch) {
+                $categoryMap = static::syncCategories($mainShop, $branch);
+                $unitMap = static::syncUnits($mainShop, $branch);
+                $existing = static::findExistingBranchProduct($branch, $product);
+                $branchProduct = static::upsertBranchProduct($mainShop, $branch, $product, $existing, $categoryMap, $unitMap);
+                static::syncPriceTiersForProduct($product, $branchProduct);
+            }
+        } finally {
+            static::$syncing = $prev;
         }
     }
 
@@ -213,8 +294,23 @@ class CatalogSync
                 ->whereNull('deleted_at')->where('barcode', $bp->barcode)->first();
         }
         if (! $master) {
+            // ...but never a master that ALREADY has a live copy in this
+            // branch: two same-named rows the branch created separately
+            // (plain import rows with different barcodes, a quick item
+            // entered twice) must each get their OWN master — double-
+            // binding one master to two copies in one shop would make the
+            // pool count that shop's stock twice (found 2026-11-23 while
+            // testing the plain-import path).
             $master = Product::withoutGlobalScopes()->where('shop_id', $mainShop->id)
-                ->whereNull('deleted_at')->where('name', $bp->name)->first();
+                ->whereNull('deleted_at')->where('name', $bp->name)
+                ->whereNotExists(function ($q) use ($bp) {
+                    $q->selectRaw('1')->from('products as pc')
+                        ->whereColumn('pc.master_product_id', 'products.id')
+                        ->where('pc.shop_id', $bp->shop_id)
+                        ->where('pc.id', '<>', $bp->id)
+                        ->whereNull('pc.deleted_at');
+                })
+                ->first();
         }
 
         if (! $master) {
@@ -301,7 +397,16 @@ class CatalogSync
         // through applyStockDelta(): that pools the figure across shops,
         // and the branch's own row already counts these pairs — moving
         // it there too would count them twice.
-        if ($created) {
+        //
+        // Under the pool the recompute runs even when nothing was created
+        // here: since 2026-11-23 the variant rows themselves are mirrored
+        // at creation time (ProductVariant::createBranchCopies()), so this
+        // sync usually finds every row already present — but the master's
+        // product-level figure may still be stale (article create settles
+        // it branch-side with a direct sum, then relies on this sync).
+        // Variant rows are identical across members by construction, so
+        // "my own variants' sum" is the pool figure.
+        if ($created || $pooled) {
             $sum = (float) ProductVariant::withoutGlobalScopes()
                 ->where('product_id', $master->id)->whereNull('deleted_at')->sum('stock');
             Product::withoutGlobalScopes()->whereKey($master->id)->update(['stock' => $sum]);
@@ -550,6 +655,21 @@ class CatalogSync
                 } else {
                     ProductVariant::create(['shop_id' => $branch->id, 'product_id' => $branchProductId, 'stock' => $startingStock, ...$attrs]);
                 }
+            }
+        }
+
+        // Pooled push-down counterpart of liftVariantsFromBranch()'s
+        // recompute: variant rows are identical across members (mirrored
+        // at creation, synced here), so a pooled copy's product-level
+        // figure is its own variants' sum — realigns a copy whose figure
+        // went stale while the variants moved (article create settles the
+        // entering shop directly and leaves the others to this sync).
+        if ($mainShop->hasFeature('shared_stock_pool')) {
+            $live = ProductVariant::withoutGlobalScopes()
+                ->where('product_id', $branchProductId)->whereNull('deleted_at');
+            if ($live->exists()) {
+                Product::withoutGlobalScopes()->whereKey($branchProductId)
+                    ->update(['stock' => (float) $live->sum('stock')]);
             }
         }
     }

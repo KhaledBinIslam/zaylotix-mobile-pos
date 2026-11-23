@@ -108,7 +108,11 @@ class SharedStockPoolTest extends TestCase
         $this->grantFeature($main, 'shared_stock_pool');
         $branch = $this->createBranch($main);
 
-        $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Rice', 'cost' => 50, 'price' => 100, 'stock' => 100]);
+        // 20/20, not an inconsistent pair: for a variant-bearing product,
+        // products.stock IS the live sum of its variants (CatalogSync's
+        // own rule), and the create-mirror hook now keeps a copy's product
+        // figure on that rule too
+        $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Rice', 'cost' => 50, 'price' => 100, 'stock' => 20]);
         $mainVariant = ProductVariant::create(['shop_id' => $main->id, 'product_id' => $mainProduct->id, 'size' => 'L', 'barcode' => 'RICE-L', 'stock' => 20]);
 
         CatalogSync::syncToBranch($main, $branch);
@@ -116,7 +120,7 @@ class SharedStockPoolTest extends TestCase
         $branchProduct = Product::withoutGlobalScopes()->where('shop_id', $branch->id)->where('master_product_id', $mainProduct->id)->first();
         $branchVariant = ProductVariant::withoutGlobalScopes()->where('shop_id', $branch->id)->where('product_id', $branchProduct->id)->first();
 
-        $this->assertEquals(100, (float) $branchProduct->stock);
+        $this->assertEquals(20, (float) $branchProduct->stock);
         $this->assertEquals(20, (float) $branchVariant->stock);
     }
 
@@ -441,8 +445,13 @@ class SharedStockPoolTest extends TestCase
 
         $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Shoe', 'cost' => 650, 'price' => 1200, 'stock' => 0]);
         $branchProduct = Product::create(['shop_id' => $branch->id, 'master_product_id' => $mainProduct->id, 'name' => 'Shoe', 'cost' => 650, 'price' => 1200, 'stock' => 0]);
-        $mainVariant = ProductVariant::create(['shop_id' => $main->id, 'product_id' => $mainProduct->id, 'size' => '225', 'color' => 'CK', 'stock' => 1]);
-        $branchVariant = ProductVariant::create(['shop_id' => $branch->id, 'product_id' => $branchProduct->id, 'size' => '225', 'color' => 'CK', 'stock' => 1]);
+        // withoutEvents: hand-build the exact pre-2026-11-23 state (both
+        // sides already existing) -- the delete cascade under test must
+        // work on legacy rows that predate the create-mirror hook
+        [$mainVariant, $branchVariant] = ProductVariant::withoutEvents(fn () => [
+            ProductVariant::create(['shop_id' => $main->id, 'product_id' => $mainProduct->id, 'size' => '225', 'color' => 'CK', 'stock' => 1]),
+            ProductVariant::create(['shop_id' => $branch->id, 'product_id' => $branchProduct->id, 'size' => '225', 'color' => 'CK', 'stock' => 1]),
+        ]);
 
         $branchVariant->delete();
 
@@ -461,8 +470,10 @@ class SharedStockPoolTest extends TestCase
 
         $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Shoe', 'cost' => 500, 'price' => 1000, 'stock' => 0]);
         $branchProduct = Product::create(['shop_id' => $branch->id, 'master_product_id' => $mainProduct->id, 'name' => 'Shoe', 'cost' => 500, 'price' => 1000, 'stock' => 0]);
-        $mainVariant = ProductVariant::create(['shop_id' => $main->id, 'product_id' => $mainProduct->id, 'size' => '22', 'color' => 'Brown', 'stock' => 1]);
-        $branchVariant = ProductVariant::create(['shop_id' => $branch->id, 'product_id' => $branchProduct->id, 'size' => ' 22 ', 'color' => ' BROWN ', 'stock' => 1]);
+        [$mainVariant, $branchVariant] = ProductVariant::withoutEvents(fn () => [
+            ProductVariant::create(['shop_id' => $main->id, 'product_id' => $mainProduct->id, 'size' => '22', 'color' => 'Brown', 'stock' => 1]),
+            ProductVariant::create(['shop_id' => $branch->id, 'product_id' => $branchProduct->id, 'size' => ' 22 ', 'color' => ' BROWN ', 'stock' => 1]),
+        ]);
 
         $branchVariant->delete();
 
@@ -479,8 +490,10 @@ class SharedStockPoolTest extends TestCase
 
         $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Shoe', 'cost' => 400, 'price' => 800, 'stock' => 0]);
         $branchProduct = Product::create(['shop_id' => $branch->id, 'master_product_id' => $mainProduct->id, 'name' => 'Shoe', 'cost' => 400, 'price' => 800, 'stock' => 0]);
-        $mainVariant = ProductVariant::create(['shop_id' => $main->id, 'product_id' => $mainProduct->id, 'size' => '38-39', 'color' => 'PURPLE BLACK', 'stock' => 1]);
-        $branchVariant = ProductVariant::create(['shop_id' => $branch->id, 'product_id' => $branchProduct->id, 'size' => '38-39', 'color' => 'PURPLE-BLACK', 'stock' => 1]);
+        [$mainVariant, $branchVariant] = ProductVariant::withoutEvents(fn () => [
+            ProductVariant::create(['shop_id' => $main->id, 'product_id' => $mainProduct->id, 'size' => '38-39', 'color' => 'PURPLE BLACK', 'stock' => 1]),
+            ProductVariant::create(['shop_id' => $branch->id, 'product_id' => $branchProduct->id, 'size' => '38-39', 'color' => 'PURPLE-BLACK', 'stock' => 1]),
+        ]);
 
         $branchVariant->delete();
 
@@ -523,7 +536,8 @@ class SharedStockPoolTest extends TestCase
         $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Shoe', 'cost' => 650, 'price' => 1200, 'stock' => 0]);
         $branchProduct = Product::create(['shop_id' => $branch->id, 'master_product_id' => $mainProduct->id, 'name' => 'Shoe', 'cost' => 650, 'price' => 1200, 'stock' => 0]);
         $mainVariant = ProductVariant::create(['shop_id' => $main->id, 'product_id' => $mainProduct->id, 'size' => '225', 'color' => 'CK', 'stock' => 1]);
-        $branchVariant = ProductVariant::create(['shop_id' => $branch->id, 'product_id' => $branchProduct->id, 'size' => '225', 'color' => 'CK', 'stock' => 1]);
+        // the created() hook mirrors it into the branch -- that row IS the branch's variant
+        $branchVariant = ProductVariant::withoutGlobalScopes()->where('product_id', $branchProduct->id)->firstOrFail();
 
         $this->actingAs($branchOwner, 'web')->delete(route('app.products.destroy', $branchProduct->id))->assertSessionHasNoErrors();
         $this->assertTrue($mainVariant->fresh()->trashed());
@@ -557,7 +571,8 @@ class SharedStockPoolTest extends TestCase
         $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Shoe', 'cost' => 500, 'price' => 1000, 'stock' => 1]);
         $branchProduct = $this->linkBranch($main, $branch, $mainProduct, 1);
         $mainVariant = ProductVariant::create(['shop_id' => $main->id, 'product_id' => $mainProduct->id, 'size' => '40', 'color' => 'Black', 'barcode' => 'SHOE-40-BLK', 'stock' => 1]);
-        $branchVariant = ProductVariant::create(['shop_id' => $branch->id, 'product_id' => $branchProduct->id, 'size' => '40', 'color' => 'Black', 'barcode' => 'SHOE-40-BLK', 'stock' => 1]);
+        // mirrored into the branch by the created() hook, barcode and all
+        $branchVariant = ProductVariant::withoutGlobalScopes()->where('product_id', $branchProduct->id)->firstOrFail();
 
         $response = $this->actingAs($branchOwner, 'web')->postJson('/app/pos/checkout', [
             'items' => [['product_id' => $branchProduct->id, 'product_variant_id' => $branchVariant->id, 'qty' => 1]],
@@ -604,7 +619,7 @@ class SharedStockPoolTest extends TestCase
         $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Shirt', 'cost' => 300, 'price' => 700, 'stock' => 1]);
         $branchProduct = $this->linkBranch($main, $branch, $mainProduct, 1);
         $mainVariant = ProductVariant::create(['shop_id' => $main->id, 'product_id' => $mainProduct->id, 'size' => 'L', 'color' => 'White', 'stock' => 1]);
-        $branchVariant = ProductVariant::create(['shop_id' => $branch->id, 'product_id' => $branchProduct->id, 'size' => 'L', 'color' => 'White', 'stock' => 1]);
+        $branchVariant = ProductVariant::withoutGlobalScopes()->where('product_id', $branchProduct->id)->firstOrFail();
 
         $customer = \App\Models\Customer::create(['shop_id' => $branch->id, 'name' => 'Walk-in', 'phone' => '0100', 'due' => 0]);
         $originalSale = \App\Models\Sale::create([
@@ -644,7 +659,7 @@ class SharedStockPoolTest extends TestCase
         $mainProduct = Product::create(['shop_id' => $main->id, 'name' => 'Bag', 'cost' => 400, 'price' => 900, 'stock' => 1]);
         $branchProduct = $this->linkBranch($main, $branch, $mainProduct, 1);
         $mainVariant = ProductVariant::create(['shop_id' => $main->id, 'product_id' => $mainProduct->id, 'size' => 'M', 'color' => 'Tan', 'stock' => 1]);
-        $branchVariant = ProductVariant::create(['shop_id' => $branch->id, 'product_id' => $branchProduct->id, 'size' => 'M', 'color' => 'Tan', 'stock' => 1]);
+        $branchVariant = ProductVariant::withoutGlobalScopes()->where('product_id', $branchProduct->id)->firstOrFail();
 
         $channel = \App\Models\SalesChannel::create(['shop_id' => $branch->id, 'name' => 'Facebook', 'platform_type' => 'facebook', 'active' => true, 'order_prefix' => 'OL']);
 

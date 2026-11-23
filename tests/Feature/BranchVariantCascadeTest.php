@@ -50,14 +50,24 @@ class BranchVariantCascadeTest extends TestCase
             'size' => '22', 'color' => 'WHITE', 'stock' => 5, 'barcode' => 'A-1-WHT-22',
         ]);
 
-        $branchProduct = Product::create([
-            'shop_id' => $branch->id, 'name' => 'Shoe', 'cost' => 200, 'price' => 400, 'stock' => 5,
-            'master_product_id' => $product->id,
-        ]);
-        $branchVariant = ProductVariant::create([
-            'shop_id' => $branch->id, 'product_id' => $branchProduct->id,
-            'size' => '22', 'color' => 'WHITE', 'stock' => 5, 'barcode' => 'A-1-WHT-22',
-        ]);
+        if ($pooled) {
+            // the created() hooks already built the branch copy (2026-11-23:
+            // a pooled creation exists everywhere immediately) — hand-making
+            // a second one would be a duplicate pair the pool never produces
+            $branchProduct = Product::withoutGlobalScopes()
+                ->where('shop_id', $branch->id)->where('master_product_id', $product->id)->firstOrFail();
+            $branchVariant = ProductVariant::withoutGlobalScopes()
+                ->where('product_id', $branchProduct->id)->firstOrFail();
+        } else {
+            $branchProduct = Product::create([
+                'shop_id' => $branch->id, 'name' => 'Shoe', 'cost' => 200, 'price' => 400, 'stock' => 5,
+                'master_product_id' => $product->id,
+            ]);
+            $branchVariant = ProductVariant::create([
+                'shop_id' => $branch->id, 'product_id' => $branchProduct->id,
+                'size' => '22', 'color' => 'WHITE', 'stock' => 5, 'barcode' => 'A-1-WHT-22',
+            ]);
+        }
 
         return [$shop, $owner, $branch, $product, $variant, $branchVariant];
     }

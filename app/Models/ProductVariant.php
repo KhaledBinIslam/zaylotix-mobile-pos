@@ -70,6 +70,46 @@ class ProductVariant extends Model
          * A force delete removes the row outright, so there is no index
          * entry left to free.
          */
+        /*
+         * Same rule as Product::created() — a size/colour entered in ANY
+         * shop of a shared_stock_pool group (article grid, opening stock,
+         * import, anything) exists in every shop of the group at once,
+         * with the same stock figure. CatalogSync's own creates are
+         * excluded via $syncing; the copies this hook itself creates are
+         * excluded via $creatingCopies.
+         */
+        static::created(function (ProductVariant $variant) {
+            try {
+                $variant->createBranchCopies();
+            } catch (\Throwable $e) {
+                // same rule as Product::created(): the user's own save
+                // never fails because a pool copy couldn't be made
+                \Illuminate\Support\Facades\Log::error('pool_auto_adopt: variant create mirror failed', [
+                    'variant_id' => $variant->id, 'shop_id' => $variant->shop_id, 'error' => $e->getMessage(),
+                ]);
+            }
+        });
+
+        /*
+         * The opening-stock grid (and anything like it) stamps the
+         * barcode AFTER creating the row ('ZV'.$id), but the pool's
+         * variant matcher is barcode-FIRST (stockPoolMemberIds()): a
+         * filled barcode on one side and null on its mirrored copies
+         * means the pool silently stops binding them. So a barcode set
+         * later flows to the cell-matched, still-barcodeless copies too.
+         */
+        static::updated(function (ProductVariant $variant) {
+            if ($variant->wasChanged('barcode') && filled($variant->barcode)) {
+                try {
+                    $variant->propagateBarcodeToPoolCopies();
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::error('pool_auto_adopt: barcode propagation failed', [
+                        'variant_id' => $variant->id, 'shop_id' => $variant->shop_id, 'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        });
+
         static::deleted(function (ProductVariant $variant) {
             if ($variant->isForceDeleting()) {
                 return;
@@ -110,6 +150,129 @@ class ProductVariant extends Model
      * A mass update rather than ->delete(): the copy would otherwise run
      * this hook for itself, and nothing hangs off a branch copy anyway.
      */
+    /** True while createBranchCopies() is writing its own mirror rows, whose created() events must not fan out again. */
+    private static bool $creatingCopies = false;
+
+    /**
+     * The create-side mirror of deleteBranchCopies(): a variant born in
+     * any shop of a pooled group appears on the master and every valid
+     * sibling immediately, matched the same way the delete cascade
+     * matches (barcode first, else case/whitespace-insensitive
+     * colour+size via cellKey()), with the SAME stock figure — one pooled
+     * count, whichever shop entered it. Demo shops are never sources or
+     * targets.
+     */
+    public function createBranchCopies(): void
+    {
+        if (\App\Support\CatalogSync::$syncing || static::$creatingCopies) {
+            return;
+        }
+
+        $targetIds = $this->pooledTargetProductIds();
+        if ($targetIds === null) {
+            return;
+        }
+
+        $targets = Product::withoutGlobalScopes()->whereIn('id', $targetIds)->whereNull('deleted_at')->get();
+        if ($targets->isEmpty()) {
+            return;
+        }
+
+        static::$creatingCopies = true;
+        try {
+            foreach ($targets as $target) {
+                $existing = static::withoutGlobalScopes()
+                    ->where('product_id', $target->id)->whereNull('deleted_at')->get()
+                    ->first(fn (ProductVariant $v) => (filled($this->barcode) && $v->barcode === $this->barcode)
+                        || self::cellKey($v->color, $v->size) === self::cellKey($this->color, $this->size));
+                if ($existing) {
+                    continue;
+                }
+
+                $barcodeFree = filled($this->barcode) && ! static::withoutGlobalScopes()
+                    ->where('shop_id', $target->shop_id)->where('barcode', $this->barcode)->exists();
+
+                // The variant ROW only — never the target's products.stock.
+                // Every creation path settles the product-level figure its
+                // own way (import/opening-stock: a pooled applyStockDelta()
+                // that reaches these targets by itself; article create:
+                // direct sum + syncOneProduct at the end, whose pooled
+                // recompute covers the targets) — a recompute here would
+                // double-count on top of the pooled delta.
+                static::create([
+                    'shop_id' => $target->shop_id, 'product_id' => $target->id,
+                    'size' => $this->size, 'color' => $this->color,
+                    'barcode' => $barcodeFree ? $this->barcode : null,
+                    'stock' => $this->stock, 'reorder_point' => $this->reorder_point,
+                    'price' => $this->price, 'cost' => $this->cost, 'photo_path' => $this->photo_path,
+                ]);
+            }
+        } finally {
+            static::$creatingCopies = false;
+        }
+    }
+
+    /** See the updated() hook — a late-stamped barcode reaches the cell-matched, barcodeless pool copies so stockPoolMemberIds()'s barcode-first matching keeps binding them. */
+    public function propagateBarcodeToPoolCopies(): void
+    {
+        if (\App\Support\CatalogSync::$syncing || static::$creatingCopies) {
+            return;
+        }
+
+        $targetProductIds = $this->pooledTargetProductIds();
+        if ($targetProductIds === null) {
+            return;
+        }
+
+        static::$creatingCopies = true;
+        try {
+            $copies = static::withoutGlobalScopes()
+                ->whereIn('product_id', $targetProductIds)->whereNull('deleted_at')->whereNull('barcode')->get()
+                ->filter(fn (ProductVariant $v) => self::cellKey($v->color, $v->size) === self::cellKey($this->color, $this->size));
+
+            foreach ($copies as $copy) {
+                $taken = static::withoutGlobalScopes()
+                    ->where('shop_id', $copy->shop_id)->where('barcode', $this->barcode)->exists();
+                if (! $taken) {
+                    static::withoutGlobalScopes()->whereKey($copy->id)->update(['barcode' => $this->barcode]);
+                }
+            }
+        } finally {
+            static::$creatingCopies = false;
+        }
+    }
+
+    /** The pool members' product ids this variant's create/barcode changes must reach (master + valid siblings, or the valid branch copies when this IS the master's row) — null when this variant isn't in a pooled group at all. The creationHookShop() gate answers the demo/feature/kill-switch questions without touching products at all, so a non-pooled shop's variant create never pays these queries. */
+    private function pooledTargetProductIds(): ?Collection
+    {
+        $shop = \App\Support\CatalogSync::creationHookShop($this->shop_id);
+        if (! $shop) {
+            return null;
+        }
+
+        $product = Product::withoutGlobalScopes()->whereKey($this->product_id)->first();
+        if (! $product) {
+            return null;
+        }
+
+        if ($product->master_product_id === null) {
+            if ($shop->parent_shop_id !== null) {
+                return null; // an unlinked product on a BRANCH is not pooled
+            }
+
+            return Product::validBranchCopyIds($product->id, $shop->id);
+        }
+
+        $master = Product::withoutGlobalScopes()->whereKey($product->master_product_id)->whereNull('deleted_at')->first();
+        if (! $master || (int) $shop->parent_shop_id !== (int) $master->shop_id) {
+            return null;
+        }
+
+        return Product::validBranchCopyIds($master->id, $master->shop_id)
+            ->reject(fn ($id) => $id === $product->id)
+            ->push($master->id);
+    }
+
     public function deleteBranchCopies(): void
     {
         $product = Product::withoutGlobalScopes()->whereKey($this->product_id)->first();

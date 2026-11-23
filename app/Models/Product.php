@@ -86,6 +86,41 @@ class Product extends Model
             $product->search_text = $product->buildSearchText();
         });
 
+        /*
+         * Khaled's rule (2026-11-23, final): in a shared_stock_pool group
+         * a product created in ANY shop — POS quick item, plain create,
+         * import, opening stock, anything future — exists in EVERY shop
+         * of the group immediately, linked and with one stock figure.
+         * A branch-only product in a pooled shop is never allowed.
+         *
+         * Done as a model event rather than per-controller calls so no
+         * creation path can ever be missed. CatalogSync::$syncing marks
+         * the rows CatalogSync itself creates (lifted masters, pushed
+         * branch copies) — those are the sync's own work, not a new
+         * article entering the business.
+         */
+        static::created(function (Product $product) {
+            if ($product->master_product_id !== null) {
+                return;
+            }
+
+            $shop = \App\Support\CatalogSync::creationHookShop($product->shop_id);
+            if (! $shop) {
+                return;
+            }
+
+            try {
+                \App\Support\CatalogSync::syncOneProduct($shop, $product);
+            } catch (\Throwable $e) {
+                // the owner's own save must never fail because the pool
+                // copy couldn't be made — log it and let the manual
+                // "ক্যাটালগ সিঙ্ক" button catch the row up later
+                \Illuminate\Support\Facades\Log::error('pool_auto_adopt: product create sync failed', [
+                    'product_id' => $product->id, 'shop_id' => $product->shop_id, 'error' => $e->getMessage(),
+                ]);
+            }
+        });
+
         // Soft-deleting a product used to leave its variants behind as live
         // rows, which bites the moment an owner removes a mis-entered
         // article: a sticker printed for one of those variants still
