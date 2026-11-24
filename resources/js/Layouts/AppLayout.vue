@@ -11,6 +11,7 @@ import { useI18n } from '@/composables/useI18n';
 import { useOfflineSync } from '@/composables/useOfflineSync';
 import { useVersionCheck } from '@/composables/useVersionCheck';
 import { usePermissions } from '@/composables/usePermissions';
+import { reportClientError } from '@/support/reportClientError';
 import { useNavItems } from '@/composables/useNavItems';
 import { buildOfflineSaleSnapshot } from '@/support/offlineSaleSnapshot';
 import { buildReceiptWhatsAppText, whatsAppUrlFor } from '@/support/receiptMessage';
@@ -328,6 +329,10 @@ router.on('invalid', (event) => {
 
     event.preventDefault();
     sessionExpired.value = true;
+    // leaves a server-side trace of WHICH request hit the dead session —
+    // the "logged out again and again" report had none (Baby Park, 2026-11-24)
+    const res = event.detail?.response;
+    reportClientError(new Error('419 session expired'), 'inertia:' + (res?.config?.method || 'get') + ' ' + (res?.config?.url || location.pathname));
 });
 const workPeriodElapsed = computed(() => {
     if (!activeWorkPeriod.value) return '';

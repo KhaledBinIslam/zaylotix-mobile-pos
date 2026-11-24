@@ -54,6 +54,19 @@ class CheckSubscriptionActive
             // anyway and enforces it properly then; this only ever delays
             // enforcement for a tab left open with nothing else happening
             // in it, never weakens it.
+            // Baby Park, 2026-11-24: staff reported being logged out "again
+            // and again" with nothing in laravel.log to show why — this
+            // branch destroys the session silently. Every forced logout is
+            // now recorded with enough to tell a real lapse from a false
+            // negative (no user resolved, no shop resolved, or an inactive
+            // billing shop).
+            \Illuminate\Support\Facades\Log::warning('[forced-logout] subscription check failed', [
+                'user_id' => $user?->id, 'user_shop_id' => $user?->shop_id,
+                'resolved_shop_id' => $shop?->id, 'resolved_status' => $shop?->status,
+                'billing_shop_id' => $shop?->subscriptionShop()->id, 'billing_expiry' => $shop?->subscriptionShop()->subscription_expiry?->toDateString(),
+                'url' => $request->path(), 'poll' => $request->header('X-Inertia-Poll') === 'true', 'ip' => $request->ip(),
+            ]);
+
             if ($request->header('X-Inertia-Poll') === 'true') {
                 abort(401, 'আপনার সাবস্ক্রিপশনের মেয়াদ শেষ হয়ে গেছে বা shop নিষ্ক্রিয়।');
             }

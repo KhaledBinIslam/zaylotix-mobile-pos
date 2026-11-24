@@ -1,0 +1,1 @@
+function a(n){return[n.CODE_128,n.EAN_13,n.EAN_8,n.UPC_A,n.UPC_E,n.QR_CODE]}function h(n){return{fps:15,qrbox:n,videoConstraints:{facingMode:"environment",width:{ideal:1280},height:{ideal:720}}}}function f(n,i){return{width:Math.floor(Math.min(n*.9,380)),height:Math.floor(Math.min(i*.4,160))}}export{h as a,f as b,a as s};

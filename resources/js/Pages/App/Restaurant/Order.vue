@@ -1,5 +1,7 @@
 <script setup>
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
+import { scanBoxSize } from '@/support/scanBoxSize';
+import { scannerFormats, scannerOptions } from '@/support/scannerConfig';
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
@@ -111,11 +113,14 @@ async function openScanner() {
     scanHint.value = t('pos.scanHintDefault');
 
     try {
-        const { Html5Qrcode } = await import('html5-qrcode');
-        html5Qrcode = new Html5Qrcode('reader', { verbose: false });
+        // POS's exact setup (support/scannerConfig.js): CODE_128 stickers in
+        // the format list, 720p frames — without it this scanner opened the
+        // camera but never read a label (Baby Park, 2026-11-24)
+        const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
+        html5Qrcode = new Html5Qrcode('reader', { verbose: false, formatsToSupport: scannerFormats(Html5QrcodeSupportedFormats) });
         await html5Qrcode.start(
             { facingMode: 'environment' },
-            { fps: 12, qrbox: { width: 260, height: 200 } },
+            scannerOptions(scanBoxSize),
             (decodedText) => handleBarcode(decodedText, (msg) => (scanHint.value = msg)),
             () => {},
         );

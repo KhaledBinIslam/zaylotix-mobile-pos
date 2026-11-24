@@ -2,6 +2,7 @@
 import { ref, onBeforeUnmount } from 'vue';
 import { useI18n } from '@/composables/useI18n';
 import { scanBoxSize } from '@/support/scanBoxSize';
+import { scannerFormats, scannerOptions } from '@/support/scannerConfig';
 
 /**
  * Standalone camera barcode scanner overlay — same html5-qrcode wiring and
@@ -24,11 +25,20 @@ let lastScanAt = 0;
 async function open() {
     scanHint.value = t('pos.scanHintDefault');
     try {
-        const { Html5Qrcode } = await import('html5-qrcode');
-        html5Qrcode = new Html5Qrcode('reader', { verbose: false });
+        // Exactly POS's setup (support/scannerConfig.js): the shop's own
+        // CODE_128 stickers in the format list and 720p frames. This
+        // component had drifted to "every symbology, 1080p" — the two
+        // things that file's note names as what made decoding fail — so
+        // the Exchange and Online Order scanners opened the camera but
+        // never read a label while POS's did (Baby Park, 2026-11-24).
+        const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
+        html5Qrcode = new Html5Qrcode('reader', {
+            verbose: false,
+            formatsToSupport: scannerFormats(Html5QrcodeSupportedFormats),
+        });
         await html5Qrcode.start(
             { facingMode: 'environment' },
-            { fps: 12, qrbox: scanBoxSize, videoConstraints: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } },
+            scannerOptions(scanBoxSize),
             onScanSuccess,
             () => {},
         );

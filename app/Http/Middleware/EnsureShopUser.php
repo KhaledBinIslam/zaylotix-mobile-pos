@@ -12,6 +12,20 @@ class EnsureShopUser
     public function handle(Request $request, Closure $next): Response
     {
         if (! Auth::guard('web')->check()) {
+            // A request that still CARRIES the session cookie but resolves
+            // to no user means the session row is gone (expired, garbage-
+            // collected, invalidated elsewhere, or never persisted) — the
+            // signature of "logged out again and again". Recorded so the
+            // cause can be read off laravel.log instead of guessed
+            // (Baby Park, 2026-11-24). A plain first visit has no cookie
+            // and is not logged.
+            if ($request->hasCookie(config('session.cookie'))) {
+                \Illuminate\Support\Facades\Log::warning('[forced-logout] session cookie present but no user', [
+                    'url' => $request->path(), 'poll' => $request->header('X-Inertia-Poll') === 'true',
+                    'json' => $request->expectsJson(), 'ip' => $request->ip(), 'ua' => substr((string) $request->userAgent(), 0, 80),
+                ]);
+            }
+
             // Root-caused live, twice: first a raw-fetch screen (POS/
             // Restaurant checkout, addItem, etc.) sends Accept:
             // application/json and handles its own JSON error shape — a
