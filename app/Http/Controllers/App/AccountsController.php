@@ -15,6 +15,8 @@ use App\Models\SalesReturn;
 use App\Models\Shop;
 use App\Models\Supplier;
 use App\Support\Tenancy;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class AccountsController extends Controller
@@ -155,7 +157,101 @@ class AccountsController extends Controller
      * copies are never stamped with one). The result is therefore the same
      * on every branch, same as the stock value card itself.
      */
-    public function stockValueBySupplier()
+    /**
+     * The window for the supplier report's flow figures (received / sold).
+     * Same query-param contract as the Online Orders dashboard:
+     * period=today|7d|month|all|custom, custom taking from=Y-m-d[&to=Y-m-d]
+     * (to omitted = that one day, swapped if reversed). 'all' is the
+     * default here — an owner asking "how much did this supplier give me"
+     * means ever. Anything unparseable falls back to 'all'.
+     *
+     * @return array{0: ?\Carbon\Carbon, 1: ?\Carbon\Carbon, 2: string}
+     */
+    private function flowWindow(Request $request): array
+    {
+        $period = (string) $request->query('period', 'all');
+        $today = now()->startOfDay();
+
+        if ($period === 'today') {
+            return [$today, $today->copy()->endOfDay(), 'today'];
+        }
+        if ($period === '7d') {
+            return [$today->copy()->subDays(6), $today->copy()->endOfDay(), '7d'];
+        }
+        if ($period === 'month') {
+            return [$today->copy()->startOfMonth(), $today->copy()->endOfDay(), 'month'];
+        }
+        if ($period === 'custom') {
+            $parse = function ($v) {
+                if (! is_string($v) || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) {
+                    return null;
+                }
+                $d = \Carbon\Carbon::createFromFormat('Y-m-d', $v)->startOfDay();
+
+                return $d->format('Y-m-d') === $v ? $d : null;
+            };
+            $from = $parse($request->query('from'));
+            if ($from) {
+                $to = $parse($request->query('to')) ?? $from->copy();
+                if ($to->lt($from)) {
+                    [$from, $to] = [$to, $from];
+                }
+
+                return [$from, $to->endOfDay(), 'custom'];
+            }
+        }
+
+        return [null, null, 'all'];
+    }
+
+    /**
+     * Per-supplier RECEIVED (stock_intakes) and SOLD (sale_items) figures,
+     * business-wide for a pooled group. The supplier of a row is, in order:
+     * the intake's own supplier_id, the MASTER article's supplier (a branch
+     * copy carries none), the article's own; none of them = unknown.
+     *
+     * @param  array<int,int>  $memberIds
+     * @return array{received: array, sold: array}  keyed by supplier id or 'unknown'
+     */
+    private function supplierFlows(array $memberIds, ?\Carbon\Carbon $from, ?\Carbon\Carbon $to): array
+    {
+        $received = DB::table('stock_intakes as i')
+            ->join('products as p', 'p.id', '=', 'i.product_id')
+            ->leftJoin('products as m', 'm.id', '=', 'p.master_product_id')
+            ->whereIn('i.shop_id', $memberIds)
+            ->when($from, fn ($q) => $q->where('i.created_at', '>=', $from))
+            ->when($to, fn ($q) => $q->where('i.created_at', '<=', $to))
+            ->selectRaw('COALESCE(i.supplier_id, m.supplier_id, p.supplier_id) as sid, SUM(i.qty) as qty, SUM(i.total_cost) as cost')
+            ->groupBy('sid')->get()
+            ->mapWithKeys(fn ($r) => [($r->sid ?: 'unknown') => ['qty' => (float) $r->qty, 'cost' => (float) $r->cost]])->all();
+
+        // exactly the bills Reports counts: not voided, counted_in_reports
+        // (an online order only once delivered)
+        $soldRows = DB::table('sale_items as si')
+            ->join('sales as s', 's.id', '=', 'si.sale_id')
+            ->join('products as p', 'p.id', '=', 'si.product_id')
+            ->leftJoin('products as m', 'm.id', '=', 'p.master_product_id')
+            ->whereIn('s.shop_id', $memberIds)
+            ->whereNull('s.voided_at')->where('s.counted_in_reports', true)
+            ->when($from, fn ($q) => $q->whereDate('s.date', '>=', $from->toDateString()))
+            ->when($to, fn ($q) => $q->whereDate('s.date', '<=', $to->toDateString()))
+            ->selectRaw('COALESCE(m.supplier_id, p.supplier_id) as sid, s.shop_id as sale_shop, SUM(si.qty) as qty, SUM(si.qty * si.price - si.discount) as value, SUM(si.qty * si.cost) as cost')
+            ->groupBy('sid', 'sale_shop')->get();
+
+        $sold = [];
+        foreach ($soldRows as $r) {
+            $key = $r->sid ?: 'unknown';
+            $sold[$key] ??= ['qty' => 0.0, 'value' => 0.0, 'cost' => 0.0, 'branches' => []];
+            $sold[$key]['qty'] += (float) $r->qty;
+            $sold[$key]['value'] += (float) $r->value;
+            $sold[$key]['cost'] += (float) $r->cost;
+            $sold[$key]['branches'][(int) $r->sale_shop] = ['qty' => (float) $r->qty, 'value' => (float) $r->value];
+        }
+
+        return ['received' => $received, 'sold' => $sold];
+    }
+
+    public function stockValueBySupplier(Request $request)
     {
         $shop = Tenancy::shop();
         abort_unless($shop && ($shop->hasFeature('suppliers') || $shop->hasFeature('source_lines')), 404);
@@ -227,14 +323,43 @@ class AccountsController extends Controller
             }
         }
 
-        $rows = collect($bySupplier)->map(fn ($s, $key) => [
-            'id' => $s['id'],
-            'name' => $key === 'unknown' ? null : $s['name'],
-            'unknown' => $key === 'unknown',
-            'qty' => round($s['qty'], 3),
-            'value' => round($s['value'], 2),
-            'products' => collect($s['products'])->sortByDesc('value')->values()->all(),
-        ])->sortBy([['unknown', 'asc'], ['value', 'desc']])->values();
+        // received / sold in the chosen window — a supplier with goods
+        // received or sold but nothing left on the shelf still gets a row
+        [$from, $to, $period] = $this->flowWindow($request);
+        $flows = $this->supplierFlows($memberIds, $from, $to);
+        foreach (array_unique(array_merge(array_keys($flows['received']), array_keys($flows['sold']))) as $key) {
+            $bySupplier[$key] ??= [
+                'id' => is_int($key) ? $key : null,
+                'name' => is_int($key) ? ($supplierNames[$key] ?? "#{$key}") : '',
+                'qty' => 0.0, 'value' => 0.0, 'products' => [],
+            ];
+        }
+        $branchNames = Shop::withoutGlobalScopes()->whereIn('id', $memberIds)->pluck('name', 'id');
+
+        $rows = collect($bySupplier)->map(function ($s, $key) use ($flows, $branchNames) {
+            $sold = $flows['sold'][$key] ?? null;
+            $received = $flows['received'][$key] ?? null;
+
+            return [
+                'id' => $s['id'],
+                'name' => $key === 'unknown' ? null : $s['name'],
+                'unknown' => $key === 'unknown',
+                'qty' => round($s['qty'], 3),
+                'value' => round($s['value'], 2),
+                'products' => collect($s['products'])->sortByDesc('value')->values()->all(),
+                'received' => round($received['cost'] ?? 0, 2),
+                'receivedQty' => round($received['qty'] ?? 0, 3),
+                'sold' => round($sold['value'] ?? 0, 2),
+                'soldCost' => round($sold['cost'] ?? 0, 2),
+                'soldQty' => round($sold['qty'] ?? 0, 3),
+                'branches' => collect($sold['branches'] ?? [])->map(fn ($b, $shopId) => [
+                    'shop_id' => $shopId,
+                    'name' => $branchNames[$shopId] ?? "#{$shopId}",
+                    'value' => round($b['value'], 2),
+                    'qty' => round($b['qty'], 3),
+                ])->sortByDesc('value')->values()->all(),
+            ];
+        })->sortBy([['unknown', 'asc'], ['value', 'desc'], ['sold', 'desc']])->values();
 
         return Inertia::render('App/Accounts/StockValueBySupplier', [
             'rows' => $rows->all(),
@@ -243,6 +368,16 @@ class AccountsController extends Controller
                 ? Shop::withoutGlobalScopes()->whereIn('id', $memberIds)->where('id', '!=', $shop->id)->pluck('name')->all()
                 : [],
             'usesLots' => $lotsByGroup->isNotEmpty(),
+            'period' => $period,
+            'from' => $period === 'custom' ? $from?->toDateString() : null,
+            'to' => $period === 'custom' ? $to?->toDateString() : null,
+            // "received" is only as old as the intake ledger: say where it starts
+            'receivedSince' => DB::table('stock_intakes')->whereIn('shop_id', $memberIds)->min('created_at'),
+            'totals' => [
+                'received' => round(collect($flows['received'])->sum('cost'), 2),
+                'sold' => round(collect($flows['sold'])->sum('value'), 2),
+                'soldCost' => round(collect($flows['sold'])->sum('cost'), 2),
+            ],
         ]);
     }
 

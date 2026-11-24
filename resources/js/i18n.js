@@ -2543,4 +2543,18 @@ export const translations = {
     'acc.supplierStock.unknown': { bn: 'সাপ্লায়ার অজানা', en: 'Supplier unknown' },
     'acc.supplierStock.articles': { bn: 'টি আর্টিকেল', en: 'articles' },
     'acc.supplierStock.viaLot': { bn: 'লট', en: 'lot' },
+    // supplier report details
+    'supplierReport.period.all': { bn: 'সব সময়', en: 'All time' },
+    'supplierReport.period.today': { bn: 'আজ', en: 'Today' },
+    'supplierReport.period.7d': { bn: '৭ দিন', en: '7 days' },
+    'supplierReport.period.month': { bn: 'এই মাস', en: 'This month' },
+    'supplierReport.period.custom': { bn: '📅 তারিখ', en: '📅 Dates' },
+    'supplierReport.apply': { bn: 'দেখুন', en: 'Show' },
+    'supplierReport.received': { bn: 'মাল এসেছে', en: 'Received' },
+    'supplierReport.inStock': { bn: 'এখন স্টকে', en: 'In stock' },
+    'supplierReport.sold': { bn: 'বিক্রি হয়েছে', en: 'Sold' },
+    'supplierReport.soldCost': { bn: 'কেনা দামে', en: 'at cost' },
+    'supplierReport.byBranch': { bn: 'কোন শাখায় কত বিক্রি', en: 'Sold by branch' },
+    'supplierReport.receivedSince': { bn: '"মাল এসেছে" হিসাব শুরু {date} থেকে — তার আগের মাল এতে নেই।', en: '"Received" is recorded from {date} — earlier goods are not included.' },
+    'supplierReport.soldNote': { bn: 'বিক্রি = পণ্যের দাম × পরিমাণ − আইটেম ডিসকাউন্ট (বিল-ডিসকাউন্ট/ভ্যাট ছাড়া)।', en: 'Sold = price × qty − item discount (before bill-level discount/VAT).' },
 };
