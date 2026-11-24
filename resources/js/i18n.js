@@ -2512,4 +2512,30 @@ export const translations = {
     'pay.payNow': { bn: 'বেতন দিন', en: 'Pay salary' },
     'pay.alreadyPaid': { bn: 'এই মাসের বেতন পরিশোধিত', en: 'Paid for this month' },
     'pay.paidOn': { bn: 'তারিখ', en: 'Paid on' },
+    // scan sale history
+    'returns.scanNotSold': { bn: '✅ পণ্যটি চেনা গেছে — {name} — কিন্তু কোনো শাখায় বিক্রি হয়নি।', en: '✅ Product recognised — {name} — but it was never sold at any branch.' },
+    // online orders dashboard
+    'oodash.title': { bn: '📊 অর্ডারের অবস্থা', en: '📊 Order flow' },
+    'oodash.period.today': { bn: 'আজ', en: 'Today' },
+    'oodash.period.7d': { bn: '৭ দিন', en: '7 days' },
+    'oodash.period.month': { bn: 'এই মাস', en: 'This month' },
+    'oodash.delivered': { bn: 'ডেলিভারি হয়েছে (বিক্রি)', en: 'Delivered (sold)' },
+    'oodash.returned': { bn: 'ফেরত / ফেরত আসছে', en: 'Returned / returning' },
+    'oodash.awaiting': { bn: 'কাজ বাকি (পেন্ডিং, কনফার্মড, প্যাকড)', en: 'Needs action (pending, confirmed, packed)' },
+    'oodash.onTheWay': { bn: 'পথে', en: 'on the way' },
+    'oodash.cancelled': { bn: 'বাতিল', en: 'Cancelled' },
+    'oodash.failed': { bn: 'ব্যর্থ', en: 'failed' },
+    'oodash.ordersInPeriod': { bn: 'এই সময়ে মোট {n}টি অর্ডার', en: '{n} orders in this period' },
+    'oodash.codPending': { bn: 'কুরিয়ারের কাছে COD বাকি', en: 'COD not yet settled' },
+
+    // supplier stock value report
+    'acc.supplierStock.title': { bn: 'সাপ্লায়ার অনুযায়ী স্টক মূল্য', en: 'Stock value by supplier' },
+    'acc.supplierStock.linkHint': { bn: 'কোন সাপ্লায়ারের কত টাকার মাল শেলফে আছে', en: 'How much of each supplier\'s goods are on the shelf' },
+    'acc.supplierStock.subLots': { bn: 'লট ধরে হিসাব — প্রতিটা লটের বাকি পরিমাণ × কেনা দাম', en: 'Lot by lot — each lot\'s remaining qty × its cost' },
+    'acc.supplierStock.subArticle': { bn: 'আর্টিকেলের সাপ্লায়ার ধরে হিসাব — সাপ্লায়ার না থাকলে "অজানা"', en: 'By each article\'s supplier — "unknown" where none is set' },
+    'acc.supplierStock.backToStockValue': { bn: 'স্টকের মূল্যে ফিরুন', en: 'Back to stock value' },
+    'acc.supplierStock.pooledNote': { bn: 'শেয়ার্ড স্টক — {shops}-এর সাথে একই হিসাব', en: 'Shared stock — same figure as {shops}' },
+    'acc.supplierStock.unknown': { bn: 'সাপ্লায়ার অজানা', en: 'Supplier unknown' },
+    'acc.supplierStock.articles': { bn: 'টি আর্টিকেল', en: 'articles' },
+    'acc.supplierStock.viaLot': { bn: 'লট', en: 'lot' },
 };

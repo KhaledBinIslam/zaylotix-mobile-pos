@@ -36,13 +36,26 @@ function csrfToken() {
 const q = ref('');
 const searching = ref(false);
 const results = ref([]);
+// what the scanned/typed code itself resolved to (product + size), sales
+// or not — a known sticker that was never sold reads differently from a
+// code nobody recognises (ReturnController::lookup's `resolved`)
+const resolved = ref(null);
 const searchError = ref('');
+/** The sold line in this bill that the scan pointed at (exact size first, else the article) — shown on the result row so "which invoice sold THIS" is answered at a glance. */
+function matchedLine(sale) {
+    if (!resolved.value) return null;
+    const items = sale.items || [];
+    return (resolved.value.variant_id && items.find((i) => i.product_variant_id === resolved.value.variant_id))
+        || items.find((i) => i.product_id === resolved.value.product_id)
+        || null;
+}
 
 async function search() {
     if (!q.value.trim()) return;
     searching.value = true;
     searchError.value = '';
     results.value = [];
+    resolved.value = null;
     selectedSale.value = null;
     try {
         const res = await fetch(route('app.returns.lookup') + '?q=' + encodeURIComponent(q.value.trim()), {
@@ -50,6 +63,7 @@ async function search() {
         });
         const data = await res.json();
         results.value = data.sales || [];
+        resolved.value = data.resolved || null;
     } catch (e) {
         searchError.value = 'খুঁজতে সমস্যা হয়েছে, আবার চেষ্টা করুন।';
     } finally {
@@ -423,14 +437,20 @@ function sendMemoWA() {
                 <div v-for="sale in results" :key="sale.id" class="row" style="width:100%;text-align:left;cursor:pointer" @click="selectSale(sale)">
                     <div class="ava">🧾</div>
                     <div class="mid">
-                        <b>{{ sale.invoice_no }}</b><span v-if="sale.origin_shop_name" style="color:var(--gold2)"> 🏬 {{ sale.origin_shop_name }}</span>
+                        <b>{{ sale.invoice_no }}</b><span :style="sale.origin_shop_name ? 'color:var(--gold2)' : 'color:var(--mut)'"> 🏬 {{ sale.shop_name || sale.origin_shop_name }}</span>
                         <span>{{ sale.date }} • {{ sale.customer?.name || 'ওয়াক-ইন' }} • {{ money(sale.total) }}</span>
+                        <!-- the scanned item's own line in this bill: size/colour, qty, price -->
+                        <span v-if="matchedLine(sale)" style="color:var(--sky)">✅ {{ matchedLine(sale).product_name }}<template v-if="matchedLine(sale).variant_label"> ({{ matchedLine(sale).variant_label }})</template> × {{ matchedLine(sale).qty }} • {{ money(matchedLine(sale).price) }}</span>
                     </div>
                     <div class="end">
                         <span v-if="!sale.within_window" style="color:var(--rose);font-size:12px">সময় শেষ</span>
                         <span v-else>›</span>
                     </div>
                 </div>
+            </div>
+            <!-- a real sticker that no branch ever sold is a clear answer, not a shrug -->
+            <div v-else-if="q && !results.length && !searching && resolved" class="empty" style="color:var(--gold2)">
+                <div class="big">🏷</div>{{ t('returns.scanNotSold', { name: resolved.product_name + (resolved.variant_label ? ' (' + resolved.variant_label + ')' : '') }) }}
             </div>
             <div v-else-if="q && !results.length && !searching" class="empty"><div class="big">🔎</div>{{ t('returns.noResults') }}</div>
 

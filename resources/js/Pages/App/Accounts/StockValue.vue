@@ -12,7 +12,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useI18n } from '@/composables/useI18n';
 
-const props = defineProps({ rows: Array, total: Number, totalQty: Number });
+const props = defineProps({ rows: Array, total: Number, totalQty: Number, supplierView: { type: Boolean, default: false } });
 const { t } = useI18n();
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 </script>
@@ -30,6 +30,13 @@ const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
             <div style="font-size:26px;font-weight:850;color:var(--green)">{{ money(total) }}</div>
             <div style="font-size:12px;color:var(--mut)">{{ totalQty }} {{ t('stock.pieces') }}</div>
         </div>
+
+        <!-- the same figure split by who the goods came from (suppliers / source_lines shops only) -->
+        <Link v-if="supplierView" :href="route('app.accounts.stockValueBySupplier')" class="row card" style="text-decoration:none;color:inherit;cursor:pointer;margin-bottom:14px">
+            <div class="ava">🚚</div>
+            <div class="mid"><b>{{ t('acc.supplierStock.title') }}</b><div style="font-size:11px;color:var(--mut);margin-top:2px">{{ t('acc.supplierStock.linkHint') }}</div></div>
+            <div class="end"><span style="color:var(--mut)">›</span></div>
+        </Link>
 
         <div v-if="rows.length" class="card" style="padding:0;margin-bottom:14px">
             <details v-for="(r, i) in rows" :key="i" :style="i > 0 ? 'border-top:1px solid var(--line)' : ''">

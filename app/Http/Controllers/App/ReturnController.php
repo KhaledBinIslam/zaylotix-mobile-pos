@@ -239,10 +239,36 @@ class ReturnController extends Controller
         $resolvedProductId = ($resolved['found'] ?? false) ? $resolved['product']->id : null;
         $resolvedVariantId = $resolved['variant_id'] ?? null;
 
+        // The resolver hands back THIS shop's row, but a sale at the sibling
+        // branch stores the SIBLING's product/variant ids on its lines — so
+        // "was this sticker sold anywhere?" has to match every row of the
+        // same article/size across the business: the pool members, plus
+        // any row carrying the same barcode (kept identical across branch
+        // copies on purpose). Without this a sticker sold at Liberty and
+        // scanned at Baby Park found nothing (Khaled, 2026-11-24).
+        $productIds = collect();
+        $variantIds = collect();
+        if ($resolvedProductId) {
+            $rp = $resolved['product'];
+            $productIds = $rp->stockPoolMemberIds()->push($rp->id);
+            if (filled($rp->barcode)) {
+                $productIds = $productIds->merge(Product::withoutGlobalScopes()->whereIn('shop_id', $businessShopIds)->where('barcode', $rp->barcode)->pluck('id'));
+            }
+            $productIds = $productIds->unique()->values();
+
+            if ($resolvedVariantId && ($rv = ProductVariant::withoutGlobalScopes()->find($resolvedVariantId))) {
+                $variantIds = $rv->stockPoolMemberIds()->push($rv->id);
+                if (filled($rv->barcode)) {
+                    $variantIds = $variantIds->merge(ProductVariant::withoutGlobalScopes()->whereIn('shop_id', $businessShopIds)->where('barcode', $rv->barcode)->pluck('id'));
+                }
+                $variantIds = $variantIds->unique()->values();
+            }
+        }
+
         $sales = Sale::withoutGlobalScopes()
             ->whereIn('shop_id', $businessShopIds)
             ->whereNull('voided_at') // same reason as the sale_id lookup above
-            ->where(function ($query) use ($q, $resolvedProductId, $resolvedVariantId) {
+            ->where(function ($query) use ($q, $productIds, $variantIds) {
                 // dot-notation whereHas('items.product', ...) only drops
                 // scopes on the FINAL relation in the chain — the
                 // intermediate `items` (SaleItem) hop still carries its own
@@ -254,11 +280,14 @@ class ReturnController extends Controller
                     ->orWhereHas('customer', fn ($c) => $c->where('phone', $q))
                     ->orWhereHas('items', fn ($i) => $i->withoutGlobalScopes()->whereHas('product', fn ($p) => $p->withoutGlobalScopes()->where('barcode', $q)))
                     ->orWhereHas('items', fn ($i) => $i->withoutGlobalScopes()->whereHas('variant', fn ($v) => $v->withoutGlobalScopes()->where('barcode', $q)));
-                if ($resolvedProductId) {
-                    $query->orWhereHas('items', function ($i) use ($resolvedProductId, $resolvedVariantId) {
-                        $i->withoutGlobalScopes()->where('product_id', $resolvedProductId);
-                        if ($resolvedVariantId) {
-                            $i->where('product_variant_id', $resolvedVariantId);
+                if ($productIds->isNotEmpty()) {
+                    $query->orWhereHas('items', function ($i) use ($productIds, $variantIds) {
+                        $i->withoutGlobalScopes()->whereIn('product_id', $productIds);
+                        if ($variantIds->isNotEmpty()) {
+                            // the exact size that was scanned, at whichever
+                            // branch sold it — never a sibling size of the
+                            // same article
+                            $i->whereIn('product_variant_id', $variantIds);
                         }
                     });
                 }
@@ -268,8 +297,26 @@ class ReturnController extends Controller
             ->limit(10)
             ->get();
 
+        // What the scan itself resolved to, sales or not — so the screen
+        // can tell "this sticker is a real product, just never sold at any
+        // branch" apart from "no idea what this code is". Khaled: "scan
+        // korle show hobe kon invoice-e sell hoyeche ... naholeo show korbe
+        // eta sell kora hoyni".
+        $resolvedOut = null;
+        if ($resolvedProductId) {
+            $variant = $resolvedVariantId ? ProductVariant::withoutGlobalScopes()->find($resolvedVariantId) : null;
+            $resolvedOut = [
+                'product_id' => $resolvedProductId,
+                'product_name' => $resolved['product']->name,
+                'variant_id' => $variant?->id,
+                'variant_label' => $variant?->label(),
+                'color' => $resolved['color'] ?? null,
+            ];
+        }
+
         return response()->json([
             'sales' => $sales->map(fn (Sale $sale) => $this->presentSale($sale, $shop))->values(),
+            'resolved' => $resolvedOut,
         ]);
     }
 
@@ -296,6 +343,9 @@ class ReturnController extends Controller
             // so the cashier can see at a glance this bill was sold at a
             // sibling branch, not this one, before processing the return
             'origin_shop_name' => $isCrossBranch ? Shop::withoutGlobalScopes()->find($sale->shop_id)?->name : null,
+            // the SALE's own shop, every time — "kon branch-e sell hoyeche"
+            // must read the same whether it was this branch or the sibling
+            'shop_name' => $isCrossBranch ? Shop::withoutGlobalScopes()->find($sale->shop_id)?->name : $shop->name,
             'customer' => $sale->customer ? ['id' => $sale->customer->id, 'name' => $sale->customer->name, 'phone' => $sale->customer->phone] : null,
             'within_window' => $withinWindow,
             'window_days' => $shop->return_window_days,

@@ -42,7 +42,9 @@ class OnlineOrderController extends Controller
         $status = $request->get('status', '');
         $channelId = $request->get('channel_id');
 
-        $orders = OnlineOrder::with(['channel', 'sale.customer'])
+        $period = in_array($request->get('period'), ['today', '7d', 'month'], true) ? $request->get('period') : 'month';
+
+        $orders = OnlineOrder::with(['channel', 'sale.customer', 'courier:id,name'])
             ->when($status !== '', fn ($q) => $q->where('status', $status))
             ->when($channelId, fn ($q) => $q->where('channel_id', $channelId))
             ->orderByDesc('id')
@@ -55,7 +57,58 @@ class OnlineOrderController extends Controller
             'status' => $status,
             'channelId' => $channelId,
             'statuses' => OnlineOrder::STATUSES,
+            'period' => $period,
+            'dashboard' => self::dashboard($period),
         ]);
+    }
+
+    /**
+     * The strip above the order list — Khaled: "koita sell hocche, koita
+     * return, status wise dashboard-e dekhao". Status counts are the
+     * whole shop (the chips double as the status filter), the money
+     * figures are for orders CREATED in the chosen period, grouped by
+     * where they stand now. Two grouped queries, no per-order work; the
+     * sale total comes from a correlated sub-select so OnlineOrder's own
+     * tenant scope keeps applying unchanged (a join would make `shop_id`
+     * ambiguous). Profit/COGS/courier cost stay on the Profit page — this
+     * is the order-flow view, not the P&L.
+     */
+    private static function dashboard(string $period): array
+    {
+        $from = match ($period) {
+            'today' => now()->startOfDay(),
+            '7d' => now()->subDays(6)->startOfDay(),
+            default => now()->startOfMonth(),
+        };
+
+        $statusCounts = OnlineOrder::selectRaw('status, count(*) as n')->groupBy('status')->pluck('n', 'status');
+
+        $rows = OnlineOrder::where('online_orders.created_at', '>=', $from)
+            ->selectRaw('status, count(*) as n, coalesce(sum((select sales.total from sales where sales.id = online_orders.sale_id)), 0) as total')
+            ->groupBy('status')
+            ->get()
+            ->keyBy('status');
+        $count = fn (array $statuses) => (int) collect($statuses)->sum(fn ($s) => (int) ($rows->get($s)->n ?? 0));
+        $sum = fn (array $statuses) => round((float) collect($statuses)->sum(fn ($s) => (float) ($rows->get($s)->total ?? 0)), 2);
+
+        return [
+            'status_counts' => collect(OnlineOrder::STATUSES)->mapWithKeys(fn ($s) => [$s => (int) ($statusCounts[$s] ?? 0)])->all(),
+            'period' => [
+                'from' => $from->toDateString(),
+                'orders' => (int) $rows->sum('n'),
+                'delivered_count' => $count(['delivered']),
+                'delivered_total' => $sum(['delivered']),
+                'returned_count' => $count(['returning', 'returned']),
+                'returned_total' => $sum(['returning', 'returned']),
+                'cancelled_count' => $count(['cancelled']),
+                'failed_count' => $count(['failed']),
+                'awaiting_count' => $count(['pending', 'confirmed', 'packed']),
+                'on_the_way_count' => $count(['handed_to_courier', 'in_transit']),
+            ],
+            // same figure the Accounts page shows as a receivable: collected
+            // by the courier from the customer, not yet handed to the shop
+            'cod_pending' => (float) OnlineOrder::where('status', 'delivered')->whereNull('cod_settled_at')->sum('cod_amount'),
+        ];
     }
 
     public function create()

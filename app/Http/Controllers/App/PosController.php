@@ -218,13 +218,26 @@ class PosController extends Controller
 
     private static function hideCost($products)
     {
+        // relationLoaded() guards, not `?->`: a null-safe call does NOT
+        // stop Eloquent from lazy-loading the relation first. Measured at
+        // Baby Park (2,002 sizes, source_lines off so nothing was eager-
+        // loaded): every POS open ran ~2,200 queries / 1.3 s, one
+        // `product_sources` SELECT per size, just to hide a cost on rows
+        // that were never going to be sent. Only rows catalogRelations()
+        // actually loaded can carry a cost to hide.
         return $products->each(function ($p) {
             $p->makeHidden(array_merge(['cost'], self::UNUSED_BY_POS));
-            $p->variants?->each(function ($v) {
-                $v->makeHidden(array_merge(['cost'], self::UNUSED_BY_POS));
-                $v->sources?->each(fn ($s) => $s->makeHidden(['cost']));
-            });
-            $p->sources?->each(fn ($s) => $s->makeHidden(['cost']));
+            if ($p->relationLoaded('variants')) {
+                $p->variants->each(function ($v) {
+                    $v->makeHidden(array_merge(['cost'], self::UNUSED_BY_POS));
+                    if ($v->relationLoaded('sources')) {
+                        $v->sources->each(fn ($s) => $s->makeHidden(['cost']));
+                    }
+                });
+            }
+            if ($p->relationLoaded('sources')) {
+                $p->sources->each(fn ($s) => $s->makeHidden(['cost']));
+            }
         });
     }
 
