@@ -1,5 +1,6 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue';
 import { usePage } from '@inertiajs/vue3';
+import { shouldAutoReload } from '@/support/autoUpdate';
 
 /**
  * Phase 40 (docs/CUSTOMIZATION_AUDIT.md কারণ ৩) — "নতুন সংস্করণ এসেছে"
@@ -12,8 +13,11 @@ import { usePage } from '@inertiajs/vue3';
  * moment an owner unlocks their phone and would otherwise stare at stale
  * UI — and (b) on a slow interval while it stays open. On mismatch it
  * only flips `newVersionAvailable`; the banner's refresh button is the
- * user's own choice. NEVER reloads on its own — sw.js v4 was reverted for
- * exactly that (it wiped mid-sale state on live counters).
+ * user's own choice — AND, once nobody has touched the screen for a while,
+ * it reloads itself (support/autoUpdate.js decides when that is safe), so a
+ * phone never keeps running yesterday's bugs just because the banner went
+ * untapped. Never while the screen is in use: sw.js v4 was reverted for
+ * reloading mid-sale on live counters.
  */
 export function useVersionCheck() {
     const page = usePage();
@@ -26,6 +30,10 @@ export function useVersionCheck() {
     let loadedVersion = null;
     let lastCheckAt = 0;
     let timer = null;
+    let idleTimer = null;
+    let lastInputAt = Date.now();
+    const touch = () => { lastInputAt = Date.now(); };
+    const INPUT_EVENTS = ['pointerdown', 'keydown', 'touchstart', 'input', 'wheel'];
 
     const MIN_GAP_MS = 2 * 60 * 1000; // never hit the server more than once per 2 min
     const INTERVAL_MS = 15 * 60 * 1000;
@@ -39,12 +47,24 @@ export function useVersionCheck() {
             const res = await fetch(route('app.appVersion'), { headers: { Accept: 'application/json' }, cache: 'no-store' });
             if (!res.ok) return; // expired session/offline — silently skip, never nag
             const data = await res.json();
-            if (data.v && data.v !== loadedVersion) newVersionAvailable.value = true;
+            if (data.v && data.v !== loadedVersion) {
+                newVersionAvailable.value = true;
+                startIdleReload();
+            }
         } catch {
             // offline — the next foreground/interval check will try again
         }
     }
 
+    // checked every 15 s only AFTER a new build is known — no cost until then
+    function startIdleReload() {
+        if (idleTimer) return;
+        idleTimer = setInterval(() => {
+            if (shouldAutoReload({ now: Date.now(), lastInputAt, online: navigator.onLine })) {
+                window.location.reload();
+            }
+        }, 15 * 1000);
+    }
     function onVisible() {
         if (document.visibilityState === 'visible') check();
     }
@@ -52,11 +72,14 @@ export function useVersionCheck() {
     onMounted(() => {
         loadedVersion = page.props.assetVersion || null;
         document.addEventListener('visibilitychange', onVisible);
+        INPUT_EVENTS.forEach((e) => document.addEventListener(e, touch, { passive: true, capture: true }));
         timer = setInterval(check, INTERVAL_MS);
     });
     onBeforeUnmount(() => {
         document.removeEventListener('visibilitychange', onVisible);
+        INPUT_EVENTS.forEach((e) => document.removeEventListener(e, touch, { capture: true }));
         clearInterval(timer);
+        clearInterval(idleTimer);
     });
 
     return { newVersionAvailable, dismissed };

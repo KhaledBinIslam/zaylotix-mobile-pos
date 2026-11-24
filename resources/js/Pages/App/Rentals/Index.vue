@@ -1,5 +1,7 @@
 <script setup>
 import { Head, Link } from '@inertiajs/vue3';
+import { scanBoxSize } from '@/support/scanBoxSize';
+import { scannerFormats, scannerOptions } from '@/support/scannerConfig';
 import { ref, computed, onBeforeUnmount } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
@@ -122,11 +124,11 @@ async function openScanner() {
     scannerOpen.value = true;
     scanHint.value = t('rental.scanHint');
     try {
-        const { Html5Qrcode } = await import('html5-qrcode');
-        html5Qrcode = new Html5Qrcode('rental-reader', { verbose: false });
+        const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
+        html5Qrcode = new Html5Qrcode('rental-reader', { verbose: false, formatsToSupport: scannerFormats(Html5QrcodeSupportedFormats) });
         await html5Qrcode.start(
             { facingMode: 'environment' },
-            { fps: 12, qrbox: { width: 260, height: 200 } },
+            scannerOptions(scanBoxSize),
             (text) => handleScan(text, (msg) => (scanHint.value = msg)),
             () => {},
         );

@@ -1,10 +1,9 @@
 <script setup>
-import { scanBoxSize } from '@/support/scanBoxSize';
-import { scannerFormats, scannerOptions } from '@/support/scannerConfig';
 import { Head, usePage } from '@inertiajs/vue3';
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, onMounted, nextTick } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Sheet from '@/Components/Sheet.vue';
+import CameraScanner from '@/Components/CameraScanner.vue';
 import { useI18n } from '@/composables/useI18n';
 import { useHardwareScanner } from '@/composables/useHardwareScanner';
 import { useToast } from '@/composables/useToast';
@@ -213,7 +212,7 @@ async function handleScan(decodedText, onFeedback) {
         const v = p.variants?.find((variant) => variant.barcode === code);
         if (v && action.value === 'exchange') {
             addScannedItem(p.id, v.id);
-            onFeedback('✅ ' + p.name + ' (' + v.label + ')');
+            doneAdded('✅ ' + p.name + ' (' + v.label + ')');
             return;
         }
     }
@@ -225,7 +224,7 @@ async function handleScan(decodedText, onFeedback) {
             return;
         }
         addScannedItem(product.id, null);
-        onFeedback('✅ ' + product.name);
+        doneAdded('✅ ' + product.name);
         return;
     }
 
@@ -260,12 +259,12 @@ async function handleScan(decodedText, onFeedback) {
             if (data.variant_id) {
                 const v = data.product.variants?.find((variant) => variant.id === data.variant_id);
                 addScannedItem(data.product.id, data.variant_id);
-                onFeedback('✅ ' + data.product.name + (v ? ' (' + v.label + ')' : ''));
+                doneAdded('✅ ' + data.product.name + (v ? ' (' + v.label + ')' : ''));
             } else if (data.product.variants?.length) {
                 onFeedback('❌ ' + data.product.name + ' — সাইজ/রং বাছাই করুন');
             } else {
                 addScannedItem(data.product.id, null);
-                onFeedback('✅ ' + data.product.name);
+                doneAdded('✅ ' + data.product.name);
             }
         } else {
             onFeedback('❌ পণ্য পাওয়া যায়নি: ' + decodedText);
@@ -281,38 +280,29 @@ async function handleScan(decodedText, onFeedback) {
 // return-item/new-item matching above.
 useHardwareScanner((code) => handleScan(code, (msg) => toast(msg)), true);
 
-// camera scanner
+// camera scanner — the shared CameraScanner overlay, NOT a <Sheet>: closing a
+// Sheet runs history.back() (useSheetHistoryDepth), a real navigation that
+// makes Inertia remount this whole page with preserveState:false — so the
+// picked bill and the new items typed so far vanished the moment the camera
+// closed and the screen "went back to the start" (Baby Park, 2026-11-24).
 const scannerOpen = ref(false);
-const scanHint = ref('');
-let html5Qrcode = null;
+const cameraRef = ref(null);
 async function openScanner() {
     scannerOpen.value = true;
-    scanHint.value = 'ক্যামেরার সামনে বারকোড ধরুন';
-    try {
-        // POS's exact setup (support/scannerConfig.js): CODE_128 stickers in
-        // the format list, 720p frames — without it this scanner opened the
-        // camera but never read a label (Baby Park, 2026-11-24)
-        const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
-        html5Qrcode = new Html5Qrcode('returns-reader', { verbose: false, formatsToSupport: scannerFormats(Html5QrcodeSupportedFormats) });
-        await html5Qrcode.start(
-            { facingMode: 'environment' },
-            scannerOptions(scanBoxSize),
-            (text) => handleScan(text, (msg) => (scanHint.value = msg)),
-            () => {},
-        );
-    } catch (e) {
-        toast('❌ ক্যামেরা পাওয়া যায়নি');
-        closeScanner();
-    }
+    await nextTick();
+    cameraRef.value?.open();
 }
 async function closeScanner() {
+    if (cameraRef.value) await cameraRef.value.close();
     scannerOpen.value = false;
-    if (html5Qrcode) {
-        try { await html5Qrcode.stop(); html5Qrcode.clear(); } catch (e) { /* already stopped */ }
-        html5Qrcode = null;
-    }
 }
-onBeforeUnmount(() => { if (html5Qrcode) html5Qrcode.stop().catch(() => {}); });
+// a new exchange item went in: tell the cashier and go back to the form
+// (another one is a single tap on 📷 away) instead of leaving the camera
+// covering the screen with nothing visibly changed
+function doneAdded(msg) {
+    toast(msg);
+    closeScanner();
+}
 
 // Sales/Show.vue's "ফেরত / এক্সচেঞ্জ" button lands here with ?sale_id=123 —
 // jump straight to that sale instead of making the cashier re-type/re-scan
@@ -626,18 +616,6 @@ function sendMemoWA() {
             </div>
         </div>
 
-        <Sheet v-model="scannerOpen" title="বারকোড স্ক্যান করুন">
-            <div id="returns-reader" style="width:100%;border-radius:12px;overflow:hidden"></div>
-            <div style="text-align:center;margin-top:10px;font-size:13px;color:var(--mut)">{{ scanHint }}</div>
-            <div style="text-align:center;margin-top:4px;font-size:12px;color:var(--dim)">ক্যামেরা চালু থাকবে — একটার পর একটা নতুন আইটেম স্ক্যান করতে থাকুন</div>
-            <div v-if="newItems.length" class="card" style="margin-top:10px;background:var(--surface2)">
-                <div v-for="(row, idx) in newItems" :key="idx" style="font-size:13px">
-                    ✅ {{ productOf(row.product_id)?.name || '—' }}
-                    <span v-if="row.product_variant_id">({{ productOf(row.product_id)?.variants?.find(v => v.id === Number(row.product_variant_id))?.label }})</span>
-                    × {{ qty(row.qty) }}
-                </div>
-            </div>
-            <button class="btn ghost" style="margin-top:10px" @click="closeScanner">{{ t('returns.doneScan') }}</button>
-        </Sheet>
+        <CameraScanner v-if="scannerOpen" ref="cameraRef" @scan="handleScan" @close="scannerOpen = false" @error="toast('❌ ক্যামেরা পাওয়া যায়নি')" />
     </AppLayout>
 </template>
