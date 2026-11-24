@@ -43,7 +43,13 @@ class ImpersonationController extends Controller
         }
 
         $shop = Auth::guard('web')->user()?->shop;
-        Auth::guard('web')->logout();
+        // logoutCurrentDevice(), NOT logout(): logout() cycles the user's
+        // remember_token in the database, which silently invalidated the
+        // real owner's remember-me cookie on EVERY phone they were logged
+        // in on, each time an admin stopped viewing their shop — Baby Park's
+        // "logged out again and again" (2026-11-24). Only this admin
+        // browser's impersonation session has to end.
+        Auth::guard('web')->logoutCurrentDevice();
         $request->session()->forget('impersonating_admin_id');
         $request->session()->regenerate();
 

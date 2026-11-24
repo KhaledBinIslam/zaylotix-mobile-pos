@@ -100,7 +100,7 @@ async function handleBarcode(code, { typed = false } = {}) {
 
     if (result.type === 'notFound') {
         toast('❌ ' + t('pos.notFound'));
-        return;
+        return 'notFound';
     }
     if (result.fromServer && !props.products.some((p) => p.id === result.product.id)) {
         props.products.push(result.product); // same as POS: now it's local for the next scan
@@ -110,11 +110,10 @@ async function handleBarcode(code, { typed = false } = {}) {
     if (result.type === 'line') {
         const v = result.variant;
         addScannedLine(product.id, v ? v.id : '', v ? `${product.name} (${[v.size, v.color].filter(Boolean).join(', ')})` : product.name);
-        return;
+        return 'added';
     }
     if (result.type === 'color') {
-        openScanColorPicker(product, result.color);
-        return;
+        return openScanColorPicker(product, result.color) ? 'added' : 'picker';
     }
     // the ARTICLE's own barcode (e.g. a shelf tag) is ambiguous — which
     // size/color? Open the picker instead of leaving a half-filled line.
@@ -122,6 +121,7 @@ async function handleBarcode(code, { typed = false } = {}) {
     scanVariantProduct.value = product;
     scanVariantOnlyColor.value = null;
     scanVariantSheetOpen.value = true;
+    return 'picker';
 }
 const scanVariantSheetOpen = ref(false);
 const scanVariantProduct = ref(null);
@@ -138,12 +138,13 @@ function openScanColorPicker(product, color) {
     if (sizesInStock.length === 1) {
         const v = sizesInStock[0];
         addScannedLine(product.id, v.id, `${product.name} (${[v.size, v.color].filter(Boolean).join(', ')})`);
-        return;
+        return true; // a line was added straight away
     }
     closeCamera();
     scanVariantProduct.value = product;
     scanVariantOnlyColor.value = color;
     scanVariantSheetOpen.value = true;
+    return false; // the picker takes over
 }
 function addScannedLine(productId, variantId, label, qty = 1) {
     const existing = form.items.find((l) => l.product_id === productId && (l.product_variant_id || '') === variantId);
@@ -181,9 +182,20 @@ async function openCamera() {
 function closeCamera() {
     cameraOpen.value = false;
 }
-function onCameraScan(decodedText, onFeedback) {
-    handleBarcode(decodedText);
-    onFeedback('✅');
+async function onCameraScan(decodedText, onFeedback) {
+    const outcome = await handleBarcode(decodedText);
+    if (outcome === 'added') {
+        // Unlike POS (a cashier scanning item after item), this is an order
+        // form: once the line is in, go back to the form so the order can be
+        // completed — the overlay staying open read as "scan works but it
+        // never goes to checkout" (Baby Park, 2026-11-24). Another item is one
+        // tap on 📷 away.
+        onFeedback('✅');
+        closeCamera();
+    } else if (outcome === 'notFound') {
+        onFeedback('❌ ' + t('pos.notFound'));
+    }
+    // 'picker': the camera was already closed and the size/colour sheet is up
 }
 
 const hardwareScannerEnabled = computed(() => page.props.shop?.hardware_scanner_enabled ?? true);
