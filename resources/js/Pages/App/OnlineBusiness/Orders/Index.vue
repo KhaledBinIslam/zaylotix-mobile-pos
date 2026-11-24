@@ -11,10 +11,28 @@ import { reportClientError } from '@/support/reportClientError';
 const props = defineProps({
     orders: Object, channels: Array, status: String, channelId: [Number, String], statuses: Array,
     period: { type: String, default: 'month' },
+    from: { type: String, default: null },
+    to: { type: String, default: null },
     dashboard: { type: Object, default: () => ({ status_counts: {}, period: {}, cod_pending: 0 }) },
 });
 const { t } = useI18n();
 const { toast } = useToast();
+
+// Khaled: "etu tarik tekhe etu tarik, or fixed kono date" — a custom
+// window beside the presets. `to` left empty = that single day.
+const customOpen = ref(props.period === 'custom');
+const customFrom = ref(props.from || '');
+const customTo = ref(props.to || '');
+const periodQuery = () => (props.period === 'custom' && props.from ? { period: 'custom', from: props.from, to: props.to || props.from } : { period: props.period });
+function pickCustom() {
+    if (!customFrom.value) return;
+    router.get(route('app.onlineOrders.index'), {
+        status: props.status || '', channel_id: props.channelId || '',
+        period: 'custom', from: customFrom.value, to: customTo.value || customFrom.value,
+    }, { preserveState: true, preserveScroll: true, only: ['dashboard', 'period', 'from', 'to'] });
+}
+const shortDate = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+const rangeLabel = () => (props.from && props.to && props.from !== props.to ? `${shortDate(props.from)} – ${shortDate(props.to)}` : (props.from ? shortDate(props.from) : ''));
 
 const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 const statusPill = {
@@ -30,7 +48,7 @@ function applyFilter(e) {
     router.get(route('app.onlineOrders.index'), {
         status: document.getElementById('statusFilter').value,
         channel_id: document.getElementById('channelFilter').value,
-        period: props.period,
+        ...periodQuery(),
     }, { preserveState: true });
 }
 // the status chips are the same filter the dropdown applies — tapping the
@@ -39,13 +57,14 @@ function pickStatus(s) {
     router.get(route('app.onlineOrders.index'), {
         status: props.status === s ? '' : s,
         channel_id: props.channelId || '',
-        period: props.period,
+        ...periodQuery(),
     }, { preserveState: true, preserveScroll: true });
 }
 function pickPeriod(p) {
+    customOpen.value = false;
     router.get(route('app.onlineOrders.index'), {
         status: props.status || '', channel_id: props.channelId || '', period: p,
-    }, { preserveState: true, preserveScroll: true, only: ['dashboard', 'period'] });
+    }, { preserveState: true, preserveScroll: true, only: ['dashboard', 'period', 'from', 'to'] });
 }
 const totalOrders = () => Object.values(props.dashboard.status_counts || {}).reduce((s, n) => s + Number(n || 0), 0);
 function when(iso) {
@@ -116,9 +135,17 @@ function confirmImport() {
         <div class="card" style="margin-bottom:12px;padding:10px 12px">
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
                 <b style="font-size:13px">{{ t('oodash.title') }}</b>
-                <div style="display:flex;gap:4px">
+                <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">
                     <button v-for="p in ['today', '7d', 'month']" :key="p" class="pill" :class="period === p ? 'mint' : 'mut'" style="cursor:pointer;border:none" @click="pickPeriod(p)">{{ t('oodash.period.' + p) }}</button>
+                    <button class="pill" :class="period === 'custom' ? 'mint' : 'mut'" style="cursor:pointer;border:none" @click="customOpen = !customOpen">📅 {{ period === 'custom' && from ? rangeLabel() : t('oodash.period.custom') }}</button>
                 </div>
+            </div>
+            <!-- "etu tarik tekhe etu tarik, or fixed kono date": leave the second date empty for a single day -->
+            <div v-if="customOpen" style="display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px">
+                <label style="font-size:11px;color:var(--mut)">{{ t('oodash.customFrom') }}<br><input v-model="customFrom" type="date" style="padding:6px 8px;font-size:13px"></label>
+                <label style="font-size:11px;color:var(--mut)">{{ t('oodash.customTo') }}<br><input v-model="customTo" type="date" :min="customFrom || undefined" style="padding:6px 8px;font-size:13px"></label>
+                <button class="btn sm" style="width:auto" :disabled="!customFrom" @click="pickCustom">{{ t('oodash.customApply') }}</button>
+                <span style="font-size:11px;color:var(--mut)">{{ t('oodash.customHint') }}</span>
             </div>
             <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">
                 <div style="background:var(--panel2);border-radius:10px;padding:8px 10px">

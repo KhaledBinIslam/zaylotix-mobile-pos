@@ -186,6 +186,20 @@ async function handleScan(decodedText, onFeedback) {
         q.value = code;
         onFeedback('🔎 ' + code);
         await search();
+        // The results live BEHIND this scanner sheet, so leaving it open
+        // read as "it beeps and then shows nothing" (Baby Park, 2026-11-24).
+        // Close it and act on what the lookup found: one bill (whichever
+        // branch rang it) opens straight into the return/exchange form,
+        // several are listed to pick from, none shows the "never sold" state.
+        await closeScanner();
+        if (results.value.length === 1) {
+            selectSale(results.value[0]);
+            toast('✅ ' + (results.value[0].shop_name ? results.value[0].shop_name + ' • ' : '') + results.value[0].invoice_no);
+        } else if (!results.value.length) {
+            toast(resolved.value
+                ? t('returns.scanNotSold', { name: resolved.value.product_name + (resolved.value.variant_label ? ' (' + resolved.value.variant_label + ')' : '') })
+                : t('returns.noResults'));
+        }
         return;
     }
 

@@ -2527,6 +2527,11 @@ export const translations = {
     'oodash.failed': { bn: 'ব্যর্থ', en: 'failed' },
     'oodash.ordersInPeriod': { bn: 'এই সময়ে মোট {n}টি অর্ডার', en: '{n} orders in this period' },
     'oodash.codPending': { bn: 'কুরিয়ারের কাছে COD বাকি', en: 'COD not yet settled' },
+    'oodash.period.custom': { bn: 'তারিখ', en: 'Dates' },
+    'oodash.customFrom': { bn: 'তারিখ থেকে', en: 'From' },
+    'oodash.customTo': { bn: 'তারিখ পর্যন্ত', en: 'To' },
+    'oodash.customApply': { bn: 'দেখুন', en: 'Show' },
+    'oodash.customHint': { bn: 'একটা নির্দিষ্ট দিন দেখতে "পর্যন্ত" ফাঁকা রাখুন', en: 'Leave "To" empty for a single day' },
 
     // supplier stock value report
     'acc.supplierStock.title': { bn: 'সাপ্লায়ার অনুযায়ী স্টক মূল্য', en: 'Stock value by supplier' },

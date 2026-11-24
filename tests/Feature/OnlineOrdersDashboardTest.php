@@ -124,4 +124,73 @@ class OnlineOrdersDashboardTest extends TestCase
         $this->actingAs($owner, 'web')->get(route('app.onlineOrders.index', ['period' => 'whatever']))
             ->assertOk()->assertInertia(fn ($page) => $page->where('period', 'month')->where('dashboard.period.orders', 0));
     }
+
+    /** Khaled: "etu tarik tekhe etu tarik" — a closed range, both ends inclusive, counting orders CREATED inside it. */
+    public function test_a_custom_date_range_counts_only_orders_created_inside_it_both_ends_inclusive(): void
+    {
+        [, $owner, $channel, $product] = $this->shopWithOrders();
+        $from = now()->subDays(10)->toDateString();
+        $to = now()->subDays(5)->toDateString();
+        $this->order($owner, $channel, $product, 1, 'delivered', ['created_at' => now()->subDays(11)->setTime(23, 59), 'delivered_at' => now()]); // day before: out
+        $this->order($owner, $channel, $product, 2, 'delivered', ['created_at' => now()->subDays(10)->setTime(0, 1), 'delivered_at' => now()]);  // first day: in
+        $this->order($owner, $channel, $product, 3, 'delivered', ['created_at' => now()->subDays(7), 'delivered_at' => now()]);                    // middle: in
+        $this->order($owner, $channel, $product, 4, 'cancelled', ['created_at' => now()->subDays(5)->setTime(23, 58), 'cancelled_at' => now()]);  // last day: in
+        $this->order($owner, $channel, $product, 5, 'delivered', ['created_at' => now()->subDays(4)->setTime(0, 1), 'delivered_at' => now()]);   // day after: out
+        $this->order($owner, $channel, $product, 6, 'delivered', ['delivered_at' => now()]);                                                      // today: out
+
+        $this->actingAs($owner, 'web')->get(route('app.onlineOrders.index', ['period' => 'custom', 'from' => $from, 'to' => $to]))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('period', 'custom')->where('from', $from)->where('to', $to)
+                ->where('dashboard.period.from', $from)->where('dashboard.period.to', $to)
+                ->where('dashboard.period.orders', 3)
+                ->where('dashboard.period.delivered_count', 2)
+                ->where('dashboard.period.delivered_total', fn ($v) => (float) $v === 500.0) // 200 + 300
+                ->where('dashboard.period.cancelled_count', 1)
+                ->where('dashboard.status_counts.delivered', 5)); // chips stay whole-shop
+    }
+
+    /** "or fixed kono date": `to` left out means that one day only. */
+    public function test_a_single_fixed_date_is_from_equals_to(): void
+    {
+        [, $owner, $channel, $product] = $this->shopWithOrders();
+        $day = now()->subDays(3)->toDateString();
+        $this->order($owner, $channel, $product, 1, 'delivered', ['created_at' => now()->subDays(3)->setTime(9, 0), 'delivered_at' => now()]);
+        $this->order($owner, $channel, $product, 2, 'delivered', ['created_at' => now()->subDays(3)->setTime(22, 30), 'delivered_at' => now()]);
+        $this->order($owner, $channel, $product, 3, 'delivered', ['created_at' => now()->subDays(2), 'delivered_at' => now()]);
+        $this->order($owner, $channel, $product, 4, 'delivered', ['created_at' => now()->subDays(4), 'delivered_at' => now()]);
+
+        $this->actingAs($owner, 'web')->get(route('app.onlineOrders.index', ['period' => 'custom', 'from' => $day]))
+            ->assertInertia(fn ($page) => $page
+                ->where('period', 'custom')->where('from', $day)->where('to', $day)
+                ->where('dashboard.period.orders', 2)
+                ->where('dashboard.period.delivered_total', fn ($v) => (float) $v === 300.0)); // 100 + 200
+    }
+
+    public function test_swapped_custom_dates_are_swapped_back_not_refused(): void
+    {
+        [, $owner, $channel, $product] = $this->shopWithOrders();
+        $this->order($owner, $channel, $product, 1, 'delivered', ['created_at' => now()->subDays(7), 'delivered_at' => now()]);
+        $this->order($owner, $channel, $product, 2, 'delivered', ['delivered_at' => now()]); // today: out
+        $from = now()->subDays(9)->toDateString();
+        $to = now()->subDays(5)->toDateString();
+
+        $this->actingAs($owner, 'web')->get(route('app.onlineOrders.index', ['period' => 'custom', 'from' => $to, 'to' => $from]))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('period', 'custom')->where('from', $from)->where('to', $to)
+                ->where('dashboard.period.orders', 1));
+    }
+
+    public function test_an_unparseable_custom_date_falls_back_to_this_month(): void
+    {
+        [, $owner, $channel, $product] = $this->shopWithOrders();
+        $this->order($owner, $channel, $product, 1, 'delivered', ['delivered_at' => now()]);
+
+        foreach ([['from' => 'yesterday'], ['from' => '2026-13-45'], []] as $bad) {
+            $this->actingAs($owner, 'web')->get(route('app.onlineOrders.index', ['period' => 'custom'] + $bad))
+                ->assertOk()
+                ->assertInertia(fn ($page) => $page->where('period', 'month')->where('from', null)->where('to', null)->where('dashboard.period.orders', 1));
+        }
+    }
 }

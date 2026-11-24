@@ -42,7 +42,38 @@ class OnlineOrderController extends Controller
         $status = $request->get('status', '');
         $channelId = $request->get('channel_id');
 
-        $period = in_array($request->get('period'), ['today', '7d', 'month'], true) ? $request->get('period') : 'month';
+        // Khaled: "date customised kore jeno dekhte pare — etu tarik tekhe
+        // etu tarik, or fixed kono date". period=custom&from=Y-m-d[&to=Y-m-d]:
+        // `to` omitted = that one day; swapped dates are swapped back rather
+        // than refused; anything unparseable falls back to this month, same
+        // as an unknown period always did.
+        $period = in_array($request->get('period'), ['today', '7d', 'month', 'custom'], true) ? $request->get('period') : 'month';
+        [$from, $to] = [null, null];
+        if ($period === 'custom') {
+            $parse = function ($v) {
+                try {
+                    if (! $v || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $v)) {
+                        return null;
+                    }
+                    $d = \Carbon\Carbon::createFromFormat('Y-m-d', (string) $v);
+
+                    // Carbon rolls "2026-13-45" over into a real date instead
+                    // of refusing it — only a value that survives the round
+                    // trip is a date the owner actually typed
+                    return $d && $d->format('Y-m-d') === (string) $v ? $d : null;
+                } catch (\Throwable) {
+                    return null;
+                }
+            };
+            $from = $parse($request->get('from'));
+            $to = $parse($request->get('to')) ?? $from;
+            if (! $from) {
+                $period = 'month';
+                $to = null;
+            } elseif ($to->lt($from)) {
+                [$from, $to] = [$to, $from];
+            }
+        }
 
         $orders = OnlineOrder::with(['channel', 'sale.customer', 'courier:id,name'])
             ->when($status !== '', fn ($q) => $q->where('status', $status))
@@ -58,7 +89,9 @@ class OnlineOrderController extends Controller
             'channelId' => $channelId,
             'statuses' => OnlineOrder::STATUSES,
             'period' => $period,
-            'dashboard' => self::dashboard($period),
+            'from' => $from?->toDateString(),
+            'to' => $to?->toDateString(),
+            'dashboard' => self::dashboard($period, $from, $to),
         ]);
     }
 
@@ -73,17 +106,22 @@ class OnlineOrderController extends Controller
      * ambiguous). Profit/COGS/courier cost stay on the Profit page — this
      * is the order-flow view, not the P&L.
      */
-    private static function dashboard(string $period): array
+    private static function dashboard(string $period, ?\Carbon\Carbon $customFrom = null, ?\Carbon\Carbon $customTo = null): array
     {
         $from = match ($period) {
             'today' => now()->startOfDay(),
             '7d' => now()->subDays(6)->startOfDay(),
+            'custom' => $customFrom->copy()->startOfDay(),
             default => now()->startOfMonth(),
         };
+        // a custom range is closed at both ends ("etu tarik tekhe etu
+        // tarik"); the presets run to now
+        $to = $period === 'custom' ? $customTo->copy()->endOfDay() : null;
 
         $statusCounts = OnlineOrder::selectRaw('status, count(*) as n')->groupBy('status')->pluck('n', 'status');
 
         $rows = OnlineOrder::where('online_orders.created_at', '>=', $from)
+            ->when($to, fn ($q) => $q->where('online_orders.created_at', '<=', $to))
             ->selectRaw('status, count(*) as n, coalesce(sum((select sales.total from sales where sales.id = online_orders.sale_id)), 0) as total')
             ->groupBy('status')
             ->get()
@@ -95,6 +133,7 @@ class OnlineOrderController extends Controller
             'status_counts' => collect(OnlineOrder::STATUSES)->mapWithKeys(fn ($s) => [$s => (int) ($statusCounts[$s] ?? 0)])->all(),
             'period' => [
                 'from' => $from->toDateString(),
+                'to' => ($to ?? now())->toDateString(),
                 'orders' => (int) $rows->sum('n'),
                 'delivered_count' => $count(['delivered']),
                 'delivered_total' => $sum(['delivered']),
