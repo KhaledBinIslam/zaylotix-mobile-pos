@@ -185,6 +185,38 @@ class ArticleSerialBandTest extends TestCase
             ->assertOk()->assertJson(['serial' => 20067]);
     }
 
+    /**
+     * Real production shapes (Baby Park, checked 2026-11-25): the suggestion
+     * must never be a number a live article already carries.
+     */
+    public function test_the_suggestion_skips_a_number_another_band_of_the_same_code_already_uses(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        // S has several bands, each with its own counter: band 80001's counter
+        // says "next 80002" while S-80002 is live (it belongs to band 80002)
+        $a = ProductCategory::create(['shop_id' => $shop->id, 'name' => 'china A', 'code' => 'S', 'serial_start' => 80001]);
+        $b = ProductCategory::create(['shop_id' => $shop->id, 'name' => 'china B', 'code' => 'S', 'serial_start' => 80002]);
+        $this->article($shop, $a, 80001);
+        $this->article($shop, $b, 80002);
+        $this->article($shop, $b, 80003);
+        ArticleSerial::bumpFloor($shop, 'S', 80002, 80001);   // band 80001 counter: next 80002 (live!)
+
+        $this->assertSame(80004, ArticleSerial::nextFree($shop, 'S', 80001));
+        $this->assertNotContains(ArticleSerial::nextFree($shop, 'S', 80001), [80001, 80002, 80003]);
+    }
+
+    public function test_the_suggestion_is_not_a_live_number_when_the_counter_row_is_missing(): void
+    {
+        [$shop] = $this->createShopWithOwner();
+        // a category whose code was renamed: its articles exist under DAMI but
+        // the counter row was created under the old code, so DAMI has none
+        $dami = ProductCategory::create(['shop_id' => $shop->id, 'name' => 'School', 'code' => 'DAMI', 'serial_start' => 70004]);
+        $this->article($shop, $dami, 70004);
+
+        $this->assertSame(70005, ArticleSerial::nextFree($shop, 'DAMI', 70004));
+    }
+
     /** ...and a number the series really went past and then freed is still offered first, as before. */
     public function test_a_freed_number_inside_the_series_is_still_reused(): void
     {

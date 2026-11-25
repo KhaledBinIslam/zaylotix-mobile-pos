@@ -158,18 +158,40 @@ class ArticleSerial
         } else {
             $from = $serials['everLowest'];
         }
+        $taken = array_flip($serials['live']);
         if ($from === null) {
-            return $counterNext;
+            return self::pastLive($counterNext, $taken);
         }
 
-        $taken = array_flip($serials['live']);
         for ($candidate = $from; $candidate < $counterNext; $candidate++) {
             if (! isset($taken[$candidate])) {
                 return $candidate;
             }
         }
 
-        return $counterNext;
+        return self::pastLive($counterNext, $taken);
+    }
+
+    /**
+     * Never hand out a number a LIVE article already carries. The counter is
+     * per (code, band), but live articles are looked up per code — so two
+     * bands of the same code (S: 80001, 80002, 80003 …) or a category whose
+     * code was renamed (DAMI/TPB: the counter still sits under the old
+     * Bengali code) can point at a number another series already used, and
+     * the form then suggested it and refused to save ("এই নামে আর্টিকেল আছে").
+     * Found by checking every category's suggestion against production,
+     * 2026-11-25: DAMI-70004, TPB-70001, TCHOT-70002, FITA-70003, S-80002,
+     * S-80003 were all offered while live.
+     *
+     * @param  array<int,int>  $taken  live serials, flipped (serial => index)
+     */
+    private static function pastLive(int $candidate, array $taken): int
+    {
+        while (isset($taken[$candidate])) {
+            $candidate++;
+        }
+
+        return $candidate;
     }
 
     /**
