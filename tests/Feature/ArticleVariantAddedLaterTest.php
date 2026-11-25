@@ -596,4 +596,27 @@ class ArticleVariantAddedLaterTest extends TestCase
         $this->assertSame(2, $barcodes->unique()->count(), 'two categories on one code must never produce one barcode');
         $this->assertSame(['L-10001', 'L-10002'], Product::withoutGlobalScopes()->where('shop_id', $shop->id)->pluck('name')->sort()->values()->all());
     }
+
+    /** Liberty B-20069: 'Pink' typed onto an article whose sizes all say 'PINK' must stay the article's own spelling. */
+    public function test_a_size_added_with_a_different_case_keeps_the_articles_spelling_of_the_colour(): void
+    {
+        [$shop, $owner, $product] = $this->anArticle();
+
+        $this->actingAs($owner, 'web')->post("/app/products/{$product->id}/variants", ['size' => '38', 'color' => 'silver', 'stock' => 1])
+            ->assertSessionHasNoErrors();
+
+        $added = ProductVariant::where('product_id', $product->id)->where('size', '38')->firstOrFail();
+        $this->assertSame('SILVER', $added->color);
+        $this->assertSame(1, ProductVariant::where('product_id', $product->id)->get()->pluck('color')->unique()->count(), 'still one colour group');
+    }
+
+    public function test_a_genuinely_new_colour_is_stored_as_typed(): void
+    {
+        [$shop, $owner, $product] = $this->anArticle();
+
+        $this->actingAs($owner, 'web')->post("/app/products/{$product->id}/variants", ['size' => '38', 'color' => 'Navy Blue', 'stock' => 1])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('Navy Blue', ProductVariant::where('product_id', $product->id)->where('size', '38')->firstOrFail()->color);
+    }
 }

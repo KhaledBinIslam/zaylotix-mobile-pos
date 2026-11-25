@@ -991,15 +991,27 @@ class CatalogSync
      */
     private static function syncColorBarcodesOfProduct(Shop $mainShop, Shop $branch, int $mainProductId, int $branchProductId): void
     {
-        $branchByColor = ProductColorBarcode::withoutGlobalScopes()->where('shop_id', $branch->id)->where('product_id', $branchProductId)->get()->keyBy('color');
+        // Colours match ignoring case/spacing: the main shop's 'Pink' and the branch's 'PINK' are one colour.
+        // Matching them as different strings tried to INSERT the same barcode a second time and the unique
+        // (shop_id, barcode) index rejected it — a 500 on the owner's "add size" (Liberty, 2026-11-25).
+        $norm = fn ($c) => mb_strtolower(trim((string) $c));
+        $branchByColor = ProductColorBarcode::withoutGlobalScopes()->where('shop_id', $branch->id)->where('product_id', $branchProductId)->get()->keyBy(fn ($r) => $norm($r->color));
+        $heldBarcodes = ProductColorBarcode::withoutGlobalScopes()->where('shop_id', $branch->id)->pluck('id', 'barcode');
 
         foreach (ProductColorBarcode::withoutGlobalScopes()->where('shop_id', $mainShop->id)->where('product_id', $mainProductId)->get() as $cb) {
-            $existing = $branchByColor->get($cb->color);
+            $existing = $branchByColor->get($norm($cb->color));
             if ($existing) {
-                $existing->update(['barcode' => $cb->barcode]);
-            } else {
-                ProductColorBarcode::create(['shop_id' => $branch->id, 'product_id' => $branchProductId, 'color' => $cb->color, 'barcode' => $cb->barcode]);
+                // only move it onto the main value when no OTHER row at this branch already carries that barcode
+                $holder = $heldBarcodes->get($cb->barcode);
+                if ($existing->barcode !== $cb->barcode && ($holder === null || $holder === $existing->id)) {
+                    $existing->update(['barcode' => $cb->barcode]);
+                    $heldBarcodes->put($cb->barcode, $existing->id);
+                }
+            } elseif (! $heldBarcodes->has($cb->barcode)) {
+                $created = ProductColorBarcode::create(['shop_id' => $branch->id, 'product_id' => $branchProductId, 'color' => $cb->color, 'barcode' => $cb->barcode]);
+                $heldBarcodes->put($cb->barcode, $created->id);
             }
+            // else: this barcode already belongs to another colour row of the branch — scanning still resolves; never 500 over it
         }
 
         // append-only history -- every old value the main shop's color ever

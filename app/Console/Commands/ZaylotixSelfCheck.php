@@ -47,6 +47,8 @@ class ZaylotixSelfCheck extends Command
         $ids = array_map('intval', (array) $this->option('shop'))
             ?: Shop::withoutGlobalScopes()->where('account_type', 'paid')->orderBy('id')->pluck('id')->all();
 
+        $this->checkEnums();
+
         foreach ($ids as $id) {
             $shop = Shop::withoutGlobalScopes()->find($id);
             if (! $shop || ! User::where('shop_id', $id)->where('role', 'owner')->exists()) {
@@ -123,6 +125,31 @@ class ZaylotixSelfCheck extends Command
      * Read-only by construction: GET routes only, and the few that stream a
      * file or end the session are skipped.
      */
+    /**
+     * The test database is SQLite, which has no ENUM — so a migration that drops a value from a MySQL ENUM
+     * passes every test and then breaks live (sale_payments.method lost 'gateway' for five weeks). Only a check
+     * against the real database can see it, so it lives here: every value the code writes must be accepted.
+     */
+    private function checkEnums(): void
+    {
+        if (DB::getDriverName() !== 'mysql') {
+            return;
+        }
+        $this->newLine();
+        $this->info('######## DATABASE ENUMS ########');
+        $required = [
+            'sale_payments.method' => ['cash', 'bkash', 'nagad', 'trade_credit', 'cod', 'gateway'],
+            'sales.payment_mode' => ['cash', 'bkash', 'nagad', 'credit', 'split', 'gateway'],
+        ];
+        foreach ($required as $col => $values) {
+            [$table, $column] = explode('.', $col);
+            $type = DB::selectOne('select column_type t from information_schema.columns where table_schema = database() and table_name = ? and column_name = ?', [$table, $column])->t ?? '';
+            preg_match_all("/'([^']+)'/", $type, $m);
+            $missing = array_values(array_diff($values, $m[1] ?? []));
+            $this->ok("{$col} accepts ".implode('/', $values), $missing === [], $missing ? 'MISSING: '.implode(', ', $missing) : '');
+        }
+    }
+
     private function sweepPages(Shop $shop): void
     {
         $this->line('  [sweep: every page]');

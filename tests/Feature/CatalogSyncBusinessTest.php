@@ -166,6 +166,46 @@ class CatalogSyncBusinessTest extends TestCase
         $this->assertSame('ANG-B-20007-BK', $colorBarcode->fresh()->barcode);
     }
 
+    /**
+     * Liberty, 2026-11-25 (incident CHVZU3): 'Pink' added to an article whose colour the branch holds as 'PINK'.
+     * The sync matched colours as exact strings, saw no 'Pink' at the branch and INSERTed the same barcode again —
+     * the unique (shop_id, barcode) index answered with a 500 on the owner's "add size".
+     */
+    public function test_a_colour_spelled_differently_by_case_is_the_same_colour_at_the_branch(): void
+    {
+        [$shop, $branch] = $this->aChain();
+
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'B-20069', 'cost' => 100, 'price' => 200, 'stock' => 2]);
+        ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => '36', 'color' => 'PINK', 'stock' => 2]);
+        ProductColorBarcode::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'color' => 'PINK', 'barcode' => 'SMS-B-20069-PINK']);
+        CatalogSync::syncToBranch($shop, $branch);
+
+        // the owner now types the colour as 'Pink' on the main shop
+        ProductColorBarcode::withoutGlobalScopes()->where('product_id', $product->id)->update(['color' => 'Pink']);
+        CatalogSync::syncToBranch($shop, $branch);
+
+        $branchProduct = Product::withoutGlobalScopes()->where('shop_id', $branch->id)->where('master_product_id', $product->id)->firstOrFail();
+        $rows = ProductColorBarcode::withoutGlobalScopes()->where('shop_id', $branch->id)->where('product_id', $branchProduct->id)->get();
+        $this->assertCount(1, $rows, 'one colour, one row — never a second row for the same barcode');
+        $this->assertSame('SMS-B-20069-PINK', $rows->first()->barcode);
+    }
+
+    public function test_a_barcode_the_branch_already_holds_under_another_row_never_breaks_the_sync(): void
+    {
+        [$shop, $branch] = $this->aChain();
+
+        $product = Product::create(['shop_id' => $shop->id, 'name' => 'B-20070', 'cost' => 100, 'price' => 200, 'stock' => 2]);
+        ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'size' => '36', 'color' => 'RED', 'stock' => 2]);
+        ProductColorBarcode::create(['shop_id' => $shop->id, 'product_id' => $product->id, 'color' => 'RED', 'barcode' => 'SMS-B-20070-RED']);
+        // the branch already carries that barcode on a row for some other product
+        $other = Product::create(['shop_id' => $branch->id, 'name' => 'B-99999', 'cost' => 1, 'price' => 2, 'stock' => 0]);
+        ProductColorBarcode::create(['shop_id' => $branch->id, 'product_id' => $other->id, 'color' => 'ODD', 'barcode' => 'SMS-B-20070-RED']);
+
+        CatalogSync::syncToBranch($shop, $branch); // must not throw
+
+        $this->assertSame(1, ProductColorBarcode::withoutGlobalScopes()->where('shop_id', $branch->id)->where('barcode', 'SMS-B-20070-RED')->count());
+    }
+
     public function test_a_renamed_color_barcode_updates_the_branchs_existing_row_instead_of_duplicating(): void
     {
         [$shop, $branch] = $this->aChain();

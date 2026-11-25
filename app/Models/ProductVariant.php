@@ -38,6 +38,25 @@ class ProductVariant extends Model
         return mb_strtolower(trim((string) $color)).'|'.mb_strtolower(trim((string) $size));
     }
 
+    /**
+     * The spelling this product already uses for a colour. A size added later as 'Pink' to an article whose
+     * variants all say 'PINK' is the same colour — storing it as typed made a second colour group and a second
+     * colour-barcode row (Liberty B-20069, 2026-11-25), which then collided when it was copied to the sibling
+     * branch. Returns the typed text unchanged when the product has no variant of that colour yet.
+     */
+    public static function canonicalColor(int $productId, ?string $color): ?string
+    {
+        $color = $color === null ? null : trim($color);
+        if ($color === null || $color === '') {
+            return $color;
+        }
+        $key = mb_strtolower($color);
+        $existing = static::where('product_id', $productId)->pluck('color')
+            ->first(fn ($c) => $c !== null && mb_strtolower(trim((string) $c)) === $key);
+
+        return $existing !== null ? trim((string) $existing) : $color;
+    }
+
     /** Does this product already have a variant occupying the same (colour, size) cell, spelling differences aside? */
     public static function cellExists(int $productId, ?string $color, ?string $size): bool
     {

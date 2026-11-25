@@ -60,6 +60,9 @@ class ProductVariantController extends Controller
             return back()->withErrors(['size' => "{$product->name} ওজন/লিটার হিসেবে বিক্রি হয় — এতে ভ্যারিয়েন্ট যোগ করা যাবে না।"]);
         }
 
+        // 'Pink' typed onto an article whose other sizes say 'PINK' is the SAME colour — keep the article's spelling
+        $data['color'] = ProductVariant::canonicalColor($product->id, $data['color'] ?? null);
+
         // case/whitespace-insensitive: 'Navy Blue' twinning 'Navy blue' is
         // how Seaman's INV-1001 "stock didn't move" happened
         if (ProductVariant::cellExists($product->id, $data['color'] ?? null, $data['size'] ?? null)) {
