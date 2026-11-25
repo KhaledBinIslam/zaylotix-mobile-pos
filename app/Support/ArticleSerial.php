@@ -141,10 +141,11 @@ class ArticleSerial
      * Lives here rather than on the controller so the doctor command can
      * print the same answer the form will show, without a web request.
      */
-    public static function nextFree(Shop $shop, string $categoryCode, ?int $serialStart = null): int
+    public static function nextFree(Shop $shop, string $categoryCode, ?int $serialStart = null, ?array $serials = null): int
     {
         $counterNext = self::peekNext($shop, $categoryCode, $serialStart);
-        $serials = self::serialsUsed($shop, $categoryCode);
+        // a page listing many categories passes serialsUsed() it already has (one lookup per code, not per category)
+        $serials ??= self::serialsUsed($shop, $categoryCode);
 
         // Scan for a free number from where this series ACTUALLY begins, not
         // from the band's nominal start. Baby Park live (2026-11-24): BABY's

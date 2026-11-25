@@ -84,6 +84,10 @@ class ReturnController extends Controller
      */
     private function presentProductForPicker(Product $p): array
     {
+        // effectivePrice() reads the parent when a variant has no price of its own — hand it the one already loaded
+        // instead of letting every variant fetch it again (1,400 queries on a 1,400-variant shop)
+        $p->variants->each(fn (ProductVariant $v) => $v->setRelation('product', $p));
+
         return [
             'id' => $p->id, 'name' => $p->name, 'price' => (float) $p->price, 'stock' => (float) $p->stock, 'barcode' => $p->barcode,
             'variants' => $p->variants->sortBy(['size', 'color'])->values()->map(fn (ProductVariant $v) => [

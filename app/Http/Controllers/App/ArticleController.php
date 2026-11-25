@@ -528,9 +528,11 @@ class ArticleController extends Controller
         // is the only way to tell a band that is working from one that was
         // typed and never reached. Both come from the same place the entry
         // form reads, so this page can never disagree with it.
-        $rows = $categories->map(function ($category) use ($shop) {
+        $usedByCode = [];
+        $rows = $categories->map(function ($category) use ($shop, &$usedByCode) {
             $code = strtoupper(trim((string) $category->code));
-            $used = $code === '' ? ['live' => [], 'freed' => [], 'everLowest' => null] : ArticleSerial::serialsUsed($shop, $code);
+            // categories often share a code — look each code up once for the whole page
+            $used = $code === '' ? ['live' => [], 'freed' => [], 'everLowest' => null, 'ever' => []] : ($usedByCode[$code] ??= ArticleSerial::serialsUsed($shop, $code));
 
             // a shared code pools its names, so count only what sits in
             // THIS category's own band — otherwise Slippers would report
@@ -548,7 +550,7 @@ class ArticleController extends Controller
                 'article_count' => count($inBand),
                 'lowest' => $inBand === [] ? null : min($inBand),
                 'highest' => $inBand === [] ? null : max($inBand),
-                'next_free' => $code === '' ? null : ArticleSerial::nextFree($shop, $code, $category->serial_start),
+                'next_free' => $code === '' ? null : ArticleSerial::nextFree($shop, $code, $category->serial_start, $used),
             ];
         })->values()->all();
 
