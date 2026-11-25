@@ -26,7 +26,9 @@ import { normalizeSearch } from '@/support/searchNormalize';
 import { bestMatchTier, levenshtein } from '@/support/searchMatch';
 import { usePermissions } from '@/composables/usePermissions';
 import { scanBoxSize } from '@/support/scanBoxSize';
-import { canBluetoothPrintMemo, printMemoViaBluetooth } from '@/support/bluetoothMemoPrint';
+import { canBluetoothPrintMemo } from '@/support/bluetoothMemoPrint';
+import { useMemoBluetooth } from '@/composables/useMemoBluetooth';
+import MemoBluetoothNote from '@/Components/MemoBluetoothNote.vue';
 
 const props = defineProps({
     products: Array,
@@ -1343,20 +1345,16 @@ function printMemo() {
 // Phase 44 — Bluetooth receipt print via the Zaylotix Printer helper app
 // (same pipeline as barcode labels; continuous paper so no gap handling)
 const showBluetoothMemo = canBluetoothPrintMemo();
-const btMemoPrinting = ref(false);
-async function printMemoBluetooth() {
-    if (btMemoPrinting.value) return;
-    const el = document.querySelector('#printable-memo .receipt-memo');
-    if (!el) return;
-    btMemoPrinting.value = true;
-    try {
-        await printMemoViaBluetooth(el, shop.value?.memo_settings?.paper_width, lastSale.value?.id ? 'INV-' + lastSale.value.id : null);
-    } catch (e) {
-        if (e?.name !== 'AbortError') toast('❌ ' + (e?.message || String(e)));
-    } finally {
-        btMemoPrinting.value = false;
-    }
-}
+// the receipt is drawn as soon as it is on screen, so the tap only has to share (see useMemoBluetooth)
+const {
+    ready: btMemoReady, printing: btMemoPrinting, status: btMemoStatus,
+    prepare: prepareMemoBt, reset: resetMemoBt, print: printMemoBluetooth,
+} = useMemoBluetooth({
+    getEl: () => document.querySelector('#printable-memo .receipt-memo'),
+    getPaper: () => shop.value?.memo_settings?.paper_width,
+    getBarcode: () => lastSale.value?.id ? 'INV-' + lastSale.value.id : null,
+});
+watch([receiptOpen, lastSale], ([open, sale]) => { if (open && sale && showBluetoothMemo) prepareMemoBt(); else resetMemoBt(); });
 
 // invoice barcode + rating QR are rendered by ReceiptMemo.vue itself now
 
@@ -2440,8 +2438,9 @@ useKeyboardShortcuts({
             <div class="no-print btnrow" style="margin-top:16px">
                 <button v-if="features.includes('memo_whatsapp')" class="btn wa" style="flex:1" @click="sendMemoWA">📤 WhatsApp</button>
                 <button v-if="features.includes('memo_print')" class="btn ghost" style="flex:1" @click="printMemo">{{ t('pos.print') }}</button>
-                <button v-if="features.includes('memo_print') && showBluetoothMemo" class="btn ghost" style="flex:1" :disabled="btMemoPrinting" @click="printMemoBluetooth">📱 {{ btMemoPrinting ? t('bc.bluetoothPreparing') : t('bc.bluetoothPrint') }}</button>
+                <button v-if="features.includes('memo_print') && showBluetoothMemo" class="btn ghost" style="flex:1" :disabled="btMemoPrinting || !btMemoReady" @click="printMemoBluetooth">📱 {{ btMemoPrinting || !btMemoReady ? t('bc.bluetoothPreparing') : t('bc.bluetoothPrint') }}</button>
             </div>
+            <MemoBluetoothNote v-if="features.includes('memo_print') && showBluetoothMemo" :status="btMemoStatus" />
             <button class="no-print btn ghost" style="margin-top:10px" @click="receiptOpen = false">{{ t('pos.newSale') }}</button>
         </Sheet>
     </AppLayout>

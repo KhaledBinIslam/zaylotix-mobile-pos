@@ -29,9 +29,9 @@ export function canBluetoothPrintMemo() {
 }
 
 /**
- * Captures the rendered memo DOM, scales it (aspect-preserved) to the
- * paper's exact dot width, and hands it to the Android share sheet.
- * Throws on failure; an AbortError means the user closed the share sheet.
+ * Captures the rendered memo DOM and scales it (aspect-preserved) to the
+ * paper's exact dot width, returning the share payload (file + metadata).
+ * This is the slow part — do it BEFORE the tap (see useMemoBluetooth).
  *
  * `barcodeValue` (the memo's CODE128 value, e.g. 'INV-123'): when given,
  * the capture's rasterized barcode is whited out and re-rendered directly
@@ -40,7 +40,7 @@ export function canBluetoothPrintMemo() {
  * raster barcode prints uneven bar widths and won't scan (live-confirmed
  * on the XP-365B for both labels and memos).
  */
-export async function printMemoViaBluetooth(memoEl, paperWidth, barcodeValue = null) {
+export async function buildMemoShare(memoEl, paperWidth, barcodeValue = null) {
     const { default: html2canvas } = await import('html2canvas');
     const raw = await html2canvas(memoEl, { backgroundColor: '#ffffff', scale: 3 });
 
@@ -79,7 +79,16 @@ export async function printMemoViaBluetooth(memoEl, paperWidth, barcodeValue = n
     const blob = await new Promise((resolve) => fixed.toBlob(resolve, 'image/png'));
     if (!blob) throw new Error('মেমোর ছবি তৈরি করা যায়নি।');
 
-    const files = [new File([blob], 'memo.png', { type: 'image/png' })];
-    if (!navigator.canShare({ files })) throw new Error('এই ব্রাউজারে ফাইল শেয়ার সাপোর্ট নেই।');
-    await navigator.share({ files, text: buildMemoShareMetadata(targetW, targetH), title: 'Zaylotix মেমো প্রিন্ট' });
+    return { files: [new File([blob], 'memo.png', { type: 'image/png' })], text: buildMemoShareMetadata(targetW, targetH), title: 'Zaylotix মেমো প্রিন্ট' };
+}
+
+/** Hands a finished receipt to the Android share sheet. Needs the tap's user gesture, so call it with NO slow work before it. */
+export async function shareMemoFile(share) {
+    if (!navigator.canShare({ files: share.files })) throw new Error('এই ব্রাউজারে ফাইল শেয়ার সাপোর্ট নেই।');
+    await navigator.share(share);
+}
+
+/** Build + share in one go (kept for callers that have no early build). */
+export async function printMemoViaBluetooth(memoEl, paperWidth, barcodeValue = null) {
+    await shareMemoFile(await buildMemoShare(memoEl, paperWidth, barcodeValue));
 }

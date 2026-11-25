@@ -80,3 +80,17 @@ describe('a new build never waits on a banner nobody taps', () => {
         expect(reloads.length).toBe(1);
     });
 });
+
+describe('Bluetooth receipt print never draws the receipt after the tap', () => {
+    // navigator.share() needs a live tap; drawing the memo (html2canvas + jsbarcode) after it
+    // outlasts Chrome's window on a slow phone and the share list never comes up properly.
+    it.each(['Pages/App/Pos/Index.vue', 'Pages/App/Clothing/Pos.vue', 'Pages/App/Sales/Show.vue'])(
+        '%s draws ahead through useMemoBluetooth and does not build inside the tap',
+        (rel) => {
+            const f = files.find((x) => x.rel === rel);
+            expect(f.src).toMatch(/useMemoBluetooth\(/);
+            expect(f.src).not.toMatch(/printMemoViaBluetooth/);
+            expect(f.src).toMatch(/<MemoBluetoothNote\b/);
+        },
+    );
+});

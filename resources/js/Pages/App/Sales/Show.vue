@@ -8,7 +8,9 @@ import { useI18n } from '@/composables/useI18n';
 import { useToast } from '@/composables/useToast';
 import { usePermissions } from '@/composables/usePermissions';
 import { buildVoidPreview } from '@/support/saleVoidPreview';
-import { canBluetoothPrintMemo, printMemoViaBluetooth } from '@/support/bluetoothMemoPrint';
+import { canBluetoothPrintMemo } from '@/support/bluetoothMemoPrint';
+import { useMemoBluetooth } from '@/composables/useMemoBluetooth';
+import MemoBluetoothNote from '@/Components/MemoBluetoothNote.vue';
 import { buildReceiptWhatsAppText, whatsAppUrlFor } from '@/support/receiptMessage';
 
 const props = defineProps({ sale: Object, collectedTotal: Number, hasReturn: Boolean, returned: Object, returns: { type: Array, default: () => [] } });
@@ -144,20 +146,16 @@ function printMemo() {
 // Phase 44 — same share-to-printer-helper pipeline as barcode labels, but
 // for the 80mm/58mm receipt roll (continuous paper, no gap handling needed)
 const showBluetoothMemo = canBluetoothPrintMemo();
-const btMemoPrinting = ref(false);
-async function printMemoBluetooth() {
-    if (btMemoPrinting.value) return;
-    const el = document.querySelector('#printable-memo .receipt-memo');
-    if (!el) return;
-    btMemoPrinting.value = true;
-    try {
-        await printMemoViaBluetooth(el, shop.value?.memo_settings?.paper_width, props.sale?.id ? 'INV-' + props.sale.id : null);
-    } catch (e) {
-        if (e?.name !== 'AbortError') toast('❌ ' + (e?.message || String(e)));
-    } finally {
-        btMemoPrinting.value = false;
-    }
-}
+// the receipt is drawn as soon as it is on screen, so the tap only has to share (see useMemoBluetooth)
+const {
+    ready: btMemoReady, printing: btMemoPrinting, status: btMemoStatus,
+    prepare: prepareMemoBt, reset: resetMemoBt, print: printMemoBluetooth,
+} = useMemoBluetooth({
+    getEl: () => document.querySelector('#printable-memo .receipt-memo'),
+    getPaper: () => shop.value?.memo_settings?.paper_width,
+    getBarcode: () => props.sale?.id ? 'INV-' + props.sale.id : null,
+});
+onMounted(() => { if (showBluetoothMemo) prepareMemoBt(); });
 
 // invoice barcode + rating QR are rendered by ReceiptMemo.vue itself now
 onMounted(async () => {
@@ -228,8 +226,9 @@ const justBilled = ref(false);
         <div class="no-print btnrow" style="margin-top:16px">
             <button v-if="features.includes('memo_whatsapp')" class="btn wa" style="flex:1" @click="sendMemoWA">📤 WhatsApp</button>
             <button v-if="features.includes('memo_print')" :class="justBilled ? 'btn' : 'btn ghost'" style="flex:1" @click="printMemo">🖨 {{ t('pos.print') }}{{ tableOrder ? ' (' + t('restaurant.kotTitle') + ' + ' + t('sales.memoLabel') + ')' : '' }}</button>
-            <button v-if="features.includes('memo_print') && showBluetoothMemo" class="btn ghost" style="flex:1" :disabled="btMemoPrinting" @click="printMemoBluetooth">📱 {{ btMemoPrinting ? t('bc.bluetoothPreparing') : t('bc.bluetoothPrint') }}</button>
+            <button v-if="features.includes('memo_print') && showBluetoothMemo" class="btn ghost" style="flex:1" :disabled="btMemoPrinting || !btMemoReady" @click="printMemoBluetooth">📱 {{ btMemoPrinting || !btMemoReady ? t('bc.bluetoothPreparing') : t('bc.bluetoothPrint') }}</button>
         </div>
+        <MemoBluetoothNote v-if="features.includes('memo_print') && showBluetoothMemo" :status="btMemoStatus" />
         <button v-if="tableOrder && kitchenWaNumber" class="no-print btn wa" style="margin-top:10px" @click="sendKotWA">📤 {{ t('restaurant.kotWa') }}</button>
 
         <div class="no-print card" style="margin-top:16px">
