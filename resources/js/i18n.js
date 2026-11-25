@@ -2557,4 +2557,7 @@ export const translations = {
     'supplierReport.byBranch': { bn: 'কোন শাখায় কত বিক্রি', en: 'Sold by branch' },
     'supplierReport.receivedSince': { bn: '"মাল এসেছে" হিসাব শুরু {date} থেকে — তার আগের মাল এতে নেই।', en: '"Received" is recorded from {date} — earlier goods are not included.' },
     'supplierReport.soldNote': { bn: 'বিক্রি = পণ্যের দাম × পরিমাণ − আইটেম ডিসকাউন্ট (বিল-ডিসকাউন্ট/ভ্যাট ছাড়া)।', en: 'Sold = price × qty − item discount (before bill-level discount/VAT).' },
+    'supplierReport.everReceived': { bn: 'মোট এসেছে (স্টক + বিক্রি)', en: 'Total received (stock + sold)' },
+    'supplierReport.everNote': { bn: '"সব সময়"-এ মোট এসেছে = এখন স্টকে যা আছে + এ পর্যন্ত যা বিক্রি হয়েছে (কেনা দামে)। মাল ঢোকার সরাসরি রেকর্ড ৪ নভেম্বরের আগের নেই, তাই এভাবে হিসাব।', en: '"All time" total received = what is on the shelf now + everything sold so far (at cost). Direct intake records only exist from 4 Nov, so it is derived this way.' },
+    'supplierReport.recordedPart': { bn: 'এর মধ্যে সরাসরি রেকর্ড করা: {qty} পিস, {amount}', en: 'of which recorded directly: {qty} pcs, {amount}' },
 };

@@ -106,6 +106,33 @@ class SupplierFlowReportTest extends TestCase
         }
     }
 
+    /**
+     * Baby Park live, 2026-11-24: "All time" showed "received 27 pcs" beside
+     * 366 pcs on the shelf, because only intakes recorded since 4 Nov were
+     * counted. The all-time total must be what is on the shelf now + what was
+     * sold, whatever the ledger happens to hold.
+     */
+    public function test_all_time_total_received_is_stock_plus_sold_not_the_partial_intake_ledger(): void
+    {
+        [$main, $mainOwner] = $this->pooledPair();
+        Tenancy::set($main->id);
+        $bulu = Supplier::create(['shop_id' => $main->id, 'name' => 'Bulu', 'payable' => 0]);
+
+        // 30 on the shelf now; only 4 of everything ever received was recorded; 6 were sold at cost 100
+        $p = Product::create(['shop_id' => $main->id, 'name' => 'L-10001', 'cost' => 100, 'price' => 250, 'stock' => 30, 'supplier_id' => $bulu->id]);
+        StockIntake::withoutGlobalScopes()->create(['shop_id' => $main->id, 'product_id' => $p->id, 'qty' => 4, 'unit_cost' => 100, 'total_cost' => 400, 'source' => 'variant_stock_in']);
+        $this->sell($main->id, $p, 6, 250, 100, now()->toDateString());
+
+        $props = $this->props($this->actingAs($mainOwner, 'web')->get(route('app.accounts.stockValueBySupplier')));
+        $row = $this->rows($props)['Bulu'];
+
+        $this->assertEquals(4, $row['receivedQty'], 'the recorded part stays visible');
+        // (sell() records the sale rows only; the shelf stays at 30)
+        $this->assertEquals(30 + 6, $row['everQty'], 'on the shelf 30 + sold 6');
+        $this->assertEquals(30 * 100 + 6 * 100, $row['everCost']);
+        $this->assertEquals(3600, $props['totals']['everCost']);
+    }
+
     public function test_sales_without_a_supplier_reconcile_into_unknown_and_rows_add_up_to_the_sale_items(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();

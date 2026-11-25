@@ -2,6 +2,7 @@
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import { suggestCategoryCode } from '@/support/categoryCode';
 import { encodeCost } from '@/support/costCode';
 
 const props = defineProps({
@@ -66,7 +67,11 @@ const categoryMode = computed(() => (form.category_id ? 'existing' : 'new'));
 const selectedCategory = computed(() => props.categories.find((c) => c.id === form.category_id));
 watch(() => form.category_id, (id) => {
     const cat = props.categories.find((c) => c.id === id);
-    form.category_code = cat?.code || '';
+    // A category with no code used to leave this box empty, and with no code
+    // there is no serial — so some categories gave one on pick and some
+    // silently didn't. Pre-fill a sensible, editable code instead; it is saved
+    // onto the category with the first article (ArticleController::resolveCategory).
+    form.category_code = cat?.code || (cat ? suggestCategoryCode(cat, props.categories.map((c) => c.code)) : '');
 });
 
 /**
@@ -108,7 +113,9 @@ function refreshSerial() {
     if (!categoryCode) { previewSerial.value = null; return; }
     serialTimer = setTimeout(async () => {
         try {
-            const params = new URLSearchParams(form.category_id ? { category_id: form.category_id } : { category_code: categoryCode });
+            // both for a saved category: its band comes from category_id, and a
+            // category that has no saved code yet still needs the typed/suggested one
+            const params = new URLSearchParams(form.category_id ? { category_id: form.category_id, category_code: categoryCode } : { category_code: categoryCode });
             // a band being typed for a category that doesn't exist yet —
             // without this the preview answers from whatever the shared
             // code already sits at (Ladies' 10041 for a Slippers entry)

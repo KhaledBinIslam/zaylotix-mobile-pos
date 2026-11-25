@@ -349,6 +349,12 @@ class AccountsController extends Controller
                 'products' => collect($s['products'])->sortByDesc('value')->values()->all(),
                 'received' => round($received['cost'] ?? 0, 2),
                 'receivedQty' => round($received['qty'] ?? 0, 3),
+                // "All time" must not be answered from the intake ledger, which only
+                // starts 2026-11-04 (a supplier showed "received 27 pcs" beside 366 on
+                // the shelf). Everything that came in is either still here or was sold,
+                // so for the whole history: what is on the shelf now + what was sold.
+                'everQty' => round($s['qty'] + ($sold['qty'] ?? 0), 3),
+                'everCost' => round($s['value'] + ($sold['cost'] ?? 0), 2),
                 'sold' => round($sold['value'] ?? 0, 2),
                 'soldCost' => round($sold['cost'] ?? 0, 2),
                 'soldQty' => round($sold['qty'] ?? 0, 3),
@@ -375,6 +381,7 @@ class AccountsController extends Controller
             'receivedSince' => DB::table('stock_intakes')->whereIn('shop_id', $memberIds)->min('created_at'),
             'totals' => [
                 'received' => round(collect($flows['received'])->sum('cost'), 2),
+                'everCost' => round($rows->sum('everCost'), 2),
                 'sold' => round(collect($flows['sold'])->sum('value'), 2),
                 'soldCost' => round(collect($flows['sold'])->sum('cost'), 2),
             ],

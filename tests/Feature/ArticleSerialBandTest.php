@@ -163,6 +163,69 @@ class ArticleSerialBandTest extends TestCase
             ->assertOk()->assertJson(['serial' => 90000]);
     }
 
+    /**
+     * Baby Park live, 2026-11-24: BABY's band starts at 20000 but its first
+     * article was B-20001, so 20000 was never used. The preview took that
+     * never-used number for a free gap and suggested B-20000 while the series
+     * stood at B-20066 — "it should be 20067 next".
+     */
+    public function test_the_preview_continues_the_series_instead_of_suggesting_the_unused_band_start(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        $baby = ProductCategory::create(['shop_id' => $shop->id, 'name' => 'BABY', 'code' => 'B', 'serial_start' => 20000]);
+
+        for ($n = 20001; $n <= 20066; $n++) {
+            $this->article($shop, $baby, $n);
+        }
+        ArticleSerial::bumpFloor($shop, 'B', 20067, 20000);
+
+        $this->actingAs($owner, 'web')
+            ->getJson(route('app.articles.peekSerial', ['category_id' => $baby->id]))
+            ->assertOk()->assertJson(['serial' => 20067]);
+    }
+
+    /** ...and a number the series really went past and then freed is still offered first, as before. */
+    public function test_a_freed_number_inside_the_series_is_still_reused(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        $baby = ProductCategory::create(['shop_id' => $shop->id, 'name' => 'BABY', 'code' => 'B', 'serial_start' => 20000]);
+
+        foreach ([20001, 20002, 20003, 20004] as $n) {
+            $this->article($shop, $baby, $n);
+        }
+        Product::withoutGlobalScopes()->where('shop_id', $shop->id)->where('name', 'B-20003')->first()->delete();
+        ArticleSerial::bumpFloor($shop, 'B', 20005, 20000);
+
+        $this->actingAs($owner, 'web')
+            ->getJson(route('app.articles.peekSerial', ['category_id' => $baby->id]))
+            ->assertOk()->assertJson(['serial' => 20003]);
+    }
+
+    /**
+     * Baby Park (4 categories) and SEAMAN (all 98) had categories with no code,
+     * and a category with no code gave no serial. The form now pre-fills a
+     * suggested code, so the preview must answer for a SAVED category that has
+     * no code yet when the code rides along with the category id.
+     */
+    public function test_the_preview_gives_a_serial_for_a_saved_category_that_has_no_code_yet(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($shop, 'article_series');
+        $sandals = ProductCategory::create(['shop_id' => $shop->id, 'name' => 'স্যান্ডেল', 'name_en' => 'Sandals', 'code' => null]);
+
+        // before: the category id alone -> no code anywhere -> no serial
+        $this->actingAs($owner, 'web')
+            ->getJson(route('app.articles.peekSerial', ['category_id' => $sandals->id]))
+            ->assertOk()->assertJson(['serial' => null]);
+
+        // now: the form sends the suggested/typed code alongside the id
+        $this->actingAs($owner, 'web')
+            ->getJson(route('app.articles.peekSerial', ['category_id' => $sandals->id, 'category_code' => 'SAN']))
+            ->assertOk()->assertJson(['serial' => 10001]);
+    }
+
     public function test_the_settings_page_saves_a_band_and_pushes_the_counter_past_what_is_already_there(): void
     {
         [$shop, $owner] = $this->createShopWithOwner();
@@ -179,9 +242,11 @@ class ArticleSerialBandTest extends TestCase
             ->assertSessionHasNoErrors();
 
         $this->assertSame(20000, $baby->fresh()->serial_start);
-        // 20000 itself is still free, and the counter no longer points at
-        // a number a live article already answers to
-        $this->assertSame(20000, ArticleSerial::nextFree($shop, 'B', 20000));
+        // The series begins at 20001 (where its first article is), so the
+        // band's nominal start 20000 is NOT a gap — offering it was the bug
+        // Baby Park hit at B-20066 (the form suggested B-20000). Both the
+        // suggestion and the counter now point past what is already there.
+        $this->assertSame(20003, ArticleSerial::nextFree($shop, 'B', 20000));
         $this->assertSame(20003, ArticleSerial::peekNext($shop, 'B', 20000));
     }
 

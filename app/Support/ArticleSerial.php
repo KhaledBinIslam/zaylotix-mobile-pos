@@ -146,7 +146,18 @@ class ArticleSerial
         $counterNext = self::peekNext($shop, $categoryCode, $serialStart);
         $serials = self::serialsUsed($shop, $categoryCode);
 
-        $from = $serialStart !== null && $serialStart > 0 ? $serialStart : $serials['everLowest'];
+        // Scan for a free number from where this series ACTUALLY begins, not
+        // from the band's nominal start. Baby Park live (2026-11-24): BABY's
+        // band is 20000 but its first article was B-20001, so 20000 itself
+        // was never used — the old scan took it for a free gap and the form
+        // suggested B-20000 while the series stood at B-20066. A number only
+        // counts as a gap once the series has gone past it.
+        if ($serialStart !== null && $serialStart > 0) {
+            $lowestInSeries = collect($serials['ever'])->filter(fn ($s) => $s >= $serialStart)->min();
+            $from = $lowestInSeries ?? $serialStart;
+        } else {
+            $from = $serials['everLowest'];
+        }
         if ($from === null) {
             return $counterNext;
         }
@@ -201,6 +212,7 @@ class ArticleSerial
             'live' => $live->all(),
             'freed' => $ever->diff($live)->values()->all(),
             'everLowest' => $ever->min(),
+            'ever' => $ever->all(),
         ];
     }
 }

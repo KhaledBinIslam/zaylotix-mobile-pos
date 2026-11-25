@@ -65,10 +65,11 @@ function applyCustom() {
             <button class="btn sm" style="width:auto;padding:4px 12px" @click="applyCustom">{{ t('supplierReport.apply') }}</button>
         </div>
         <div style="display:flex;gap:8px;margin-bottom:8px">
-            <div class="card" style="flex:1;text-align:center;padding:8px"><div style="font-size:11px;color:var(--mut)">{{ t('supplierReport.received') }}</div><b>{{ money(totals.received) }}</b></div>
+            <div class="card" style="flex:1;text-align:center;padding:8px"><div style="font-size:11px;color:var(--mut)">{{ period === 'all' ? t('supplierReport.everReceived') : t('supplierReport.received') }}</div><b>{{ money(period === 'all' ? totals.everCost : totals.received) }}</b></div>
             <div class="card" style="flex:1;text-align:center;padding:8px"><div style="font-size:11px;color:var(--mut)">{{ t('supplierReport.sold') }}</div><b>{{ money(totals.sold) }}</b></div>
         </div>
-        <div v-if="receivedSince" style="font-size:11.5px;color:var(--mut);margin-bottom:4px">{{ t('supplierReport.receivedSince', { date: receivedSince.slice(0, 10) }) }}</div>
+        <div v-if="period === 'all'" style="font-size:11.5px;color:var(--mut);margin-bottom:4px">{{ t('supplierReport.everNote') }}</div>
+        <div v-else-if="receivedSince" style="font-size:11.5px;color:var(--mut);margin-bottom:4px">{{ t('supplierReport.receivedSince', { date: receivedSince.slice(0, 10) }) }}</div>
         <div style="font-size:11.5px;color:var(--mut);margin-bottom:10px">{{ t('supplierReport.soldNote') }}</div>
 
         <div v-if="rows.length" class="card" style="padding:0;margin-bottom:14px">
@@ -82,7 +83,8 @@ function applyCustom() {
                     <div class="end"><b style="color:var(--green)">{{ money(r.value) }}</b></div>
                 </summary>
                 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:8px 14px;font-size:12px;background:var(--panel2)">
-                    <div><div style="color:var(--mut)">{{ t('supplierReport.received') }}</div><b>{{ money(r.received) }}</b><div style="color:var(--mut)">{{ r.receivedQty }} {{ t('stock.pieces') }}</div></div>
+                    <div v-if="period === 'all'"><div style="color:var(--mut)">{{ t('supplierReport.everReceived') }}</div><b>{{ money(r.everCost) }}</b><div style="color:var(--mut)">{{ r.everQty }} {{ t('stock.pieces') }}</div><div style="color:var(--dim);font-size:11px">{{ t('supplierReport.recordedPart', { qty: r.receivedQty, amount: money(r.received) }) }}</div></div>
+                    <div v-else><div style="color:var(--mut)">{{ t('supplierReport.received') }}</div><b>{{ money(r.received) }}</b><div style="color:var(--mut)">{{ r.receivedQty }} {{ t('stock.pieces') }}</div></div>
                     <div><div style="color:var(--mut)">{{ t('supplierReport.inStock') }}</div><b style="color:var(--green)">{{ money(r.value) }}</b><div style="color:var(--mut)">{{ r.qty }} {{ t('stock.pieces') }}</div></div>
                     <div><div style="color:var(--mut)">{{ t('supplierReport.sold') }}</div><b>{{ money(r.sold) }}</b><div style="color:var(--mut)">{{ r.soldQty }} {{ t('stock.pieces') }} · {{ t('supplierReport.soldCost') }} {{ money(r.soldCost) }}</div></div>
                 </div>

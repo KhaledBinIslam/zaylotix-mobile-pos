@@ -27,10 +27,12 @@ class ArticlesSetSerialStartTest extends TestCase
         $this->assertSame(20000, $category->fresh()->serial_start);
 
         $shop->refresh();
-        // 20000 itself was never used (live starts at 20001), so it's the
-        // lowest gap nextFree() offers — correct per its own documented
-        // "suggestion, not a rule" design (ArticleSerial::nextFree()).
-        $this->assertSame(20000, \App\Support\ArticleSerial::nextFree($shop, 'B', 20000));
+        // 20000 itself was never used (the series starts at 20001), and that
+        // is exactly why it must NOT be offered: Baby Park's form suggested
+        // B-20000 while the series stood at B-20066 (2026-11-24). A number
+        // is only a gap once the series has gone past it — here 20002, the
+        // first hole between 20001 and 20061.
+        $this->assertSame(20002, \App\Support\ArticleSerial::nextFree($shop, 'B', 20000));
         // and the counter floor was bumped past the live band so a FRESH
         // article (not reusing the 20000 gap) continues past 20061, not 80003
         $this->assertSame(20062, \App\Support\ArticleSerial::peekNext($shop, 'B', 20000));
