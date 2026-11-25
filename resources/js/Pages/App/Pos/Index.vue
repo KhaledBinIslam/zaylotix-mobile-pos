@@ -1347,7 +1347,7 @@ function printMemo() {
 const showBluetoothMemo = canBluetoothPrintMemo();
 // the receipt is drawn as soon as it is on screen, so the tap only has to share (see useMemoBluetooth)
 const {
-    ready: btMemoReady, printing: btMemoPrinting, status: btMemoStatus,
+    ready: btMemoReady, printing: btMemoPrinting, failed: btMemoFailed, status: btMemoStatus,
     prepare: prepareMemoBt, reset: resetMemoBt, print: printMemoBluetooth,
 } = useMemoBluetooth({
     getEl: () => document.querySelector('#printable-memo .receipt-memo'),
@@ -2438,7 +2438,7 @@ useKeyboardShortcuts({
             <div class="no-print btnrow" style="margin-top:16px">
                 <button v-if="features.includes('memo_whatsapp')" class="btn wa" style="flex:1" @click="sendMemoWA">📤 WhatsApp</button>
                 <button v-if="features.includes('memo_print')" class="btn ghost" style="flex:1" @click="printMemo">{{ t('pos.print') }}</button>
-                <button v-if="features.includes('memo_print') && showBluetoothMemo" class="btn ghost" style="flex:1" :disabled="btMemoPrinting || !btMemoReady" @click="printMemoBluetooth">📱 {{ btMemoPrinting || !btMemoReady ? t('bc.bluetoothPreparing') : t('bc.bluetoothPrint') }}</button>
+                <button v-if="features.includes('memo_print') && showBluetoothMemo" class="btn ghost" style="flex:1" :disabled="btMemoPrinting || !btMemoReady" @click="printMemoBluetooth">📱 {{ btMemoPrinting || !btMemoReady ? t('bc.bluetoothPreparing') : (btMemoFailed ? '🔄 আবার চেষ্টা' : t('bc.bluetoothPrint')) }}</button>
             </div>
             <MemoBluetoothNote v-if="features.includes('memo_print') && showBluetoothMemo" :status="btMemoStatus" />
             <button class="no-print btn ghost" style="margin-top:10px" @click="receiptOpen = false">{{ t('pos.newSale') }}</button>

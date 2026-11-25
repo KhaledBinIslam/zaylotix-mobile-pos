@@ -29,6 +29,25 @@ export function canBluetoothPrintMemo() {
 }
 
 /**
+ * Gives a step a deadline. Without one, a step that never finishes leaves the
+ * Bluetooth button on "Preparing..." forever with no error anywhere — which is
+ * exactly what Baby Park's tablet showed (2026-11-25). With one, the screen
+ * says WHICH step stalled.
+ */
+export function withDeadline(promise, ms, what) {
+    let timer;
+    const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => {
+            const e = new Error(`${what} ${Math.round(ms / 1000)} সেকেন্ডেও শেষ হয়নি`);
+            e.name = 'MemoStageTimeout';
+            reject(e);
+        }, ms);
+    });
+
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+/**
  * Captures the rendered memo DOM and scales it (aspect-preserved) to the
  * paper's exact dot width, returning the share payload (file + metadata).
  * This is the slow part — do it BEFORE the tap (see useMemoBluetooth).
@@ -40,11 +59,25 @@ export function canBluetoothPrintMemo() {
  * raster barcode prints uneven bar widths and won't scan (live-confirmed
  * on the XP-365B for both labels and memos).
  */
-export async function buildMemoShare(memoEl, paperWidth, barcodeValue = null) {
-    const { default: html2canvas } = await import('html2canvas');
-    const raw = await html2canvas(memoEl, { backgroundColor: '#ffffff', scale: 3 });
-
+export async function buildMemoShare(memoEl, paperWidth, barcodeValue = null, onStage = () => {}) {
     const targetW = memoPrintWidthDots(paperWidth);
+
+    onStage('ছবির লাইব্রেরি আনা হচ্ছে…');
+    const { default: html2canvas } = await withDeadline(import('html2canvas'), 10000, 'ছবির লাইব্রেরি (html2canvas) আনা');
+
+    // Draw at just the size the paper needs (the old fixed 3x made a canvas about 2x bigger than
+    // 80mm/58mm paper can use, which a weak tablet may not survive) and skip any picture that does
+    // not load within 4s instead of waiting on it.
+    const cssW = memoEl.getBoundingClientRect().width || targetW;
+    const scale = Math.min(3, Math.max(1, targetW / cssW));
+    onStage('বিলের ছবি আঁকা হচ্ছে…');
+    const raw = await withDeadline(
+        html2canvas(memoEl, { backgroundColor: '#ffffff', scale, imageTimeout: 4000, logging: false }),
+        15000,
+        'বিলের ছবি আঁকা',
+    );
+
+    onStage('ছবি তৈরি হচ্ছে…');
     const targetH = Math.max(1, Math.round(raw.height * (targetW / raw.width)));
     const fixed = document.createElement('canvas');
     fixed.width = targetW;
@@ -56,7 +89,7 @@ export async function buildMemoShare(memoEl, paperWidth, barcodeValue = null) {
 
     const svgEl = barcodeValue ? memoEl.querySelector('svg[id^="memo-barcode-svg"]') : null;
     if (svgEl && svgEl.childNodes.length) {
-        const { default: JsBarcode } = await import('jsbarcode');
+        const { default: JsBarcode } = await withDeadline(import('jsbarcode'), 10000, 'বারকোড লাইব্রেরি আনা');
         const bc = document.createElement('canvas');
         try {
             // width: 2 dots/module — 'INV-<id>' is short enough to fit even
@@ -76,7 +109,7 @@ export async function buildMemoShare(memoEl, paperWidth, barcodeValue = null) {
         }
     }
 
-    const blob = await new Promise((resolve) => fixed.toBlob(resolve, 'image/png'));
+    const blob = await withDeadline(new Promise((resolve) => fixed.toBlob(resolve, 'image/png')), 8000, 'ছবি সেভ করা');
     if (!blob) throw new Error('মেমোর ছবি তৈরি করা যায়নি।');
 
     return { files: [new File([blob], 'memo.png', { type: 'image/png' })], text: buildMemoShareMetadata(targetW, targetH), title: 'Zaylotix মেমো প্রিন্ট' };

@@ -25,6 +25,7 @@ export function useMemoBluetooth({ getEl, getPaper, getBarcode }) {
     const ready = ref(false);
     const printing = ref(false);
     const status = ref('');
+    const failed = ref(false);
     let prepared = null;
     let preparedKey = null;
 
@@ -50,7 +51,7 @@ export function useMemoBluetooth({ getEl, getPaper, getBarcode }) {
         const el = await waitForEl();
         if (!el) throw new Error('বিলের ছবি পাওয়া যায়নি।');
 
-        return buildMemoShare(el, getPaper(), getBarcode());
+        return buildMemoShare(el, getPaper(), getBarcode(), (stage) => { status.value = '⏳ ' + stage; });
     }
 
     /** Draw the receipt now so the tap needs no work. Safe to call repeatedly: one build per receipt. */
@@ -61,7 +62,17 @@ export function useMemoBluetooth({ getEl, getPaper, getBarcode }) {
         ready.value = false;
         status.value = '';
         // ready flips inside the promise itself, so whoever awaits it already sees the button enabled
-        prepared = build().finally(() => {
+        prepared = build().then(
+            (share) => { if (preparedKey === key) { status.value = ''; failed.value = false; } return share; },
+            (e) => {
+                // say what stalled/failed right where the cashier looks; the tap will simply try again
+                if (preparedKey === key) {
+                    status.value = '❌ ' + (e?.message || String(e)) + ' — "আবার চেষ্টা" চাপুন।';
+                    failed.value = true;
+                }
+                throw e;
+            },
+        ).finally(() => {
             if (preparedKey === key) ready.value = true;
         });
         prepared.catch(() => {}); // a failure is handled at print time; never an unhandled rejection
@@ -74,11 +85,21 @@ export function useMemoBluetooth({ getEl, getPaper, getBarcode }) {
         prepared = null;
         preparedKey = null;
         ready.value = false;
+        failed.value = false;
         status.value = '';
     }
 
     async function print() {
         if (printing.value) return;
+        // the drawing failed or stalled: this tap is a RETRY of the drawing, not a share. A share after a
+        // slow draw would be refused anyway (the tap's permission is gone), so draw again, then the next
+        // tap shares.
+        if (failed.value) {
+            prepared = null;
+            preparedKey = null;
+            prepare();
+            return;
+        }
         printing.value = true;
         status.value = '';
         try {
@@ -108,5 +129,5 @@ export function useMemoBluetooth({ getEl, getPaper, getBarcode }) {
         }
     }
 
-    return { ready, printing, status, prepare, reset, print };
+    return { ready, printing, failed, status, prepare, reset, print };
 }

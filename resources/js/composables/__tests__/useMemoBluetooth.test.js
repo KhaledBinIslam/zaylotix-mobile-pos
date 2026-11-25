@@ -41,18 +41,33 @@ describe('useMemoBluetooth', () => {
         expect(calls.build).toBe(1);
     });
 
-    it('if the early draw failed, the tap still works by drawing on the spot', async () => {
+    it('if the early draw failed, the tap is a retry of the drawing, and only the next tap shares', async () => {
         buildImpl = vi.fn()
             .mockRejectedValueOnce(new Error('canvas blew up'))
             .mockResolvedValue(payload);
         const bt = make();
         await bt.prepare().catch(() => {});
         expect(bt.ready.value).toBe(true);       // the button must never stay disabled forever
+        expect(bt.failed.value).toBe(true);
 
-        await bt.print();
+        await bt.print();                        // retry: draws again, does NOT share (that tap's permission would be gone)
+        await bt.prepare().catch(() => {});
+        expect(calls.share).toBe(0);
+        expect(bt.failed.value).toBe(false);
 
+        await bt.print();                        // now it shares
         expect(calls.share).toBe(1);
         expect(bt.status.value).not.toContain('❌');
+    });
+
+    it('a receipt that cannot be drawn says so on screen and the button is still usable', async () => {
+        buildImpl = async () => { const e = new Error('বিলের ছবি আঁকা 15 সেকেন্ডেও শেষ হয়নি'); e.name = 'MemoStageTimeout'; throw e; };
+        const bt = make();
+        await bt.prepare().catch(() => {});
+
+        expect(bt.ready.value).toBe(true);
+        expect(bt.status.value).toContain('বিলের ছবি আঁকা 15 সেকেন্ডেও শেষ হয়নি');
+        expect(bt.status.value).toContain('আবার চেষ্টা');
     });
 
     it('a dismissed share sheet is reported on screen, naming the error and the app-missing hint', async () => {

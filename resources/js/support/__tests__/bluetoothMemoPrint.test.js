@@ -27,3 +27,26 @@ describe('buildMemoShareMetadata', () => {
         expect(meta.heightMm).toBe(125.1);
     });
 });
+
+import { vi } from 'vitest';
+import { withDeadline } from '../bluetoothMemoPrint';
+
+describe('withDeadline', () => {
+    it('passes a result through when the step finishes in time', async () => {
+        await expect(withDeadline(Promise.resolve(42), 1000, 'x')).resolves.toBe(42);
+    });
+
+    it('turns a step that never finishes into an error that names the step', async () => {
+        vi.useFakeTimers();
+        const stuck = new Promise(() => {});
+        const result = withDeadline(stuck, 15000, 'বিলের ছবি আঁকা');
+        const assertion = expect(result).rejects.toMatchObject({ name: 'MemoStageTimeout', message: 'বিলের ছবি আঁকা 15 সেকেন্ডেও শেষ হয়নি' });
+        await vi.advanceTimersByTimeAsync(15001);
+        await assertion;
+        vi.useRealTimers();
+    });
+
+    it('keeps the original error when the step fails before the deadline', async () => {
+        await expect(withDeadline(Promise.reject(new Error('boom')), 1000, 'x')).rejects.toThrow('boom');
+    });
+});
