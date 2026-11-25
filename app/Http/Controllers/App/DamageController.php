@@ -70,7 +70,7 @@ class DamageController extends Controller
                 $variant->applyStockDelta(-$data['qty']);
                 $product->applyStockDelta(-$data['qty']);
 
-                Damage::create([
+                $damage = Damage::create([
                     'product_id' => $product->id,
                     'product_variant_id' => $variant->id,
                     'qty' => $data['qty'],
@@ -78,6 +78,7 @@ class DamageController extends Controller
                     'loss' => $loss,
                     'date' => now()->toDateString(),
                 ]);
+                \App\Support\Activity::log('damage.record', "ড্যামেজ: {$product->name} ({$variant->label()}) × ".$data['qty'].', ক্ষতি '.number_format($loss, 2), $damage);
 
                 return;
             }
@@ -117,7 +118,7 @@ class DamageController extends Controller
             $product->applyStockDelta(-$data['qty']);
             $batch?->decrement('qty', $data['qty']);
 
-            Damage::create([
+            $damage = Damage::create([
                 'product_id' => $product->id,
                 'product_batch_id' => $batch?->id,
                 'qty' => $data['qty'],
@@ -125,6 +126,7 @@ class DamageController extends Controller
                 'loss' => $loss,
                 'date' => now()->toDateString(),
             ]);
+            \App\Support\Activity::log('damage.record', "ড্যামেজ: {$product->name} × ".$data['qty'].', ক্ষতি '.number_format($loss, 2), $damage);
         });
 
         return back()->with('success', 'Damage recorded.');

@@ -129,6 +129,21 @@ class Product extends Model
             }
         });
 
+        // a cost written on one pooled product (a plain stock-in at a new
+        // cost) is the same goods in every shop of the pool — one cost, so
+        // the shops' stock values cannot drift apart. Query-builder write:
+        // no events, no loop; a non-pooled shop returns on the first check.
+        static::updated(function (Product $product) {
+            if (! $product->wasChanged('cost') || \App\Support\CatalogSync::$syncing) {
+                return;
+            }
+
+            $twins = $product->stockPoolMemberIds()->reject(fn ($id) => (int) $id === (int) $product->id)->values();
+            if ($twins->isNotEmpty()) {
+                static::withoutGlobalScopes()->whereIn('id', $twins)->update(['cost' => $product->cost]);
+            }
+        });
+
         // Soft-deleting a product used to leave its variants behind as live
         // rows, which bites the moment an owner removes a mis-entered
         // article: a sticker printed for one of those variants still

@@ -99,6 +99,12 @@ class ProductVariant extends Model
          * later flows to the cell-matched, still-barcodeless copies too.
          */
         static::updated(function (ProductVariant $variant) {
+            // one pooled shoe = one cost and one price in every shop, else the
+            // two shops' stock values disagree about the very same stock
+            if ($variant->wasChanged(['cost', 'price'])) {
+                $variant->propagateCostPriceToPoolCopies();
+            }
+
             if ($variant->wasChanged('barcode') && filled($variant->barcode)) {
                 try {
                     $variant->propagateBarcodeToPoolCopies();
@@ -218,6 +224,27 @@ class ProductVariant extends Model
         } finally {
             static::$creatingCopies = false;
         }
+    }
+
+    /**
+     * A cost or price written on one pooled variant (stock-in at a new cost,
+     * the quick price edit, the opening-stock grid) reaches its pool twins
+     * in the other shops. Plain query-builder writes: no events, no loop.
+     * A shop outside a shared_stock_pool never gets past the first line.
+     */
+    public function propagateCostPriceToPoolCopies(): void
+    {
+        if (\App\Support\CatalogSync::$syncing) {
+            return;
+        }
+
+        $twins = $this->stockPoolMemberIds()->reject(fn ($id) => (int) $id === (int) $this->id)->values();
+        if ($twins->isEmpty()) {
+            return;
+        }
+
+        $changes = array_intersect_key($this->getAttributes(), array_flip(array_filter(['cost', 'price'], fn ($c) => $this->wasChanged($c))));
+        static::withoutGlobalScopes()->whereIn('id', $twins)->update($changes);
     }
 
     /** See the updated() hook — a late-stamped barcode reaches the cell-matched, barcodeless pool copies so stockPoolMemberIds()'s barcode-first matching keeps binding them. */
@@ -438,7 +465,14 @@ class ProductVariant extends Model
      */
     public function stockPoolMemberIds(): Collection
     {
-        $product = $this->product;
+        // NOT $this->product: that relation carries the tenant scope, so a
+        // variant that lives in ANOTHER shop than the one acting (a branch
+        // transfer's destination variant, a rejected transfer's source)
+        // resolved to null and moved only itself — the two shops' variant
+        // stock then disagreed for good. E2EStockFlowsTest pins it.
+        $product = $this->relationLoaded('product') && $this->product
+            ? $this->product
+            : Product::withoutGlobalScopes()->find($this->product_id);
         if (! $product) {
             return collect([$this->id]);
         }

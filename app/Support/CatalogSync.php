@@ -924,7 +924,12 @@ class CatalogSync
             $byBarcode = $branchVariants->filter(fn (ProductVariant $v) => filled($v->barcode))->keyBy('barcode');
             $bySizeColor = $branchVariants->keyBy(fn (ProductVariant $v) => $v->size.'|'.$v->color);
 
-            foreach (ProductVariant::withoutGlobalScopes()->where('shop_id', $mainShop->id)->where('product_id', $mainProductId)->get() as $v) {
+            // LIVE main variants only: withoutGlobalScopes() also returns the
+            // soft-deleted ones, and a size the owner deleted at the main shop
+            // would then "revive" its deleted branch twin on the very next
+            // sync (any size added later) with a phantom count of stock —
+            // E2EStockFlowsTest::test_deleting_and_restoring_a_single_variant…
+            foreach (ProductVariant::withoutGlobalScopes()->where('shop_id', $mainShop->id)->where('product_id', $mainProductId)->whereNull('deleted_at')->get() as $v) {
                 $existing = (filled($v->barcode) ? $byBarcode->get($v->barcode) : null) ?? $bySizeColor->get($v->size.'|'.$v->color);
 
                 // photo_path (docs/ARTICLE_SERIES_PLAN.md §4's color picker)

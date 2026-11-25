@@ -46,7 +46,7 @@ class ExpenseController extends Controller
                 ])->id;
             }
 
-            Expense::create([
+            $expense = Expense::create([
                 'expense_category_id' => $categoryId,
                 'memo' => $data['memo'] ?? null,
                 'amount' => $data['amount'],
@@ -61,6 +61,8 @@ class ExpenseController extends Controller
             // to detect the drift.
             $field = $data['method'] === 'cash' ? 'cash_balance' : 'bank_balance';
             Shop::whereKey(Tenancy::id())->decrement($field, $data['amount']);
+
+            \App\Support\Activity::log('expense.record', 'খরচ লেখা হয়েছে: '.number_format((float) $data['amount'], 2).' ('.$data['method'].')'.(! empty($data['memo']) ? ' — '.$data['memo'] : ''), $expense);
         });
 
         return back()->with('success', 'Expense added.');

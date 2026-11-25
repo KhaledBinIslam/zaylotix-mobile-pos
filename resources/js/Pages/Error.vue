@@ -5,6 +5,7 @@ import ZaylotixLogo from '@/Components/ZaylotixLogo.vue';
 
 const props = defineProps({
     status: Number,
+    incident: { type: String, default: null },
     message: { type: String, default: null },
 });
 
@@ -51,6 +52,7 @@ function goBack() {
                 </button>
 
                 <div style="margin-top:14px;font-size:11px;color:var(--dim)" v-if="status">এরর কোড: {{ status }}</div>
+                <div v-if="incident" style="margin-top:6px;font-size:13px;color:var(--text);font-weight:700">রেফারেন্স: {{ incident }} <span style="font-weight:400;color:var(--mut)">— সমস্যা জানানোর সময় এই কোডটি বলুন</span></div>
             </div>
 
             <div class="login-foot">

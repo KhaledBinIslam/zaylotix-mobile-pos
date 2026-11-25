@@ -78,6 +78,21 @@ return Application::configure(basePath: dirname(__DIR__))
                 return $response;
             }
 
+            // An unexpected server error gets a short reference the owner can
+            // read out and an admin can grep for: the log line carries who,
+            // which shop, which page and the real cause. Before this a 500
+            // only said "error code 500" — nothing to trace it by.
+            $incident = null;
+            if ($status === 500) {
+                $incident = strtoupper(\Illuminate\Support\Str::random(6));
+                \Illuminate\Support\Facades\Log::error("[incident {$incident}] ".get_class($exception).': '.\Illuminate\Support\Str::limit($exception->getMessage(), 300), [
+                    'incident' => $incident,
+                    'user_id' => \Illuminate\Support\Facades\Auth::guard('web')->id(),
+                    'shop_id' => \Illuminate\Support\Facades\Auth::guard('web')->user()?->shop_id,
+                    'url' => $request->method().' '.$request->path(),
+                    'at' => basename($exception->getFile()).':'.$exception->getLine(),
+                ]);
+            }
             $generic = match ($status) {
                 419 => 'সেশনের মেয়াদ শেষ হয়ে গেছে — আবার চেষ্টা করুন।',
                 403 => $exception->getMessage() ?: 'এই কাজের অনুমতি নেই।',
@@ -100,7 +115,7 @@ return Application::configure(basePath: dirname(__DIR__))
             // stale on a long-open POS tab is a real, occasional thing;
             // silently eating the resulting error was the actual bug.
             if ($request->expectsJson() && ! $request->header('X-Inertia')) {
-                return response()->json(['message' => $generic], $status);
+                return response()->json(['message' => $generic.($incident ? " (রেফারেন্স: {$incident})" : ''), 'incident' => $incident], $status);
             }
 
             if ($status === 419) {
@@ -121,6 +136,7 @@ return Application::configure(basePath: dirname(__DIR__))
             return Inertia::render('Error', [
                 'status' => $status,
                 'message' => $status === 403 ? $exception->getMessage() : null,
+                'incident' => $incident,
             ])->toResponse($request)->setStatusCode($status);
         });
     })->create();

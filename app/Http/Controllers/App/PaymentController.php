@@ -77,7 +77,7 @@ class PaymentController extends Controller
             $dueBefore = (float) $locked->due;
             $locked->decrement('due', $amount);
 
-            $locked->payments()->create([
+            $payment = $locked->payments()->create([
                 'shop_id' => Tenancy::id(),
                 'sale_id' => $data['sale_id'] ?? null,
                 'installment_plan_id' => $data['installment_plan_id'] ?? null,
@@ -93,6 +93,7 @@ class PaymentController extends Controller
                 'date' => now()->toDateString(),
                 'client_uuid' => $data['client_uuid'] ?? null,
             ]);
+            \App\Support\Activity::log('payment.collect', 'বাকি আদায়: '.number_format($amount, 2).' ('.($data['method'] ?? 'cash').') — '.$locked->name, $payment);
 
             if (($data['method'] ?? 'cash') === 'cash') {
                 \App\Models\Shop::whereKey(Tenancy::id())->increment('cash_balance', $amount);
@@ -273,7 +274,7 @@ class PaymentController extends Controller
             $amount = (float) $locked->due;
             $locked->update(['due' => 0]);
 
-            $locked->payments()->create([
+            $payment = $locked->payments()->create([
                 'shop_id' => Tenancy::id(),
                 'user_id' => Auth::guard('web')->id() ?? Auth::guard('sanctum')->id(),
                 'amount' => $amount,
@@ -282,6 +283,7 @@ class PaymentController extends Controller
                 'method' => 'cash',
                 'date' => now()->toDateString(),
             ]);
+            \App\Support\Activity::log('payment.collect', 'বাকি আদায় (পূর্ণ): '.number_format($amount, 2).' — '.$locked->name, $payment);
 
             \App\Models\Shop::whereKey(Tenancy::id())->increment('cash_balance', $amount);
         });

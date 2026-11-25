@@ -238,6 +238,7 @@ class PurchaseController extends Controller
                     }
                 }
 
+                $costBefore = $lockedVariant->cost;
                 $lockedVariant->applyStockDelta($data['qty']);
                 $lockedVariant->update(['cost' => $newCost]);
                 $lockedProduct->applyStockDelta($data['qty']);
@@ -245,6 +246,16 @@ class PurchaseController extends Controller
                     // mirror cost rides the line's cost on a line-tracked shop,
                     // same as the dedicated 🚚 variant stock-in does
                     $lockedProduct->update(['cost' => $line->cost]);
+                }
+
+                // A purchase at a new unit cost changed only THIS shop's variant
+                // row; a pooled sibling kept the old cost, so the two branches'
+                // stock value (qty x cost) parted ways although the pieces are
+                // the same. Carry the cost across the business exactly as the
+                // dedicated variant stock-in does (CatalogSync::syncOneProduct
+                // never touches stock for an existing row). E2EMoneyFlowsTest.
+                if ((float) $costBefore !== (float) $newCost && ($shop = Tenancy::shop())) {
+                    \App\Support\CatalogSync::syncOneProduct($shop, $lockedProduct->fresh());
                 }
 
                 return;

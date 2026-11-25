@@ -305,9 +305,21 @@ class AccountsController extends Controller
 
             $covered = 0.0;
             $coveredQty = 0.0;
-            foreach (($lotsByGroup->get($groupOf[$p->id]) ?? collect())->groupBy('supplier_id') as $supplierId => $lots) {
-                $lotValue = (float) $lots->sum(fn ($l) => (float) $l->stock * (float) $l->cost);
-                $lotQty = (float) $lots->sum('stock');
+            // The lots' own ledger can run AHEAD of the article's stock (a stock
+            // correction that never touched the lots: SEAMAN's Bideshi Boiler Suit
+            // had 22 pcs on the shelf and 46 in its lots). Counting the lots in
+            // full then pushed the report ৳25,000 above the real stock value, found
+            // by checking every paid shop's totals against stockValue(). The
+            // report's total is the card's total, so lots are scaled down to what
+            // the article really holds, pro rata across its suppliers.
+            $articleLots = $lotsByGroup->get($groupOf[$p->id]) ?? collect();
+            $lotsValueAll = (float) $articleLots->sum(fn ($l) => (float) $l->stock * (float) $l->cost);
+            $lotsQtyAll = (float) $articleLots->sum('stock');
+            $valueScale = $lotsValueAll > $value && $lotsValueAll > 0 ? $value / $lotsValueAll : 1.0;
+            $qtyScale = $lotsQtyAll > $qty && $lotsQtyAll > 0 ? $qty / $lotsQtyAll : 1.0;
+            foreach ($articleLots->groupBy('supplier_id') as $supplierId => $lots) {
+                $lotValue = (float) $lots->sum(fn ($l) => (float) $l->stock * (float) $l->cost) * $valueScale;
+                $lotQty = (float) $lots->sum('stock') * $qtyScale;
                 $key = $supplierId ? (int) $supplierId : 'unknown';
                 $add($key, $supplierId ? ($supplierNames[$supplierId] ?? "#{$supplierId}") : '', $p, $lotQty, $lotValue, 'lot');
                 $covered += $lotValue;

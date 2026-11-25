@@ -898,8 +898,22 @@ class ReturnController extends Controller
             ];
         }
 
-        $lockedShop->invoice_counter += 1;
-        $invoiceNo = 'INV-'.$lockedShop->invoice_counter;
+        // Same shared counter POS checkout draws from (invoiceCounterShop() =
+        // the main shop of the business). Using the branch's OWN counter here
+        // handed the replacement bill a number the branch had already issued
+        // through checkout -> UNIQUE(shop_id, invoice_no) -> HTTP 500 on every
+        // exchange at a branch (caught by E2ESalesFlowsTest, 2026-11-25).
+        $counterShop = $lockedShop->invoiceCounterShop();
+        if ($counterShop->id === $lockedShop->id) {
+            $counterShop = $lockedShop; // saved with the rest of the shop row by process()
+        } else {
+            $counterShop = Shop::whereKey($counterShop->id)->lockForUpdate()->first();
+        }
+        $counterShop->invoice_counter += 1;
+        $invoiceNo = 'INV-'.$counterShop->invoice_counter;
+        if ($counterShop !== $lockedShop) {
+            $counterShop->save();
+        }
 
         // clamped against the new items' own total — a discount can never
         // flip the new item(s) into a negative price

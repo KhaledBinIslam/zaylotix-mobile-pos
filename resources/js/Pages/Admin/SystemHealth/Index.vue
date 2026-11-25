@@ -3,7 +3,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 
 defineProps({
-    db: Object, recentErrors: Array, disk: Object, appUsage: Object,
+    db: Object, recentErrors: Array, incidents: { type: Array, default: () => [] }, disk: Object, appUsage: Object,
     php_version: String, laravel_version: String, queue_connection: String, app_env: String, app_debug: Boolean,
 });
 </script>
@@ -43,6 +43,20 @@ defineProps({
                 <div class="text-xs text-gray-500">Versions</div>
                 <div class="text-sm font-semibold mt-1">PHP {{ php_version }}</div>
                 <div class="text-xs text-gray-400">Laravel {{ laravel_version }} · queue: {{ queue_connection }}</div>
+            </div>
+        </div>
+
+        <div class="bg-white border rounded-xl p-5 mb-4">
+            <div class="font-bold mb-1">📣 What users ran into (reference codes, phone errors, forced logouts)</div>
+            <div class="text-xs text-gray-400 mb-3">A "server" row has the reference code printed on the user's screen — search it in storage/logs/laravel.log for the full trace.</div>
+            <div v-if="!incidents.length" class="text-sm text-gray-400">Nothing reported lately. 🎉</div>
+            <div v-for="(e, i) in incidents" :key="'i' + i" class="py-2 border-b last:border-0">
+                <div class="flex items-center gap-2 text-xs mb-1">
+                    <span class="px-1.5 py-0.5 rounded font-semibold" :class="e.kind === 'server' ? 'bg-rose-50 text-rose-700' : (e.kind === 'phone' ? 'bg-amber-50 text-amber-700' : 'bg-sky-50 text-sky-700')">{{ e.kind }}</span>
+                    <span v-if="e.ref" class="font-mono font-bold text-gray-800">{{ e.ref }}</span>
+                    <span class="text-gray-400">{{ e.time }}</span>
+                </div>
+                <div class="text-sm font-mono text-gray-700 break-all">{{ e.message }}</div>
             </div>
         </div>
 

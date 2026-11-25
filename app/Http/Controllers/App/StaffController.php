@@ -84,7 +84,7 @@ class StaffController extends Controller
             'permissions.*' => ['string', Rule::in(array_keys(config('staff_permissions')))],
         ]);
 
-        User::create([
+        $created = User::create([
             'shop_id' => $shopId,
             'name' => $data['name'],
             'phone' => $data['phone'],
@@ -93,6 +93,7 @@ class StaffController extends Controller
             'permissions' => $data['permissions'] ?? [],
             'lang' => $shop->lang,
         ]);
+        \App\Support\Activity::log('staff.create', "স্টাফ যোগ: {$created->name}", $created, ['permissions' => $created->permissions]);
 
         return back()->with('success', 'স্টাফ যোগ হয়েছে।');
     }
@@ -120,6 +121,7 @@ class StaffController extends Controller
             ...(array_key_exists('permissions', $data) ? ['permissions' => $data['permissions']] : []),
             ...(! empty($data['password']) ? ['password' => $data['password']] : []),
         ]);
+        \App\Support\Activity::log('staff.update', "স্টাফ আপডেট: {$staff->name}", $staff, ['permissions' => $staff->permissions, 'password_changed' => ! empty($data['password'])]);
 
         return back()->with('success', 'স্টাফের তথ্য আপডেট হয়েছে।');
     }

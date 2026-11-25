@@ -73,6 +73,37 @@ class SupplierStockValueTest extends TestCase
         $this->assertSame([], $props['pooledWith']);
     }
 
+    /**
+     * SEAMAN live, 2026-11-25: three articles' lot ledgers ran ahead of their
+     * stock (Bideshi Boiler Suit: 22 pcs on the shelf, 46 in lots), and the
+     * report's rows added up to ৳25,000 MORE than the stock value card.
+     */
+    public function test_lots_larger_than_the_articles_stock_never_push_the_total_above_the_card(): void
+    {
+        [$shop, $owner] = $this->createShopWithOwner();
+        foreach (['accounts', 'suppliers', 'source_lines', 'product_variants'] as $f) {
+            $this->grantFeature($shop, $f);
+        }
+        Tenancy::set($shop->id);
+        $a = Supplier::create(['shop_id' => $shop->id, 'name' => 'Bulu', 'payable' => 0]);
+        $b = Supplier::create(['shop_id' => $shop->id, 'name' => 'Sujon', 'payable' => 0]);
+
+        // 10 pcs @ 100 = 1000 on the shelf, but the lots claim 30 @ 100 = 3000
+        $p = Product::create(['shop_id' => $shop->id, 'name' => 'Suit', 'cost' => 100, 'price' => 200, 'stock' => 10, 'supplier_id' => $a->id]);
+        $v = ProductVariant::create(['shop_id' => $shop->id, 'product_id' => $p->id, 'size' => 'M', 'stock' => 10, 'cost' => null]);
+        ProductSource::create(['shop_id' => $shop->id, 'product_id' => $p->id, 'product_variant_id' => $v->id, 'supplier_id' => $a->id, 'cost' => 100, 'price' => 200, 'stock' => 20]);
+        ProductSource::create(['shop_id' => $shop->id, 'product_id' => $p->id, 'product_variant_id' => $v->id, 'supplier_id' => $b->id, 'cost' => 100, 'price' => 200, 'stock' => 10]);
+
+        $props = $this->rowsOf($this->actingAs($owner, 'web')->get(route('app.accounts.stockValueBySupplier')));
+        $rows = $this->byName($props);
+
+        $this->assertEquals(1000, $props['total']);
+        $this->assertEquals(1000, array_sum(array_column($props['rows'], 'value')), 'rows still add up to the card');
+        $this->assertEqualsWithDelta(666.67, $rows['Bulu']['value'], 0.01, 'pro rata 20 of 30 lots');
+        $this->assertEqualsWithDelta(333.33, $rows['Sujon']['value'], 0.01);
+        $this->assertEqualsWithDelta(10, $rows['Bulu']['qty'] + $rows['Sujon']['qty'], 0.01, 'quantities do not exceed the shelf either');
+    }
+
     public function test_a_pooled_business_shows_the_same_business_wide_split_on_both_branches(): void
     {
         [$main, $mainOwner] = $this->createShopWithOwner();

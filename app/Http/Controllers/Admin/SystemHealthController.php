@@ -52,12 +52,29 @@ class SystemHealthController extends Controller
             ])->values();
         }
 
+        // What the owners actually ran into: server errors a user saw (with the
+        // reference code printed on their screen), JS errors reported by their
+        // phones, and sessions the app ended. These are WARNING-level lines the
+        // ERROR list above never showed — "scanner does nothing" and "logged out
+        // again and again" left no trace there at all.
+        $incidents = [];
+        if (isset($tail)) {
+            preg_match_all('/^\[(?<time>[\d\-: ]+)\]\s+\w+\.(?<level>ERROR|WARNING):\s*(?<message>\[(?:incident [A-Z0-9]{6}|client-js-error|forced-logout)[^\n]*)$/m', $tail, $im, PREG_SET_ORDER);
+            $incidents = collect($im)->reverse()->take(40)->map(fn ($m) => [
+                'time' => $m['time'],
+                'kind' => str_contains($m['message'], '[incident') ? 'server' : (str_contains($m['message'], 'client-js-error') ? 'phone' : 'logout'),
+                'ref' => preg_match('/\[incident ([A-Z0-9]{6})\]/', $m['message'], $r) ? $r[1] : null,
+                'message' => \Illuminate\Support\Str::limit($m['message'], 400),
+            ])->values();
+        }
+
         $diskFree = @disk_free_space(storage_path());
         $diskTotal = @disk_total_space(storage_path());
 
         return Inertia::render('Admin/SystemHealth/Index', [
             'db' => ['ok' => $dbOk, 'error' => $dbError],
             'recentErrors' => $recentErrors,
+            'incidents' => $incidents,
             // disk_free_space()/disk_total_space() report the WHOLE shared
             // host filesystem's stats on Hostinger's shared/Cloud hosting —
             // every other customer's usage on this physical node included,
