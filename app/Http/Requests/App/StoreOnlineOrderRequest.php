@@ -24,6 +24,10 @@ class StoreOnlineOrderRequest extends FormRequest
             'items.*.product_variant_id' => ['nullable', Rule::exists('product_variants', 'id')->where('shop_id', Tenancy::id())],
             'items.*.qty' => ['required', 'numeric', 'min:0.001'],
             'items.*.imei' => ['nullable', 'string', 'max:50'],
+            // same meaning as POS: a flat taka amount off THIS line (never more than the line's own total — the
+            // controller caps it), plus one overall taka discount on the order. Both optional; none = today's order.
+            'items.*.discount' => ['nullable', 'numeric', 'min:0'],
+            'discount' => ['nullable', 'numeric', 'min:0'],
             'delivery_charge' => ['nullable', 'numeric', 'min:0'],
             'cod_amount' => ['nullable', 'numeric', 'min:0'],
             'paid_amount' => ['nullable', 'numeric', 'min:0'],

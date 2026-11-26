@@ -111,7 +111,7 @@ function save() {
                     <option v-for="p in products" :key="p.id" :value="p.id">{{ p.emoji }} {{ p.name }} — {{ p.price }}৳</option>
                 </select>
                 <div class="f2">
-                    <div class="field" style="margin:0"><label>{{ t('return.qty') }}</label><input v-model.number="line.qty" type="number" :min="isWeighed(line) ? 0.001 : 1" :step="isWeighed(line) ? 0.001 : 1"></div>
+                    <div class="field" style="margin:0"><label>{{ t('pos.qty') }}</label><input v-model.number="line.qty" type="number" :min="isWeighed(line) ? 0.001 : 1" :step="isWeighed(line) ? 0.001 : 1"></div>
                     <div class="field" style="margin:0"><label>{{ t('stock.price') }}</label><input v-model.number="line.price" type="number"></div>
                 </div>
                 <div class="f2" style="margin-top:8px">

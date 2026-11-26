@@ -95,7 +95,10 @@ function waUpdate() {
             <div class="k" style="color:var(--mut);font-size:12px;margin-bottom:8px">{{ t('quotation.items') }}</div>
             <div v-for="item in order.sale?.items || []" :key="item.id" style="display:flex;justify-content:space-between;padding:4px 0">
                 <span>{{ item.product_name }}<template v-if="item.variant_label"> ({{ item.variant_label }})</template> × {{ item.qty }}</span>
-                <b>{{ money(item.price * item.qty) }}</b>
+                <b>{{ money(item.price * item.qty - Number(item.discount || 0)) }}</b>
+            </div>
+            <div v-if="Number(order.sale?.discount) > 0" style="display:flex;justify-content:space-between;padding:4px 0;color:var(--green)">
+                <span>{{ t('pos.overallDiscount') }}</span><b>− {{ money(order.sale.discount) }}</b>
             </div>
         </div>
 

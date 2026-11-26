@@ -93,7 +93,7 @@ function save() {
                     <option v-for="v in productOf(line).variants" :key="v.id" :value="v.id">{{ v.label }}</option>
                 </select>
                 <div class="f2">
-                    <div class="field" style="margin:0"><label>{{ t('return.qty') }}</label><input v-model.number="line.qty" type="number" min="0.001" step="0.001"></div>
+                    <div class="field" style="margin:0"><label>{{ t('pos.qty') }}</label><input v-model.number="line.qty" type="number" min="0.001" step="0.001"></div>
                     <div class="field" style="margin:0"><label>{{ t('purchaseOrder.unitCost') }}</label><input v-model.number="line.cost" type="number" min="0"></div>
                 </div>
                 <div style="display:flex;justify-content:space-between;margin-top:8px">

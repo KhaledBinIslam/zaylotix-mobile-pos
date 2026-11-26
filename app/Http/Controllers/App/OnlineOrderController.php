@@ -450,12 +450,16 @@ class OnlineOrderController extends Controller
                     $unitCost = (float) $product->cost;
                 }
 
-                $lineTotal = $unitPrice * $qty;
-                $subtotal += $lineTotal;
-                $profit += ($unitPrice - $unitCost) * $qty;
+                // Discount works exactly as it does at the POS counter: a flat taka amount off this line, never more
+                // than the line's own total, taken off the bill AND off the profit — so the order's invoice shows what
+                // the customer really paid and every profit report (online / offline / total, per product) agrees.
+                $rawLineTotal = $unitPrice * $qty;
+                $lineDiscount = min((float) ($item['discount'] ?? 0), $rawLineTotal);
+                $subtotal += $rawLineTotal - $lineDiscount;
+                $profit += ($unitPrice - $unitCost) * $qty - $lineDiscount;
 
                 $lines[] = [
-                    'product' => $product, 'variant' => $variant, 'qty' => $qty,
+                    'product' => $product, 'variant' => $variant, 'qty' => $qty, 'discount' => $lineDiscount,
                     'price' => $unitPrice, 'cost' => $unitCost,
                     'imei' => empty($item['imei']) ? null : trim($item['imei']),
                 ];
@@ -464,7 +468,10 @@ class OnlineOrderController extends Controller
             $customer = $this->resolveCustomer(trim($data['customer_phone']), trim($data['customer_name'] ?? ''), $shopId);
 
             $deliveryCharge = (float) ($data['delivery_charge'] ?? 0);
-            $total = $subtotal + $deliveryCharge;
+            // the overall order discount, like POS's manual discount: capped at the (line-discounted) subtotal
+            $orderDiscount = min((float) ($data['discount'] ?? 0), $subtotal);
+            $profit -= $orderDiscount;
+            $total = $subtotal - $orderDiscount + $deliveryCharge;
 
             $shop->online_invoice_counter += 1;
             $invoiceNo = 'OL-'.$shop->online_invoice_counter;
@@ -476,7 +483,7 @@ class OnlineOrderController extends Controller
                 'date' => now()->toDateString(),
                 'time' => now()->toTimeString(),
                 'subtotal' => $subtotal,
-                'discount' => 0,
+                'discount' => $orderDiscount,
                 'service_charge' => $deliveryCharge,
                 'vat' => 0,
                 'total' => $total,
@@ -518,7 +525,7 @@ class OnlineOrderController extends Controller
                     'unit_factor' => 1,
                     'qty' => $line['qty'],
                     'price' => $line['price'],
-                    'discount' => 0,
+                    'discount' => $line['discount'],
                     'cost' => $line['cost'],
                     'batch_allocations' => $batchAllocations,
                 ]);

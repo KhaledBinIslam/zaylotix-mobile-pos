@@ -21,8 +21,8 @@ const money = (n) => '৳' + Math.round(n).toLocaleString('en-IN');
 const form = useForm({
     channel_id: props.channels[0]?.id || '',
     customer_phone: '', customer_name: '',
-    items: [{ product_id: '', product_variant_id: '', qty: 1, imei: '' }],
-    delivery_charge: '', cod_amount: '', paid_amount: '', paid_method: 'cash',
+    items: [{ product_id: '', product_variant_id: '', qty: 1, imei: '', discountPerPiece: '' }],
+    discount: '', delivery_charge: '', cod_amount: '', paid_amount: '', paid_method: 'cash',
     campaign_tag: '', external_reference: '',
     courier_id: '', parcel_weight: '', is_outside_dhaka: false,
 });
@@ -65,7 +65,7 @@ watch(() => form.customer_phone, (val) => {
 });
 
 function addLine() {
-    form.items.push({ product_id: '', product_variant_id: '', qty: 1, imei: '' });
+    form.items.push({ product_id: '', product_variant_id: '', qty: 1, imei: '', discountPerPiece: '' });
 }
 function removeLine(i) {
     form.items.splice(i, 1);
@@ -157,7 +157,7 @@ function addScannedLine(productId, variantId, label, qty = 1) {
             emptyLine.product_variant_id = variantId;
             emptyLine.qty = qty;
         } else {
-            form.items.push({ product_id: productId, product_variant_id: variantId, qty, imei: '' });
+            form.items.push({ product_id: productId, product_variant_id: variantId, qty, imei: '', discountPerPiece: '' });
         }
     }
     toast('✅ ' + label);
@@ -201,8 +201,14 @@ async function onCameraScan(decodedText, onFeedback) {
 const hardwareScannerEnabled = computed(() => page.props.shop?.hardware_scanner_enabled ?? true);
 useHardwareScanner(handleBarcode, hardwareScannerEnabled);
 
-const subtotal = computed(() => form.items.reduce((s, l) => s + unitPrice(l) * (Number(l.qty) || 0), 0));
-const total = computed(() => subtotal.value + (Number(form.delivery_charge) || 0));
+// a line's discount is typed per piece (as at the POS counter) and applies to the whole line, never beyond its total
+const lineRaw = (l) => unitPrice(l) * (Number(l.qty) || 0);
+const lineDiscount = (l) => Math.min(Math.max(0, Number(l.discountPerPiece) || 0) * (Number(l.qty) || 0), lineRaw(l));
+const itemsDiscount = computed(() => form.items.reduce((s, l) => s + lineDiscount(l), 0));
+const grossSubtotal = computed(() => form.items.reduce((s, l) => s + lineRaw(l), 0));
+const subtotal = computed(() => grossSubtotal.value - itemsDiscount.value);
+const orderDiscount = computed(() => Math.min(Math.max(0, Number(form.discount) || 0), subtotal.value));
+const total = computed(() => subtotal.value - orderDiscount.value + (Number(form.delivery_charge) || 0));
 const dueRemainder = computed(() => Math.max(0, total.value - (Number(form.cod_amount) || 0) - (Number(form.paid_amount) || 0)));
 
 // cod_amount defaults to "whatever's left after any advance payment" so
@@ -221,6 +227,7 @@ function save() {
         items: data.items.filter((l) => l.product_id).map((l) => ({
             product_id: l.product_id, product_variant_id: l.product_variant_id || null,
             qty: l.qty, imei: l.imei || null,
+            discount: Math.round(lineDiscount(l) * 100) / 100,
         })),
     })).post(route('app.onlineOrders.store'));
 }
@@ -286,14 +293,24 @@ function save() {
             </select>
             <div class="f2">
                 <div class="field" style="margin:0">
-                    <label>{{ t('return.qty') }}</label>
+                    <label>{{ t('pos.qty') }}</label>
                     <input v-model.number="line.qty" type="number" :min="isWeighed(line) ? 0.001 : 1" :step="isWeighed(line) ? 0.001 : 1">
                 </div>
                 <button type="button" class="btn sm rose" style="align-self:flex-end" :disabled="form.items.length <= 1" @click="removeLine(i)">{{ t('common.cancel') }}</button>
             </div>
+            <div v-if="line.product_id" class="field" style="margin:8px 0 0">
+                <label>{{ t('pos.itemDiscountPerPiece') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
+                <input v-model.number="line.discountPerPiece" type="number" min="0" placeholder="0">
+                <div v-if="lineDiscount(line) > 0" style="color:var(--green);font-size:12px;margin-top:4px">− {{ money(lineDiscount(line)) }}</div>
+            </div>
             <div v-if="form.errors[`items.${i}.product_id`]" style="color:var(--rose);font-size:12px;margin-top:6px">{{ form.errors[`items.${i}.product_id`] }}</div>
         </div>
         <button type="button" class="btn ghost sm" style="width:100%;margin-bottom:14px" @click="addLine">{{ t('quotation.addLine') }}</button>
+
+        <div class="field">
+            <label>{{ t('pos.overallDiscountLabel') }} <span style="color:var(--dim);font-weight:400">{{ t('stock.optional') }}</span></label>
+            <input v-model.number="form.discount" type="number" min="0" placeholder="0">
+        </div>
 
         <div class="f2">
             <div class="field">
@@ -347,6 +364,7 @@ function save() {
 
         <div class="card" style="margin-bottom:14px">
             <div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--mut)"><span>{{ t('pos.subtotal') }}</span><b>{{ money(subtotal) }}</b></div>
+            <div v-if="orderDiscount > 0" style="display:flex;justify-content:space-between;padding:3px 0;color:var(--green)"><span>{{ t('pos.overallDiscount') }}</span><b>− {{ money(orderDiscount) }}</b></div>
             <div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--mut)"><span>{{ t('onlineOrder.deliveryCharge') }}</span><b>{{ money(Number(form.delivery_charge) || 0) }}</b></div>
             <div class="hr" style="margin:8px 0"></div>
             <div style="display:flex;justify-content:space-between;font-size:19px;font-weight:800"><span>{{ t('pos.grandTotal') }}</span><b style="color:var(--gold)">{{ money(total) }}</b></div>

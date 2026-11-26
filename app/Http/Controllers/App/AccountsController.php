@@ -14,6 +14,7 @@ use App\Models\Purchase;
 use App\Models\SalesReturn;
 use App\Models\Shop;
 use App\Models\Supplier;
+use App\Support\Reports;
 use App\Support\Tenancy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -61,6 +62,41 @@ class AccountsController extends Controller
             'totalExpenses' => (float) Expense::sum('amount'),
             'totalDamage' => (float) Damage::sum('loss'),
             'totalReturns' => (float) SalesReturn::sum('refund'),
+            // this month's profit, split offline / online, for the little summary card (the full page is accounts.profit)
+            'profitMonth' => Reports::profitByChannel(now()->startOfMonth()->toDateString(), now()->toDateString()),
+            'hasOnline' => (bool) $shop->hasFeature('online_business'),
+        ]);
+    }
+
+    /**
+     * Profit, split the way the owner thinks about it: what the counter (offline) made, what online orders made,
+     * and the total — then every product with the same three columns. Same numbers as the P&L (see
+     * Reports::profitByChannel), just cut by channel.
+     */
+    public function profit(Request $request)
+    {
+        $preset = in_array($request->get('preset'), ['today', 'week', 'month', 'year', 'custom'], true) ? $request->get('preset') : 'month';
+        [$from, $to] = match ($preset) {
+            'today' => [now()->toDateString(), now()->toDateString()],
+            'week' => [now()->subDays(6)->toDateString(), now()->toDateString()],
+            'year' => [now()->startOfYear()->toDateString(), now()->toDateString()],
+            'custom' => [$request->get('from') ?: now()->subDays(29)->toDateString(), $request->get('to') ?: now()->toDateString()],
+            default => [now()->startOfMonth()->toDateString(), now()->toDateString()],
+        };
+        if ($from > $to) {
+            [$from, $to] = [$to, $from];
+        }
+
+        $products = Reports::productProfitByChannel($from, $to);
+
+        return Inertia::render('App/Accounts/ProfitSplit', [
+            'from' => $from,
+            'to' => $to,
+            'preset' => $preset,
+            'split' => Reports::profitByChannel($from, $to),
+            'products' => $products['rows'],
+            'unallocatedDiscount' => $products['unallocated_discount'],
+            'hasOnline' => (bool) Tenancy::shop()?->hasFeature('online_business'),
         ]);
     }
 

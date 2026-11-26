@@ -108,3 +108,15 @@ describe('closing a sheet from code never remounts the page (billed cart coming 
         expect(dep).toMatch(/ownBackPending = true;[\s\S]*history\.back\(\)/);
     });
 });
+
+describe('no receipt carries a customer-rating QR', () => {
+    // Khaled, 2026-11-26: the "Rate your experience" QR was removed from every bill. A shop that wants a QR uses its
+    // own website / Facebook page (settings.show_shop_qr, off by default) — nothing is added on its behalf.
+    it('ReceiptMemo never renders or draws a rating QR', () => {
+        const memo = files.find((x) => x.rel === 'Components/ReceiptMemo.vue').src;
+        expect(memo).not.toMatch(/rating_url/);
+        expect(memo).not.toMatch(/Rate your experience/);
+        expect(memo).not.toMatch(/memo-rating-qr/);
+        expect(memo).toMatch(/show_shop_qr/); // the shop's own QR is still there
+    });
+});

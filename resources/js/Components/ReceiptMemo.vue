@@ -39,7 +39,6 @@ const paymentMethodLabel = computed(() => PAYMENT_LABELS[props.sale.payment_mode
 const ORDER_SOURCE_LABELS = { delivery: 'Delivery', takeaway: 'Takeaway', dine_in: 'Dine-in' };
 
 const barcodeId = computed(() => 'memo-barcode-svg' + props.idSuffix);
-const qrId = computed(() => 'memo-rating-qr' + props.idSuffix);
 const shopQrId = computed(() => 'memo-shop-qr' + props.idSuffix);
 
 // Khaled: a client wanted their shop's own Facebook page as a scannable QR
@@ -62,19 +61,14 @@ async function renderCodes() {
             JsBarcode(el, 'INV-' + props.sale.id, { format: 'CODE128', width: 1.3, height: 30, fontSize: 9, margin: 2 });
         } catch (e) { /* non-numeric sample id in preview mode — harmless */ }
     }
-    if (props.sale.rating_url || (settings.value.show_shop_qr && shopQrUrl.value)) {
+    // Only the shop's OWN website / Facebook QR, and only when the owner switched it on. The customer-rating QR
+    // that used to sit above it was removed from every receipt (Khaled, 2026-11-26) — a shop that wants a QR
+    // puts its own page there; nothing is added to the bill on its behalf.
+    if (settings.value.show_shop_qr && shopQrUrl.value) {
         const QRCode = (await import('qrcode')).default;
-        if (props.sale.rating_url) {
-            const qrEl = document.getElementById(qrId.value);
-            if (qrEl) {
-                try { await QRCode.toCanvas(qrEl, props.sale.rating_url, { width: 90, margin: 1 }); } catch (e) { /* non-critical */ }
-            }
-        }
-        if (settings.value.show_shop_qr && shopQrUrl.value) {
-            const shopQrEl = document.getElementById(shopQrId.value);
-            if (shopQrEl) {
-                try { await QRCode.toCanvas(shopQrEl, shopQrUrl.value, { width: 90, margin: 1 }); } catch (e) { /* non-critical */ }
-            }
+        const shopQrEl = document.getElementById(shopQrId.value);
+        if (shopQrEl) {
+            try { await QRCode.toCanvas(shopQrEl, shopQrUrl.value, { width: 90, margin: 1 }); } catch (e) { /* non-critical */ }
         }
     }
 }
@@ -128,10 +122,6 @@ watch(() => [props.sale.id, props.sale.invoice_no, settings.value.show_shop_qr, 
         <div v-if="settings.show_exchange_policy && settings.exchange_policy_text" class="rm-exchange">{{ settings.exchange_policy_text }}</div>
         <template v-if="showBarcodeAndQr">
             <div class="rm-barcode-wrap"><svg :id="barcodeId"></svg></div>
-            <div v-if="sale.rating_url" class="rm-qr-wrap">
-                <canvas :id="qrId"></canvas>
-                <div class="rm-qr-hint">Rate your experience</div>
-            </div>
             <div v-if="settings.show_shop_qr && shopQrUrl" class="rm-qr-wrap">
                 <canvas :id="shopQrId"></canvas>
                 <div class="rm-qr-hint">{{ shop?.website }}</div>

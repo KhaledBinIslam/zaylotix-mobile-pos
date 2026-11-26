@@ -8,6 +8,7 @@ const props = defineProps({
     shop: Object, cash: Number, bank: Number, stockValue: Number, receivable: Number, codReceivable: { type: Number, default: 0 },
     payable: Number, assets: Number, liabilities: Number, netWorth: Number,
     capital: Number, retained: Number, totalExpenses: Number, totalDamage: Number, totalReturns: Number,
+    profitMonth: { type: Object, default: null }, hasOnline: { type: Boolean, default: false },
 });
 
 const features = computed(() => usePage().props.features || []);
@@ -69,6 +70,17 @@ function saveVariantDefaults() {
             <div style="font-size:32px;font-weight:850;color:var(--green);letter-spacing:-.5px">{{ money(netWorth) }}</div>
             <div style="font-size:12px;color:var(--dim)">{{ t('acc.assetsMinusLiabilities') }}</div>
         </div>
+
+        <!-- Khaled: offline profit, online profit, total profit and each product's profit, in the accounts -->
+        <Link v-if="profitMonth" :href="route('app.accounts.profit')" class="card" style="display:block;text-decoration:none;color:inherit;margin-bottom:16px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                <b>📈 {{ t('accProfit.thisMonth') }}</b><span style="color:var(--mut);font-size:12px">{{ t('accProfit.details') }} ›</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:2px 0"><span>🏪 {{ t('accProfit.offline') }}</span><b :style="{ color: profitMonth.offline.profit >= 0 ? 'var(--green)' : 'var(--rose)' }">{{ money(profitMonth.offline.profit) }}</b></div>
+            <div v-if="hasOnline || profitMonth.online.bills > 0" style="display:flex;justify-content:space-between;padding:2px 0"><span>🛵 {{ t('accProfit.online') }}</span><b :style="{ color: profitMonth.online.profit >= 0 ? 'var(--green)' : 'var(--rose)' }">{{ money(profitMonth.online.profit) }}</b></div>
+            <div class="hr" style="margin:6px 0"></div>
+            <div style="display:flex;justify-content:space-between;font-weight:800"><span>{{ t('accProfit.total') }}</span><b :style="{ color: profitMonth.total.profit >= 0 ? 'var(--green)' : 'var(--rose)' }">{{ money(profitMonth.total.profit) }}</b></div>
+        </Link>
 
         <div class="sechead"><h2>{{ t('acc.assets') }}</h2><span class="link">{{ money(assets) }}</span></div>
         <div class="row"><div class="ava">💵</div><div class="mid"><b>{{ t('acc.cashInHand') }}</b></div><div class="end"><b style="color:var(--green)">{{ money(cash) }}</b></div></div>

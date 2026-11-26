@@ -1050,4 +1050,124 @@ class Reports
 
         return $grid;
     }
+
+    /**
+     * Gross profit split by sales channel — OFFLINE (the counter: POS, exchange, wholesale, restaurant…) versus
+     * ONLINE (orders from the Online Business module, which only count once Delivered) — plus the total.
+     *
+     * Built on the very same figures rangeStats() uses, so offline + online ALWAYS equals rangeStats()'s
+     * grossProfit for the range (a test pins that identity): each sale's own stored profit, less every refund's
+     * (refund − cost) — a return is charged to the channel its ORIGINAL sale belonged to; a no-receipt return
+     * belongs to the counter. Delivery charges and courier costs are not in this figure (they never were in the
+     * P&L either); the Online Business profit report shows those, with ad spend and platform fees.
+     *
+     * @return array{offline: array<string,float|int>, online: array<string,float|int>, total: array<string,float|int>}
+     */
+    public static function profitByChannel(string $from, string $to): array
+    {
+        $blank = fn () => ['bills' => 0, 'sales' => 0.0, 'returns' => 0.0, 'net_sales' => 0.0, 'cost' => 0.0, 'profit' => 0.0, 'discount' => 0.0];
+        $out = ['offline' => $blank(), 'online' => $blank()];
+
+        $sales = Sale::query()
+            ->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)
+            ->selectRaw("CASE WHEN sale_type = 'online' THEN 'online' ELSE 'offline' END as channel, SUM(CASE WHEN sale_type <> 'exchange' THEN 1 ELSE 0 END) as bills, SUM(total) as sales, SUM(profit) as profit, SUM(discount) as discount")
+            ->groupBy('channel')->get();
+        foreach ($sales as $r) {
+            $out[$r->channel]['bills'] = (int) $r->bills;
+            $out[$r->channel]['sales'] = (float) $r->sales;
+            $out[$r->channel]['profit'] = (float) $r->profit;
+            $out[$r->channel]['discount'] = (float) $r->discount;
+        }
+
+        $returns = SalesReturn::whereDate('date', '>=', $from)->whereDate('date', '<=', $to)->get(['id', 'sale_id', 'refund', 'cost']);
+        $types = $returns->isEmpty() ? collect() : Sale::withVoided()->whereIn('id', $returns->pluck('sale_id')->filter()->unique())->pluck('sale_type', 'id');
+        foreach ($returns as $r) {
+            $channel = ($r->sale_id && ($types[$r->sale_id] ?? null) === 'online') ? 'online' : 'offline';
+            $out[$channel]['returns'] += (float) $r->refund;
+            // a row saved before the cost column existed recovers nothing — same as rangeStats()
+            $out[$channel]['profit'] -= (float) $r->refund - (float) ($r->cost ?? 0);
+        }
+
+        foreach (['offline', 'online'] as $c) {
+            $out[$c]['net_sales'] = $out[$c]['sales'] - $out[$c]['returns'];
+            $out[$c]['cost'] = $out[$c]['net_sales'] - $out[$c]['profit'];
+            foreach (['sales', 'returns', 'net_sales', 'cost', 'profit', 'discount'] as $k) {
+                $out[$c][$k] = round($out[$c][$k], 2);
+            }
+        }
+
+        $total = $blank();
+        foreach (['offline', 'online'] as $c) {
+            foreach ($total as $k => $_) {
+                $total[$k] += $out[$c][$k];
+            }
+        }
+        $out['total'] = array_map(fn ($v) => is_float($v) ? round($v, 2) : $v, $total);
+
+        return $out;
+    }
+
+    /**
+     * Per-product profit with the offline / online split: one row per product, each channel's qty, revenue and
+     * profit, and the total. Sale lines only carry their OWN discount, while a bill-level discount (POS manual
+     * discount, coupon, redeemed points, an online order's overall discount) belongs to the bill — so
+     * 'unallocated_discount' reports it per channel, and (sum of the product profits) − (that discount) is
+     * exactly the channel profit profitByChannel() shows before returns.
+     *
+     * @return array{rows: array<int,array<string,mixed>>, unallocated_discount: array{offline: float, online: float, total: float}}
+     */
+    public static function productProfitByChannel(string $from, string $to, int $limit = 300): array
+    {
+        $isOnline = "CASE WHEN sales.sale_type = 'online' THEN 1 ELSE 0 END";
+        $lines = SaleItem::query()
+            ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
+            ->whereNull('sales.voided_at')->where('sales.counted_in_reports', true)
+            ->whereDate('sales.date', '>=', $from)->whereDate('sales.date', '<=', $to)
+            ->selectRaw("sale_items.product_name as product_name, {$isOnline} as is_online, SUM(sale_items.qty) as qty, SUM(sale_items.qty * sale_items.price - sale_items.discount) as revenue, SUM((sale_items.price - sale_items.cost) * sale_items.qty - sale_items.discount) as profit")
+            ->groupBy('sale_items.product_name')->groupByRaw($isOnline)
+            ->get();
+
+        $rows = [];
+        $row = fn (string $name) => ['product_name' => $name,
+            'offline_qty' => 0.0, 'offline_revenue' => 0.0, 'offline_profit' => 0.0,
+            'online_qty' => 0.0, 'online_revenue' => 0.0, 'online_profit' => 0.0];
+        foreach ($lines as $l) {
+            $rows[$l->product_name] ??= $row($l->product_name);
+            $c = (int) $l->is_online === 1 ? 'online' : 'offline';
+            $rows[$l->product_name][$c.'_qty'] += (float) $l->qty;
+            $rows[$l->product_name][$c.'_revenue'] += (float) $l->revenue;
+            $rows[$l->product_name][$c.'_profit'] += (float) $l->profit;
+        }
+
+        // a returned piece comes off the product AND the channel its original sale belonged to (same rule as profitByChannel)
+        $returns = SalesReturn::whereNotNull('sale_item_id')->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)
+            ->with(['saleItem' => fn ($q) => $q->select('id', 'sale_id', 'product_name')])->get()
+            ->filter(fn (SalesReturn $r) => $r->saleItem !== null);
+        $types = $returns->isEmpty() ? collect() : Sale::withVoided()->whereIn('id', $returns->pluck('saleItem.sale_id')->unique())->pluck('sale_type', 'id');
+        foreach ($returns as $r) {
+            $name = $r->saleItem->product_name;
+            $rows[$name] ??= $row($name);
+            $c = ($types[$r->saleItem->sale_id] ?? null) === 'online' ? 'online' : 'offline';
+            $rows[$name][$c.'_qty'] -= (float) $r->qty;
+            $rows[$name][$c.'_revenue'] -= (float) $r->refund;
+            $rows[$name][$c.'_profit'] -= (float) $r->refund - (float) ($r->cost ?? 0);
+        }
+
+        $out = collect($rows)->map(function ($r) {
+            foreach (['qty', 'revenue', 'profit'] as $k) {
+                $r['total_'.$k] = round($r['offline_'.$k] + $r['online_'.$k], 2);
+                $r['offline_'.$k] = round($r['offline_'.$k], 2);
+                $r['online_'.$k] = round($r['online_'.$k], 2);
+            }
+
+            return $r;
+        })->sortByDesc('total_profit')->values()->take($limit)->all();
+
+        $disc = Sale::query()->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)
+            ->selectRaw("CASE WHEN sale_type = 'online' THEN 'online' ELSE 'offline' END as channel, SUM(discount) as d")->groupBy('channel')->pluck('d', 'channel');
+        $unallocated = ['offline' => round((float) ($disc['offline'] ?? 0), 2), 'online' => round((float) ($disc['online'] ?? 0), 2)];
+        $unallocated['total'] = round($unallocated['offline'] + $unallocated['online'], 2);
+
+        return ['rows' => $out, 'unallocated_discount' => $unallocated];
+    }
 }
