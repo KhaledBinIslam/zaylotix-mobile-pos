@@ -8,6 +8,43 @@
 let openDepth = 0;
 let weOwnHistoryEntry = false;
 
+/*
+ * The pop WE ask for must never reach Inertia.
+ *
+ * Closing the last open sheet from code (✕, a finished submit, the billing
+ * confirm sheet closing as checkout starts) pops our throwaway history entry
+ * with history.back(). Inertia's own global popstate handler cannot tell
+ * that from a real navigation: it "restores" the page with preserveState:
+ * false, which REMOUNTS it — wiping every local ref and re-running the
+ * cart-recovery restore. At checkout that is the worst possible moment: the
+ * bill is already on its way to the server, the remounted page restores the
+ * cart as if nothing happened ("কার্ট ফিরিয়ে আনা হয়েছে — আবার বিল করুন চাপুন"),
+ * the receipt never shows, and the cashier bills the same goods twice.
+ * Found by driving the real POS in a browser (QA 2026-11-26), and matching
+ * production: identical bills by one cashier 2-7 seconds apart.
+ *
+ * So: remember that WE initiated the back, and swallow exactly that one
+ * popstate in the capture phase, before Inertia's (bubble-phase) listener.
+ * A real back-button press carries no such flag and is handled as before
+ * (Inertia remount + cart snapshot restore, see Pos/Index.vue).
+ */
+let ownBackPending = false;
+let ownBackTimer = null;
+
+function swallowOwnPop(event) {
+    if (!ownBackPending) return;
+    ownBackPending = false;
+    clearTimeout(ownBackTimer);
+    event.stopImmediatePropagation();
+}
+
+/** Registers the guard on `target` (the window). Exported so a test can use a fake window. */
+export function installOwnPopGuard(target) {
+    target.addEventListener('popstate', swallowOwnPop, true);
+}
+
+if (typeof window !== 'undefined') installOwnPopGuard(window);
+
 export function sheetOpened() {
     openDepth++;
     if (openDepth === 1 && !weOwnHistoryEntry) {
@@ -31,6 +68,10 @@ export function sheetClosed(viaPopstate) {
     queueMicrotask(() => {
         if (openDepth === 0 && weOwnHistoryEntry && history.state?.zaylotixSheet) {
             weOwnHistoryEntry = false;
+            ownBackPending = true;
+            // if the browser never delivers the popstate, do not let the flag swallow a genuine back press later
+            clearTimeout(ownBackTimer);
+            ownBackTimer = setTimeout(() => { ownBackPending = false; }, 1500);
             history.back();
         }
     });

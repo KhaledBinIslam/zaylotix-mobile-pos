@@ -122,8 +122,12 @@ class OnlineOrderController extends Controller
 
         $rows = OnlineOrder::where('online_orders.created_at', '>=', $from)
             ->when($to, fn ($q) => $q->where('online_orders.created_at', '<=', $to))
-            ->selectRaw('status, count(*) as n, coalesce(sum((select sales.total from sales where sales.id = online_orders.sale_id)), 0) as total')
-            ->groupBy('status')
+            // a join, not a sub-select inside SUM(): a correlated column that is not in GROUP BY is accepted by
+            // MariaDB 11 but rejected (1055, ONLY_FULL_GROUP_BY) by MariaDB 10.4 and MySQL 8 — found by driving
+            // every page in a real browser against a local MariaDB 10.4, 2026-11-26. Same numbers either way.
+            ->leftJoin('sales', 'sales.id', '=', 'online_orders.sale_id')
+            ->selectRaw('online_orders.status as status, count(*) as n, coalesce(sum(sales.total), 0) as total')
+            ->groupBy('online_orders.status')
             ->get()
             ->keyBy('status');
         $count = fn (array $statuses) => (int) collect($statuses)->sum(fn ($s) => (int) ($rows->get($s)->n ?? 0));

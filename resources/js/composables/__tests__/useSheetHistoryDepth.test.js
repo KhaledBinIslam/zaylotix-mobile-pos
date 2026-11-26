@@ -1,96 +1,84 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Regression test for the "বিল হচ্ছে না" bug: a checkout success handler
-// closes the cart sheet and opens the receipt sheet in the same
-// synchronous tick. If that ever calls a real history.back() for the
-// close, it triggers a popstate Inertia's own global handler reacts to
-// with a full page remount — wiping the cart/receipt state that was just
-// set. This module is what decides whether back() actually fires; these
-// tests pin that decision down directly, without needing a real browser.
-async function flushMicrotasks() {
-    await Promise.resolve();
-    await Promise.resolve();
-}
+/*
+ * The billing confirm sheet closing as checkout starts used to pop our throwaway history entry with
+ * history.back(); Inertia treated that as a real navigation, remounted the POS and restored the already-billed
+ * cart. The pop WE ask for must not reach Inertia — and a genuine back press must still reach it.
+ */
+let fakeWindow;
+let fakeHistory;
+let inertiaSaw;
+let mod;
+
+beforeEach(async () => {
+    vi.useFakeTimers();
+    vi.resetModules();
+    fakeWindow = new EventTarget();
+    inertiaSaw = 0;
+    fakeHistory = {
+        state: { page: 'pos' },
+        pushState(s) { this.state = s; },
+        back() { setTimeout(() => fakeWindow.dispatchEvent(new Event('popstate')), 0); },
+    };
+    vi.stubGlobal('history', fakeHistory);
+    // as in the real app: app.js imports the guard BEFORE Inertia's router registers its own popstate listener
+    mod = await import('../useSheetHistoryDepth');
+    mod.installOwnPopGuard(fakeWindow);
+    fakeWindow.addEventListener('popstate', () => { inertiaSaw++; });
+});
+
+afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+});
 
 describe('useSheetHistoryDepth', () => {
-    let pushState;
-    let back;
-    let state;
+    it('the pop we ask for (closing the last sheet from code) never reaches Inertia', async () => {
+        mod.sheetOpened();
+        expect(fakeHistory.state.zaylotixSheet).toBe(true);
 
-    beforeEach(async () => {
-        vi.resetModules();
-        state = {};
-        pushState = vi.fn((data) => { state = data; });
-        back = vi.fn();
-        global.history = {
-            get state() { return state; },
-            pushState,
-            back,
-        };
-    });
-    afterEach(() => {
-        vi.restoreAllMocks();
+        mod.sheetClosed(false);            // e.g. the confirm sheet closing as checkout starts
+        await vi.advanceTimersByTimeAsync(10);
+
+        expect(inertiaSaw).toBe(0);
     });
 
-    it('pushes exactly one history entry when a sheet opens', async () => {
-        const { sheetOpened } = await import('../useSheetHistoryDepth.js');
-        sheetOpened();
+    it('a real back press still reaches Inertia (cart-snapshot recovery depends on that)', async () => {
+        mod.sheetOpened();
 
-        expect(pushState).toHaveBeenCalledTimes(1);
-        expect(state.zaylotixSheet).toBe(true);
+        fakeWindow.dispatchEvent(new Event('popstate')); // the user pressed back; no programmatic close
+
+        expect(inertiaSaw).toBe(1);
     });
 
-    it('closing and stopping there (no other sheet opens) calls history.back() once the microtask settles', async () => {
-        const { sheetOpened, sheetClosed } = await import('../useSheetHistoryDepth.js');
-        sheetOpened();
-        sheetClosed(false);
+    it('swallows only ONE pop — a later genuine back press is not eaten', async () => {
+        mod.sheetOpened();
+        mod.sheetClosed(false);
+        await vi.advanceTimersByTimeAsync(10);
 
-        expect(back).not.toHaveBeenCalled(); // not yet — deferred
-        await flushMicrotasks();
-        expect(back).toHaveBeenCalledTimes(1);
+        fakeWindow.dispatchEvent(new Event('popstate'));
+
+        expect(inertiaSaw).toBe(1);
     });
 
-    it('closing one sheet and opening another in the SAME tick never calls history.back() — the actual regression', async () => {
-        const { sheetOpened, sheetClosed } = await import('../useSheetHistoryDepth.js');
-        // cart sheet opens
-        sheetOpened();
-        pushState.mockClear();
+    it('if the browser never delivers our pop, the flag expires instead of eating a later back press', async () => {
+        fakeHistory.back = () => {};       // popstate never arrives
+        mod.sheetOpened();
+        mod.sheetClosed(false);
+        await vi.advanceTimersByTimeAsync(2000);
 
-        // checkout succeeds: cart sheet closes, receipt sheet opens — both
-        // synchronously, in the same tick, exactly like resetCartAfterCheckout()
-        // followed immediately by receiptOpen.value = true
-        sheetClosed(false);
-        sheetOpened();
+        fakeWindow.dispatchEvent(new Event('popstate'));
 
-        await flushMicrotasks();
+        expect(inertiaSaw).toBe(1);
+    });
+
+    it('closing one sheet while another is still open asks for no back at all', async () => {
+        const back = vi.spyOn(fakeHistory, 'back');
+        mod.sheetOpened();
+        mod.sheetOpened();                 // cart + confirm
+        mod.sheetClosed(false);
+        await vi.advanceTimersByTimeAsync(10);
 
         expect(back).not.toHaveBeenCalled();
-        // and no SECOND pushState either — the original entry is reused,
-        // not replaced
-        expect(pushState).not.toHaveBeenCalled();
-    });
-
-    it('a real hardware back press (viaPopstate) never double-pops — no further back() call once the browser already consumed the entry', async () => {
-        const { sheetOpened, sheetClosed } = await import('../useSheetHistoryDepth.js');
-        sheetOpened();
-        sheetClosed(true); // the browser's own back navigation already happened
-        await flushMicrotasks();
-
-        expect(back).not.toHaveBeenCalled();
-    });
-
-    it('nested opens (a second sheet opens while the first is still open) collapse into one history entry and one eventual back()', async () => {
-        const { sheetOpened, sheetClosed } = await import('../useSheetHistoryDepth.js');
-        sheetOpened(); // outer sheet (e.g. cart)
-        sheetOpened(); // inner sheet (e.g. weight-entry), opened on top
-        expect(pushState).toHaveBeenCalledTimes(1); // only one real entry for both
-
-        sheetClosed(false); // inner closes
-        await flushMicrotasks();
-        expect(back).not.toHaveBeenCalled(); // outer is still open — must not pop yet
-
-        sheetClosed(false); // outer closes
-        await flushMicrotasks();
-        expect(back).toHaveBeenCalledTimes(1);
     });
 });

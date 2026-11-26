@@ -29,6 +29,11 @@ class HandleInertiaRequests extends Middleware
 
         return [
             ...parent::share($request),
+            // The CSRF token CHANGES at login (session()->regenerate() issues a new one) but the open page's
+            // <meta csrf-token> keeps the pre-login value, so the first raw fetch() after logging in got a 419
+            // and the POS reloaded itself with the cart sheet popped open. The client copies this into the
+            // meta tag on every navigation (app.js), so it is always the session's current token.
+            'csrf_token' => fn () => csrf_token(),
             'auth' => [
                 'user' => $shopUser,
                 'admin' => $admin,

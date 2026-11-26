@@ -1,5 +1,9 @@
 import '../css/app.css';
 import './bootstrap';
+// Must come BEFORE Inertia's router exists: it registers a capture-phase popstate guard that swallows the pop
+// the sheets ask for themselves (see the file's own comment), and being first keeps it ahead of Inertia's own
+// popstate listener whatever the browser's ordering rule.
+import './composables/useSheetHistoryDepth';
 
 import { createInertiaApp, router } from '@inertiajs/vue3';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
@@ -115,6 +119,16 @@ function prefetchSellPage(initialProps) {
     // Storage independently of anything Inertia does afterward.
     router.prefetch(href, { method: 'get' });
 }
+
+// Keep <meta name="csrf-token"> equal to the session's CURRENT token. Login (and a password change, an
+// impersonation switch…) issues a new token, but the page the user is looking at is never reloaded, so every
+// raw fetch() that reads the meta tag sent the OLD one: a 419 on the first action after login, which the POS
+// "recovered" by reloading itself and popping the cart sheet open. The server sends the live token with every
+// Inertia response (HandleInertiaRequests::share → csrf_token).
+router.on('navigate', (event) => {
+    const token = event.detail?.page?.props?.csrf_token;
+    if (token) document.querySelector('meta[name="csrf-token"]')?.setAttribute('content', token);
+});
 
 createInertiaApp({
     title: (title) => `${title} - ${appName}`,

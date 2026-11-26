@@ -484,16 +484,16 @@ function sendMemoWA() {
                     <div style="font-weight:700">{{ t('returns.items') }}</div>
                     <button class="btn ghost" style="width:auto;padding:4px 12px;font-size:13px" @click="openScanner">📷 স্ক্যান</button>
                 </div>
-                <div v-for="item in selectedSale.items" :key="item.id" class="row" style="width:100%">
-                    <div class="mid" style="flex:1">
+                <div v-for="item in selectedSale.items" :key="item.id" class="row" style="width:100%;flex-wrap:wrap">
+                    <div class="mid" style="flex:1 1 100%;min-width:0">
                         <b>{{ item.product_name }}</b><span v-if="item.variant_label">{{ item.variant_label }}</span>
                         <span>{{ money(item.price) }} × {{ qty(item.qty) }} • {{ t('returns.returnableQty') }}: {{ qty(item.returnable_qty) }}</span>
                     </div>
                     <template v-if="item.returnable_qty > 0 && lineState[item.id]">
-                        <div style="display:flex;gap:8px;align-items:center">
+                        <div style="display:flex;gap:8px;align-items:center;flex:1 1 100%">
                             <input type="checkbox" v-model="lineState[item.id].checked" @change="lineState[item.id].checked ? (Number(lineState[item.id].qty) <= 0 && (lineState[item.id].qty = Math.min(1, item.returnable_qty))) : (lineState[item.id].qty = 0)">
                             <input type="number" v-model="lineState[item.id].qty" @input="Number(lineState[item.id].qty) > 0 && (lineState[item.id].checked = true)" :max="item.returnable_qty" min="0" step="any" style="width:70px">
-                            <select v-model="lineState[item.id].condition" style="width:150px">
+                            <select v-model="lineState[item.id].condition" style="flex:1;min-width:0">
                                 <option value="resalable">{{ t('returns.conditionGood') }}</option>
                                 <option value="damaged">{{ t('returns.conditionDamaged') }}</option>
                                 <option value="lost">{{ t('returns.conditionLost') }}</option>

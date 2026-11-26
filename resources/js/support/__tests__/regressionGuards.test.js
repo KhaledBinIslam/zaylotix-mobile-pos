@@ -94,3 +94,17 @@ describe('Bluetooth receipt print never draws the receipt after the tap', () => 
         },
     );
 });
+
+describe('closing a sheet from code never remounts the page (billed cart coming back)', () => {
+    it('app.js imports the popstate guard before Inertia, and the guard swallows only our own pop', () => {
+        const app = files.find((x) => x.rel === 'app.js').src;
+        const guardAt = app.indexOf("import './composables/useSheetHistoryDepth'");
+        const inertiaAt = app.indexOf("from '@inertiajs/vue3'");
+        expect(guardAt).toBeGreaterThan(-1);
+        expect(guardAt).toBeLessThan(inertiaAt);
+
+        const dep = files.find((x) => x.rel === 'composables/useSheetHistoryDepth.js').src;
+        expect(dep).toMatch(/addEventListener\('popstate', swallowOwnPop, true\)/);
+        expect(dep).toMatch(/ownBackPending = true;[\s\S]*history\.back\(\)/);
+    });
+});
