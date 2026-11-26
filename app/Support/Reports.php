@@ -717,13 +717,7 @@ class Reports
      */
     public static function branchProductProfitReport(array $shopIds, string $from, string $to): array
     {
-        $rows = SaleItem::withoutGlobalScopes()
-            ->whereIn('shop_id', $shopIds)
-            ->whereHas('sale', fn ($q) => $q->withoutGlobalScopes()->whereDate('date', '>=', $from)->whereDate('date', '<=', $to))
-            ->selectRaw('shop_id, product_name, SUM(qty) as qty_sold, SUM(qty * price - discount) as revenue, SUM((price - cost) * qty - discount) as profit')
-            ->groupBy('shop_id', 'product_name')
-            ->get();
-
+        $rows = self::branchSaleLines($shopIds, $from, $to, false);
         $shopNames = Shop::withoutGlobalScopes()->whereIn('id', $shopIds)->pluck('name', 'id');
 
         return $rows->map(fn ($r) => [
@@ -737,6 +731,62 @@ class Reports
     }
 
     /**
+     * What the cross-branch product/variant reports are built from: the sale lines of every shop in $shopIds
+     * in range, counted the way a single shop's own reports count them (productStats()).
+     *
+     * Found by driving the real app against a two-branch Baby Park, 2026-11-26: these two reports use
+     * withoutGlobalScopes() to reach across shops, which also switched off Sale's 'active' scope — so a
+     * VOIDED sale (and one flagged counted_in_reports = false) stayed in the branch's revenue and profit,
+     * and a refunded piece never came out. The scope's two conditions are restored below, and invoice-linked
+     * returns are netted against the SELLING branch (the line's own shop_id) — the product/size is what is
+     * being compared, so a piece sold at branch 2 and taken back at the main shop reduces branch 2's line.
+     * (The cash for that refund still leaves the till it was paid from; see rangeStats().)
+     *
+     * @return \Illuminate\Support\Collection<int, object{shop_id:int, product_name:string, variant_label:?string, qty_sold:float, revenue:float, profit:float}>
+     */
+    private static function branchSaleLines(array $shopIds, string $from, string $to, bool $byVariant): \Illuminate\Support\Collection
+    {
+        $query = SaleItem::withoutGlobalScopes()
+            ->whereIn('shop_id', $shopIds)
+            ->whereHas('sale', fn ($q) => $q->withoutGlobalScopes()
+                ->whereNull('voided_at')->where('counted_in_reports', true)
+                ->whereDate('date', '>=', $from)->whereDate('date', '<=', $to));
+
+        $cols = $byVariant ? ['shop_id', 'product_name', 'variant_label'] : ['shop_id', 'product_name'];
+        $key = fn ($shopId, $name, $label) => $shopId.'|'.$name.($byVariant ? '|'.$label : '');
+
+        $rows = $query->whereNotNull($byVariant ? 'product_variant_id' : 'id')
+            ->selectRaw(implode(', ', $cols).', SUM(qty) as qty_sold, SUM(qty * price - discount) as revenue, SUM((price - cost) * qty - discount) as profit')
+            ->groupBy(...$cols)
+            ->get()
+            ->keyBy(fn ($r) => $key($r->shop_id, $r->product_name, $r->variant_label ?? null));
+
+        $returns = SalesReturn::withoutGlobalScopes()
+            ->whereNotNull('sale_item_id')
+            ->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)
+            ->with(['saleItem' => fn ($q) => $q->withoutGlobalScopes()->select('id', 'shop_id', 'product_name', 'variant_label', 'product_variant_id')])
+            ->get()
+            ->filter(fn (SalesReturn $r) => $r->saleItem !== null
+                && in_array((int) $r->saleItem->shop_id, $shopIds, true)
+                && (! $byVariant || $r->saleItem->product_variant_id !== null))
+            ->groupBy(fn (SalesReturn $r) => $key($r->saleItem->shop_id, $r->saleItem->product_name, $r->saleItem->variant_label));
+
+        foreach ($returns as $k => $group) {
+            $first = $group->first()->saleItem;
+            if (! $rows->has($k)) {
+                // the sale itself fell outside the range (returned today against an older bill) — still shows, negative
+                $rows->put($k, (object) ['shop_id' => $first->shop_id, 'product_name' => $first->product_name, 'variant_label' => $first->variant_label, 'qty_sold' => 0, 'revenue' => 0, 'profit' => 0]);
+            }
+            $row = $rows->get($k);
+            $row->qty_sold = (float) $row->qty_sold - (float) $group->sum('qty');
+            $row->revenue = round((float) $row->revenue - (float) $group->sum('refund'), 2);
+            $row->profit = round((float) $row->profit - (float) $group->sum(fn (SalesReturn $r) => $r->cost === null ? (float) $r->refund : (float) $r->refund - (float) $r->cost), 2);
+        }
+
+        return $rows->values();
+    }
+
+    /**
      * Variant counterpart of branchProductProfitReport() — see
      * docs/BABY_PARK_PLAN.md. A shared-stock-pool chain's variant stock is
      * one combined number already (Product/ProductVariant::applyStockDelta()),
@@ -747,13 +797,7 @@ class Reports
      */
     public static function branchVariantProfitReport(array $shopIds, string $from, string $to): array
     {
-        $rows = SaleItem::withoutGlobalScopes()
-            ->whereIn('shop_id', $shopIds)
-            ->whereNotNull('product_variant_id')
-            ->whereHas('sale', fn ($q) => $q->withoutGlobalScopes()->whereDate('date', '>=', $from)->whereDate('date', '<=', $to))
-            ->selectRaw('shop_id, product_name, variant_label, SUM(qty) as qty_sold, SUM(qty * price - discount) as revenue, SUM((price - cost) * qty - discount) as profit')
-            ->groupBy('shop_id', 'product_name', 'variant_label')
-            ->get();
+        $rows = self::branchSaleLines($shopIds, $from, $to, true);
 
         $shopNames = Shop::withoutGlobalScopes()->whereIn('id', $shopIds)->pluck('name', 'id');
 
