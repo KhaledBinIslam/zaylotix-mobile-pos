@@ -1080,7 +1080,9 @@ class Reports
         }
 
         $returns = SalesReturn::whereDate('date', '>=', $from)->whereDate('date', '<=', $to)->get(['id', 'sale_id', 'refund', 'cost']);
-        $types = $returns->isEmpty() ? collect() : Sale::withVoided()->whereIn('id', $returns->pluck('sale_id')->filter()->unique())->pluck('sale_type', 'id');
+        // withoutGlobalScopes(): the original sale may sit at the SIBLING branch (a return taken at the other counter) —
+        // the tenant scope would hide it and the return would be filed under the wrong channel. The ids come from this shop's own return rows.
+        $types = $returns->isEmpty() ? collect() : Sale::withoutGlobalScopes()->whereIn('id', $returns->pluck('sale_id')->filter()->unique())->pluck('sale_type', 'id');
         foreach ($returns as $r) {
             $channel = ($r->sale_id && ($types[$r->sale_id] ?? null) === 'online') ? 'online' : 'offline';
             $out[$channel]['returns'] += (float) $r->refund;
@@ -1141,9 +1143,11 @@ class Reports
 
         // a returned piece comes off the product AND the channel its original sale belonged to (same rule as profitByChannel)
         $returns = SalesReturn::whereNotNull('sale_item_id')->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)
-            ->with(['saleItem' => fn ($q) => $q->select('id', 'sale_id', 'product_name')])->get()
+            ->with(['saleItem' => fn ($q) => $q->withoutGlobalScopes()->select('id', 'sale_id', 'product_name')])->get()
             ->filter(fn (SalesReturn $r) => $r->saleItem !== null);
-        $types = $returns->isEmpty() ? collect() : Sale::withVoided()->whereIn('id', $returns->pluck('saleItem.sale_id')->unique())->pluck('sale_type', 'id');
+        // a piece sold at the sibling branch and taken back HERE still comes off this shop's product line — the profit
+        // total already subtracts that refund, so the product table must too (Baby Park live: a ৳350 gap at shop 81)
+        $types = $returns->isEmpty() ? collect() : Sale::withoutGlobalScopes()->whereIn('id', $returns->pluck('saleItem.sale_id')->unique())->pluck('sale_type', 'id');
         foreach ($returns as $r) {
             $name = $r->saleItem->product_name;
             $rows[$name] ??= $row($name);

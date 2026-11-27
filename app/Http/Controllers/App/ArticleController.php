@@ -529,7 +529,8 @@ class ArticleController extends Controller
         // typed and never reached. Both come from the same place the entry
         // form reads, so this page can never disagree with it.
         $usedByCode = [];
-        $rows = $categories->map(function ($category) use ($shop, &$usedByCode) {
+        $counters = ArticleSerial::counters($shop); // one query for every category's counter
+        $rows = $categories->map(function ($category) use ($shop, &$usedByCode, $counters) {
             $code = strtoupper(trim((string) $category->code));
             // categories often share a code — look each code up once for the whole page
             $used = $code === '' ? ['live' => [], 'freed' => [], 'everLowest' => null, 'ever' => []] : ($usedByCode[$code] ??= ArticleSerial::serialsUsed($shop, $code));
@@ -550,7 +551,7 @@ class ArticleController extends Controller
                 'article_count' => count($inBand),
                 'lowest' => $inBand === [] ? null : min($inBand),
                 'highest' => $inBand === [] ? null : max($inBand),
-                'next_free' => $code === '' ? null : ArticleSerial::nextFree($shop, $code, $category->serial_start, $used),
+                'next_free' => $code === '' ? null : ArticleSerial::nextFree($shop, $code, $category->serial_start, $used, $counters),
             ];
         })->values()->all();
 

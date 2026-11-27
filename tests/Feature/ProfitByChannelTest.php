@@ -227,6 +227,61 @@ class ProfitByChannelTest extends TestCase
         $this->assertEqualsWithDelta(0, $page->json('props.split.online.profit'), 0.01);
     }
 
+    /**
+     * Baby Park live (2026-11-27): a pair sold at the sibling branch and taken back at THIS counter. The profit total
+     * subtracted the refund, but the product table could not see the sibling's sale line (tenant scope), so the table
+     * stayed ৳350 high. Both must agree, and the return must be filed under the channel of its original sale.
+     */
+    public function test_a_return_taken_here_for_a_sale_made_at_the_sibling_branch_is_counted_everywhere(): void
+    {
+        [$main, $mainOwner] = $this->createShopWithOwner();
+        [$branch] = $this->createShopWithOwner(['parent_shop_id' => $main->id]);
+        $this->grantFeature($main, 'accounts');
+        $today = now()->toDateString();
+
+        $sale = Sale::withoutGlobalScopes()->create([
+            'shop_id' => $branch->id, 'invoice_no' => 'INV-X1', 'date' => $today, 'time' => now()->toTimeString(),
+            'subtotal' => 2000, 'total' => 2000, 'profit' => 800, 'payment_mode' => 'cash',
+        ]);
+        $item = SaleItem::withoutGlobalScopes()->create([
+            'shop_id' => $branch->id, 'sale_id' => $sale->id, 'product_name' => 'Pair', 'qty' => 2, 'price' => 1000, 'discount' => 0, 'cost' => 600,
+        ]);
+        // the customer brings ONE pair back to the MAIN counter — the return row belongs to the main shop
+        \App\Models\SalesReturn::withoutGlobalScopes()->create([
+            'shop_id' => $main->id, 'product_id' => $this->shoe->id, 'sale_id' => $sale->id, 'sale_item_id' => $item->id, 'qty' => 1, 'refund' => 1000, 'cost' => 600,
+            'date' => $today, 'type' => 'refund', 'condition' => 'resalable',
+        ]);
+        // and the main shop sold one pair of its own
+        $own = Sale::withoutGlobalScopes()->create([
+            'shop_id' => $main->id, 'invoice_no' => 'INV-X2', 'date' => $today, 'time' => now()->toTimeString(),
+            'subtotal' => 1000, 'total' => 1000, 'profit' => 400, 'payment_mode' => 'cash',
+        ]);
+        SaleItem::withoutGlobalScopes()->create([
+            'shop_id' => $main->id, 'sale_id' => $own->id, 'product_name' => 'Pair', 'qty' => 1, 'price' => 1000, 'discount' => 0, 'cost' => 600,
+        ]);
+
+        Tenancy::clear();
+        Tenancy::forgetShopCache();
+        $this->actingAs($mainOwner, 'web');
+
+        $split = Reports::profitByChannel($today, $today);
+        $products = Reports::productProfitByChannel($today, $today);
+        $pl = Reports::rangeStats($today, $today);
+
+        // main shop: sold 1 pair (profit 400), handed back a pair from the sibling's sale (refund 1000, cost 600 -> -400)
+        $this->assertEqualsWithDelta(0, $split['total']['profit'], 0.01);
+        $this->assertEqualsWithDelta($pl['grossProfit'], $split['total']['profit'], 0.01);
+        $row = collect($products['rows'])->firstWhere('product_name', 'Pair');
+        $this->assertEqualsWithDelta(0, $row['offline_qty'], 0.01, '1 sold here, 1 taken back here');
+        $this->assertEqualsWithDelta(0, $row['total_profit'], 0.01, 'the sibling\'s line still comes off this shop\'s product row');
+        $this->assertEqualsWithDelta(
+            $split['total']['profit'],
+            collect($products['rows'])->sum('total_profit') - $products['unallocated_discount']['total'],
+            0.01,
+            'sum of the products minus whole-bill discounts equals the total profit',
+        );
+    }
+
     public function test_another_shops_sales_never_leak_into_the_numbers(): void
     {
         [$other, $otherOwner] = $this->createShopWithOwner();

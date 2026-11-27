@@ -324,6 +324,18 @@ class ReturnController extends Controller
         ]);
     }
 
+    /** "Baby Park — শাখা ২": the name alone cannot tell two branches of one business apart. */
+    private function shopLabel(?Shop $shop): string
+    {
+        return $shop ? trim($shop->name.($shop->area ? ' — '.$shop->area : '')) : '—';
+    }
+
+    /** The one sentence every screen shows when a bill belongs to another branch's counter. */
+    private function crossBranchMessage(string $originName): string
+    {
+        return "এই বিলটি «{$originName}»-এ বিক্রি হয়েছে — ফেরত/এক্সচেঞ্জ ওই দোকান থেকেই করতে হবে (মালিক হলে উপরের দোকান বদলে ওই দোকানে গিয়ে করুন)।";
+    }
+
     private function presentSale(Sale $sale, Shop $shop): array
     {
         $ageDays = (int) \Carbon\Carbon::parse($sale->date)->diffInDays(now());
@@ -346,10 +358,13 @@ class ReturnController extends Controller
             'payment_mode' => $sale->payment_mode,
             // so the cashier can see at a glance this bill was sold at a
             // sibling branch, not this one, before processing the return
-            'origin_shop_name' => $isCrossBranch ? Shop::withoutGlobalScopes()->find($sale->shop_id)?->name : null,
+            'origin_shop_name' => $isCrossBranch ? $this->shopLabel(Shop::withoutGlobalScopes()->find($sale->shop_id)) : null,
+            // a bill is returned/exchanged at the counter that sold it — the refund leaves THAT till and the profit stays in THAT shop's books
+            'can_process_here' => ! $isCrossBranch,
+            'blocked_message' => $isCrossBranch ? $this->crossBranchMessage($this->shopLabel(Shop::withoutGlobalScopes()->find($sale->shop_id))) : null,
             // the SALE's own shop, every time — "kon branch-e sell hoyeche"
             // must read the same whether it was this branch or the sibling
-            'shop_name' => $isCrossBranch ? Shop::withoutGlobalScopes()->find($sale->shop_id)?->name : $shop->name,
+            'shop_name' => $isCrossBranch ? $this->shopLabel(Shop::withoutGlobalScopes()->find($sale->shop_id)) : $this->shopLabel($shop),
             'customer' => $sale->customer ? ['id' => $sale->customer->id, 'name' => $sale->customer->name, 'phone' => $sale->customer->phone] : null,
             'within_window' => $withinWindow,
             'window_days' => $shop->return_window_days,
@@ -453,6 +468,13 @@ class ReturnController extends Controller
             // (found by the 2026-11-23 pool-correctness audit)
             abort_if($sale->isVoided(), 422, 'এই বিলটি বাতিল করা হয়েছে, ফেরত নেওয়া যাবে না।');
             $isCrossBranch = $sale->shop_id !== $shopId;
+            // Khaled, 2026-11-27: "j dokan theke sell hoiche ei dokan theke exchange korte hobe" — a bill is taken back at
+            // the counter that sold it. (This used to let a sibling branch take it, and the refund then left the wrong
+            // till and the loss landed in the wrong branch's books.) The lookup still shows the bill, so the cashier
+            // can see where to send the customer.
+            if ($isCrossBranch) {
+                abort(422, $this->crossBranchMessage($this->shopLabel(Shop::withoutGlobalScopes()->find($sale->shop_id))));
+            }
 
             $ageDays = (int) \Carbon\Carbon::parse($sale->date)->diffInDays(now());
             $withinWindow = $lockedShop->return_window_days === null || $ageDays <= $lockedShop->return_window_days;

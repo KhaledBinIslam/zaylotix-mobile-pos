@@ -16,13 +16,11 @@ use Tests\Concerns\CreatesShops;
 use Tests\TestCase;
 
 /**
- * Branch phase 2: a branch can take back a sale made at a sibling branch —
- * stock goes back into the RECEIVING branch's own inventory, and cash/due
- * settles from the RECEIVING branch's own books, never the sale's origin
- * shop (Khaled's explicit spec). Existing same-shop return/exchange
- * behavior (ReturnExchangeTest, all passing unchanged) is the far more
- * common path and stays byte-for-byte identical — this file only covers
- * the genuinely cross-branch case.
+ * A bill is returned or exchanged at the counter that SOLD it (Khaled, 2026-11-27: "j dokan theke sell hoiche ei
+ * dokan theke exchange korte hobe"). A sibling branch can still FIND the bill, so the cashier can see where to send
+ * the customer, but cannot process it: the refund would leave the wrong till and the loss would land in the wrong
+ * branch's books. (Branch phase 2 used to allow it; those tests were replaced by these.) Same-shop return/exchange
+ * (ReturnExchangeTest) is unchanged.
  */
 class BranchCrossReturnTest extends TestCase
 {
@@ -109,152 +107,6 @@ class BranchCrossReturnTest extends TestCase
         $this->assertSame('D-L-10041-RXXZ-BLACK-42', $response->json('sales.0.items.0.barcode'));
     }
 
-    public function test_refund_processed_at_a_sibling_branch_restocks_and_pays_from_that_branch_not_the_origin(): void
-    {
-        [$main] = $this->createShopWithOwner();
-        $this->grantFeature($main, 'returns');
-        $branchA = $this->createBranch($main, ['cash_balance' => 1000]);
-        $branchB = $this->createBranch($main, ['cash_balance' => 500]);
-        $productA = Product::create(['shop_id' => $branchA->id, 'name' => 'Shirt', 'cost' => 50, 'price' => 100, 'stock' => 3, 'barcode' => 'SHIRT-1']);
-        $sale = $this->makeSale($branchA->id);
-        $item = $this->makeItem($sale, $productA, ['qty' => 1, 'price' => 100, 'cost' => 50]);
-        $branchBOwner = User::withoutGlobalScopes()->where('shop_id', $branchB->id)->first();
-
-        $response = $this->actingAs($branchBOwner, 'web')->postJson('/app/returns/process', [
-            'sale_id' => $sale->id,
-            'action' => 'refund',
-            'lines' => [['sale_item_id' => $item->id, 'qty' => 1, 'condition' => 'resalable']],
-        ]);
-
-        $response->assertOk();
-        $this->assertEquals(100.0, $response->json('total_refund'));
-
-        // branch A (the origin) untouched
-        $this->assertEquals(3, (float) $productA->fresh()->stock);
-        $this->assertEquals(1000.0, (float) $branchA->fresh()->cash_balance);
-
-        // branch B (the receiver) got the stock back and paid the refund
-        $branchBProduct = Product::withoutGlobalScopes()->where('shop_id', $branchB->id)->where('barcode', 'SHIRT-1')->first();
-        $this->assertNotNull($branchBProduct);
-        $this->assertEquals(1, (float) $branchBProduct->stock); // auto-created at 0, +1
-        $this->assertEquals(400.0, (float) $branchB->fresh()->cash_balance); // 500 - 100
-    }
-
-    public function test_refund_at_a_sibling_branch_reuses_an_existing_matching_product_not_a_duplicate(): void
-    {
-        [$main] = $this->createShopWithOwner();
-        $this->grantFeature($main, 'returns');
-        $branchA = $this->createBranch($main, ['cash_balance' => 1000]);
-        $branchB = $this->createBranch($main, ['cash_balance' => 500]);
-        $productA = Product::create(['shop_id' => $branchA->id, 'name' => 'Shirt', 'cost' => 50, 'price' => 100, 'stock' => 3, 'barcode' => 'SHIRT-1']);
-        $productB = Product::create(['shop_id' => $branchB->id, 'name' => 'Shirt', 'cost' => 50, 'price' => 100, 'stock' => 5, 'barcode' => 'SHIRT-1']);
-        $sale = $this->makeSale($branchA->id);
-        $item = $this->makeItem($sale, $productA, ['qty' => 1, 'price' => 100, 'cost' => 50]);
-        $branchBOwner = User::withoutGlobalScopes()->where('shop_id', $branchB->id)->first();
-
-        $this->actingAs($branchBOwner, 'web')->postJson('/app/returns/process', [
-            'sale_id' => $sale->id,
-            'action' => 'refund',
-            'lines' => [['sale_item_id' => $item->id, 'qty' => 1, 'condition' => 'resalable']],
-        ])->assertOk();
-
-        $this->assertEquals(6, (float) $productB->fresh()->stock); // 5 + 1, same row
-        $this->assertSame(1, Product::withoutGlobalScopes()->where('shop_id', $branchB->id)->where('barcode', 'SHIRT-1')->count());
-    }
-
-    public function test_variant_refund_at_a_sibling_branch_restocks_the_matching_variant(): void
-    {
-        [$main] = $this->createShopWithOwner();
-        $this->grantFeature($main, 'returns');
-        $this->grantFeature($main, 'product_variants');
-        $branchA = $this->createBranch($main, ['cash_balance' => 1000]);
-        $branchB = $this->createBranch($main, ['cash_balance' => 500]);
-        $this->grantFeature($branchA, 'product_variants');
-        $this->grantFeature($branchB, 'product_variants');
-        $productA = Product::create(['shop_id' => $branchA->id, 'name' => 'Shoe', 'cost' => 1000, 'price' => 2000, 'stock' => 10]);
-        $variantA = ProductVariant::create(['shop_id' => $branchA->id, 'product_id' => $productA->id, 'size' => '42', 'color' => 'Black', 'stock' => 10, 'barcode' => 'SHOE-42-BLK']);
-        $sale = $this->makeSale($branchA->id, ['subtotal' => 2000, 'total' => 2000]);
-        $item = $this->makeItem($sale, $productA, ['qty' => 1, 'price' => 2000, 'cost' => 1000, 'product_variant_id' => $variantA->id, 'variant_label' => '42, Black']);
-        $branchBOwner = User::withoutGlobalScopes()->where('shop_id', $branchB->id)->first();
-
-        $this->actingAs($branchBOwner, 'web')->postJson('/app/returns/process', [
-            'sale_id' => $sale->id,
-            'action' => 'refund',
-            'lines' => [['sale_item_id' => $item->id, 'qty' => 1, 'condition' => 'resalable']],
-        ])->assertOk();
-
-        $branchBProduct = Product::withoutGlobalScopes()->where('shop_id', $branchB->id)->where('name', 'Shoe')->first();
-        $this->assertNotNull($branchBProduct);
-        $branchBVariant = ProductVariant::withoutGlobalScopes()->where('shop_id', $branchB->id)->where('product_id', $branchBProduct->id)->first();
-        $this->assertNotNull($branchBVariant);
-        $this->assertSame('SHOE-42-BLK', $branchBVariant->barcode);
-        $this->assertEquals(1, (float) $branchBVariant->stock);
-        $this->assertEquals(1, (float) $branchBProduct->stock);
-
-        // origin branch's own variant/product untouched
-        $this->assertEquals(10, (float) $variantA->fresh()->stock);
-    }
-
-    public function test_a_prior_return_at_one_branch_counts_against_returnable_qty_when_returning_more_at_another(): void
-    {
-        [$main] = $this->createShopWithOwner();
-        $this->grantFeature($main, 'returns');
-        $branchA = $this->createBranch($main, ['cash_balance' => 1000]);
-        $branchB = $this->createBranch($main, ['cash_balance' => 500]);
-        $productA = Product::create(['shop_id' => $branchA->id, 'name' => 'Shirt', 'cost' => 50, 'price' => 100, 'stock' => 3]);
-        $sale = $this->makeSale($branchA->id, ['subtotal' => 300, 'total' => 300]);
-        $item = $this->makeItem($sale, $productA, ['qty' => 3, 'price' => 100, 'cost' => 50]);
-        $branchAOwner = User::withoutGlobalScopes()->where('shop_id', $branchA->id)->first();
-        $branchBOwner = User::withoutGlobalScopes()->where('shop_id', $branchB->id)->first();
-
-        // return 2 of 3 at branch A itself
-        $this->actingAs($branchAOwner, 'web')->postJson('/app/returns/process', [
-            'sale_id' => $sale->id, 'action' => 'refund',
-            'lines' => [['sale_item_id' => $item->id, 'qty' => 2, 'condition' => 'resalable']],
-        ])->assertOk();
-
-        // trying to return 2 more at branch B must fail — only 1 left returnable
-        $this->actingAs($branchBOwner, 'web')->postJson('/app/returns/process', [
-            'sale_id' => $sale->id, 'action' => 'refund',
-            'lines' => [['sale_item_id' => $item->id, 'qty' => 2, 'condition' => 'resalable']],
-        ])->assertStatus(422);
-
-        // returning the remaining 1 at branch B succeeds
-        $this->actingAs($branchBOwner, 'web')->postJson('/app/returns/process', [
-            'sale_id' => $sale->id, 'action' => 'refund',
-            'lines' => [['sale_item_id' => $item->id, 'qty' => 1, 'condition' => 'resalable']],
-        ])->assertOk();
-    }
-
-    public function test_exchange_at_a_sibling_branch_creates_the_new_sale_at_the_receiving_branch(): void
-    {
-        [$main] = $this->createShopWithOwner();
-        $this->grantFeature($main, 'returns');
-        $branchA = $this->createBranch($main, ['cash_balance' => 1000]);
-        $branchB = $this->createBranch($main, ['cash_balance' => 500]);
-        $oldProduct = Product::create(['shop_id' => $branchA->id, 'name' => 'Shirt M', 'cost' => 50, 'price' => 100, 'stock' => 3]);
-        $newProduct = Product::create(['shop_id' => $branchB->id, 'name' => 'Shirt L', 'cost' => 60, 'price' => 150, 'stock' => 5]);
-        $sale = $this->makeSale($branchA->id);
-        $item = $this->makeItem($sale, $oldProduct, ['qty' => 1, 'price' => 100, 'cost' => 50]);
-        $branchBOwner = User::withoutGlobalScopes()->where('shop_id', $branchB->id)->first();
-
-        $response = $this->actingAs($branchBOwner, 'web')->postJson('/app/returns/process', [
-            'sale_id' => $sale->id,
-            'action' => 'exchange',
-            'lines' => [['sale_item_id' => $item->id, 'qty' => 1, 'condition' => 'resalable']],
-            'new_items' => [['product_id' => $newProduct->id, 'qty' => 1]],
-            'payments' => [['method' => 'cash', 'amount' => 50]],
-        ]);
-
-        $response->assertOk();
-        $exchangeSale = Sale::withoutGlobalScopes()->where('sale_type', 'exchange')->first();
-        $this->assertNotNull($exchangeSale);
-        $this->assertSame($branchB->id, $exchangeSale->shop_id); // created at the RECEIVING branch
-        $this->assertEquals(4, (float) $newProduct->fresh()->stock); // 5 - 1, taken from branch B's own stock
-        $this->assertEquals(550.0, (float) $branchB->fresh()->cash_balance); // 500 + 50 collected
-        $this->assertEquals(1000.0, (float) $branchA->fresh()->cash_balance); // origin untouched
-    }
-
     public function test_a_batch_tracked_items_sale_cannot_be_returned_cross_branch_yet(): void
     {
         [$main] = $this->createShopWithOwner();
@@ -280,29 +132,6 @@ class BranchCrossReturnTest extends TestCase
         $this->assertEquals(100, (float) $productA->fresh()->stock); // untouched
     }
 
-    public function test_damaged_condition_cross_branch_logs_against_the_receiving_branchs_own_product(): void
-    {
-        [$main] = $this->createShopWithOwner();
-        $this->grantFeature($main, 'returns');
-        $branchA = $this->createBranch($main, ['cash_balance' => 1000]);
-        $branchB = $this->createBranch($main, ['cash_balance' => 500]);
-        $productA = Product::create(['shop_id' => $branchA->id, 'name' => 'Shirt', 'cost' => 50, 'price' => 100, 'stock' => 3]);
-        $sale = $this->makeSale($branchA->id);
-        $item = $this->makeItem($sale, $productA, ['qty' => 1, 'price' => 100, 'cost' => 50]);
-        $branchBOwner = User::withoutGlobalScopes()->where('shop_id', $branchB->id)->first();
-
-        $this->actingAs($branchBOwner, 'web')->postJson('/app/returns/process', [
-            'sale_id' => $sale->id, 'action' => 'refund',
-            'lines' => [['sale_item_id' => $item->id, 'qty' => 1, 'condition' => 'damaged']],
-        ])->assertOk();
-
-        $this->assertEquals(3, (float) $productA->fresh()->stock); // damaged — origin untouched regardless
-        $damage = Damage::withoutGlobalScopes()->where('shop_id', $branchB->id)->first();
-        $this->assertNotNull($damage);
-        $branchBProduct = Product::withoutGlobalScopes()->where('shop_id', $branchB->id)->where('name', 'Shirt')->first();
-        $this->assertSame($branchBProduct->id, $damage->product_id);
-    }
-
     /** Tenant isolation must still hold — a genuinely unrelated shop (not a sibling) can't find or touch this sale at all. */
     public function test_an_unrelated_shop_cannot_find_or_return_against_another_businesss_sale(): void
     {
@@ -325,5 +154,117 @@ class BranchCrossReturnTest extends TestCase
         ]);
         $process->assertStatus(404);
         $this->assertEquals(500.0, (float) $unrelated->fresh()->cash_balance); // untouched
+    }
+
+    /** Two branches of one business, a bill sold at A, and the owners of both. */
+    private function aBillAtBranchA(array $stock = ['stock' => 3]): array
+    {
+        [$main] = $this->createShopWithOwner();
+        $this->grantFeature($main, 'returns');
+        $branchA = $this->createBranch($main, ['cash_balance' => 1000, 'name' => 'Baby Park', 'area' => 'শাখা ২']);
+        $branchB = $this->createBranch($main, ['cash_balance' => 500, 'name' => 'Baby Park']);
+        $productA = Product::create(array_merge(['shop_id' => $branchA->id, 'name' => 'Shirt', 'cost' => 50, 'price' => 100, 'barcode' => 'SHIRT-1'], $stock));
+        $sale = $this->makeSale($branchA->id, ['subtotal' => 300, 'total' => 300]);
+        $item = $this->makeItem($sale, $productA, ['qty' => 3, 'price' => 100, 'cost' => 50]);
+        $ownerA = User::withoutGlobalScopes()->where('shop_id', $branchA->id)->first();
+        $ownerB = User::withoutGlobalScopes()->where('shop_id', $branchB->id)->first();
+
+        return [$branchA, $branchB, $productA, $sale, $item, $ownerA, $ownerB];
+    }
+
+    private function nothingMovedAt(Shop $a, Shop $b, Product $p, float $stockA = 3): void
+    {
+        $this->assertEquals($stockA, (float) $p->fresh()->stock, 'no stock moved');
+        $this->assertEquals(1000.0, (float) $a->fresh()->cash_balance, 'the selling till is untouched');
+        $this->assertEquals(500.0, (float) $b->fresh()->cash_balance, 'the other till is untouched');
+        $this->assertSame(0, SalesReturn::withoutGlobalScopes()->count(), 'no return was recorded');
+        $this->assertSame(0, Sale::withoutGlobalScopes()->where('sale_type', 'exchange')->count(), 'no exchange bill was made');
+    }
+
+    public function test_a_refund_at_a_sibling_branch_is_refused_and_names_the_selling_shop(): void
+    {
+        [$a, $b, $product, $sale, $item, , $ownerB] = $this->aBillAtBranchA();
+
+        $r = $this->actingAs($ownerB, 'web')->postJson('/app/returns/process', [
+            'sale_id' => $sale->id, 'action' => 'refund',
+            'lines' => [['sale_item_id' => $item->id, 'qty' => 1, 'condition' => 'resalable']],
+        ]);
+
+        $r->assertStatus(422);
+        $this->assertStringContainsString('Baby Park — শাখা ২', (string) $r->json('message'), 'the message tells the cashier WHICH shop to go to');
+        $this->assertStringContainsString('ওই দোকান থেকেই', (string) $r->json('message'));
+        $this->nothingMovedAt($a, $b, $product);
+    }
+
+    public function test_an_exchange_at_a_sibling_branch_is_refused_and_nothing_is_sold(): void
+    {
+        [$a, $b, $product, $sale, $item, , $ownerB] = $this->aBillAtBranchA();
+        $newProduct = Product::create(['shop_id' => $b->id, 'name' => 'Shirt L', 'cost' => 60, 'price' => 150, 'stock' => 5]);
+
+        $this->actingAs($ownerB, 'web')->postJson('/app/returns/process', [
+            'sale_id' => $sale->id, 'action' => 'exchange',
+            'lines' => [['sale_item_id' => $item->id, 'qty' => 1, 'condition' => 'resalable']],
+            'new_items' => [['product_id' => $newProduct->id, 'qty' => 1]],
+            'payments' => [['method' => 'cash', 'amount' => 50]],
+        ])->assertStatus(422);
+
+        $this->nothingMovedAt($a, $b, $product);
+        $this->assertEquals(5, (float) $newProduct->fresh()->stock, 'the replacement stays on the shelf');
+    }
+
+    public function test_a_damaged_return_at_a_sibling_branch_writes_nothing_off(): void
+    {
+        [$a, $b, $product, $sale, $item, , $ownerB] = $this->aBillAtBranchA();
+
+        $this->actingAs($ownerB, 'web')->postJson('/app/returns/process', [
+            'sale_id' => $sale->id, 'action' => 'refund',
+            'lines' => [['sale_item_id' => $item->id, 'qty' => 1, 'condition' => 'damaged']],
+        ])->assertStatus(422);
+
+        $this->assertSame(0, Damage::withoutGlobalScopes()->count());
+        $this->nothingMovedAt($a, $b, $product);
+    }
+
+    public function test_the_selling_branch_takes_it_back_normally_after_the_sibling_was_refused(): void
+    {
+        [$a, $b, $product, $sale, $item, $ownerA, $ownerB] = $this->aBillAtBranchA();
+        $line = ['sale_id' => $sale->id, 'action' => 'refund', 'lines' => [['sale_item_id' => $item->id, 'qty' => 2, 'condition' => 'resalable']]];
+
+        $this->actingAs($ownerB, 'web')->postJson('/app/returns/process', $line)->assertStatus(422);
+        $r = $this->actingAs($ownerA, 'web')->postJson('/app/returns/process', $line);
+
+        $r->assertOk();
+        $this->assertEquals(200.0, $r->json('total_refund'));
+        $this->assertEquals(5, (float) $product->fresh()->stock, "back on the selling branch's shelf (3 + 2)");
+        $this->assertEquals(800.0, (float) $a->fresh()->cash_balance, 'the refund left the SELLING till');
+        $this->assertEquals(500.0, (float) $b->fresh()->cash_balance, 'the other till never moved');
+        $this->assertEquals($a->id, (int) SalesReturn::withoutGlobalScopes()->first()->shop_id, 'the return belongs to the shop that sold it');
+    }
+
+    public function test_a_second_return_of_what_is_left_still_works_at_the_selling_branch(): void
+    {
+        [, , , $sale, $item, $ownerA, $ownerB] = $this->aBillAtBranchA();
+        $post = fn ($who, int $qty) => $this->actingAs($who, 'web')->postJson('/app/returns/process', [
+            'sale_id' => $sale->id, 'action' => 'refund', 'lines' => [['sale_item_id' => $item->id, 'qty' => $qty, 'condition' => 'resalable']],
+        ]);
+
+        $post($ownerA, 2)->assertOk();
+        $post($ownerB, 1)->assertStatus(422);   // refused for being the wrong counter, not because of quantity
+        $post($ownerA, 2)->assertStatus(422);   // only 1 left returnable
+        $post($ownerA, 1)->assertOk();
+    }
+
+    public function test_the_lookup_marks_a_sibling_bill_as_not_processable_here_and_the_own_bill_as_processable(): void
+    {
+        [, , , $sale, , $ownerA, $ownerB] = $this->aBillAtBranchA();
+
+        $here = $this->actingAs($ownerA, 'web')->getJson('/app/returns/lookup?q='.$sale->invoice_no)->assertOk();
+        $this->assertTrue($here->json('sales.0.can_process_here'));
+        $this->assertNull($here->json('sales.0.blocked_message'));
+
+        $there = $this->actingAs($ownerB, 'web')->getJson('/app/returns/lookup?q='.$sale->invoice_no)->assertOk();
+        $this->assertFalse($there->json('sales.0.can_process_here'));
+        $this->assertStringContainsString('Baby Park — শাখা ২', (string) $there->json('sales.0.blocked_message'));
+        $this->assertSame('Baby Park — শাখা ২', $there->json('sales.0.origin_shop_name'), 'two branches share a name — the area tells them apart');
     }
 }

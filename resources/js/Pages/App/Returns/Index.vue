@@ -74,6 +74,8 @@ async function search() {
 
 // --- selected sale + lines ---
 const selectedSale = ref(null);
+// a bill made at ANOTHER branch can be looked up but not processed here: it is taken back at the counter that sold it
+const blocked = computed(() => selectedSale.value?.can_process_here === false);
 const lineState = ref({}); // sale_item_id -> { qty, condition, checked }
 const action = ref('refund'); // 'refund' | 'exchange'
 const overrideWindow = ref(false);
@@ -350,6 +352,10 @@ const errorMsg = ref('');
 const resultSummary = ref(null);
 
 async function submit() {
+    if (blocked.value) {
+        errorMsg.value = selectedSale.value.blocked_message;
+        return;
+    }
     if (!selectedSale.value || !selectedLines.value.length) {
         errorMsg.value = 'অন্তত একটা আইটেম বাছাই করুন।';
         return;
@@ -469,8 +475,8 @@ function sendMemoWA() {
                     <button class="btn ghost" style="width:auto;padding:4px 12px;font-size:12px" @click="selectedSale = null">✕</button>
                 </div>
                 <div style="color:var(--mut);font-size:13px;margin-top:4px">{{ selectedSale.date }} • {{ money(selectedSale.total) }} • {{ selectedSale.customer?.name || 'ওয়াক-ইন' }}</div>
-                <div v-if="selectedSale.origin_shop_name" class="card" style="background:var(--goldSoft);margin-top:8px;padding:8px 12px">
-                    🏬 {{ t('returns.crossBranchHint', { shop: selectedSale.origin_shop_name }) }}
+                <div v-if="selectedSale.origin_shop_name" class="card" style="background:var(--roseSoft);margin-top:8px;padding:10px 12px;color:var(--rose);font-weight:700">
+                    🚫 {{ selectedSale.blocked_message || t('returns.crossBranchHint', { shop: selectedSale.origin_shop_name }) }}
                 </div>
 
                 <div v-if="!selectedSale.within_window" class="card" style="background:var(--roseSoft);margin-top:10px">
@@ -491,9 +497,9 @@ function sendMemoWA() {
                     </div>
                     <template v-if="item.returnable_qty > 0 && lineState[item.id]">
                         <div style="display:flex;gap:8px;align-items:center;flex:1 1 100%">
-                            <input type="checkbox" v-model="lineState[item.id].checked" @change="lineState[item.id].checked ? (Number(lineState[item.id].qty) <= 0 && (lineState[item.id].qty = Math.min(1, item.returnable_qty))) : (lineState[item.id].qty = 0)">
-                            <input type="number" v-model="lineState[item.id].qty" @input="Number(lineState[item.id].qty) > 0 && (lineState[item.id].checked = true)" :max="item.returnable_qty" min="0" step="any" style="width:70px">
-                            <select v-model="lineState[item.id].condition" style="flex:1;min-width:0">
+                            <input type="checkbox" :disabled="blocked" v-model="lineState[item.id].checked" @change="lineState[item.id].checked ? (Number(lineState[item.id].qty) <= 0 && (lineState[item.id].qty = Math.min(1, item.returnable_qty))) : (lineState[item.id].qty = 0)">
+                            <input type="number" :disabled="blocked" v-model="lineState[item.id].qty" @input="Number(lineState[item.id].qty) > 0 && (lineState[item.id].checked = true)" :max="item.returnable_qty" min="0" step="any" style="width:70px">
+                            <select :disabled="blocked" v-model="lineState[item.id].condition" style="flex:1;min-width:0">
                                 <option value="resalable">{{ t('returns.conditionGood') }}</option>
                                 <option value="damaged">{{ t('returns.conditionDamaged') }}</option>
                                 <option value="lost">{{ t('returns.conditionLost') }}</option>
@@ -503,8 +509,8 @@ function sendMemoWA() {
                 </div>
 
                 <div style="margin-top:16px;display:flex;gap:10px">
-                    <button class="btn" :class="{ ghost: action !== 'refund' }" style="flex:1" @click="action = 'refund'">{{ t('returns.actionRefund') }}</button>
-                    <button class="btn" :class="{ ghost: action !== 'exchange' }" style="flex:1" @click="action = 'exchange'">{{ t('returns.actionExchange') }}</button>
+                    <button class="btn" :class="{ ghost: action !== 'refund' }" style="flex:1" :disabled="blocked" @click="action = 'refund'">{{ t('returns.actionRefund') }}</button>
+                    <button class="btn" :class="{ ghost: action !== 'exchange' }" style="flex:1" :disabled="blocked" @click="action = 'exchange'">{{ t('returns.actionExchange') }}</button>
                 </div>
 
                 <div v-if="action === 'exchange'" style="margin-top:14px">
@@ -572,7 +578,7 @@ function sendMemoWA() {
 
                 <div v-if="errorMsg" style="color:var(--rose);margin-top:10px">{{ errorMsg }}</div>
 
-                <button class="btn" style="margin-top:16px" :disabled="submitting || !selectedLines.length" @click="submit">
+                <button class="btn" style="margin-top:16px" :disabled="submitting || !selectedLines.length || blocked" @click="submit">
                     {{ submitting ? '...' : t('returns.submit') }}
                 </button>
             </div>

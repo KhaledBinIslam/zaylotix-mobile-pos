@@ -101,11 +101,32 @@ class ArticleSerial
         });
     }
 
+    /**
+     * Every counter of this business in ONE query, keyed "CODE|band" — so a screen that shows the next free
+     * number for dozens of categories (the serial-settings page) does not run a lookup per category.
+     *
+     * @return array<string,int>
+     */
+    public static function counters(Shop $shop): array
+    {
+        $mainShopId = $shop->parent_shop_id ?? $shop->id;
+
+        return ArticleSeriesCounter::where('main_shop_id', $mainShopId)
+            ->get(['category_code', 'series_start', 'next_serial'])
+            ->mapWithKeys(fn ($r) => [$r->category_code.'|'.(int) $r->series_start => (int) $r->next_serial])
+            ->all();
+    }
+
     /** Read-only peek at what the next serial WOULD be — for the one-screen entry form's live preview. Never reserves it. */
-    public static function peekNext(Shop $shop, string $categoryCode, ?int $serialStart = null): int
+    public static function peekNext(Shop $shop, string $categoryCode, ?int $serialStart = null, ?array $counters = null): int
     {
         $mainShopId = $shop->parent_shop_id ?? $shop->id;
         $band = self::bandOf($serialStart);
+
+        // a page that lists many categories reads every counter once (counters()) and passes the map in
+        if ($counters !== null) {
+            return $counters[$categoryCode.'|'.$band] ?? $band;
+        }
 
         return ArticleSeriesCounter::where('main_shop_id', $mainShopId)
             ->where('category_code', $categoryCode)
@@ -141,9 +162,9 @@ class ArticleSerial
      * Lives here rather than on the controller so the doctor command can
      * print the same answer the form will show, without a web request.
      */
-    public static function nextFree(Shop $shop, string $categoryCode, ?int $serialStart = null, ?array $serials = null): int
+    public static function nextFree(Shop $shop, string $categoryCode, ?int $serialStart = null, ?array $serials = null, ?array $counters = null): int
     {
-        $counterNext = self::peekNext($shop, $categoryCode, $serialStart);
+        $counterNext = self::peekNext($shop, $categoryCode, $serialStart, $counters);
         // a page listing many categories passes serialsUsed() it already has (one lookup per code, not per category)
         $serials ??= self::serialsUsed($shop, $categoryCode);
 

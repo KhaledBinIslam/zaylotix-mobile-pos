@@ -58,8 +58,8 @@ class ProductScreensQueryBudgetTest extends TestCase
         $make(6, 40);
         $big = $this->queriesFor($owner, '/app/articles/serial-settings');
 
-        // categories sharing a code share one lookup; a few more counter reads are fine, a lookup per category is not
-        $this->assertLessThanOrEqual($small + 2 * 35 + 4, $big, "serial settings: {$small} queries at 5 categories, {$big} at 40");
+        // flat: each distinct code costs a fixed handful, every counter is read in ONE query, so 8x the categories adds nothing
+        $this->assertLessThanOrEqual($small + 4, $big, "serial settings: {$small} queries at 5 categories, {$big} at 40");
         $this->assertLessThan(120, $big, 'the page sweep flags any page over 120 queries');
     }
 

@@ -714,7 +714,7 @@ class E2ESalesFlowsTest extends TestCase
         $this->assertMoney($this->branch, 5000, 0);
     }
 
-    public function test_cross_branch_scan_lookup_then_return_books_stock_and_cash_at_the_receiving_branch(): void
+    public function test_a_sibling_branch_can_find_the_bill_by_scan_but_only_the_selling_shop_takes_it_back(): void
     {
         // sold at MAIN …
         $sale = $this->ring('main', [$this->line('40', 'main', 1)], [['method' => 'cash', 'amount' => 1000]]);
@@ -726,43 +726,50 @@ class E2ESalesFlowsTest extends TestCase
         $this->assertTrue((bool) $scan->json('found'));
         $look = $this->as($this->branchOwner)->getJson(route('app.returns.lookup', ['q' => 'ZV'.$this->v40B->id]))->assertOk();
         $found = collect($look->json('sales'))->firstWhere('id', $sale->id);
-        $this->assertNotNull($found, 'the main-shop bill is offered at the branch');
+        $this->assertNotNull($found, 'the main-shop bill is still FOUND at the branch, so the cashier can see where to send the customer');
         $this->assertSame('Baby Park', $found['shop_name'], 'and shows which shop sold it');
+        $this->assertFalse($found['can_process_here'], 'but it cannot be processed here');
         $this->assertNotEmpty($look->json('resolved'));
-        $byInvoice = $this->as($this->branchOwner)->getJson(route('app.returns.lookup', ['q' => $sale->invoice_no]))->assertOk();
-        $this->assertCount(1, $byInvoice->json('sales'));
 
-        $this->process($this->branchOwner, ['sale_id' => $sale->id, 'action' => 'refund', 'reason' => 'cross', 'lines' => [['sale_item_id' => $item->id, 'qty' => 1, 'condition' => 'resalable']]])->assertOk();
-
-        $this->assertPool(10, 10, 20, 'back on the shelf, visible in both branches');
-        $this->assertMoney($this->branch, 4000, 0, 'the RECEIVING branch pays the refund out of its till');
-        $this->assertMoney($this->main, 11000, 0, 'the selling branch\'s till is not touched');
-        $ret = SalesReturn::withoutGlobalScopes()->where('sale_id', $sale->id)->firstOrFail();
-        $this->assertSame($this->branch->id, (int) $ret->shop_id, 'the return is booked where it physically happened');
-
-        // the selling branch cannot now void the bill (books would disagree)
-        $this->void($this->mainOwner, $sale)->assertSessionHas('error');
-        $this->assertPool(10, 10, 20);
+        $payload = ['sale_id' => $sale->id, 'action' => 'refund', 'reason' => 'walk-in', 'lines' => [['sale_item_id' => $item->id, 'qty' => 1, 'condition' => 'resalable']]];
+        $this->process($this->branchOwner, $payload)->assertStatus(422);
+        $this->assertPool(9, 10, 20, 'the refused return moved nothing');
+        $this->assertMoney($this->branch, 5000, 0);
         $this->assertMoney($this->main, 11000, 0);
+        $this->assertSame(0, SalesReturn::withoutGlobalScopes()->count());
+
+        // the customer goes to the shop that sold it — the refund leaves THAT till
+        $this->process($this->mainOwner, $payload)->assertOk();
+        $this->assertPool(10, 10, 20, 'back on the shelf, visible in both branches');
+        $this->assertMoney($this->main, 10000, 0, 'the SELLING shop pays the refund out of its own till');
+        $this->assertMoney($this->branch, 5000, 0, 'the other till is not touched');
+        $ret = SalesReturn::withoutGlobalScopes()->where('sale_id', $sale->id)->firstOrFail();
+        $this->assertSame($this->main->id, (int) $ret->shop_id, 'the return is booked in the shop that sold it');
     }
 
-    public function test_cross_branch_exchange_takes_the_replacement_from_the_pool_and_money_at_the_receiving_branch(): void
+    public function test_exchange_is_done_at_the_selling_shop_and_takes_the_replacement_from_the_pool(): void
     {
         $sale = $this->ring('main', [$this->line('polish', 'main', 1)], [['method' => 'cash', 'amount' => 80]]);
         $item = \App\Models\SaleItem::withoutGlobalScopes()->where('sale_id', $sale->id)->first();
-
-        $this->process($this->branchOwner, [
+        $payload = [
             'sale_id' => $sale->id, 'action' => 'exchange', 'reason' => 'swap',
             'lines' => [['sale_item_id' => $item->id, 'qty' => 1, 'condition' => 'resalable']],
-            'new_items' => [$this->line('41', 'branch', 1)],
+            'new_items' => [$this->line('41', 'main', 1)],
             'payments' => [['method' => 'cash', 'amount' => 920]],
-        ])->assertOk();
+        ];
 
-        $this->assertPool(10, 9, 20);
-        $this->assertMoney($this->branch, 5920, 0, 'branch collected the difference');
-        $this->assertMoney($this->main, 10080, 0, 'main keeps only its original 80');
+        // the other counter is refused — no exchange bill, no stock, no money
+        $this->process($this->branchOwner, $payload)->assertStatus(422);
+        $this->assertSame(0, Sale::withoutGlobalScopes()->where('sale_type', 'exchange')->count());
+        $this->assertMoney($this->branch, 5000, 0, 'the other counter collected nothing');
+
+        // the selling shop does it
+        $this->process($this->mainOwner, $payload)->assertOk();
+        $this->assertPool(10, 9, 20, 'polish back, a size-41 shoe out — pool-wide');
+        $this->assertMoney($this->main, 11000, 0, '10080 + 920 collected by the selling shop');
+        $this->assertMoney($this->branch, 5000, 0);
         $ex = Sale::withoutGlobalScopes()->where('sale_type', 'exchange')->firstOrFail();
-        $this->assertSame($this->branch->id, (int) $ex->shop_id);
+        $this->assertSame($this->main->id, (int) $ex->shop_id);
     }
 
     // ==================================================================
