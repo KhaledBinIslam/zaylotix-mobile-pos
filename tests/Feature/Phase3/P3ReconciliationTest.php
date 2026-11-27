@@ -358,11 +358,10 @@ class P3ReconciliationTest extends TestCase
     }
 
     /**
-     * A voided bill is removed from sales, so a refund that was paid against it earlier must not keep reducing the
-     * profit. (Void effects net to zero: the sale leaves the books and so must its returns.)
+     * D13 (fixed). A voided bill is removed from sales, so a refund that was paid against it earlier must not keep
+     * reducing the profit. (Void effects net to zero: the sale leaves the books and so must its returns.)
      */
-    #[Group('phase3_defect')]
-    public function test_DEFECT_returns_of_a_voided_bill_must_not_keep_reducing_the_profit_report(): void
+    public function test_returns_of_a_voided_bill_do_not_keep_reducing_the_profit_report(): void
     {
         $sale = $this->p3Sell([['product_id' => $this->products[0], 'qty' => 2]], [['method' => 'cash', 'amount' => 200]]);
         $this->p3Return($sale, [['sale_item_id' => $this->p3ItemId($sale), 'qty' => 1, 'condition' => 'resalable']])->assertOk();
@@ -377,5 +376,114 @@ class P3ReconciliationTest extends TestCase
         $this->assertEquals(0.0, round($stats['returnsTotal'], 2), 'and its refund is not a return of the live books');
         $this->assertEquals(0.0, round($stats['grossProfit'], 2), 'nothing was really sold: profit is zero, not negative');
         $this->assertEquals(self::OPENING_CASH, (float) DB::table('shops')->where('id', $this->shop->id)->value('cash_balance'), 'cash is back at opening (this part is correct)');
+    }
+
+    /**
+     * D13 across EVERY report that sums returns. Bill A (plain + a sized product) gets a return and is then voided; bill B
+     * of the same products stays live. Every report must show exactly bill B: if a voided bill's return leaked, it
+     * would be subtracted from B's product row / cashier / channel (same product name, same cashier).
+     */
+    public function test_a_voided_bills_return_leaves_no_trace_in_any_report_only_the_live_bill_counts(): void
+    {
+        $plain = $this->products[0]; // Shoe: cost 60, price 100
+        $sneaker = $this->p3Product('Sneaker', 90, 150, 0);
+        $m = $this->p3Variant($sneaker, 'M', 20, ['price' => 150, 'cost' => 90]);
+
+        // bill A: returned then voided
+        $a = $this->p3Sell([['product_id' => $plain, 'qty' => 2], ['product_id' => $sneaker->id, 'product_variant_id' => $m->id, 'qty' => 2]], [['method' => 'cash', 'amount' => 500]]);
+        $this->p3Return($a, [['sale_item_id' => $this->p3ItemId($a, 0), 'qty' => 1, 'condition' => 'resalable'], ['sale_item_id' => $this->p3ItemId($a, 1), 'qty' => 1, 'condition' => 'resalable']])->assertOk();
+        $this->p3Void($a)->assertSessionHas('success');
+
+        // bill B: stays — 3 shoes (profit 120) and 1 sneaker (profit 60)
+        $this->p3Sell([['product_id' => $plain, 'qty' => 3], ['product_id' => $sneaker->id, 'product_variant_id' => $m->id, 'qty' => 1]], [['method' => 'cash', 'amount' => 450]]);
+
+        Tenancy::clear();
+        Tenancy::set($this->shop->id);
+        $d = now()->toDateString();
+        $row = fn (array $rows, string $key, string $name) => collect($rows)->first(fn ($r) => ($r[$key] ?? null) === $name);
+
+        $stats = Reports::rangeStats($d, $d);
+        $this->assertEquals(450.0, $stats['grossSales']);
+        $this->assertEquals(0.0, $stats['returnsTotal'], 'rangeStats: no returns');
+        $this->assertEquals(180.0, $stats['grossProfit'], 'rangeStats: 3x40 + 1x60');
+
+        $combined = Reports::combinedRangeStats([$this->shop->id], $d, $d);
+        $this->assertEquals(0.0, $combined['returnsTotal'], 'combinedRangeStats: the voided bill\'s return is not counted (D13). Its SALES side is a separate defect, D14, pinned below.');
+
+        $channel = Reports::profitByChannel($d, $d);
+        $this->assertEquals(0.0, $channel['offline']['returns'], 'profitByChannel: no returns');
+        $this->assertEquals(180.0, $channel['offline']['profit']);
+        $this->assertEquals(450.0, $channel['total']['sales']);
+
+        $products = Reports::productProfitReport($d, $d)->all();
+        $shoe = collect($products)->first(fn ($r) => $r->product_name === 'Shoe');
+        $this->assertEquals([3.0, 300.0, 120.0], [(float) $shoe->qty_sold, (float) $shoe->revenue, (float) $shoe->profit], 'productProfitReport: Shoe row is bill B only');
+
+        $byChannel = Reports::productProfitByChannel($d, $d);
+        $shoeCh = $row($byChannel['rows'], 'product_name', 'Shoe');
+        $this->assertEquals([3.0, 300.0, 120.0], [(float) $shoeCh['offline_qty'], (float) $shoeCh['offline_revenue'], (float) $shoeCh['offline_profit']], 'productProfitByChannel: Shoe row is bill B only');
+
+        $categories = Reports::categoryReport($d, $d);
+        $this->assertEquals(450.0, collect($categories)->sum('revenue'), 'categoryReport revenue');
+        $this->assertEquals(180.0, collect($categories)->sum('profit'), 'categoryReport profit');
+
+        $sellers = Reports::salespersonProfitReport($d, $d);
+        $this->assertEquals(450.0, collect($sellers)->sum('revenue'), 'salespersonProfitReport revenue');
+        $this->assertEquals(180.0, collect($sellers)->sum('profit'), 'salespersonProfitReport profit');
+
+        $cash = Reports::cashierCashBreakdown($d, $d);
+        $this->assertEquals(0.0, collect($cash)->sum('cash_returns'), 'cashierCashBreakdown: nothing was handed back at the till');
+        $this->assertEquals(450.0, collect($cash)->sum('expected_cash'));
+
+        $branch = Reports::branchProductProfitReport([$this->shop->id], $d, $d);
+        $this->assertEquals(120.0, (float) $row($branch, 'product_name', 'Shoe')['profit'], 'branchProductProfitReport: Shoe');
+
+        $variants = Reports::variantProfitReport($d, $d);
+        $sneakerRow = collect($variants)->first(fn ($r) => ($r->product_name ?? null) === 'Sneaker');
+        $this->assertEquals([1.0, 150.0, 60.0], [(float) $sneakerRow->qty_sold, (float) $sneakerRow->revenue, (float) $sneakerRow->profit], 'variantProfitReport: Sneaker M is bill B only');
+    }
+
+    /**
+     * DEFECT D14 (found while fixing D13). The multi-branch combined report (Reports page for an owner with branches,
+     * and the company dashboard's per-branch table) builds its sales query with withoutGlobalScopes() to reach the
+     * sibling shops — which also switches off Sale's own "active" scope, so a VOIDED bill still counts there.
+     */
+    #[Group('phase3_defect')]
+    public function test_DEFECT_the_combined_multi_branch_report_must_not_count_a_voided_bill(): void
+    {
+        $this->p3Sell([['product_id' => $this->products[0], 'qty' => 2]], [['method' => 'cash', 'amount' => 200]]);
+        $voided = $this->p3Sell([['product_id' => $this->products[0], 'qty' => 5]], [['method' => 'cash', 'amount' => 500]]);
+        $this->p3Void($voided)->assertSessionHas('success');
+
+        Tenancy::clear();
+        Tenancy::set($this->shop->id);
+        $d = now()->toDateString();
+        $own = Reports::rangeStats($d, $d);
+        $combined = Reports::combinedRangeStats([$this->shop->id], $d, $d);
+
+        $this->assertEquals(200.0, $own['grossSales'], 'the single-shop report is right');
+        $this->assertEquals(200.0, $combined['grossSales'], 'the combined report must say the same for a one-shop group');
+        $this->assertEquals(80.0, $combined['grossProfit']);
+        $this->assertEquals(1, $combined['count'], 'one real bill');
+    }
+
+    /** the control for the test above: a return on a LIVE bill must still come out of every figure (the fix must not hide real returns) */
+    public function test_a_return_on_a_live_bill_still_reduces_the_reports(): void
+    {
+        $plain = $this->products[0];
+        $a = $this->p3Sell([['product_id' => $plain, 'qty' => 2]], [['method' => 'cash', 'amount' => 200]]);
+        $this->p3Return($a, [['sale_item_id' => $this->p3ItemId($a), 'qty' => 1, 'condition' => 'resalable']])->assertOk();
+
+        Tenancy::clear();
+        Tenancy::set($this->shop->id);
+        $d = now()->toDateString();
+        $stats = Reports::rangeStats($d, $d);
+
+        $this->assertEquals(200.0, $stats['grossSales']);
+        $this->assertEquals(100.0, $stats['returnsTotal']);
+        $this->assertEquals(40.0, $stats['grossProfit'], '(100-60) kept on the piece that stayed sold');
+        $shoe = collect(Reports::productProfitReport($d, $d)->all())->first(fn ($r) => $r->product_name === 'Shoe');
+        $this->assertEquals([1.0, 100.0, 40.0], [(float) $shoe->qty_sold, (float) $shoe->revenue, (float) $shoe->profit]);
+        $this->assertEquals(100.0, (float) \App\Models\SalesReturn::onLiveBills()->sum('refund'));
     }
 }

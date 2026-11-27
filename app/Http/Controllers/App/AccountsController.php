@@ -61,7 +61,7 @@ class AccountsController extends Controller
             'retained' => $netWorth - (float) $shop->capital,
             'totalExpenses' => (float) Expense::sum('amount'),
             'totalDamage' => (float) Damage::sum('loss'),
-            'totalReturns' => (float) SalesReturn::sum('refund'),
+            'totalReturns' => (float) SalesReturn::onLiveBills()->sum('refund'),
             // this month's profit, split offline / online, for the little summary card (the full page is accounts.profit)
             'profitMonth' => Reports::profitByChannel(now()->startOfMonth()->toDateString(), now()->toDateString()),
             'hasOnline' => (bool) $shop->hasFeature('online_business'),

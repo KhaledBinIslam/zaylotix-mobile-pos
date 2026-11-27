@@ -45,7 +45,7 @@ class Reports
 
         $countedSalesQuery = (clone $saleQuery)->where('sale_type', '!=', 'exchange');
 
-        [$returnsTotal, $costRecovered] = self::returnTotals($inRange(SalesReturn::query()));
+        [$returnsTotal, $costRecovered] = self::returnTotals($inRange(SalesReturn::query()->onLiveBills()));
 
         // Net sales = gross sales minus whatever was actually handed back
         // (a plain refund or the "give back" half of an exchange) — a
@@ -125,7 +125,7 @@ class Reports
 
         $countedSalesQuery = (clone $saleQuery)->where('sale_type', '!=', 'exchange');
 
-        [$returnsTotal, $costRecovered] = self::returnTotals($inRange(SalesReturn::query()));
+        [$returnsTotal, $costRecovered] = self::returnTotals($inRange(SalesReturn::query()->onLiveBills()));
 
         $salesAmt = $grossSales - $returnsTotal;
         $cogs = $totalCostIssued - $costRecovered;
@@ -252,7 +252,7 @@ class Reports
             ->groupBy('user_id')
             ->map(fn ($payments) => (float) $payments->sum('amount'));
 
-        $cashReturnsByUser = $inRange(SalesReturn::query())
+        $cashReturnsByUser = $inRange(SalesReturn::query()->onLiveBills())
             ->get()
             ->groupBy('user_id')
             ->map(fn ($returns) => (float) $returns->sum('refund'));
@@ -331,7 +331,7 @@ class Reports
             ->get()
             ->keyBy('product_name');
 
-        $returns = SalesReturn::whereNotNull('sale_item_id')
+        $returns = SalesReturn::onLiveBills()->whereNotNull('sale_item_id')
             ->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)
             ->with('saleItem:id,product_name')
             ->get()
@@ -596,7 +596,7 @@ class Reports
         // come back out of its category's total too, or a fully-refunded
         // sale keeps inflating that category after the P&L already zeroed
         // it out.
-        $returnsByCategory = SalesReturn::whereNotNull('sale_item_id')
+        $returnsByCategory = SalesReturn::onLiveBills()->whereNotNull('sale_item_id')
             ->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)
             ->with('saleItem.product.category')
             ->get()
@@ -681,7 +681,7 @@ class Reports
                 'profit' => (float) $group->sum('profit'),
             ]);
 
-        $returnsByUser = $inRange(SalesReturn::query())->get()->groupBy('user_id');
+        $returnsByUser = $inRange(SalesReturn::query()->onLiveBills())->get()->groupBy('user_id');
         foreach ($returnsByUser as $userId => $group) {
             if (! $userId) {
                 continue;
@@ -761,7 +761,7 @@ class Reports
             ->get()
             ->keyBy(fn ($r) => $key($r->shop_id, $r->product_name, $r->variant_label ?? null));
 
-        $returns = SalesReturn::withoutGlobalScopes()
+        $returns = SalesReturn::withoutGlobalScopes()->onLiveBills()
             ->whereNotNull('sale_item_id')
             ->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)
             ->with(['saleItem' => fn ($q) => $q->withoutGlobalScopes()->select('id', 'shop_id', 'product_name', 'variant_label', 'product_variant_id')])
@@ -859,7 +859,7 @@ class Reports
             ->get()
             ->keyBy('product_variant_id');
 
-        $returns = SalesReturn::whereNotNull('product_variant_id')
+        $returns = SalesReturn::onLiveBills()->whereNotNull('product_variant_id')
             ->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)
             ->get()
             ->groupBy('product_variant_id');
@@ -1079,7 +1079,7 @@ class Reports
             $out[$r->channel]['discount'] = (float) $r->discount;
         }
 
-        $returns = SalesReturn::whereDate('date', '>=', $from)->whereDate('date', '<=', $to)->get(['id', 'sale_id', 'refund', 'cost']);
+        $returns = SalesReturn::onLiveBills()->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)->get(['id', 'sale_id', 'refund', 'cost']);
         // withoutGlobalScopes(): the original sale may sit at the SIBLING branch (a return taken at the other counter) —
         // the tenant scope would hide it and the return would be filed under the wrong channel. The ids come from this shop's own return rows.
         $types = $returns->isEmpty() ? collect() : Sale::withoutGlobalScopes()->whereIn('id', $returns->pluck('sale_id')->filter()->unique())->pluck('sale_type', 'id');
@@ -1142,7 +1142,7 @@ class Reports
         }
 
         // a returned piece comes off the product AND the channel its original sale belonged to (same rule as profitByChannel)
-        $returns = SalesReturn::whereNotNull('sale_item_id')->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)
+        $returns = SalesReturn::onLiveBills()->whereNotNull('sale_item_id')->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)
             ->with(['saleItem' => fn ($q) => $q->withoutGlobalScopes()->select('id', 'sale_id', 'product_name')])->get()
             ->filter(fn (SalesReturn $r) => $r->saleItem !== null);
         // a piece sold at the sibling branch and taken back HERE still comes off this shop's product line — the profit
