@@ -4,6 +4,13 @@
          bootstrap="vendor/autoload.php"
          colors="true"
 >
+    <groups>
+        <exclude>
+            <!-- executable bug reports from QA Phase 3: they state the principled expectation and currently FAIL.
+                 Run them with the group option set to phase3_defect (see QA_REPORT.md) -->
+            <group>phase3_defect</group>
+        </exclude>
+    </groups>
     <testsuites>
         <testsuite name="Unit">
             <directory>tests/Unit</directory>

@@ -3,7 +3,7 @@
 Living document. **Only tests that were actually executed are marked as passed.** Anything not run is listed as *NOT EXECUTED*.
 No production data was modified by any test. Production was touched read-only (counts, sizes, configuration names) and, for deploys, with a database backup first. No secrets, passwords or customer details are recorded here.
 
-Last updated: 2026-11-27 · Production commit: `7919dbff` · Newest commit (not deployed): `15742b8f`
+Last updated: 2026-11-27 · Production commit: `1a6a0fb9` · Newest commit (**not deployed**, awaiting the owner's explicit go): `d7705fba` (ZV-sticker resolver recursion fix) · Phase 3 test files are in the working tree, see §9
 
 ---
 
@@ -12,13 +12,13 @@ Last updated: 2026-11-27 · Production commit: `7919dbff` · Newest commit (not 
 | Phase | State |
 |---|---|
 | 1. Codebase and architecture audit | **Done** (this document, §1–§3) |
-| 2. Test planning / roadmap | **Done** (§6) — awaiting approval to start Phase 3 |
-| 3. Critical functional testing | Partly executed earlier in this engagement (§4); full plan not yet run |
-| 4. Database and data integrity | Partly executed (§4); not complete |
+| 2. Test planning / roadmap | **Done** (§6) |
+| 3. Critical functional testing | **Executed 2026-11-27 — results, bug register and open approvals in §9.** 13 defects/decisions registered, none fixed yet (fixes to business-critical logic wait for the owner's approval) |
+| 4. Database and data integrity | Partly executed (stock identity, supplier valuation, variants/serials, reconciliation, concurrency up to 6 parallel — §9); transfers/online-order races, lots/expiry, restore test still open |
 | 5. Playwright E2E | Executed as ad-hoc JavaScript suites outside the repo (§4); **not yet a repo-owned TypeScript project** |
 | 6. Regression | Executed per change (§4); no matrix/CI yet |
 | 7. Performance and scale | **NOT EXECUTED** (only a storage model, §5) |
-| 8. Security and reliability | Tenant-isolation spot checks executed (§4); everything else **NOT EXECUTED** |
+| 8. Security and reliability | Tenant isolation: generated route probe + body-id attacks executed, **0 leaks** (§9, F). Auth/session/CSRF/rate-limit/XSS/SQLi/upload, dependency audits, restore test: **NOT EXECUTED** |
 | 9. CI/CD and production readiness | **NOT STARTED** — there is no CI in the repository |
 
 **Provisional recommendation: *Ready for limited production*, which is what it already is** (4 paying shops, ~11 bills/day at the busiest shop). **Not ready** to be sold as "scales to 100k+ variants / many concurrent users" until Phases 7–9 are executed. One operational defect (R1 below) should be fixed first, regardless of testing.
@@ -89,7 +89,7 @@ Environment key: **PHPUnit** = SQLite in-memory, PHP 8.2 · **QA-DB** = isolated
 
 | Suite | Env | Result |
 |---|---|---|
-| Full PHP test suite | PHPUnit | **1,992 passed**, 0 failed (11,875 assertions) |
+| Full PHP test suite | PHPUnit | **2,058 passed**, 0 failed (13,791 assertions) — includes the 61 Phase 3 tests, §9 |
 | Full JS suite | Vitest | **402 passed**, 0 failed |
 | Full migration chain from empty database | QA-DB | passed (28 s) |
 | Self-check + every parameterless `/app` page, 4 paid shops | PROD-RO | 79 pages × 4 shops, **0 FAIL**; 1 SLOW (`serial-settings`, 135 queries, 63 ms) — fixed locally, not deployed |
@@ -216,16 +216,87 @@ Priority: P0 = before anything else · P1 · P2. Risk = business impact if the s
 
 ---
 
-## 7. Decisions / approvals needed before Phase 3
+## 7. Decisions / approvals needed (updated 2026-11-27 — Phase 3 is done; see §9 for the new D-items)
 
+0. **New, from Phase 3:** approve (or reject) each fix proposed in §9.3, and answer the three owner decisions D2, D7, D12 (and D8 if a warning is wanted). No business-critical code has been changed.
 1. **Cron (R1)** — add one Hostinger cron entry that calls `php artisan schedule:run` every minute for the production app. Everything in R1 resumes (including nightly backups and subscription expiry). *Owner action; nothing in the code needs to change.*
 2. **Environment for MariaDB-backed tests** — a local/CI MariaDB 11.8 matching production (the local server is 10.4).
 3. **Costing method** — confirm how supplier stock value must be computed for non-lot shops (current cost vs lot cost) so T-INV-02 asserts the right thing.
 4. **Retention policy** — how long to keep backups, alert notifications and activity logs (R6).
 5. **Performance targets** — agreed p95 / error-rate numbers *before* Phase 7 is run.
-6. **Deploy of `15742b8f`** — contains the returns-at-selling-shop policy change; awaiting the owner's go.
+6. **Deploy of `d7705fba`** (ZV-sticker resolver recursion fix) — **not deployed; awaiting the owner's explicit go.** (`15742b8f` was deployed on request and is part of production `1a6a0fb9`.)
 7. Any code change to business-critical logic will be proposed first (root cause, modules, fix, regression risk) and **will not be made without approval**.
 
 ## 8. NOT EXECUTED (explicitly)
 
-Load, stress, spike and soak tests · any run above 10 simultaneous requests · scale datasets (10k–1M variants) · restore test · full IDOR sweep · XSS/SQLi/upload/rate-limit probes · dependency audits · browsers other than Chrome · real-device WebView · import/export file-content tests · CI pipeline (none exists) · coverage measurement (no driver installed).
+Load, stress, spike and soak tests · any run above 6 simultaneous requests (Phase 3 raced up to 6; the earlier branch test used 10) · scale datasets (10k–1M variants) · restore test · XSS/SQLi/upload/rate-limit probes · dependency audits · browsers other than Chrome · real-device WebView · import/export file-content tests · CI pipeline (none exists) · coverage measurement (no driver installed) · MariaDB 11.8 (all local MariaDB runs are 10.4) · see §9.5 for the Phase 3 items that were planned but not run.
+
+---
+
+## 9. Phase 3 — critical functional testing (executed 2026-11-27)
+
+Rules followed: nothing was run against production; PHPUnit uses an in-memory SQLite database; the concurrency harness refuses to start on any database but `zaylotix_qa`; **no business-critical code was changed** — every defect below is a *proposal waiting for approval*. Every figure in a test is read straight from the tables (independent oracle), never from the application's own report code, unless the report *is* what is being tested.
+
+### 9.1 What was executed
+
+| Area | File(s) | Method | Passed | Defect reproductions (fail by design) |
+|---|---|---|---|---|
+| A. Sales, billing, payments, dues, refunds | `tests/Feature/Phase3/P3SalesMoneyTest.php` | sale→void round trip for 5 bill shapes (plain, decimals+line discount, bill discount, split cash+bKash, credit); full return; partial return then void; credit-sale due/cash split; 10 refused-checkout shapes with zero side effects; last pieces; replayed `client_uuid`; customer payment + void + overpayment; loyalty points earn/return/void | 14 | 2 (D1, D2) |
+| B. Purchases, supplier returns, balances | `P3PurchaseSupplierTest.php` | cash/credit purchase ↔ supplier return round trips; payable arithmetic to the cent; overpaying a supplier refused; pending purchase received once; weighted-average blend; latest-cost overwrite; past bills keep their cost snapshot; refused purchases; supplier delete/merge | 12 | 1 (D3) |
+| C. Stock movement and reconciliation | `P3StockIdentityTest.php` | **seeded random days** (3 seeds × 45 steps of sell/void/return/purchase/supplier-return/damage/count) checked after every step against an independent model, *size stock and article stock*; damage beyond stock refused; count absolute; transfers conserve stock; transfer outside the business refused | 7 | 0 |
+| D. Supplier-wise valuation | `P3SupplierValuationTest.php` | the brief's example (100 @ ৳100, sold 40, 5 returned to the supplier → 55 × 100 = **৳5,500** for that supplier, card = report = hand value); two suppliers at two prices; lot depletion order; return into the exact lot; damaged return; stock count FIFO; supplier-return lot priority | 9 | 3 (D4, D5, D6) + 1 pinned decision (D7) |
+| E. Variants, barcodes, serials | `P3VariantBarcodeSerialTest.php` | colour×size grid; double/re-cased submits never duplicate a size+colour; barcode unique per shop but reusable across shops; delete releases the barcode and keeps history; serial sold→returned→sold, void restores the unit, damaged return does not | 9 | 1 (D9) + 1 pinned decision (D8) |
+| F. Tenant and branch isolation | `P3TenantIsolationTest.php` | static audit of every model with `shop_id`; **generated probe** of every `/app` route that binds a model, all verbs, aimed at another shop's rows (**139 requests, 40 model classes, 0 leaks**, one route answered 422 = inconclusive); positive control (the owner reaches real pages with the same probe); **15 valid-payload attacks with another shop's ids in the body** (checkout, return, void, payments, purchase, damage, count, transfer…) → books unchanged; sibling branch cannot void/edit/stock-in | 5 | 0 |
+| G. Concurrency (real parallel processes on MariaDB) | `tests/QA/concurrency/run.php` + `worker.php` | 11 scenarios × 3 rounds against `zaylotix_qa` (Baby Park main + pooled branch): last piece (same shop, across both branches), same bill ×6, void ×5, return ×5, return-vs-void, purchases ×6, expenses ×6, supplier returns ×6, due collection (same customer ×6, different customers ×4 and ×2) | 8 scenarios clean (24 rounds) | 3 scenarios fail (S6, S8, S10 → D10) |
+| H. Report and financial reconciliation | `P3ReconciliationTest.php` | **seeded random days** (3 seeds × 40 steps through 10 money screens): *cash + customer dues* and *supplier payables* rebuilt from raw ledgers after every step; stored bill profit = arithmetic of its lines; profit report = stored profit − refunds + returned cost (live bills) | 5 | 2 (D12, D13) |
+
+**Totals.** New PHPUnit tests: **61 executed and passed** (default run), **9 executable defect reproductions** (run with `php artisan test --group=phase3_defect`; they fail today and are excluded from the default run in `phpunit.xml`). Harness: **33 race rounds**, 24 clean, 9 with deadlock errors. **Full PHP regression after adding all of this: 2,058 passed, 0 failed (13,791 assertions)** — before Phase 3 it was 1,997 (11,883), so the difference is exactly the 61 new tests; the 9 defect reproductions are excluded from that run by design. The JS suite was not re-run (no JS file changed; 402 passing at its last run). Blocked: none. Not executed: §9.5.
+
+### 9.2 Confirmed working (evidence, not assumption)
+
+- A sale followed by its void restores cash, bank, size stock, article stock, customer due and loyalty points exactly, for plain, decimal, discounted, split-tender and credit bills.
+- A refused checkout (over/under-payment, quantity beyond stock, fractional/zero/negative quantity, negative discount, unknown product, empty cart, unknown payment method) changes nothing at all and answers a clean 4xx, never a 5xx.
+- The same bill sent six times at the same instant creates **one** bill, takes the stock and cash **once**.
+- One piece left, six cashiers (same shop) or three at each of the two pooled branches: **exactly one sale**, stock ends at 0, never negative, cash moves once.
+- The same bill voided by five tabs: reversed once. The same piece returned by five tabs: refunded once. A return racing a void: books whole either way.
+- Stock = independent model after every applied step of 3 seeded random days (45 steps each, size and article); article stock = sum of its sizes at every step.
+- Cash + customer dues and supplier payables equal the ledgers after every applied step of 3 seeded random days (40 steps each; a step is skipped when it does not apply, e.g. nothing to void yet).
+- Supplier valuation: the brief's example gives ৳5,500; lots follow sales, returns, counts and supplier returns exactly.
+- A stranger shop gets 403/404 from every probed route and cannot move money or stock with another shop's ids in the body; the other shop's tables were byte-identical afterwards.
+
+### 9.3 Bug register (all **open**; nothing has been fixed)
+
+Severity = business impact. "Approval" = I will not touch this until you say so.
+
+| ID | Sev | What happens (reproduced) | Root cause | Proposed fix | Regression risk | Re-test after fix |
+|---|---|---|---|---|---|---|
+| **D13** | **Medium** | A bill with a return is later **voided**: the profit report keeps subtracting the refund. Example: sale 200, return 1 piece (100), void → sales 0 but *returns 100* → gross profit **−40** on a day with no real sale. Cash is correct; only the report is wrong. | `Reports::rangeStats()` sums `returns` by date without checking that the bill still counts (bills do — `voided_at IS NULL`). Voiding after a return is allowed since Phase 39. | Exclude returns whose bill is voided/not-counted (join on `sales`) in the return totals of `rangeStats`, `combinedRangeStats` and the product/profit reports that sum `returns`. | Medium-low (report arithmetic only). | defect test D13; `profitByChannel` = P&L check on production (read-only); existing report tests |
+| **D10** | **Medium** (availability, no data loss) | Two or more people entering a **purchase**, an **expense**, or collecting **dues from different customers** within the same few milliseconds: one request fails with the "সার্ভারে সাময়িক সমস্যা হয়েছে… (রেফারেন্স …)" screen (HTTP 500, MariaDB deadlock 1213). Measured: purchases ×6 → 4 failed; expenses ×6 → 2–5 failed; dues ×4 → 3 failed; dues ×2 → 1 failed (10/10 rounds). **The books stayed exact in every round** (stock, cash, due all matched the accepted requests). | A child row (`purchases`, `expenses`, `payments` …) is inserted first (MariaDB takes a *shared* lock on the parent `shops` row for the foreign key), then `UPDATE shops SET cash_balance` needs an *exclusive* lock — two such requests wait on each other. Paths that lock the shop row first (POS checkout, returns, void, loans, salary, partners, rentals) are immune — S1–S5 and S9 are clean. | Lock the shop row first inside the transaction (`Shop::whereKey(id)->lockForUpdate()`, the discipline POS already uses) **or** wrap in `DB::transaction($cb, 3)` so a deadlock is retried transparently. Call sites: `ExpenseController:63`, `PurchaseController:176`, `PaymentController` (collections), plus by code reading only: `SupplierPaymentController:43`, `AdSpendController:124`, `SupplierPayable:48`, `PurchaseOrderController:195`. | Medium — lock order must stay shop → customer/supplier → product everywhere. | harness S1–S10 ×10 rounds; full PHPUnit |
+| **D4** | **Medium** (lot-tracked shops, e.g. SEAMAN) | Voiding a bill gives the pieces back to the size and the article but **not to the supplier lot** they came from → lots add up to less than the shelf; the supplier report moves the difference to the article's supplier/"unknown"; scanning that lot's sticker says "out of stock". | `SaleReversal::reverse()` has no `product_source_id` handling (the return path has it). | Restore the not-yet-returned quantity into `sale_items.product_source_id`'s lot, as `ReturnController` already does. | Low-medium. | defect test D4; `SupplierStockValueTest`; sale→void→lots round trip |
+| **D5** | **Medium** (lot-tracked shops) | A damage write-off lowers the size/article stock but **no lot** → lots run *ahead* of the shelf. With D4 this is the likely source of the 2026-11-25 SEAMAN case (46 in lots, 22 on the shelf). | `DamageController` never touches `product_sources`, although `damages.product_source_id` exists. | Same FIFO decrement `StockCountController` uses (or the lot named on the damage). | Low-medium. | defect test D5 |
+| **D12** | **Medium — owner decision** | Credit bill 150 (10 paid). Customer pays 100 at the due screen *without choosing an invoice*. Bill is voided. Due → 0, but the 100 stays in the drawer and is **recorded nowhere as the customer's** (advance stays 0). Collections that *are* linked to the invoice do become advance (Phase 39). | `SaleReversal` deliberately ignores unlinked collections ("can't be attributed to this bill"), and clamps due at 0. | Decide: turn the excess into advance/store credit (recommended), or refund, or leave. | Low if advance. | defect test D12; reconciliation random day with voids enabled |
+| **D3** | **Medium** | Goods received through the **Purchases** screen never reach the intake ledger (the Stock page's stock-in does) → "how much came in" per supplier is understated. | `PurchaseController::applyEffects()` never calls `IntakeLedger::record`. | Record in both the variant and plain paths. | Low. | defect test D3; `SupplierFlowReportTest` |
+| **D2** | **Medium — owner decision** | A bill paid by **bKash** is refunded: the bank balance keeps the money, the cash drawer pays it (bank +100 too high, cash −100). | Refunds always debit `cash_balance`, the tender credited `bank_balance`. | Decide: refund through the original channel, or keep "from cash" but move the same amount bank→cash in the books. | Medium (money). | defect test D2; exchange matrix (33 cases) |
+| **D6** | Medium-low | Supplier report: *received* is attributed by the lot's supplier, *sold* by the **article's** supplier → for an article bought from several suppliers the per-supplier "ever received/sold" figures are wrong, and sold pieces can show as "supplier unknown". | `AccountsController::supplierFlows()` uses `COALESCE(m.supplier_id, p.supplier_id)` for sales. | Resolve sold lines through `sale_items.product_source_id → product_sources.supplier_id` first. | Low (report only). | defect test D6; `SupplierFlowReportTest` |
+| **D9** | Low-medium | Registering an IMEI that already exists (or twice in one pasted list) → crash screen (HTTP 500). Nothing is corrupted (rolled back, verified). | Only the database unique index stops it; no validation. | Validate the list (duplicates inside it, and against the shop's serials) and return an `imeis` error. | Low. | defect test D9; `SerialTrackingTest` |
+| **D1** | Low | Three one-piece returns of one ৳290 bill refund ৳290.01 in total (1 paisa). | `lineRefundAndCost` rounds each unit's proportional share separately. | Let the last return of a line take the remainder (`paid − already refunded`). | Medium-low (central money formula). | defect test D1; exchange matrix |
+| **D11** | Low (audit trail) | `returns.applied_to_due` is yes/no: **how much of a refund reduced the due vs left the drawer is not stored**, so cash cannot be rebuilt from the ledger and the void's netting has to re-derive the split proportionally. | column design | add `due_applied` / `cash_paid` amounts (additive migration; history cannot be back-filled exactly). | Low. | reconciliation test can then check cash and dues separately |
+| **D7** | Decision | In a lot-tracked shop the stock-value card values every piece at the size's **latest** cost while the supplier report values lots at their own cost; the gap is shown as "supplier unknown" although all suppliers are known (example: card ৳1,600, lots ৳1,300, "unknown" ৳300). | documented latest-cost overwrite | Decide the valuation basis for lot shops (lot cost recommended). | — | pinned by `P3SupplierValuationTest` |
+| **D8** | Decision | A serial that is **already sold** (or unknown) can be rung up again without a warning: stock goes down, the serial stays "sold"; shelf count 1 vs serial list 2 in stock. Documented as "never block a sale". | by design | Decide: keep / warn / block. | — | pinned by `P3VariantBarcodeSerialTest` |
+
+### 9.4 How to re-run
+
+- Default suite (everything above that passes): `php artisan test`.
+- Defect reproductions: `php artisan test --group=phase3_defect` (currently 9 failures, one per D-item marked "defect test"; when a fix is approved and applied, remove the `#[Group('phase3_defect')]` line and the test joins the default run).
+- Concurrency: `php tests/QA/concurrency/run.php [S1_ S6_ …] --rounds=3` (needs the local MariaDB and the `zaylotix_qa` database from `rebuild.sh`; refuses any other database).
+- Isolation coverage detail is written to `storage/logs/p3_idor_coverage.json` on each run (not committed).
+
+### 9.5 Planned in Phase 3 but **not** executed (be honest)
+
+F-01: oversell flag, wrong-shop pin and huge quantities were not re-run in Phase 3 (earlier QA §4 only) · F-02: return-window expiry and owner override; exchange permutations were not re-run (33 cases ran earlier) · F-04: advance application (`apply-advance`), per-invoice view · F-05: online orders not re-run (§4) · F-06: transfer confirmation flow (accept/reject), branch comparison report oracle · F-07: generated property tests over discount/VAT/service-charge/loyalty/coupon boundaries · T-INV-03: bulk create of 1,000+ variants · T-INV-04: lot expiry/FEFO and batch tracking · T-INV-05: online-order delivery vs POS on the last piece, transfers in parallel, stock count vs sale, parallel serial sale, anything above 6 parallel, MariaDB 11.8 (all MariaDB runs are 10.4) · T-INV-06: branch comparison, accounts net-worth oracle · S-01: 13 routes whose parameters are plain strings (barcodes, provider names, export kinds), 1 route with no victim row, 1 inconclusive, and the admin (71) and api (9) routes · production: no read-only re-check was made in Phase 3.
+
+### 9.6 Verdict and next step
+
+**Not a production-readiness claim.** These are automated and scripted results on SQLite and a local MariaDB 10.4; they show the money, stock and isolation logic is sound under the scenarios listed, and they found 13 concrete items. The provisional recommendation in §0 stands (*ready for limited production*, which is what it is), with two items I would fix first once approved — **D13** (wrong profit figure after a void) and **D10** (crash screen under simultaneous entries) — and the cron (R1) still the most important operational item.
+
+Suggested order if you approve fixes: D13 → D10 → D4+D5 → D3 → D9 → D6 → D1 → D11, with D2, D7, D8, D12 waiting for your decision. **Next QA phase:** finish Phase 4 (the §9.5 items, on MariaDB 11.8), then B-01 restore test and S-02 security probes, then the repo-owned Playwright project and CI.
