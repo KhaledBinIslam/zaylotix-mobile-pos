@@ -1,0 +1,231 @@
+# QA REPORT — Zaylotix ERP/POS
+
+Living document. **Only tests that were actually executed are marked as passed.** Anything not run is listed as *NOT EXECUTED*.
+No production data was modified by any test. Production was touched read-only (counts, sizes, configuration names) and, for deploys, with a database backup first. No secrets, passwords or customer details are recorded here.
+
+Last updated: 2026-11-27 · Production commit: `7919dbff` · Newest commit (not deployed): `15742b8f`
+
+---
+
+## 0. Status at a glance
+
+| Phase | State |
+|---|---|
+| 1. Codebase and architecture audit | **Done** (this document, §1–§3) |
+| 2. Test planning / roadmap | **Done** (§6) — awaiting approval to start Phase 3 |
+| 3. Critical functional testing | Partly executed earlier in this engagement (§4); full plan not yet run |
+| 4. Database and data integrity | Partly executed (§4); not complete |
+| 5. Playwright E2E | Executed as ad-hoc JavaScript suites outside the repo (§4); **not yet a repo-owned TypeScript project** |
+| 6. Regression | Executed per change (§4); no matrix/CI yet |
+| 7. Performance and scale | **NOT EXECUTED** (only a storage model, §5) |
+| 8. Security and reliability | Tenant-isolation spot checks executed (§4); everything else **NOT EXECUTED** |
+| 9. CI/CD and production readiness | **NOT STARTED** — there is no CI in the repository |
+
+**Provisional recommendation: *Ready for limited production*, which is what it already is** (4 paying shops, ~11 bills/day at the busiest shop). **Not ready** to be sold as "scales to 100k+ variants / many concurrent users" until Phases 7–9 are executed. One operational defect (R1 below) should be fixed first, regardless of testing.
+
+---
+
+## 1. Phase 1 — what the system is (measured, not assumed)
+
+| Item | Finding | How it was measured |
+|---|---|---|
+| Backend | Laravel 12, PHP 8.2.12 locally, **PHP 8.3.37 in production** (version mismatch) | `composer.json`, `php -v`, production runtime |
+| Frontend | Inertia 2 + Vue 3 + Vite + Tailwind; PWA service worker; Android WebView/TWA wrapper; separate Kotlin "Zaylotix Printer" helper app | `package.json`, repo tree |
+| Size | 95 models · 121 controllers · 217 migrations · 70 console commands · 23 policies · 110 Vue pages · 432 routes (336 under `/app`, 71 admin, 9 api) | `route:list`, file counts |
+| Database | MariaDB 11.8.9 in production; MariaDB 10.4 locally; **PHPUnit runs on SQLite in-memory** | `phpunit.xml`, `SELECT version()` |
+| Tenancy | `shop_id` global scope (`BelongsToTenant`), business-root grouping for branches, owner can switch branch, staff are fixed to one shop | code + tests |
+| Stock model | Product + variant stock; optional **shared stock pool** between a main shop and branches (rows are *copied per branch*, written together by `applyStockDelta`); lot/"source line" tracking for suppliers; serials; batches/expiry | code |
+| Costing | Not FIFO. Variant/product cost is the current cost; a sale line **snapshots the cost at sale time**; supplier stock value = stock × cost, or per lot where lot tracking is on. Needs verification against the ledger (T-INV-02). | code reading — **to be verified by test** |
+| Background work | `schedule:run` (9 daily tasks + a per-minute `queue:work --stop-when-empty`), `queue=database`, `cache=database`, `session=database` — i.e. one cron hit drives *everything* | `routes/console.php`, `.env` drivers |
+| Exports | maatwebsite/excel, dompdf, mpdf, mysqldump-php | `composer.json` |
+| Existing tests | **287 PHP test files, 1,992 tests, 11,875 assertions** (all passing, SQLite) · **44 JS files, 402 tests** (all passing) | executed 2026-11-27 |
+| CI/CD | **None in the repository** (no `.github`, no GitLab/Jenkins file). Deploy is manual over SSH with a pre-deploy backup | `ls -a`, deploy practice |
+| Tooling gaps | No coverage driver installed (no Xdebug/PCOV), no static analysis (PHPStan/Larastan), no code style gate, no Playwright project in the repo, no load-test tool in the repo | `php -m`, repo tree |
+
+### Production facts (read-only, 2026-11-27)
+
+* Database: 104 tables, **17.4 MB** (data 8.6 + index 8.8); 47 tables empty. 9,985 variant rows (9,613 live), 1,185 product rows (8.4 variants/product). Images: **15 files, 4.5 MB, average 306 KB**; only 20 rows carry a photo.
+* Traffic actually seen: 772 bills in 189 days across all shops; busiest shop ≈ 10.6 bills/day; busiest single day 42 bills.
+* Shared MariaDB server: `max_connections = 2000`, **`Max_used_connections = 2020` since its last restart 41 days ago** (server-wide, other tenants included). One burst of 13 failed requests in ~1 s ("[2002] Operation not permitted") was logged on 2026-11-26.
+* Backups: 33 files / 144 MB in `storage/app/private/backups`; **no retention code** (`BackupDatabase` never deletes old files).
+* `shell_exec` is disabled on the host, so CPU/RAM/crontab cannot be read from inside the app (capacity must be read from hPanel).
+
+---
+
+## 2. Highest-risk areas (ranked)
+
+Status: **CONFIRMED** = reproduced/measured · **SUSPECTED** = strong indication, not yet proven.
+
+| # | Risk | Severity | Status | Evidence |
+|---|---|---|---|---|
+| R1 | **The scheduler and queue worker have not run since the cloud migration (2026-11-14).** One missing cron entry stops: nightly backups, low-stock alerts, daily owner summary, payment reminders, **subscription expiry**, installment late fees, online-order reconciliation, owner sale notifications and shop self-service backups. | **Critical (operational)** | **CONFIRMED** | Nightly 02:00 backups exist for 8–14 Nov and **none after**; last notification of any kind 2026-11-14 09:00:05 while sales continue to 2026-11-27; 2 `SaleMade` jobs queued 2026-11-14 17:37 are still unprocessed (attempts 0); `schedule:list` shows the schedule is registered, so the code is fine — the cron call is missing. **Needs a hPanel cron (user action).** |
+| R2 | **Tests cannot see database-engine problems.** All PHPUnit tests run on SQLite. Real production defects this engagement that SQLite could not catch: `sale_payments.method` silently lost `'gateway'` for 5 weeks (MySQL ENUM), a `GROUP BY` that MariaDB 10.4/MySQL 8 reject, `DATE_FORMAT`. Row locking and deadlock behaviour are not testable at all in the suite. | High | **CONFIRMED** | incidents `U6QFBH`/`W7SJ5W`, local MariaDB 10.4 run |
+| R3 | **No CI quality gate.** Nothing runs tests before a deploy; production runs PHP 8.3, tests run on 8.2. | High | **CONFIRMED** | no pipeline file; version check |
+| R4 | **Duplicate billing.** A page remount after the confirm sheet closed left an already-billed cart on screen ("press bill again"). Fixed and deployed. Production still holds 17 pairs of identical bills by the same cashier within 3 minutes (5 of them 2–7 s apart) that need owner review. | High | **CONFIRMED (cause)** · **SUSPECTED (how many real duplicates)** | browser reproduction; production read-only query |
+| R5 | **Cross-branch accounting.** Three reporting bugs found in the branch/pool logic (voided bills counted in branch reports; a refund taken at the sibling counter missing from the product table; returns booked in the wrong branch). Policy now changed to "return at the selling shop" (committed, **not deployed**). | High | **CONFIRMED** (fixed) | tests + production data |
+| R6 | **Unbounded growth.** Low-stock alerts create one notification row per low item × owner × day, never pruned: 3,351 rows in 18 days at today's size (the largest table, 22% of the DB). Backups also unbounded. The de-dup query for the alert job reads `data->product_id` (JSON path, no index) once per product → quadratic as the table grows. | Medium–High | **CONFIRMED** (growth) · **SUSPECTED** (job slowdown at scale) | table sizes; `SendLowStockAlerts` |
+| R7 | **Sessions, cache and queue share the business database; the shared server has hit its connection ceiling.** | Medium | **CONFIRMED** (facts) · **SUSPECTED** (user impact) | `Max_used_connections`; incident burst |
+| R8 | **Tenant isolation** relies on a global scope plus hand-written `withoutGlobalScopes()` in many controllers (it caused R5). 11 cross-shop probes passed; the other ~330 `/app` routes are untested for IDOR. | Medium | **SUSPECTED** | spot checks only |
+| R9 | **Costing/valuation semantics unproven.** Supplier stock value is not FIFO; the expected values in the brief (e.g. 100 bought, 40 sold, 5 returned) have not been asserted against the ledger. An over-count (৳25,000 at one shop) was found and fixed earlier. | High | **SUSPECTED** | T-INV-02 |
+| R10 | **Restore never tested.** Backups exist, but no restore into a clean database has been run. | High | **NOT TESTED** | — |
+| R11 | **Scale behaviour unmeasured.** Full-catalogue POS mode switches to search mode above 1,500 products; stock-value, exports and several reports aggregate in PHP. No load or soak test has ever been run. | Unknown | **NOT TESTED** | — |
+
+---
+
+## 3. Load balancing — is it needed?
+
+**Not on current evidence.** Load testing (how much one node can take) and load balancing (spreading traffic over several nodes) are different things.
+
+* The measured real traffic is tiny (busiest day 42 bills). The application and database sit on one hosted node; there is nothing to balance *between*.
+* The observed pressure points are not CPU-bound web traffic: they are the shared database's connection ceiling (R7), the single cron entry (R1) and per-request query counts (currently 13–31 queries for the main screens, measured).
+* A load balancer would not help with R1, R6 or R7.
+* **Decision rule for later (to be filled by Phase 7 measurements):** consider horizontal scaling only if sustained PHP-worker saturation or p95 latency above target is *measured* at the traffic level the business expects. Until then the work is: measure, fix queries, bound growth.
+
+---
+
+## 4. Tests actually executed so far (with results)
+
+Environment key: **PHPUnit** = SQLite in-memory, PHP 8.2 · **QA-DB** = isolated local MariaDB 10.4 database `zaylotix_qa`, real browser (Chrome via Playwright, mobile viewport) against `php artisan serve` · **PROD-RO** = production, read-only.
+
+| Suite | Env | Result |
+|---|---|---|
+| Full PHP test suite | PHPUnit | **1,992 passed**, 0 failed (11,875 assertions) |
+| Full JS suite | Vitest | **402 passed**, 0 failed |
+| Full migration chain from empty database | QA-DB | passed (28 s) |
+| Self-check + every parameterless `/app` page, 4 paid shops | PROD-RO | 79 pages × 4 shops, **0 FAIL**; 1 SLOW (`serial-settings`, 135 queries, 63 ms) — fixed locally, not deployed |
+| Real-browser page sweep | QA-DB | 78 pages: 50 OK, 27 feature-gated 403 (expected), 1 HTTP 500 (`/app/online-orders`, MariaDB 10.4 `GROUP BY`) → fixed, deployed |
+| Checkout via UI, DB verified (stock, pool, payment rows, stock value) | QA-DB | 9/9 |
+| Void + return via UI, DB verified | QA-DB | 11/11 |
+| First action after login (CSRF) | QA-DB | 3/3 (after fix) |
+| Receipt shown after billing, billed cart does not return | QA-DB | 6/6 (after fix) |
+| Double-tap / triple-click billing, offline sale then sync | QA-DB | 8/8 |
+| Cross-shop isolation (anonymous, other shop, admin panel) | QA-DB | 11/11 + 3/3 |
+| Hardware-scanner input path | QA-DB | 4/4 |
+| Branch 2: sales, one invoice series, 10 concurrent sales, last-unit race, staff lock | QA-DB | 17/17 |
+| Branch 2: catalogue sync, price sync, damage/purchase/stock-count at the branch, return, wrong-shop pin, shared customer, final parity | QA-DB | 25/26 — the one FAIL is a QA-fixture artefact (demo articles have no manufacturer/cost code, so a later-added size gets no barcode) |
+| Search-box barcode typing | QA-DB | 7/8 — the FAIL is a test-semantics mistake (a human typing in the search box searches by name; scanners use a separate path, covered above) |
+| Receipt QR (default off, shop QR on, no rating QR) | QA-DB | 10/10 |
+| Online order discount (line + overall), invoice, COD, stock | QA-DB | 16/16 |
+| Exchange money: costlier, cheaper, equal, line discount, bill discount, new-item discount, bKash, credit sale refund, online order, double submit | QA-DB | 33/33 (after fixing two test-side mistakes) |
+| Online lifecycle: cancel, deliver, return; profit page vs raw rows vs P&L | QA-DB | 21/21 |
+| Return/exchange only at the selling shop (screen + server + normal path) | QA-DB | 17/17 |
+| Offline + online + total profit equals the P&L gross profit | PROD-RO | identical for all 4 paid shops, today / this month / 30 days (difference 0.00); product-table reconciliation showed a ৳350 gap at one shop → traced and fixed (not yet deployed) |
+
+**Defects found and fixed during this engagement:** billed cart returning after checkout (R4); stale CSRF token after login; `/app/online-orders` 500 on stricter SQL; voided sales counted in branch reports; refund at the sibling counter missing from the product table; `gateway` payment method missing from the ENUM; colour case mismatch (`Pink`/`PINK`) breaking branch sync; `/app/returns` 1,400 queries; serial-settings N+1; Bluetooth bill print hanging forever.
+
+**Limits of the above (be honest):** the Playwright scripts are plain JavaScript kept outside the repository (not yet in CI); they ran against a local MariaDB 10.4 and a seeded footwear/two-branch dataset, not against production data volumes; no run used more than 10 simultaneous requests.
+
+---
+
+## 5. Storage and scale model
+
+Built **only from production measurements** (`information_schema`, 2026-11-27). Sizes are *table data + index*; the database's real on-disk footprint can be larger (the engine reports 12 MB of reserved free space inside the tables today).
+
+Measured ratios per `product_variants` row: products 0.119 · stock intakes 0.292 · label prints 0.379 · supplier lots 0.136 · colour barcodes 0.133. Bytes per row (data + index): variant 311 · product 677 · intake 343 · label print 302 · lot 398 · colour barcode 247.
+Bytes per bill (sale + lines + payments + activity rows): **≈ 1.7 KB**. Low-stock alert row ≈ 1.2 KB. Image average 306 KB.
+
+Assumptions: (1) tiers count **rows in `product_variants`** — a pooled branch holds its own copy of every variant, so a two-branch business is ×2 of its catalogue; (2) 8.4 variants per product (measured); (3) the "high" column adds 30% to index bytes for random-key indexes (barcodes) — an estimate, not a measurement; (4) alert rows scale with the share of variants that are low on stock (1.9% of variants per day, measured while cron ran) and are never pruned; (5) the dump is ≈ 34% of table size (5.9 MB / 17.4 MB), catalogue-only here; (6) bill volumes are *scenarios*, not forecasts.
+
+| tier | variants | products | catalogue, DB (low – high) | one year of bills at 100 / 1,000 / 5,000 per day | low-stock alerts per year (unpruned) | one nightly dump (catalogue) | images if **every** product had 1 photo |
+|---|---:|---:|---|---|---|---|---|
+| today (measured) | 9,985 | 1,189 | 7 – 8 MB | 58 MB / 584 MB / 2.85 GB | 82 MB | ~3 MB | 356 MB |
+| 10,000 products | 84,000 | 10,000 | 56 – 65 MB | same | 691 MB | ~22 MB | 2.9 GB |
+| 100,000 variants | 100,000 | 11,905 | 66 – 78 MB | same | 822 MB | ~26 MB | 3.5 GB |
+| 500,000 variants | 500,000 | 59,524 | 330 – 389 MB | same | 4.0 GB | ~132 MB | 17.4 GB |
+| 1,000,000 variants | 1,000,000 | 119,048 | 661 – 777 MB | same | 8.0 GB | ~264 MB | 34.8 GB |
+
+Reading it: **storage is not the constraint.** The catalogue itself is under 1 GB even at a million variants. What actually grows fastest is *bills* (at 5,000/day, 2.9 GB/year) and *unpruned alert rows* (already larger per year than the whole catalogue). Images are a policy question: today 0.2% of rows have a photo. Backup storage is unbounded because nothing deletes old dumps (30 daily dumps of a 1M-variant database ≈ 8 GB before transactions).
+Query time, not bytes, is the open question at scale — that is Phase 7.
+
+---
+
+## 6. Phase 2 — the testing roadmap
+
+Priority: P0 = before anything else · P1 · P2. Risk = business impact if the scenario fails. "Auto" = can run unattended in CI.
+
+### Phase 3 — critical functional (P0)
+
+| ID | Category | Module | Scenario | Expected result | Risk | Tool | Auto | Pri | Depends | Pass / fail |
+|---|---|---|---|---|---|---|---|---|---|---|
+| F-01 | Blackbox/Functional | POS checkout | valid, empty cart, qty 0/negative/huge, oversell flag, split tender, credit sale, wrong shop pin, duplicate client UUID | totals, stock, cash, due, payment rows consistent; invalid input → 422 with message | Critical | PHPUnit + Playwright | Yes | P0 | seeded shop | every assertion holds; no 5xx |
+| F-02 | Functional | Returns/Exchange | all exchange permutations (done manually, 33 cases) + partial returns, damaged/lost, window expiry, owner override | money/stock/ledger/reports agree | Critical | PHPUnit | Yes | P0 | F-01 | cash delta = documented formula |
+| F-03 | Functional | Purchases & returns to supplier | cash/bank/credit, receive, partial receive, supplier return, cost change | payable, cash, stock, lot rows consistent | Critical | PHPUnit | Yes | P0 | — | ledger = stock |
+| F-04 | Functional | Customer dues | partial payment → due → full payment → advance → void payment | customer balance, cash, per-invoice view | High | PHPUnit | Yes | P0 | F-01 | balances equal sum of entries |
+| F-05 | Functional | Online orders | create, discount, cancel, deliver, RTO, COD settle | stock and profit move only at the documented states | High | PHPUnit + Playwright | Yes | P0 | — | as §4 |
+| F-06 | Functional | Branch/pool | sale/return/transfer/damage/count at either branch | pooled stock identical; books separate | Critical | PHPUnit + MariaDB | Yes | P0 | MariaDB job | zero parity mismatches |
+| F-07 | Whitebox | Money maths | every `round()/min()/max()` on discounts, VAT, service charge, loyalty, coupons | boundary values never go negative or exceed total | High | PHPUnit (+ property tests) | Yes | P1 | — | invariants hold for generated inputs |
+
+### Phase 4 — stock, supplier, variant, serial integrity (P0)
+
+| ID | Category | Module | Scenario | Expected | Risk | Tool | Auto | Pri | Depends | Pass / fail |
+|---|---|---|---|---|---|---|---|---|---|---|
+| T-INV-01 | Integrity | Stock ledger | Opening + in − out = closing after every movement type (sale, void, return, exchange, damage, count, transfer, purchase, supplier return) | identity holds per variant, per branch | Critical | PHPUnit + SQL invariant command | Yes | P0 | — | 0 violations |
+| T-INV-02 | Integrity | Supplier valuation | the brief's example (100 @ ৳100, sold 40, returned 5 → 55 left) under single supplier, many suppliers, many cost levels, lot-tracked and untracked shops; supplier change | value = ledger; costing method documented | Critical | PHPUnit | Yes | P0 | confirm method with owner | matches hand-computed values |
+| T-INV-03 | Integrity | Variants/barcodes | duplicate cell, case/space variants (found `Pink`/`PINK`), unique barcode per shop, delete with history, bulk create 1,000+ | no duplicates; history intact | High | PHPUnit | Yes | P0 | — | 0 duplicates |
+| T-INV-04 | Integrity | Serial/lot/expiry | duplicate rejection, sale/return/transfer of a serial, lot FEFO, expired stock blocked | one owner per serial; expired never sold | High | PHPUnit (MariaDB) | Yes | P1 | — | no double-allocation |
+| T-INV-05 | Concurrency | Pool writers | N parallel sales/purchases/returns/transfers on one variant, last-unit race, deadlock retry | no negative stock, no lost update, exactly-once | Critical | Playwright/HTTP workers vs MariaDB; PHP parallel | Partly | P0 | MariaDB service | final stock = initial − Σ accepted |
+| T-INV-06 | Integrity | Reports ↔ ledger | stock value, supplier report, profit by channel, product profit, branch compare | each equals an independent SQL computation | High | SQL oracle + PHPUnit | Yes | P0 | — | difference 0.00 |
+
+### Phase 5 — Playwright E2E (P0/P1)
+
+| ID | Category | Module | Scenario | Expected | Risk | Tool | Auto | Pri | Depends | Pass / fail |
+|---|---|---|---|---|---|---|---|---|---|---|
+| E-01 | E2E | Journeys 1–7 of the brief | product→purchase→stock→sale; supplier valuation; variant→barcode→billing; partial pay→due→full pay; sale→return→reconcile; branch transfer; report→filter→PDF/Excel | each ends with DB-verified state | Critical | Playwright (TypeScript) + `data-testid` | Yes | P0 | repo-owned project, seed command | green; no console errors; no failed critical request |
+| E-02 | E2E | UI hygiene | dead links, stuck spinners, horizontal overflow at 360–414 px, overlapping sheets, missing validation, double submit | none | Medium | Playwright | Yes | P1 | — | zero findings |
+| E-03 | E2E | Exports/imports | PDF/CSV/Excel content equals screen; CSV/XLSX import with bad rows | file totals = DB; bad rows rejected with reason | High | Playwright + file parsing | Yes | P1 | — | totals identical |
+| E-04 | E2E | Offline | sell offline, reconnect, branch switch while queued | exactly-once sync; wrong-shop 409 | High | Playwright network control | Yes | P0 | — | as §4 |
+| E-05 | Compat | Browsers/devices | Chrome Android (primary), Samsung Internet, Safari iOS, desktop Chrome/Edge/Firefox; WebView | core journeys work or fail gracefully | Medium | Playwright projects + real-device spot check | Partly | P2 | — | matrix filled |
+
+### Phase 6 — regression (P0)
+
+| ID | Category | Scenario | Expected | Risk | Tool | Auto | Pri | Depends | Pass / fail |
+|---|---|---|---|---|---|---|---|---|---|
+| G-01 | Regression | Change→module dependency matrix (variants, billing, schema, reports) and the test sets each triggers | matrix in repo; every PR runs its set | High | script + CI | Yes | P0 | CI | matrix enforced |
+| G-02 | Regression | Baseline comparison before blaming a change | failures reproduced on the previous commit | Medium | CI matrix | Yes | P1 | CI | — |
+
+### Phase 7 — performance and scale (P1; **not executed**)
+
+| ID | Category | Scenario | Expected | Risk | Tool | Auto | Pri | Depends | Pass / fail |
+|---|---|---|---|---|---|---|---|---|---|
+| P-01 | Scale data | factory/seeder generates 10k products, 100k/500k/1M variants with intakes, labels, lots, serials, sales, notifications in an isolated MariaDB | reproducible dataset | — | Laravel factories/chunked inserts | Yes | P1 | MariaDB 11.8 container | dataset loads |
+| P-02 | Performance | login, dashboard, product/variant search, barcode lookup, POS open, stock page, supplier valuation, accounts, reports, PDF/Excel export | p50/p95/p99, query count, memory per endpoint at each tier | High | k6 + query log + `EXPLAIN` | Yes | P1 | P-01 | thresholds agreed *before* running |
+| P-03 | Load | 10/50/100/(500 if the box allows) mixed-behaviour users: billing, search, stock, reports | error rate, p95 vs target; first bottleneck named | High | k6 | Yes | P1 | P-01 | targets agreed first |
+| P-04 | Stress/spike/soak | ramp to failure, 10× spike, 8–12 h soak; recovery; connection exhaustion; queue backlog; memory growth | no data corruption after overload; recovery without manual steps | High | k6 + monitoring | Partly | P2 | P-03 | none lost/duplicated |
+| P-05 | Optimisation | missing indexes, N+1, unbounded queries, PHP-side aggregation (stock value, exports), the low-stock de-dup query | each fix justified by a measurement | Medium | `EXPLAIN ANALYZE`, slow log | No | P1 | P-02 | measured gain |
+
+### Phase 8 — security and reliability (P1; mostly **not executed**)
+
+| ID | Category | Scenario | Expected | Risk | Tool | Auto | Pri | Depends | Pass / fail |
+|---|---|---|---|---|---|---|---|---|---|
+| S-01 | Security | IDOR sweep over all ~336 `/app` routes: every id-taking route probed with another shop's / branch's ids and as cashier | 403/404, nothing readable or writable | Critical | generated probe from `route:list` | Yes | P0 | two seeded shops | 0 leaks |
+| S-02 | Security | auth/session/CSRF/rate-limit/password reset; cookie flags; mass assignment; file upload types/size; SQLi/XSS on every free-text input | refused or escaped | High | Playwright + ZAP baseline (local) | Partly | P1 | — | no confirmed finding |
+| S-03 | Security | exports contain only authorised data; staff permission matrix enforced server-side | as stated | High | PHPUnit | Yes | P1 | — | matrix verified |
+| S-04 | Security | `composer audit`, `npm audit` | no critical advisory | Medium | CLI | Yes | P1 | — | none critical |
+| B-01 | Recovery | restore the newest dump into an empty database, run self-check + a business journey | restored system works | Critical | mysql + self-check | Yes | P0 | — | self-check passes |
+| B-02 | Recovery | failed deploy / migration rollback rehearsal | previous state recoverable | High | local rehearsal | Partly | P1 | — | documented and timed |
+| B-03 | Reliability | cron/queue liveness: alert if no scheduled run for 24 h; failed jobs; retry; duplicate execution; DB-down behaviour | silent failure impossible | High | health endpoint + external check | Yes | P0 | R1 fixed | alarm fires in a drill |
+| B-04 | Reliability | retention for backups, notifications, activity logs | bounded growth | Medium | command + test | Yes | P1 | decision | size stays flat |
+
+### Phase 9 — CI/CD and production readiness (P0 for the pipeline itself)
+
+| ID | Category | Scenario | Expected | Risk | Tool | Auto | Pri | Depends | Pass / fail |
+|---|---|---|---|---|---|---|---|---|---|
+| C-01 | CI | GitHub Actions: PHP 8.3, MariaDB 11.8 service, `composer audit`, syntax, PHPUnit **on SQLite and on MariaDB**, Vitest, build, Playwright critical set, artifacts | stops on any failure | High | GitHub Actions | Yes | P0 | repo on GitHub (it is) | red blocks merge |
+| C-02 | CI | staging smoke + `zaylotix:self-check --sweep` after deploy; manual approval before production; secrets only in the secret store | no unapproved deploy | High | Actions environments | Yes | P1 | staging target | gate observed |
+| C-03 | Readiness | pre-deploy backup, migration compatibility, rollback note, cache/queue restart, health check | checklist enforced | High | script | Yes | P1 | — | checklist green |
+
+---
+
+## 7. Decisions / approvals needed before Phase 3
+
+1. **Cron (R1)** — add one Hostinger cron entry that calls `php artisan schedule:run` every minute for the production app. Everything in R1 resumes (including nightly backups and subscription expiry). *Owner action; nothing in the code needs to change.*
+2. **Environment for MariaDB-backed tests** — a local/CI MariaDB 11.8 matching production (the local server is 10.4).
+3. **Costing method** — confirm how supplier stock value must be computed for non-lot shops (current cost vs lot cost) so T-INV-02 asserts the right thing.
+4. **Retention policy** — how long to keep backups, alert notifications and activity logs (R6).
+5. **Performance targets** — agreed p95 / error-rate numbers *before* Phase 7 is run.
+6. **Deploy of `15742b8f`** — contains the returns-at-selling-shop policy change; awaiting the owner's go.
+7. Any code change to business-critical logic will be proposed first (root cause, modules, fix, regression risk) and **will not be made without approval**.
+
+## 8. NOT EXECUTED (explicitly)
+
+Load, stress, spike and soak tests · any run above 10 simultaneous requests · scale datasets (10k–1M variants) · restore test · full IDOR sweep · XSS/SQLi/upload/rate-limit probes · dependency audits · browsers other than Chrome · real-device WebView · import/export file-content tests · CI pipeline (none exists) · coverage measurement (no driver installed).
