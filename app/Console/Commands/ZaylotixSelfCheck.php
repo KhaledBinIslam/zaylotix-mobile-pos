@@ -216,16 +216,33 @@ class ZaylotixSelfCheck extends Command
 
         $this->line('  [scan: every kind of code resolves]');
         $variants = ProductVariant::withoutGlobalScopes()->where('shop_id', $id)->whereNull('deleted_at')->whereNotNull('barcode')->where('stock', '>', 0)->inRandomOrder()->limit(5)->get();
+        // a resolver that blows up (it once recursed until the stack overflowed) must be REPORTED as a failure, never take the
+        // whole check down with it and leave the rest unprinted
+        $resolve = function (string $code) {
+            try {
+                return BarcodeResolver::resolve($code);
+            } catch (\Throwable $e) {
+                return ['found' => false, 'error' => class_basename($e).': '.mb_substr($e->getMessage(), 0, 80)];
+            }
+        };
         foreach ($variants as $v) {
-            $a = BarcodeResolver::resolve($v->barcode);
-            $b = BarcodeResolver::resolve('ZV'.$v->id);
+            $a = $resolve($v->barcode);
+            $b = $resolve('ZV'.$v->id);
             $this->ok("variant #{$v->id}: its barcode and ZV{$v->id} resolve to it", ($a['found'] ?? false) && ($a['variant_id'] ?? 0) == $v->id && ($b['found'] ?? false) && ($b['variant_id'] ?? 0) == $v->id);
         }
         $sibId = $shop->parent_shop_id ?: Shop::withoutGlobalScopes()->where('parent_shop_id', $id)->value('id');
         if ($sibId) {
             $sv = ProductVariant::withoutGlobalScopes()->where('shop_id', $sibId)->whereNull('deleted_at')->whereNotNull('barcode')->inRandomOrder()->limit(8)->get();
-            $miss = $sv->filter(fn ($v) => ! (BarcodeResolver::resolve('ZV'.$v->id)['found'] ?? false))->count();
-            $this->ok("sibling-branch (#{$sibId}) stickers resolve here", $miss === 0, "{$sv->count()} sampled, {$miss} not found");
+            $errors = [];
+            $miss = $sv->filter(function ($v) use ($resolve, &$errors) {
+                $r = $resolve('ZV'.$v->id);
+                if (isset($r['error'])) {
+                    $errors[] = $r['error'];
+                }
+
+                return ! ($r['found'] ?? false);
+            })->count();
+            $this->ok("sibling-branch (#{$sibId}) stickers resolve here", $miss === 0, "{$sv->count()} sampled, {$miss} not found".($errors ? ' — '.$errors[0] : ''));
         }
         $this->ok('an unknown code is "not found" (no crash)', BarcodeResolver::resolve('NO-SUCH-CODE-999')['found'] === false);
 

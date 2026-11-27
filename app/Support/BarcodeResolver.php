@@ -28,15 +28,23 @@ use App\Models\ProductVariant;
 class BarcodeResolver
 {
     /** @return array{found: bool, product?: Product, variant_id?: int, color?: string, source_id?: int} */
-    public static function resolve(string $barcode): array
+    /**
+     * @param  bool  $shortCodes  false = treat $barcode as a plain stored barcode string even if it LOOKS like a
+     *                            ZL/ZV/ZC short code. The sibling-branch fallbacks pass false: they are looking up a
+     *                            barcode string that was stored on a row, and a plain product's stored barcode IS a
+     *                            'ZV{id}' string — re-reading it as a short code sent the lookup round and round
+     *                            until PHP's stack overflowed (Liberty owner, 2026-11-27: scanning a main-shop
+     *                            sticker at the branch answered HTTP 500 "Maximum call stack size reached").
+     */
+    public static function resolve(string $barcode, bool $shortCodes = true): array
     {
-        if (preg_match('/^ZL(\d+)$/', $barcode, $m)) {
+        if ($shortCodes && preg_match('/^ZL(\d+)$/', $barcode, $m)) {
             return self::resolveLot((int) $m[1]);
         }
-        if (preg_match('/^ZV(\d+)$/', $barcode, $m)) {
+        if ($shortCodes && preg_match('/^ZV(\d+)$/', $barcode, $m)) {
             return self::resolveVariantId((int) $m[1]);
         }
-        if (preg_match('/^ZC(\d+)$/', $barcode, $m)) {
+        if ($shortCodes && preg_match('/^ZC(\d+)$/', $barcode, $m)) {
             return self::resolveColorBarcodeId((int) $m[1]);
         }
 
@@ -108,7 +116,7 @@ class BarcodeResolver
         // for THIS shop.
         $sibling = ProductVariant::withoutGlobalScopes()->find($variantId);
         if ($sibling && $sibling->barcode && Tenancy::id() && Tenancy::sameBusiness(Tenancy::id(), $sibling->shop_id)) {
-            return self::resolve($sibling->barcode);
+            return self::resolve($sibling->barcode, false);
         }
 
         return ['found' => false];
@@ -127,7 +135,7 @@ class BarcodeResolver
         // same cross-branch id fallback as resolveVariantId() above
         $sibling = ProductColorBarcode::withoutGlobalScopes()->find($colorBarcodeId);
         if ($sibling && $sibling->barcode && Tenancy::id() && Tenancy::sameBusiness(Tenancy::id(), $sibling->shop_id)) {
-            return self::resolve($sibling->barcode);
+            return self::resolve($sibling->barcode, false);
         }
 
         return ['found' => false];
