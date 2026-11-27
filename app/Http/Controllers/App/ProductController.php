@@ -597,6 +597,9 @@ class ProductController extends Controller
         }
 
         DB::transaction(function () use ($product, $data, $imeis, $supplierId) {
+            // D10: a stock-in paid in cash/bank moves money (SupplierPayable::apply) — shop row FIRST (see ShopLock)
+            \App\Support\ShopLock::acquireIfPaid($data['payment_method'] ?? null, (bool) $supplierId);
+
             // Product uses SoftDeletes — if it was deleted between the route
             // resolving $product and this re-fetch (double-submit, a second
             // tab), $locked would be null and StockIn::apply()'s strict

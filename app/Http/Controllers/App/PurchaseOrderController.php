@@ -139,6 +139,9 @@ class PurchaseOrderController extends Controller
         ]);
 
         DB::transaction(function () use ($data, $po) {
+            // D10: receiving against a cash/bank order moves money — shop row FIRST (see ShopLock)
+            \App\Support\ShopLock::acquireIfPaid($data['method'] ?? null);
+
             $lockedPo = PurchaseOrder::whereKey($po->id)->lockForUpdate()->first();
             if (in_array($lockedPo->status, ['received', 'cancelled'], true)) {
                 abort(422, 'এই অর্ডারটি আর গ্রহণ করা যাবে না।');

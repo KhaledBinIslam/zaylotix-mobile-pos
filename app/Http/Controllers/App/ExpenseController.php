@@ -36,6 +36,10 @@ class ExpenseController extends Controller
         ]);
 
         DB::transaction(function () use ($data) {
+            // D10: this request ends by changing cash/bank — take the shop row FIRST (see ShopLock), before the
+            // expense row is inserted, or two simultaneous expenses deadlock on the shop row
+            \App\Support\ShopLock::acquire();
+
             $categoryId = $data['expense_category_id'] ?? null;
             if (! $categoryId && ! empty($data['new_category_name'])) {
                 $categoryId = ExpenseCategory::create([

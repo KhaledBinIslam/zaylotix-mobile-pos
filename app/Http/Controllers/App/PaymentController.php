@@ -57,6 +57,9 @@ class PaymentController extends Controller
         }
 
         DB::transaction(function () use ($customer, $amount, $data) {
+            // D10: a collection ends by changing cash/bank — shop row FIRST, then the customer (see ShopLock)
+            \App\Support\ShopLock::acquire();
+
             // Customer::whereKey(...)->lockForUpdate() — NOT
             // $customer->lockForUpdate() — because lockForUpdate() isn't a
             // real Model method; calling it on an already-hydrated instance
@@ -168,6 +171,8 @@ class PaymentController extends Controller
         $this->authorize('update', $customer);
 
         DB::transaction(function () use ($payment) {
+            \App\Support\ShopLock::acquire(); // D10: the void hands cash/bank back — shop row first (see ShopLock)
+
             $lockedPayment = Payment::whereKey($payment->id)->lockForUpdate()->firstOrFail();
 
             if ($lockedPayment->voided_at || $lockedPayment->void_of_payment_id || (float) $lockedPayment->amount <= 0) {
@@ -270,6 +275,8 @@ class PaymentController extends Controller
         $this->authorize('update', $customer);
 
         DB::transaction(function () use ($customer) {
+            \App\Support\ShopLock::acquire(); // D10: "collect full due" adds to cash — shop row first (see ShopLock)
+
             $locked = Customer::whereKey($customer->id)->lockForUpdate()->first();
             $amount = (float) $locked->due;
             $locked->update(['due' => 0]);

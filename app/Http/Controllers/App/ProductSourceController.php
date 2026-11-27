@@ -43,6 +43,9 @@ class ProductSourceController extends Controller
         $data = $this->validated($request);
 
         DB::transaction(function () use ($product, $data) {
+            // D10: a lot stock-in paid in cash/bank moves money — shop row FIRST (see ShopLock)
+            \App\Support\ShopLock::acquireIfPaid($data['payment_method'] ?? null, ! empty($data['supplier_id']));
+
             $lockedProduct = Product::whereKey($product->id)->lockForUpdate()->first();
             $this->applyStockIn($lockedProduct, null, $data);
         });
@@ -58,6 +61,9 @@ class ProductSourceController extends Controller
         $data = $this->validated($request);
 
         DB::transaction(function () use ($productVariant, $data) {
+            // D10: a lot stock-in paid in cash/bank moves money — shop row FIRST (see ShopLock)
+            \App\Support\ShopLock::acquireIfPaid($data['payment_method'] ?? null, ! empty($data['supplier_id']));
+
             $lockedVariant = ProductVariant::whereKey($productVariant->id)->lockForUpdate()->first();
             abort_unless($lockedVariant, 422, 'এই ভ্যারিয়েন্টটি ইতিমধ্যে মুছে ফেলা হয়েছে।');
             $lockedProduct = Product::whereKey($lockedVariant->product_id)->lockForUpdate()->first();

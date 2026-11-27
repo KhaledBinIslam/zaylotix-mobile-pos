@@ -94,6 +94,8 @@ class AdSpendController extends Controller
         }
 
         DB::transaction(function () use ($data, $totalBdt, $splitAmounts) {
+            \App\Support\ShopLock::acquire(); // D10: ad spend ends by changing cash/bank — shop row FIRST (see ShopLock)
+
             $category = ExpenseCategory::firstOrCreate(
                 ['name' => 'বিজ্ঞাপন'],
                 ['name_en' => 'Advertising', 'emoji' => '📢']

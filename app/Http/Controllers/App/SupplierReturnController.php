@@ -54,6 +54,11 @@ class SupplierReturnController extends Controller
         $lineCount = 0;
 
         DB::transaction(function () use ($data, &$totalAmount, &$lineCount) {
+            // D10: a cash/bank settlement pays money INTO the shop row at the end. This request locks products first,
+            // POS locks the shop first — taking the shop row first here removes the opposite order that made a
+            // checkout and a supplier return of the same article deadlock (found by harness scenario S14).
+            \App\Support\ShopLock::acquireIfPaid($data['settlement_method'] ?? null);
+
             $sourceLinesOn = Tenancy::shop()?->hasFeature('source_lines');
 
             foreach (array_values($data['lines']) as $i => $line) {

@@ -252,6 +252,9 @@ class ProductVariantController extends Controller
         }
 
         [$created, $topped] = DB::transaction(function () use ($shop, $product, $toCreate, $toTopUp, $data, $groupPrices, $groupCosts, $pickedSupplierId, $pickedBrandId) {
+            // D10: a bulk add paid in cash/bank moves money (SupplierPayable::apply) — shop row FIRST (see ShopLock)
+            \App\Support\ShopLock::acquireIfPaid($data['payment_method'] ?? null, (bool) $pickedSupplierId);
+
             $lockedProduct = Product::whereKey($product->id)->lockForUpdate()->first();
             $isFirstVariant = ! ProductVariant::where('product_id', $lockedProduct->id)->exists();
 
@@ -573,6 +576,9 @@ class ProductVariantController extends Controller
         $supplierId = ! empty($data['supplier_id']) ? \App\Models\Supplier::find($data['supplier_id'])?->id : null;
 
         DB::transaction(function () use ($productVariant, $data, $supplierId) {
+            // D10: a stock-in paid in cash/bank moves money (SupplierPayable::apply) — shop row FIRST (see ShopLock)
+            \App\Support\ShopLock::acquireIfPaid($data['payment_method'] ?? null, (bool) $supplierId);
+
             // null if a concurrent destroy() already soft-deleted this
             // variant while this request was waiting on the row lock — a
             // 422 here, not a fatal error calling a method on null

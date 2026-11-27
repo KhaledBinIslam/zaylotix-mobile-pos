@@ -417,6 +417,139 @@ $scenarios['S10_parallel_dues_different_customers'] = function () {
     return $bad;
 };
 
+/** S11: several supplier payments, to DIFFERENT suppliers, at once */
+$scenarios['S11_parallel_supplier_payments'] = function () {
+    Tenancy::clear();
+    Tenancy::set(MAIN);
+    $ids = [];
+    foreach (range(1, 4) as $i) {
+        $ids[] = App\Models\Supplier::create(['shop_id' => MAIN, 'name' => 'CONC-S11-'.Str::random(4), 'payable' => 100])->id;
+    }
+    $cash0 = cash(MAIN);
+    $res = spawn(array_map(fn ($id) => ['user' => OWNER_MAIN, 'method' => 'POST', 'uri' => "/app/suppliers/{$id}/payments", 'body' => ['amount' => 30, 'method' => 'cash']], $ids));
+    $bad = [];
+    foreach (fiveHundreds($res) as $r) {
+        $bad[] = 'server error: '.$r['status'].' '.substr($r['body'], 0, 120);
+    }
+    $ok = countStatus($res, fn ($s) => $s < 400);
+    if (abs(cash(MAIN) - $cash0 + 30 * $ok) > 0.001) {
+        $bad[] = 'cash moved by '.(cash(MAIN) - $cash0).' expected '.(-30 * $ok)." ({$ok} accepted)";
+    }
+    foreach ($ids as $id) {
+        $paid = (float) DB::table('supplier_payments')->where('supplier_id', $id)->sum('amount');
+        $payable = (float) DB::table('suppliers')->where('id', $id)->value('payable');
+        if (abs($payable - (100 - $paid)) > 0.001) {
+            $bad[] = "supplier {$id}: payable {$payable} != 100 - paid {$paid}";
+        }
+    }
+    $GLOBALS['notes'][] = 'S11 answers: '.json_encode(array_count_values(array_column($res, 'status')));
+
+    return $bad;
+};
+
+/** S12: stock-in paid in cash on several DIFFERENT sizes at once (the Stock page's own paid stock-in) */
+$scenarios['S12_parallel_paid_stock_in'] = function () {
+    Tenancy::clear();
+    Tenancy::set(MAIN);
+    $supplier = App\Models\Supplier::create(['shop_id' => MAIN, 'name' => 'CONC-S12-'.Str::random(4), 'payable' => 0])->id;
+    $items = array_map(fn ($i) => newArticle('CONC-S12', 5), range(1, 4));
+    $cash0 = cash(MAIN);
+    $res = spawn(array_map(fn ($it) => ['user' => OWNER_MAIN, 'method' => 'POST', 'uri' => "/app/product-variants/{$it[1]}/stock-in", 'body' => ['qty' => 2, 'cost' => 40, 'supplier_id' => $supplier, 'payment_method' => 'cash']], $items));
+    $bad = [];
+    foreach (fiveHundreds($res) as $r) {
+        $bad[] = 'server error: '.$r['status'].' '.substr($r['body'], 0, 120);
+    }
+    $ok = countStatus($res, fn ($s) => $s < 400);
+    $GLOBALS['notes'][] = 'S12 answers: '.json_encode(array_count_values(array_column($res, 'status'))).' cash moved '.(cash(MAIN) - $cash0).' (accepted '.$ok.')';
+    if (abs(cash(MAIN) - $cash0 + 80 * $ok) > 0.001) {
+        $bad[] = 'cash moved by '.(cash(MAIN) - $cash0).' expected '.(-80 * $ok)." ({$ok} accepted, 2 pieces at 40 each)";
+    }
+    foreach ($items as [$pid, $vid]) {
+        $stock = (float) DB::table('product_variants')->where('id', $vid)->value('stock');
+        $expected = 5.0 + 2 * ((int) (bool) DB::table('stock_intakes')->where('product_variant_id', $vid)->exists());
+        if ($stock != 5.0 && $stock != 7.0) {
+            $bad[] = "size {$vid}: stock {$stock} is neither untouched nor +2";
+        }
+    }
+
+    return $bad;
+};
+
+/** S13: every kind of cash-moving screen at the same instant, each on its own rows — the lock ORDER between screens must agree */
+$scenarios['S13_mixed_screens_at_once'] = function () {
+    Tenancy::clear();
+    Tenancy::set(MAIN);
+    [$p1, $v1] = newArticle('CONC-S13A', 10);
+    [$p2, $v2] = newArticle('CONC-S13B', 10);
+    [$p3, $v3] = newArticle('CONC-S13C', 10);
+    $c1 = App\Models\Customer::create(['shop_id' => MAIN, 'name' => 'CONC-S13-1', 'phone' => '0175'.random_int(1000000, 9999999), 'due' => 80])->id;
+    $c2 = App\Models\Customer::create(['shop_id' => MAIN, 'name' => 'CONC-S13-2', 'phone' => '0174'.random_int(1000000, 9999999), 'due' => 80])->id;
+    $cash0 = cash(MAIN);
+    $jobs = [
+        checkoutJob(OWNER_MAIN, $p1, $v1, 1, 100, (string) Str::uuid()),
+        checkoutJob(OWNER_MAIN, $p2, $v2, 1, 100, (string) Str::uuid()),
+        ['user' => OWNER_MAIN, 'method' => 'POST', 'uri' => '/app/expenses', 'body' => ['amount' => 25, 'method' => 'cash', 'memo' => 'QA mix']],
+        ['user' => OWNER_MAIN, 'method' => 'POST', 'uri' => '/app/expenses', 'body' => ['amount' => 15, 'method' => 'cash', 'memo' => 'QA mix']],
+        ['user' => OWNER_MAIN, 'method' => 'POST', 'uri' => "/app/customers/{$c1}/payments", 'body' => ['amount' => 20, 'method' => 'cash', 'client_uuid' => (string) Str::uuid()]],
+        ['user' => OWNER_MAIN, 'method' => 'POST', 'uri' => "/app/customers/{$c2}/payments", 'body' => ['amount' => 20, 'method' => 'cash', 'client_uuid' => (string) Str::uuid()]],
+        ['user' => OWNER_MAIN, 'method' => 'POST', 'uri' => '/app/purchases', 'body' => ['amount' => 80, 'method' => 'cash', 'status' => 'received', 'product_id' => $p3, 'product_variant_id' => $v3, 'qty' => 2, 'cost' => 40]],
+    ];
+    $res = spawn($jobs);
+    $bad = [];
+    foreach (fiveHundreds($res) as $r) {
+        $bad[] = 'server error: '.$r['status'].' '.substr($r['body'], 0, 120);
+    }
+    $expected = [0, 1]; // the two checkouts are +100 each
+    $delta = 0.0;
+    foreach ($res as $i => $r) {
+        if ((int) $r['status'] >= 400) {
+            continue;
+        }
+        $delta += [100, 100, -25, -15, 20, 20, -80][$i];
+    }
+    if (abs(cash(MAIN) - $cash0 - $delta) > 0.001) {
+        $bad[] = 'cash moved by '.(cash(MAIN) - $cash0)." but the accepted requests add up to {$delta}";
+    }
+    $GLOBALS['notes'][] = 'S13 answers: '.json_encode(array_column($res, 'status'));
+
+    return $bad;
+};
+
+/** S14: POS checkouts and cash supplier returns of the SAME article at once (opposite lock orders would deadlock) */
+$scenarios['S14_pos_vs_supplier_return_same_article'] = function () {
+    [$pid, $vid] = newArticle('CONC-S14', 12);
+    $cash0 = cash(MAIN);
+    $jobs = [];
+    foreach (range(1, 3) as $i) {
+        $jobs[] = checkoutJob(OWNER_MAIN, $pid, $vid, 1, 100, (string) Str::uuid());
+        $jobs[] = ['user' => OWNER_MAIN, 'method' => 'POST', 'uri' => '/app/supplier-returns', 'body' => ['settlement_method' => 'cash', 'reason' => 'QA', 'lines' => [['product_id' => $pid, 'product_variant_id' => $vid, 'qty' => 1, 'amount' => 40]]]];
+    }
+    $res = spawn($jobs);
+    $bad = [];
+    foreach (fiveHundreds($res) as $r) {
+        $bad[] = 'server error: '.$r['status'].' '.substr($r['body'], 0, 120);
+    }
+    $sold = 0;
+    $returned = 0;
+    foreach ($res as $i => $r) {
+        if ((int) $r['status'] >= 400) {
+            continue;
+        }
+        $i % 2 === 0 ? $sold++ : $returned++;
+    }
+    foreach (stockEverywhere($pid) as $k => $s) {
+        if (str_starts_with($k, 'v') && $s != 12.0 - $sold - $returned && DB::table('product_variants')->where('id', (int) substr($k, 1))->value('product_id') == $pid) {
+            $bad[] = "{$k} stock is {$s}, expected ".(12 - $sold - $returned)." ({$sold} sold, {$returned} returned to supplier)";
+        }
+    }
+    if (abs(cash(MAIN) - $cash0 - 100 * $sold - 40 * $returned) > 0.001) {
+        $bad[] = 'cash moved by '.(cash(MAIN) - $cash0).' expected '.(100 * $sold + 40 * $returned);
+    }
+    $GLOBALS['notes'][] = 'S14 answers: '.json_encode(array_column($res, 'status'));
+
+    return $bad;
+};
+
 /** S7: customer payments racing on one due balance */
 $scenarios['S7_parallel_customer_payments'] = function () {
     Tenancy::clear();

@@ -66,6 +66,9 @@ class OpeningStockController extends Controller
         $created = 0;
 
         DB::transaction(function () use ($product, $data, $supplierId, $defaultCost, $defaultPrice, &$created) {
+            // D10: opening stock paid in cash/bank moves money (SupplierPayable::apply) — shop row FIRST (see ShopLock)
+            \App\Support\ShopLock::acquireIfPaid($data['payment_method'] ?? null, (bool) $supplierId);
+
             $lockedProduct = Product::whereKey($product->id)->lockForUpdate()->first();
             abort_unless($lockedProduct, 422, 'পণ্যটি ইতিমধ্যে মুছে ফেলা হয়েছে।');
 

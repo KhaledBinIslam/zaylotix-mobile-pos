@@ -48,6 +48,11 @@ class PurchaseController extends Controller
         $isPending = ($data['status'] ?? 'received') === 'pending';
 
         DB::transaction(function () use ($data, $imeis, $isPending) {
+            // D10: a received cash/bank purchase moves money in applyEffects() — take the shop row FIRST (see ShopLock)
+            if (! $isPending) {
+                \App\Support\ShopLock::acquireIfPaid($data['method'] ?? null);
+            }
+
             // Confirmed bug (see docs/FIX_PLAN.md Phase 4.1): the purchase
             // form's own "not in list — type name below" field invites a
             // free-text supplier name, but nothing ever turned that into a
@@ -130,6 +135,9 @@ class PurchaseController extends Controller
         $this->authorize('update', $purchase);
 
         DB::transaction(function () use ($purchase) {
+            // D10: receiving a cash/bank purchase moves money — shop row first (see ShopLock)
+            \App\Support\ShopLock::acquireIfPaid($purchase->method);
+
             // locked and re-checked here, not just by the route firing once —
             // a double-tapped "mark received" button (or a client retry after
             // a timed-out-but-actually-succeeded request, plausible on the
