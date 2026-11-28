@@ -3,7 +3,7 @@
 Living document. **Only tests that were actually executed are marked as passed.** Anything not run is listed as *NOT EXECUTED*.
 No production data was modified by any test. Production was touched read-only (counts, sizes, configuration names) and, for deploys, with a database backup first. No secrets, passwords or customer details are recorded here.
 
-Last updated: 2026-11-27 · Production commit: `1a6a0fb9` · Newest commit (**not deployed**, awaiting the owner's explicit go): `d7705fba` (ZV-sticker resolver recursion fix) · Phase 3 test files are in the working tree, see §9
+Last updated: 2026-11-28 · **Production commit: `bba9d586`** (deployed on the owner's explicit "go" on 2026-11-28, after a database backup; see §10.6). Everything in §9 and §10 marked fixed is live.
 
 ---
 
@@ -354,4 +354,8 @@ Rules followed: nothing was deployed, no production data was written, no migrati
 
 ### 10.6 Git
 
-Committed and pushed to GitHub (`main`); **production is untouched and waiting for your explicit approval** — see the commit list at the end of this round's final message.
+Committed and pushed to GitHub (`main`): `f23862f7` (D8/D9) and `bba9d586` (D14, D12, D2+D15, D7), on top of `e5ca6e6e` (D10) and `c90234aa` (D13).
+
+**Deployed to production on 2026-11-28 on the owner's explicit "go"** — in this order, in one SSH session: (1) database backup (`zaylotix:backup`, 6.2 MB, taken before anything changed), (2) `git pull` (`1a6a0fb9` → `bba9d586`; PHP-only, no frontend build), (3) `php artisan migrate --force` (only `2026_11_28_000001_add_refund_legs_to_returns_table`, 29 ms), (4) `optimize:clear`.
+
+**Verified on production afterwards, read-only:** `zaylotix:self-check --sweep` over every paid shop — **0 FAIL, 0 SLOW**, the supplier report adds up to the stock card (SEAMAN 467,270 = 467,270, exactly the figure the audit predicted); no new error in the application log; the combined Baby Park report now shows ৳354,967 all-time sales (it showed ৳404,867) and its profit ৳81,361.64 reconciles to the raw rows (live-bill profit 84,667.00 − returns on live bills 1,405.36 − one old bill-less return 1,900.00); `returns.refund_cash` exists. Rollback point: the backup file named above (database) and commit `1a6a0fb9` (code; the migration is additive and harmless to leave in place).
