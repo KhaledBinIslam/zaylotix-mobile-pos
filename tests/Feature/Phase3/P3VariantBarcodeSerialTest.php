@@ -156,23 +156,7 @@ class P3VariantBarcodeSerialTest extends TestCase
         $this->assertEquals(1.0, (float) DB::table('products')->where('id', $p->id)->value('stock'), 'only the other unit is on the shelf');
     }
 
-    /**
-     * CHARACTERISATION — owner decision D8. The suite's own SerialTrackingTest documents that an unknown IMEI "never
-     * blocks the sale". The same rule lets an IMEI that is ALREADY SOLD be sold again: stock goes down, no serial is
-     * touched. Pinned so a future change (warn / block) is conscious.
-     */
-    public function test_an_already_sold_imei_can_be_rung_up_again_without_any_warning_documented_behaviour(): void
-    {
-        $p = $this->serialProduct(['111', '222', '333']);
-        $this->p3Sell([['product_id' => $p->id, 'qty' => 1, 'imei' => '111']], [['method' => 'cash', 'amount' => 500]]);
-
-        $again = $this->p3Checkout([['product_id' => $p->id, 'qty' => 1, 'imei' => '111']], [['method' => 'cash', 'amount' => 500]]);
-
-        $this->assertSame(200, $again->status(), 'currently accepted');
-        $this->assertSame('sold', $this->serialStatus('111'));
-        $this->assertEquals(1.0, (float) DB::table('products')->where('id', $p->id)->value('stock'), '3 - 2: the shelf count dropped although 111 had already left');
-        $this->assertSame(2, (int) DB::table('product_serials')->where('shop_id', $this->shop->id)->where('status', 'in_stock')->count(), 'the serial list still shows 222 and 333 in stock (2) while the shelf count says 1 — the two lists now disagree');
-    }
+    // D8 (an already sold IMEI is blocked at checkout) is covered in full by P3ImeiSaleBlockTest.
 
     public function test_registering_the_same_imei_twice_is_never_accepted_and_changes_nothing(): void
     {
@@ -189,12 +173,11 @@ class P3VariantBarcodeSerialTest extends TestCase
     }
 
     /**
-     * DEFECT D9 — the duplicate IMEI is stopped only by the database's unique index, so the cashier gets the generic
-     * "Oops! An Error Occurred" crash screen (HTTP 500) instead of a message naming the IMEI. Same for a pasted list
-     * that repeats an IMEI inside itself. Nothing is corrupted (the transaction rolls back); it is a clean-refusal bug.
+     * D9 (fixed together with D8). The duplicate IMEI used to be stopped only by the database's unique index, so the
+     * cashier got the generic crash screen (HTTP 500) instead of a message naming the IMEI. Same for a pasted list that
+     * repeats an IMEI inside itself.
      */
-    #[\PHPUnit\Framework\Attributes\Group('phase3_defect')]
-    public function test_DEFECT_a_duplicate_imei_is_refused_with_a_message_not_a_server_error(): void
+    public function test_a_duplicate_imei_is_refused_with_a_message_not_a_server_error(): void
     {
         $p = $this->serialProduct(['111']);
 

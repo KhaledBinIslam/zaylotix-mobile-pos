@@ -207,6 +207,12 @@ class ProductController extends Controller
             }
         }
 
+        // D8/D9: refuse an IMEI list that cannot be registered BEFORE the product is created, so a refused list never
+        // leaves a product without its serials behind (SerialStock::receive re-checks under lock afterwards)
+        if ($imeis && ($data['track_serial'] ?? false) && Tenancy::shop()?->hasFeature('serial_tracking')) {
+            \App\Support\SerialStock::assertReceivable($imeis, null, (int) Tenancy::id());
+        }
+
         [$categoryId, $unitId] = DB::transaction(function () use ($data) {
             $categoryId = $data['category_id'] ?? null;
             if (! $categoryId && ! empty($data['new_category_name'])) {
