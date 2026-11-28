@@ -550,6 +550,191 @@ $scenarios['S14_pos_vs_supplier_return_same_article'] = function () {
     return $bad;
 };
 
+/** S17: the three pieces of a bKash bill (and of a cash+bKash bill) returned by three tabs at once — each refund leaves by the right door (D2) */
+$scenarios['S17_parallel_bkash_returns'] = function () {
+    $bank = fn () => round((float) DB::table('shops')->where('id', MAIN)->value('bank_balance'), 2);
+    $bad = [];
+    foreach ([['bkash only', [['method' => 'bkash', 'amount' => 300]], 300, 0], ['cash 100 + bkash 200', [['method' => 'cash', 'amount' => 100], ['method' => 'bkash', 'amount' => 200]], 200, 100]] as [$label, $tender, $bankIn, $cashIn]) {
+        [$pid, $vid] = newArticle('CONC-S17', 10);
+        $uuid = (string) Str::uuid();
+        spawn([['user' => OWNER_MAIN, 'method' => 'POST', 'uri' => '/app/pos/checkout', 'body' => [
+            'items' => [['product_id' => $pid, 'product_variant_id' => $vid, 'qty' => 3]], 'payments' => $tender, 'client_uuid' => $uuid]]], 3);
+        $saleId = (int) DB::table('sales')->where('client_uuid', $uuid)->value('id');
+        $itemId = (int) DB::table('sale_items')->where('sale_id', $saleId)->value('id');
+        if (! $saleId) {
+            return ["fixture ({$label}): the bill was not created"];
+        }
+        $cash1 = cash(MAIN);
+        $bank1 = $bank();
+        $res = spawn(array_map(fn ($i) => ['user' => OWNER_MAIN, 'method' => 'POST', 'uri' => '/app/returns/process', 'body' => ['sale_id' => $saleId, 'action' => 'refund', 'reason' => 'QA', 'lines' => [['sale_item_id' => $itemId, 'qty' => 1, 'condition' => 'resalable']]]], range(1, 3)));
+        foreach (fiveHundreds($res) as $r) {
+            $bad[] = "[{$label}] server error: ".$r['status'].' '.substr($r['body'], 0, 140);
+        }
+        $ok = countStatus($res, fn ($s) => $s === 200);
+        $out = round(($cash1 - cash(MAIN)) + ($bank1 - $bank()), 2);
+        if ($ok !== 3 || abs($out - 300) > 0.001) {
+            $bad[] = "[{$label}] {$ok} returns accepted, ".$out.' left the shop (expected 3 and 300)';
+        }
+        $cashOut = round($cash1 - cash(MAIN), 2);
+        $bankOut = round($bank1 - $bank(), 2);
+        if (abs($cashOut - $cashIn) > 0.05 || abs($bankOut - $bankIn) > 0.05) {
+            $bad[] = "[{$label}] cash out {$cashOut} (expected {$cashIn}), bank out {$bankOut} (expected {$bankIn}) — a refund must leave the way it came";
+        }
+        $legs = DB::table('returns')->where('sale_id', $saleId)->get(['refund', 'refund_cash', 'refund_bank', 'refund_due']);
+        foreach ($legs as $l) {
+            if ($l->refund_cash === null || abs((float) $l->refund_cash + (float) $l->refund_bank + (float) $l->refund_due - (float) $l->refund) > 0.011) {
+                $bad[] = "[{$label}] return row legs do not add up to the refund: ".json_encode($l);
+            }
+        }
+    }
+
+    return $bad;
+};
+
+/** S16: a customer's bill is VOIDED while the same customer is paying down their due, at the same instant (D12) */
+$scenarios['S16_void_vs_collections_same_customer'] = function () {
+    Tenancy::clear();
+    Tenancy::set(MAIN);
+    $fid = DB::table('features')->where('key', 'parties')->value('id');
+    if ($fid) {
+        DB::table('shop_features')->insertOrIgnore(['shop_id' => MAIN, 'feature_id' => $fid]);
+    }
+    [$pid, $vid] = newArticle('CONC-S16', 10);
+    $phone = '0176'.random_int(1000000, 9999999);
+    $uuid = (string) Str::uuid();
+    spawn([['user' => OWNER_MAIN, 'method' => 'POST', 'uri' => '/app/pos/checkout', 'body' => [
+        'items' => [['product_id' => $pid, 'product_variant_id' => $vid, 'qty' => 2]], 'payments' => [],
+        'customer_phone' => $phone, 'customer_name' => 'CONC-S16', 'client_uuid' => $uuid]]], 3);
+    $saleId = (int) DB::table('sales')->where('client_uuid', $uuid)->value('id');
+    $custId = (int) DB::table('customers')->where('phone', $phone)->value('id');
+    if (! $saleId || ! $custId || (float) DB::table('customers')->where('id', $custId)->value('due') != 200.0) {
+        return ['fixture: the credit bill (200 due) was not created'];
+    }
+    $identity = fn () => round(cash(MAIN) + (float) DB::table('customers')->where('id', $custId)->value('due') - (float) DB::table('customers')->where('id', $custId)->value('advance_balance'), 2);
+    $base = $identity();
+
+    $jobs = [['user' => OWNER_MAIN, 'method' => 'DELETE', 'uri' => "/app/sales/{$saleId}", 'body' => ['reason' => 'QA parallel void S16']]];
+    foreach (range(1, 3) as $i) {
+        $jobs[] = ['user' => OWNER_MAIN, 'method' => 'POST', 'uri' => "/app/customers/{$custId}/payments", 'body' => ['amount' => 20, 'method' => 'cash', 'client_uuid' => (string) Str::uuid()]];
+    }
+    $res = spawn($jobs);
+    $bad = [];
+    foreach (fiveHundreds($res) as $r) {
+        $bad[] = 'server error: '.$r['status'].' '.substr($r['body'], 0, 140);
+    }
+    $voided = DB::table('sales')->where('id', $saleId)->whereNotNull('voided_at')->exists();
+    $expected = round($base - ($voided ? 200 : 0), 2);
+    if (abs($identity() - $expected) > 0.001) {
+        $bad[] = 'cash + due − advance is '.$identity()." expected {$expected} (voided=".(int) $voided.')';
+    }
+    $c = DB::table('customers')->where('id', $custId)->first();
+    if ((float) $c->due < -0.001 || (float) $c->advance_balance < -0.001) {
+        $bad[] = "negative balance: due {$c->due}, advance {$c->advance_balance}";
+    }
+    $paid = (float) DB::table('payments')->where('customer_id', $custId)->whereNull('voided_at')->sum('amount');
+    if ($voided && abs((float) $c->advance_balance - $paid) > 0.001) {
+        $bad[] = "voided: advance {$c->advance_balance} should equal what the customer paid ({$paid})";
+    }
+    $GLOBALS['notes'][] = 'S16 answers: '.json_encode(array_column($res, 'status')).", voided=".(int) $voided.", paid {$paid}, due {$c->due}, advance {$c->advance_balance}";
+
+    return $bad;
+};
+
+/** S15: ONE in-stock IMEI sold by six cashiers at the same instant — exactly one bill, the unit sold once (D8) */
+$scenarios['S15_same_imei_sold_in_parallel'] = function () {
+    Tenancy::clear();
+    Tenancy::set(MAIN);
+    $fid = DB::table('features')->where('key', 'serial_tracking')->value('id')
+        ?: DB::table('features')->insertGetId(['key' => 'serial_tracking', 'label_bn' => 'serial_tracking', 'label_en' => 'serial_tracking', 'category' => 'general', 'created_at' => now(), 'updated_at' => now()]);
+    DB::table('shop_features')->insertOrIgnore(['shop_id' => MAIN, 'feature_id' => $fid]);
+    $p = Product::create(['shop_id' => MAIN, 'name' => 'CONC-S15-'.Str::random(4), 'cost' => 300, 'price' => 500, 'stock' => 3, 'track_serial' => true]);
+    $a = 'S15A-'.Str::random(6);
+    foreach ([$a, 'S15B-'.Str::random(6), 'S15C-'.Str::random(6)] as $imei) {
+        App\Models\ProductSerial::create(['shop_id' => MAIN, 'product_id' => $p->id, 'imei' => $imei, 'status' => 'in_stock', 'cost' => 300]);
+    }
+    $cash0 = cash(MAIN);
+    $job = fn () => ['user' => OWNER_MAIN, 'method' => 'POST', 'uri' => '/app/pos/checkout', 'body' => [
+        'items' => [['product_id' => $p->id, 'qty' => 1, 'imei' => $a]], 'payments' => [['method' => 'cash', 'amount' => 500]], 'client_uuid' => (string) Str::uuid()]];
+    $res = spawn(array_map($job, range(1, 6)));
+    $bad = [];
+    foreach (fiveHundreds($res) as $r) {
+        $bad[] = 'server error: '.$r['status'].' '.substr($r['body'], 0, 160);
+    }
+    $ok = countStatus($res, fn ($s) => $s === 200);
+    if ($ok !== 1) {
+        $bad[] = "the same IMEI was sold {$ok} times (statuses ".implode(',', array_column($res, 'status')).')';
+    }
+    $sold = (int) DB::table('sale_items')->where('product_serial_id', DB::table('product_serials')->where('imei', $a)->value('id'))->count();
+    if ($sold !== 1) {
+        $bad[] = "{$sold} bill lines carry that one device";
+    }
+    if (DB::table('product_serials')->where('imei', $a)->value('status') !== 'sold') {
+        $bad[] = 'the unit is not marked sold';
+    }
+    if ((float) DB::table('products')->where('id', $p->id)->value('stock') != 2.0) {
+        $bad[] = 'shelf stock is '.DB::table('products')->where('id', $p->id)->value('stock').', expected 2';
+    }
+    if (abs(cash(MAIN) - $cash0 - 500) > 0.001) {
+        $bad[] = 'cash moved by '.(cash(MAIN) - $cash0).' expected 500';
+    }
+    $GLOBALS['notes'][] = 'S15 answers: '.json_encode(array_count_values(array_column($res, 'status')));
+
+    return $bad;
+};
+
+/** loads an Inertia page in-process as a given user and returns its props (GET only; used by the report checks below) */
+function inertiaProps(int $userId, string $uri): array
+{
+    global $app;
+    $kernel = $app->make(Illuminate\Contracts\Http\Kernel::class);
+    Auth::guard('web')->setUser(App\Models\User::withoutGlobalScopes()->findOrFail($userId));
+    Auth::shouldUse('web');
+    Tenancy::clear();
+    Tenancy::forgetShopCache();
+    $req = Illuminate\Http\Request::create($uri, 'GET', [], [], [], ['HTTP_ACCEPT' => 'application/json', 'HTTP_X_INERTIA' => 'true', 'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest']);
+    $req->headers->set('X-Inertia-Version', (string) $app->make(App\Http\Middleware\HandleInertiaRequests::class)->version($req));
+    $resp = $kernel->handle($req);
+    $json = json_decode($resp->getContent(), true);
+
+    return is_array($json) && isset($json['props']) ? $json['props'] : ['_status' => $resp->getStatusCode(), '_body' => substr((string) $resp->getContent(), 0, 300)];
+}
+
+/** R1: the company dashboard (needs MySQL's DATE_FORMAT, so it cannot run under PHPUnit's SQLite) ignores a voided bill — D14 */
+$scenarios['R1_company_dashboard_ignores_voided_bills'] = function () {
+    $before = inertiaProps(OWNER_MAIN, '/app/company-dashboard');
+    if (isset($before['_status'])) {
+        return ['company dashboard did not render: '.json_encode($before)];
+    }
+    [$pid, $vid] = newArticle('CONC-R1', 20);
+    $liveId = makeSale($pid, $vid, 1);          // 100
+    $voidId = makeSale($pid, $vid, 4);          // 400, then voided
+    spawn([['user' => OWNER_MAIN, 'method' => 'DELETE', 'uri' => "/app/sales/{$voidId}", 'body' => ['reason' => 'QA dashboard void']]], 3);
+    $bad = [];
+    if (! DB::table('sales')->where('id', $voidId)->whereNotNull('voided_at')->exists()) {
+        return ['fixture: the bill was not voided'];
+    }
+    $after = inertiaProps(OWNER_MAIN, '/app/company-dashboard');
+    $delta = round($after['totals']['sales_total'] - $before['totals']['sales_total'], 2);
+    if ($delta != 100.0) {
+        $bad[] = "company dashboard total moved by {$delta}, expected 100 (live 100, voided 400)";
+    }
+    $trendDelta = round(end($after['revenueTrend'])['total'] - end($before['revenueTrend'])['total'], 2);
+    if ($trendDelta != 100.0) {
+        $bad[] = "revenue trend moved by {$trendDelta}, expected 100";
+    }
+    $voidedNo = DB::table('sales')->where('id', $voidId)->value('invoice_no');
+    $liveNo = DB::table('sales')->where('id', $liveId)->value('invoice_no');
+    $recent = array_column($after['recentInvoices'], 'invoice_no');
+    if (in_array($voidedNo, $recent, true)) {
+        $bad[] = "recent invoices list the voided bill {$voidedNo}";
+    }
+    if (! in_array($liveNo, $recent, true)) {
+        $bad[] = "recent invoices do not list the live bill {$liveNo}";
+    }
+
+    return $bad;
+};
+
 /** S7: customer payments racing on one due balance */
 $scenarios['S7_parallel_customer_payments'] = function () {
     Tenancy::clear();

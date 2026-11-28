@@ -105,8 +105,9 @@ class P3ReconciliationTest extends TestCase
     private function assertBooksBalance(string $after): void
     {
         $id = $this->shop->id;
-        $actual = round((float) DB::table('shops')->where('id', $id)->value('cash_balance') + (float) DB::table('customers')->where('shop_id', $id)->sum('due'), 2);
-        $this->assertEquals($this->expectedCashPlusDues(), $actual, "CASH + CUSTOMER DUES do not match the ledgers after {$after}: ".$this->ledgerDump());
+        // cash + what customers owe − what the shop owes customers as store credit (advance, D12)
+        $actual = round((float) DB::table('shops')->where('id', $id)->value('cash_balance') + (float) DB::table('customers')->where('shop_id', $id)->sum('due') - (float) DB::table('customers')->where('shop_id', $id)->sum('advance_balance'), 2);
+        $this->assertEquals($this->expectedCashPlusDues(), $actual, "CASH + DUES − ADVANCE do not match the ledgers after {$after}: ".$this->ledgerDump());
         $this->assertGreaterThanOrEqual(-0.005, (float) DB::table('customers')->where('shop_id', $id)->min('due'), "a customer's due went negative after {$after}");
         $this->assertEquals($this->expectedPayables(), round((float) DB::table('suppliers')->where('shop_id', $id)->sum('payable'), 2), "SUPPLIER PAYABLES do not match the ledgers after {$after}");
     }
@@ -147,14 +148,9 @@ class P3ReconciliationTest extends TestCase
 
     private function opVoid(): bool
     {
-        // A bill whose customer has since paid money down WITHOUT picking that invoice is left out of the random day:
-        // voiding it leaves that collection with no owner (finding D12, pinned by its own defect test below). Everything
-        // else about voids stays in play.
-        $live = array_values(array_filter($this->liveSaleIds(), function ($sid) {
-            $cust = DB::table('sales')->where('id', $sid)->value('customer_id');
-
-            return ! $cust || ! DB::table('payments')->where('customer_id', $cust)->whereNull('voided_at')->exists();
-        }));
+        // Every live bill may be voided, including one whose customer has since paid money down WITHOUT picking that
+        // invoice — D12: that money must become the customer's advance, and the books must still balance.
+        $live = $this->liveSaleIds();
         if (! $live) {
             return false;
         }
@@ -337,12 +333,11 @@ class P3ReconciliationTest extends TestCase
     }
 
     /**
-     * DEFECT D12 (owner decision). A credit bill of 150 (10 paid, 140 due); the customer then pays 100 at the due screen
-     * without choosing an invoice; the bill is voided. The customer owes nothing now — but the 100 they paid is still
-     * in the drawer and is recorded nowhere as theirs (due clamps at 0, advance stays 0). Their money has no owner.
+     * D12 (fixed, owner decision 2026-11-28). A credit bill of 200 (10 paid, 190 due); the customer then pays 100 at the
+     * due screen without choosing an invoice; the bill is voided. The customer owes nothing now — and the 100 they
+     * paid, still in the drawer, is now THEIR advance (store credit) instead of belonging to nobody.
      */
-    #[Group('phase3_defect')]
-    public function test_DEFECT_money_collected_against_a_credit_bill_that_is_later_voided_must_not_vanish(): void
+    public function test_money_collected_against_a_credit_bill_that_is_later_voided_becomes_the_customers_advance(): void
     {
         $c = $this->p3Customer('01733333333');
         $sale = $this->p3Sell([['product_id' => $this->products[0], 'qty' => 2]], [['method' => 'cash', 'amount' => 10]], ['customer_phone' => '01733333333', 'customer_name' => 'QA']);
@@ -444,12 +439,11 @@ class P3ReconciliationTest extends TestCase
     }
 
     /**
-     * DEFECT D14 (found while fixing D13). The multi-branch combined report (Reports page for an owner with branches,
+     * D14 (fixed). The multi-branch combined report (Reports page for an owner with branches,
      * and the company dashboard's per-branch table) builds its sales query with withoutGlobalScopes() to reach the
      * sibling shops — which also switches off Sale's own "active" scope, so a VOIDED bill still counts there.
      */
-    #[Group('phase3_defect')]
-    public function test_DEFECT_the_combined_multi_branch_report_must_not_count_a_voided_bill(): void
+    public function test_the_combined_multi_branch_report_does_not_count_a_voided_bill(): void
     {
         $this->p3Sell([['product_id' => $this->products[0], 'qty' => 2]], [['method' => 'cash', 'amount' => 200]]);
         $voided = $this->p3Sell([['product_id' => $this->products[0], 'qty' => 5]], [['method' => 'cash', 'amount' => 500]]);

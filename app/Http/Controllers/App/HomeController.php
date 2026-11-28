@@ -82,7 +82,8 @@ class HomeController extends Controller
             ->get();
 
         if ($bestSellers->isEmpty()) {
-            $bestSellers = SaleItem::selectRaw('product_id, product_name, SUM(qty) as total_qty, SUM(qty * price) as total_revenue')
+            $bestSellers = SaleItem::whereHas('sale') // live bills only (D14)
+                ->selectRaw('product_id, product_name, SUM(qty) as total_qty, SUM(qty * price) as total_revenue')
                 ->groupBy('product_id', 'product_name')
                 ->orderByDesc('total_qty')
                 ->limit(5)

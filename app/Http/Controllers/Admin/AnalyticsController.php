@@ -34,7 +34,7 @@ class AnalyticsController extends Controller
         $mostActiveShops = Sale::withoutGlobalScopes()
             ->whereIn('shop_id', $paidShopIds)
             ->whereDate('date', '>=', $monthAgo)
-            ->whereNull('voided_at')
+            ->live()
             ->selectRaw('shop_id, COUNT(*) as sale_count, SUM(total) as total_revenue')
             ->groupBy('shop_id')
             ->orderByDesc('total_revenue')
@@ -75,16 +75,16 @@ class AnalyticsController extends Controller
             ];
         });
 
-        $activeShopsToday = Sale::withoutGlobalScopes()->whereIn('shop_id', $paidShopIds)->whereDate('date', $today)->whereNull('voided_at')->distinct('shop_id')->count('shop_id');
-        $activeShopsWeek = Sale::withoutGlobalScopes()->whereIn('shop_id', $paidShopIds)->whereDate('date', '>=', $weekAgo)->whereNull('voided_at')->distinct('shop_id')->count('shop_id');
+        $activeShopsToday = Sale::withoutGlobalScopes()->whereIn('shop_id', $paidShopIds)->whereDate('date', $today)->live()->distinct('shop_id')->count('shop_id');
+        $activeShopsWeek = Sale::withoutGlobalScopes()->whereIn('shop_id', $paidShopIds)->whereDate('date', '>=', $weekAgo)->live()->distinct('shop_id')->count('shop_id');
 
         return Inertia::render('Admin/Analytics/Index', [
             'shopUsage' => $this->shopUsage(),
             'stats' => [
-                'salesToday' => (float) Sale::withoutGlobalScopes()->whereIn('shop_id', $paidShopIds)->whereDate('date', $today)->whereNull('voided_at')->sum('total'),
-                'billsToday' => Sale::withoutGlobalScopes()->whereIn('shop_id', $paidShopIds)->whereDate('date', $today)->whereNull('voided_at')->count(),
-                'salesWeek' => (float) Sale::withoutGlobalScopes()->whereIn('shop_id', $paidShopIds)->whereDate('date', '>=', $weekAgo)->whereNull('voided_at')->sum('total'),
-                'salesMonth' => (float) Sale::withoutGlobalScopes()->whereIn('shop_id', $paidShopIds)->whereDate('date', '>=', $monthAgo)->whereNull('voided_at')->sum('total'),
+                'salesToday' => (float) Sale::withoutGlobalScopes()->whereIn('shop_id', $paidShopIds)->whereDate('date', $today)->live()->sum('total'),
+                'billsToday' => Sale::withoutGlobalScopes()->whereIn('shop_id', $paidShopIds)->whereDate('date', $today)->live()->count(),
+                'salesWeek' => (float) Sale::withoutGlobalScopes()->whereIn('shop_id', $paidShopIds)->whereDate('date', '>=', $weekAgo)->live()->sum('total'),
+                'salesMonth' => (float) Sale::withoutGlobalScopes()->whereIn('shop_id', $paidShopIds)->whereDate('date', '>=', $monthAgo)->live()->sum('total'),
                 'totalShops' => $totalShops,
                 'activeShopsToday' => $activeShopsToday,
                 'activeShopsWeek' => $activeShopsWeek,

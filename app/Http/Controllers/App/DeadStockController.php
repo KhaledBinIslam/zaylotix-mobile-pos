@@ -33,6 +33,7 @@ class DeadStockController extends Controller
         $recentlySoldProductIds = DB::table('sale_items')
             ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
             ->where('sale_items.shop_id', Tenancy::id())
+            ->whereNull('sales.voided_at') // a voided bill gave its stock back: nothing moved (D14)
             ->whereDate('sales.date', '>=', $cutoff)
             ->whereNotNull('sale_items.product_id')
             ->distinct()

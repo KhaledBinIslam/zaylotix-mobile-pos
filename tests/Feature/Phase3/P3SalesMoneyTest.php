@@ -163,8 +163,8 @@ class P3SalesMoneyTest extends TestCase
         $this->assertEquals($start['cash'], $end['cash'], 'and the cash drawer should not have paid for a bKash sale');
     }
 
-    #[Group('phase3_defect')]
-    public function test_DEFECT_bkash_refund_leaves_the_bank_balance_overstated_and_empties_the_cash_drawer(): void
+    /** D2 (fixed 2026-11-28, owner decision): a bKash bill is refunded from the bank/bKash balance. Full matrix in P3RefundChannelTest. */
+    public function test_a_bkash_refund_goes_back_through_the_bank_and_leaves_the_cash_drawer_alone(): void
     {
         $this->assertBkashRefundGoesBackTheWayItCame();
     }

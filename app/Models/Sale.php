@@ -65,6 +65,16 @@ class Sale extends Model
         return $query->withoutGlobalScope('active');
     }
 
+    /**
+     * The same two conditions as the global 'active' scope, for the places that must call withoutGlobalScopes() to
+     * reach across shops (multi-branch reports, the company dashboard, admin totals) — that call also removes 'active',
+     * which is how voided bills crept into combined sales figures (QA D14). Chain it right after withoutGlobalScopes().
+     */
+    public function scopeLive($query)
+    {
+        return $query->whereNull('voided_at')->where('counted_in_reports', true);
+    }
+
     public function isVoided(): bool
     {
         return $this->voided_at !== null;

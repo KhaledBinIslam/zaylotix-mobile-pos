@@ -24,7 +24,7 @@ class PartnerController extends Controller
         // Same retained-profit formula as AccountsController — undistributed
         // profit is what's actually available to split among partners by
         // ownership share, not the shop's raw cash/bank balance.
-        $stockValue = (float) \App\Models\Product::selectRaw('COALESCE(SUM(cost * stock), 0) as v')->value('v');
+        $stockValue = \App\Support\StockValuation::total(); // the one valuation of the whole app (D7)
         $receivable = (float) Customer::sum('due');
         $payable = (float) Supplier::sum('payable')
             + (float) Purchase::whereNull('supplier_id')->where('method', 'credit')->sum('amount');

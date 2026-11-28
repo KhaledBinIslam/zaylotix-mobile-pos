@@ -98,6 +98,26 @@ class SaleReversal
         $customer = $sale->customer_id ? Customer::whereKey($sale->customer_id)->lockForUpdate()->first() : null;
 
         if ($sale->payments->isNotEmpty()) {
+            $tendered = (float) $sale->payments->sum('amount');
+            $dueRemainder = (float) $sale->total - $tendered;
+
+            // What the refund(s) already paid out, by where it came from. A return row written since D2 carries its own
+            // exact legs (cash drawer / bank / customer's due). A row without them was refunded from cash, with the due
+            // share split proportionally — ReturnController's old math — and is reversed exactly as it always was.
+            [$legacyDue, $legacyCash] = self::splitRefund($prior['legacyRefund'], $dueRemainder, (float) $sale->total);
+            $refundDue = $prior['legs']['due'] + $legacyDue;
+            $cashBack = $prior['legs']['cash'] + $legacyCash;
+            $bankBack = $prior['legs']['bank'];
+
+            // Put back what the refund(s) took out FIRST, then take the whole bill's tenders out: the other way round,
+            // the zero-floor below can swallow part of the refund whenever a balance is lower than the bill.
+            if ($cashBack > 0) {
+                $lockedShop->cash_balance = (float) $lockedShop->cash_balance + $cashBack;
+            }
+            if ($bankBack > 0) {
+                $lockedShop->bank_balance = (float) $lockedShop->bank_balance + $bankBack;
+            }
+
             // Post-split-payment sale: reverse each tender line into its own
             // bucket, then whatever wasn't covered by tenders (the due
             // remainder, if any) comes back off the customer.
@@ -109,50 +129,20 @@ class SaleReversal
                     // docs/FIX_PLAN.md's Phase 32 design note — that money
                     // is with the courier, not the shop, until Part 3's COD
                     // settlement) — nothing to reverse here either
+                } elseif ($payment->method === 'trade_credit') {
+                    // an exchange bill's "tender" is the credit of the goods the customer handed back — it was never money
+                    // in the bank (found by QA while building D2: voiding an exchange bill used to take it off the bank
+                    // balance as if it were)
                 } else {
                     $lockedShop->bank_balance = max(0, $lockedShop->bank_balance - $payment->amount);
                 }
-            }
-
-            $tendered = (float) $sale->payments->sum('amount');
-            $dueRemainder = (float) $sale->total - $tendered;
-
-            // Split the refund already paid out the same proportional way
-            // ReturnController::process itself did, so the two halves land
-            // on the same two buckets the refund came out of.
-            [$refundDue, $refundCash] = self::splitRefund($refunded, $dueRemainder, (float) $sale->total);
-
-            if ($refundCash > 0) {
-                // A refund leaves the drawer as cash (ReturnController only
-                // ever touches cash_balance for one). The tender loop above
-                // has already taken the FULL sale back out of cash/bank, so
-                // without putting the refund back the shop would be debited
-                // twice over the same money.
-                $lockedShop->cash_balance = (float) $lockedShop->cash_balance + $refundCash;
             }
 
             // only the slice of the original due that a refund hasn't
             // already written off is still the customer's to clear
             $dueOutstanding = max(0, $dueRemainder - $refundDue);
             if ($customer && $dueOutstanding > 0) {
-                // Phase 39: part of this bill's due may ALREADY have been
-                // collected (Payment rows tagged with this sale_id). That
-                // money is real and stays with the shop — per Khaled's
-                // explicit decision it becomes the customer's advance/store
-                // credit instead of a cash refund, spendable later from the
-                // due screen ("অগ্রিম সমন্বয়"). Only the still-outstanding
-                // part comes back off the running due. A collection taken
-                // WITHOUT picking an invoice (sale_id null) can't be
-                // attributed to this bill, so it's deliberately not counted
-                // — same reasoning as PaymentController::invoices().
-                $collected = min(
-                    (float) Payment::withoutGlobalScopes()->where('sale_id', $sale->id)->sum('amount'),
-                    $dueOutstanding
-                );
-                $customer->due = max(0, $customer->due - ($dueOutstanding - $collected));
-                if ($collected > 0) {
-                    $customer->advance_balance = (float) $customer->advance_balance + $collected;
-                }
+                self::releaseDue($customer, $sale, $dueOutstanding);
             }
         } else {
             // Legacy pre-split-payment sale (or a pure-credit sale, which
@@ -161,25 +151,24 @@ class SaleReversal
             if ($sale->payment_mode === 'cash') {
                 $lockedShop->cash_balance = max(0, $lockedShop->cash_balance - ((float) $sale->total - $refunded));
             } elseif (in_array($sale->payment_mode, ['bkash', 'nagad'], true)) {
-                $lockedShop->bank_balance = max(0, $lockedShop->bank_balance - $sale->total);
-                if ($refunded > 0) {
-                    // money came IN by bKash/Nagad but its refund went OUT
-                    // as cash — reversing the bill reverses both legs
-                    $lockedShop->cash_balance = (float) $lockedShop->cash_balance + $refunded;
+                // A return row written since D2 carries the exact legs the refund took (bank for a bKash/Nagad bill);
+                // a row without them was refunded from cash — money came IN by bKash/Nagad but its refund went OUT
+                // as cash — and is reversed as it always was. Put the refund back FIRST, then take the bill out,
+                // so the zero-floor cannot swallow part of it.
+                $cashBack = $prior['legs']['cash'] + $prior['legacyRefund'];
+                if ($prior['legs']['bank'] > 0) {
+                    $lockedShop->bank_balance = (float) $lockedShop->bank_balance + $prior['legs']['bank'];
                 }
+                if ($cashBack > 0) {
+                    $lockedShop->cash_balance = (float) $lockedShop->cash_balance + $cashBack;
+                }
+                $lockedShop->bank_balance = max(0, $lockedShop->bank_balance - $sale->total);
             } elseif ($sale->payment_mode === 'credit' && $customer) {
                 // same collected-due → advance handling as the split-payment
                 // branch above — a pure-credit sale is exactly the case where
                 // a later collection is most likely
                 $netTotal = max(0, (float) $sale->total - $refunded);
-                $collected = min(
-                    (float) Payment::withoutGlobalScopes()->where('sale_id', $sale->id)->sum('amount'),
-                    $netTotal
-                );
-                $customer->due = max(0, $customer->due - ($netTotal - $collected));
-                if ($collected > 0) {
-                    $customer->advance_balance = (float) $customer->advance_balance + $collected;
-                }
+                self::releaseDue($customer, $sale, $netTotal);
             }
         }
 
@@ -226,6 +215,40 @@ class SaleReversal
     }
 
     /**
+     * Takes a voided bill's still-outstanding credit off the customer — and makes sure the customer's money is never
+     * lost on the way (QA D12, owner decision 2026-11-28).
+     *
+     * The bill added $outstanding to the customer's running due. Voiding it removes exactly that much. The customer may
+     * since have paid some of it down:
+     *  - a collection tagged to THIS invoice (payments.sale_id) is money for a bill that no longer exists → advance;
+     *  - a collection taken at the due screen WITHOUT picking an invoice already lowered the running due, so removing
+     *    the whole $outstanding would push the due below zero. The due is held at zero (it cannot be negative) and the
+     *    part below zero — the customer's money that now has no bill to pay — becomes advance too.
+     * Either way no taka disappears: cash in the drawer, minus what is owed, plus the advance still balances
+     * (cash + dues − advance is unchanged by a void). The advance is spendable later ("অগ্রিম সমন্বয়"). Idempotency comes
+     * from the caller: a bill that is already voided is refused before this runs.
+     */
+    private static function releaseDue(Customer $customer, Sale $sale, float $outstanding): void
+    {
+        $linked = min((float) Payment::withoutGlobalScopes()->where('sale_id', $sale->id)->sum('amount'), $outstanding);
+        $newDue = round((float) $customer->due - ($outstanding - $linked), 2);
+        $unattributed = $newDue < 0 ? -$newDue : 0.0;
+
+        $customer->due = max(0, $newDue);
+        $credit = round($linked + $unattributed, 2);
+        if ($credit > 0) {
+            $customer->advance_balance = round((float) $customer->advance_balance + $credit, 2);
+            Activity::log(
+                'customer.advance.credited',
+                "মেমো '{$sale->invoice_no}' বাতিল হওয়ায় {$customer->name}-এর ৳".number_format($credit, 2).' অগ্রিম (store credit) হিসেবে জমা হয়েছে'
+                    .($unattributed > 0 ? ' (এর মধ্যে ৳'.number_format($unattributed, 2).' ছিল ইনভয়েস বাছাই ছাড়া নেওয়া বাকি আদায়)' : '').'।',
+                $customer,
+                ['sale_id' => $sale->id, 'credit' => $credit, 'linked' => round($linked, 2), 'unattributed' => round($unattributed, 2)]
+            );
+        }
+    }
+
+    /**
      * Everything a return/exchange against this sale has ALREADY given
      * back, keyed the way reverse() needs it. A sale with no returns (the
      * normal case) returns all zeros, which collapses every branch above
@@ -239,11 +262,23 @@ class SaleReversal
     {
         $rows = SalesReturn::withoutGlobalScopes()->where('sale_id', $sale->id)->get();
 
+        $noLegs = ['due' => 0.0, 'cash' => 0.0, 'bank' => 0.0];
         if ($rows->isEmpty()) {
-            return ['qtyByItem' => [], 'resalableQtyByItem' => [], 'refund' => 0.0, 'points' => 0];
+            return ['qtyByItem' => [], 'resalableQtyByItem' => [], 'refund' => 0.0, 'points' => 0, 'legs' => $noLegs, 'legacyRefund' => 0.0];
         }
 
+        // D2/D11: rows that record where their money went (cash drawer / bank / customer's due) vs. rows written before
+        // that — the latter are reversed by the old proportional rule, exactly as they always were
+        $withLegs = $rows->filter(fn ($r) => $r->refund_cash !== null || $r->refund_bank !== null || $r->refund_due !== null);
+        $legacy = $rows->reject(fn ($r) => $r->refund_cash !== null || $r->refund_bank !== null || $r->refund_due !== null);
+
         return [
+            'legs' => [
+                'due' => (float) $withLegs->sum('refund_due'),
+                'cash' => (float) $withLegs->sum('refund_cash'),
+                'bank' => (float) $withLegs->sum('refund_bank'),
+            ],
+            'legacyRefund' => (float) $legacy->sum('refund'),
             'qtyByItem' => $rows->groupBy('sale_item_id')->map(fn ($g) => (float) $g->sum('qty'))->all(),
             'resalableQtyByItem' => $rows->where('condition', 'resalable')
                 ->groupBy('sale_item_id')->map(fn ($g) => (float) $g->sum('qty'))->all(),

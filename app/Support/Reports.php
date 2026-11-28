@@ -118,7 +118,7 @@ class Reports
         // SQL-aggregated — same reasoning as rangeStats() above, including
         // $byBranch below, which is now one GROUP BY shop_id query instead
         // of fetching every sale row just to re-group it in PHP.
-        $saleQuery = $inRange(Sale::query());
+        $saleQuery = $inRange(Sale::query())->live();
 
         $grossSales = (float) (clone $saleQuery)->sum('total');
         $totalCostIssued = $grossSales - (float) (clone $saleQuery)->sum('profit');
@@ -173,7 +173,7 @@ class Reports
     {
         $shops = Shop::withoutGlobalScopes()->whereIn('id', $shopIds)->get(['id', 'name']);
 
-        $salesByBranch = Sale::withoutGlobalScopes()->whereIn('shop_id', $shopIds)
+        $salesByBranch = Sale::withoutGlobalScopes()->live()->whereIn('shop_id', $shopIds)
             ->where('sale_type', '!=', 'exchange')
             ->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)
             ->selectRaw('shop_id, COUNT(*) as cnt, SUM(total) as total_sum, SUM(profit) as profit_sum')
@@ -193,9 +193,6 @@ class Reports
             ->where('status', 'active')
             ->selectRaw('shop_id, COUNT(*) as cnt')->groupBy('shop_id')->get()->keyBy('shop_id');
 
-        $stockValueByBranch = Product::withoutGlobalScopes()->whereIn('shop_id', $shopIds)
-            ->selectRaw('shop_id, SUM(cost * stock) as total')->groupBy('shop_id')->get()->keyBy('shop_id');
-
         $lowStockByBranch = Product::withoutGlobalScopes()->whereIn('shop_id', $shopIds)
             ->lowStock()->selectRaw('shop_id, COUNT(*) as cnt')->groupBy('shop_id')->get()->keyBy('shop_id');
 
@@ -208,7 +205,8 @@ class Reports
             'sales_total' => round((float) ($salesByBranch->get($s->id)->total_sum ?? 0), 2),
             'sales_count' => (int) ($salesByBranch->get($s->id)->cnt ?? 0),
             'profit' => round((float) ($salesByBranch->get($s->id)->profit_sum ?? 0), 2),
-            'stock_value' => round((float) ($stockValueByBranch->get($s->id)->total ?? 0), 2),
+            // D7: each branch's own stock figure, valued by the same rule as the Accounts card (lots at their own cost)
+            'stock_value' => round(StockValuation::total($s->id), 2),
             'expenses_total' => round((float) ($expenseByBranch->get($s->id)->total ?? 0), 2),
             'customer_due' => round((float) ($dueByBranch->get($s->id)->total ?? 0), 2),
             'supplier_payable' => round((float) ($payableByBranch->get($s->id)->total ?? 0), 2),
@@ -255,7 +253,9 @@ class Reports
         $cashReturnsByUser = $inRange(SalesReturn::query()->onLiveBills())
             ->get()
             ->groupBy('user_id')
-            ->map(fn ($returns) => (float) $returns->sum('refund'));
+            // D2/D11: only the part that really left the CASH DRAWER — a bKash refund came off the bank balance and a
+            // credit bill's due share was never cash. Rows written before the legs existed keep their whole refund.
+            ->map(fn ($returns) => (float) $returns->sum(fn ($r) => $r->refund_cash !== null ? (float) $r->refund_cash : (float) $r->refund));
 
         $userIds = $cashSalesByUser->keys()
             ->merge($cashDueByUser->keys())

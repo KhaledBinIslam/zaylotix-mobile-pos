@@ -50,7 +50,7 @@ class OnlineProfitReport
             'net_profit' => round((float) $rows->sum('net_profit'), 2),
         ];
 
-        $stockValue = (float) Product::selectRaw('COALESCE(SUM(cost * stock), 0) as v')->value('v');
+        $stockValue = StockValuation::total(); // the one valuation of the whole app (D7)
         $codPending = (float) OnlineOrder::where('status', 'delivered')->whereNull('cod_settled_at')->sum('cod_amount');
 
         return [

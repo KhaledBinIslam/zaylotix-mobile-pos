@@ -38,22 +38,28 @@ class SupplierController extends Controller
             ->get()->keyBy('supplier_id');
 
         $soldAgg = SaleItem::join('products', 'products.id', '=', 'sale_items.product_id')
+            ->whereHas('sale') // live bills only — Sale's own scope; a voided bill is not a sale (D14)
             ->where('products.shop_id', Tenancy::id()) // the join bypasses Product's own tenant scope
             ->whereNotNull('products.supplier_id')
             ->groupBy('products.supplier_id')
             ->selectRaw('products.supplier_id, COALESCE(SUM(sale_items.qty), 0) as sold_units, COALESCE(SUM(sale_items.price * sale_items.qty - sale_items.discount), 0) as sold_revenue, COALESCE(SUM(sale_items.cost * sale_items.qty), 0) as sold_cost')
             ->get()->keyBy('supplier_id');
 
-        $suppliers = $withPayable->concat($settled)->values()->map(function ($s) use ($stockAgg, $soldAgg) {
+        // D7: a lot-tracked shop values each supplier's goods the way the Accounts card and the supplier report do —
+        // every lot at its own cost, by the lot's supplier (StockValuation) — so this page can never disagree with them
+        $lotValueBySupplier = \App\Support\StockValuation::usesLots() ? \App\Support\StockValuation::valueBySupplier() : null;
+
+        $suppliers = $withPayable->concat($settled)->values()->map(function ($s) use ($stockAgg, $soldAgg, $lotValueBySupplier) {
             $st = $stockAgg->get($s->id);
             $so = $soldAgg->get($s->id);
+            $stockValue = $lotValueBySupplier !== null ? (float) ($lotValueBySupplier[$s->id] ?? 0) : (float) ($st->stock_value ?? 0);
             $arr = $s->toArray();
             $arr['stats'] = [
                 'products' => (int) ($st->products_count ?? 0),
-                'stock_value' => (float) ($st->stock_value ?? 0),
+                'stock_value' => $stockValue,
                 'sold_units' => (float) ($so->sold_units ?? 0),
                 'sold_revenue' => (float) ($so->sold_revenue ?? 0),
-                'intake_value' => (float) ($st->stock_value ?? 0) + (float) ($so->sold_cost ?? 0),
+                'intake_value' => $stockValue + (float) ($so->sold_cost ?? 0),
             ];
 
             return $arr;
@@ -303,6 +309,7 @@ class SupplierController extends Controller
         $soldByProduct = $products->isEmpty()
             ? collect()
             : SaleItem::whereIn('product_id', $products->pluck('id'))
+                ->whereHas('sale') // live bills only (D14)
                 ->groupBy('product_id')
                 ->selectRaw('product_id, COALESCE(SUM(qty), 0) as units, COALESCE(SUM(price * qty - discount), 0) as revenue')
                 ->get()->keyBy('product_id');

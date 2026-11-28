@@ -14,7 +14,7 @@ class SalesReturn extends Model
     protected $fillable = [
         'shop_id', 'product_id', 'product_batch_id', 'user_id', 'qty', 'refund', 'phone', 'date',
         'sale_id', 'sale_item_id', 'product_variant_id', 'customer_id', 'exchange_sale_id',
-        'type', 'condition', 'reason', 'cost', 'applied_to_due', 'loyalty_points_deducted',
+        'type', 'condition', 'reason', 'cost', 'applied_to_due', 'refund_cash', 'refund_bank', 'refund_due', 'loyalty_points_deducted',
     ];
 
     protected function casts(): array
@@ -23,6 +23,9 @@ class SalesReturn extends Model
             'qty' => 'decimal:3',
             'refund' => 'decimal:2',
             'cost' => 'decimal:2',
+            'refund_cash' => 'decimal:2',
+            'refund_bank' => 'decimal:2',
+            'refund_due' => 'decimal:2',
             'applied_to_due' => 'boolean',
             'date' => 'date:Y-m-d',
         ];

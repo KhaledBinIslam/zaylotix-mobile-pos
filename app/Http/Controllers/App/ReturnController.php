@@ -646,6 +646,7 @@ class ReturnController extends Controller
             $isExchange = $data['action'] === 'exchange' && ! empty($data['new_items']);
             $exchangeSale = null;
             $dueApplied = 0.0;
+            $cashLeg = $bankLeg = null; // set by a plain refund below; an exchange settles through its own sale
 
             if ($isExchange) {
                 $exchangeSale = $this->createExchangeSale($data, $shopId, $userId, $lockedShop, $customer, $totalRefund, $sale);
@@ -664,11 +665,17 @@ class ReturnController extends Controller
                     $customer->due = (float) $customer->due - $dueApplied;
                 }
                 $cashOut = round($refundCashPortion + ($refundDuePortion - $dueApplied), 2);
-                if ($cashOut != 0) {
+                // D2: the money goes back the way the customer paid — bKash/Nagad/gateway money comes off the bank
+                // balance, cash off the drawer, a split payment in its own proportions (refundLegs()).
+                [$cashLeg, $bankLeg] = $this->refundLegs($sale, $cashOut);
+                if ($cashLeg != 0) {
                     // deliberately allowed to go negative, same reasoning as
                     // the original store() flow — a refund bigger than
                     // cash-on-hand is a real shortfall that must stay visible
-                    $lockedShop->cash_balance = (float) $lockedShop->cash_balance - $cashOut;
+                    $lockedShop->cash_balance = (float) $lockedShop->cash_balance - $cashLeg;
+                }
+                if ($bankLeg != 0) {
+                    $lockedShop->bank_balance = (float) $lockedShop->bank_balance - $bankLeg;
                 }
             }
 
@@ -680,9 +687,16 @@ class ReturnController extends Controller
             }
             $lockedShop->save();
 
+            // D2/D11: where each return line's money went (cash drawer / bank / customer's due) — plain refunds only; an
+            // exchange settles through its own sale and keeps these NULL like every row written before this change
+            $legs = $cashLeg === null ? [] : $this->spreadLegs($returnRows, $totalRefund, $dueApplied, $cashLeg, $bankLeg);
+
             $createdReturns = [];
-            foreach ($returnRows as $row) {
+            foreach ($returnRows as $i => $row) {
                 $createdReturns[] = SalesReturn::create([
+                    'refund_due' => $legs[$i][0] ?? null,
+                    'refund_cash' => $legs[$i][1] ?? null,
+                    'refund_bank' => $legs[$i][2] ?? null,
                     // the RECEIVING shop's own product/variant row — never
                     // the original sale_item's product_id/product_variant_id
                     // directly, which belongs to the sale's origin shop for a
@@ -759,6 +773,62 @@ class ReturnController extends Controller
         });
 
         return response()->json($result);
+    }
+
+    /**
+     * D2 — how a refund of $amount (the part that is real money going back to the customer) splits between the cash
+     * drawer and the bank/bKash balance: in the proportions the customer paid the bill. cash, cod and an exchange's
+     * trade credit are "cash side" (as before); bKash, Nagad, gateway and bank are "bank side". A legacy bill with no
+     * tender rows is judged by its payment_mode.
+     *
+     * @return array{0: float, 1: float} [cash, bank] — they add up to $amount
+     */
+    private function refundLegs(Sale $sale, float $amount): array
+    {
+        if ($amount <= 0) {
+            return [round($amount, 2), 0.0];
+        }
+        $bankSide = ['bkash', 'nagad', 'gateway', 'bank'];
+        if ($sale->payments->isEmpty()) {
+            $bank = in_array($sale->payment_mode, ['bkash', 'nagad'], true) ? $amount : 0.0;
+
+            return [round($amount - $bank, 2), round($bank, 2)];
+        }
+        $tendered = (float) $sale->payments->sum('amount');
+        if ($tendered <= 0) {
+            return [round($amount, 2), 0.0];
+        }
+        $bank = round($amount * (float) $sale->payments->whereIn('method', $bankSide)->sum('amount') / $tendered, 2);
+
+        return [round($amount - $bank, 2), $bank];
+    }
+
+    /**
+     * Spreads a return's due/cash/bank totals over its lines in proportion to each line's refund; the last line takes
+     * the rounding remainder so the three columns add up exactly to the totals.
+     *
+     * @return array<int, array{0: float, 1: float, 2: float}> per line: [due, cash, bank]
+     */
+    private function spreadLegs(array $rows, float $totalRefund, float $due, float $cash, float $bank): array
+    {
+        $out = [];
+        $n = count($rows);
+        foreach (array_values($rows) as $i => $row) {
+            if ($i === $n - 1) {
+                $out[] = [round($due, 2), round($cash, 2), round($bank, 2)];
+                break;
+            }
+            $share = $totalRefund > 0 ? (float) $row['refund'] / $totalRefund : 0.0;
+            $d = round($due * $share, 2);
+            $c = round($cash * $share, 2);
+            $b = round($bank * $share, 2);
+            $out[] = [$d, $c, $b];
+            $due -= $d;
+            $cash -= $c;
+            $bank -= $b;
+        }
+
+        return $out;
     }
 
     /**
@@ -980,7 +1050,12 @@ class ReturnController extends Controller
                 $owed -= $applied;
             }
             if ($owed > 0) {
-                $lockedShop->cash_balance = (float) $lockedShop->cash_balance - $owed;
+                // D2: paid back the way the original bill was paid, like a plain refund
+                [$owedCash, $owedBank] = $this->refundLegs($originalSale, round($owed, 2));
+                $lockedShop->cash_balance = (float) $lockedShop->cash_balance - $owedCash;
+                if ($owedBank != 0) {
+                    $lockedShop->bank_balance = (float) $lockedShop->bank_balance - $owedBank;
+                }
             }
             $paymentMode = 'cash';
         } else {

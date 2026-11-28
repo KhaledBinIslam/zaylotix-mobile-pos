@@ -15,6 +15,7 @@ use App\Models\SalesReturn;
 use App\Models\Shop;
 use App\Models\Supplier;
 use App\Support\Reports;
+use App\Support\StockValuation;
 use App\Support\Tenancy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -129,48 +130,32 @@ class AccountsController extends Controller
      */
     public function stockValueDetail()
     {
-        $variantProducts = Product::whereHas('variants')
-            ->with(['variants' => fn ($q) => $q->orderBy('color')->orderBy('size')])
-            ->get(['id', 'name', 'name_en', 'emoji', 'cost']);
-
-        $rows = $variantProducts->map(function (Product $p) {
-            $variants = $p->variants->map(fn (ProductVariant $v) => [
-                'label' => trim(implode(', ', array_filter([$v->size, $v->color]))) ?: '—',
-                'qty' => (float) $v->stock,
-                'unit_cost' => (float) ($v->cost ?? $p->cost),
-                'value' => round((float) ($v->cost ?? $p->cost) * (float) $v->stock, 2),
-            ])->filter(fn ($v) => $v['qty'] != 0)->values();
-
-            return [
-                'name' => $p->name,
-                'emoji' => $p->emoji,
-                'qty' => round((float) $variants->sum('qty'), 3),
-                'value' => round((float) $variants->sum('value'), 2),
-                'variants' => $variants->all(),
-            ];
-        });
-
-        $plainRows = Product::whereDoesntHave('variants')
-            ->where('stock', '!=', 0)
-            ->get(['id', 'name', 'emoji', 'cost', 'stock'])
-            ->map(fn (Product $p) => [
-                'name' => $p->name,
-                'emoji' => $p->emoji,
-                'qty' => (float) $p->stock,
-                'value' => round((float) $p->cost * (float) $p->stock, 2),
-                'variants' => [],
-            ]);
-
-        $all = $rows->concat($plainRows)
+        // one valuation for the whole app (StockValuation): a lot-tracked shop values each lot at its own cost, any
+        // other shop stock x current cost — so this page's total is always the Accounts card's figure
+        $rows = StockValuation::articles()
+            ->map(fn (array $a) => [
+                'name' => $a['name'],
+                'emoji' => $a['emoji'],
+                'qty' => round((float) collect($a['sizes'])->filter(fn ($s) => $a['has_variants'] ? $s['qty'] != 0 : true)->sum('qty'), 3),
+                'value' => round((float) collect($a['sizes'])->filter(fn ($s) => $a['has_variants'] ? $s['qty'] != 0 : true)->sum('value'), 2),
+                'variants' => $a['has_variants']
+                    ? collect($a['sizes'])->filter(fn ($s) => $s['qty'] != 0)->map(fn ($s) => [
+                        'label' => $s['label'],
+                        'qty' => $s['qty'],
+                        'unit_cost' => round($s['unit_cost'], 2),
+                        'value' => round($s['value'], 2),
+                    ])->values()->all()
+                    : [],
+            ])
             ->filter(fn ($r) => $r['qty'] != 0 || $r['value'] != 0)
             ->sortByDesc('value')->values();
 
         $shop = Tenancy::shop();
 
         return Inertia::render('App/Accounts/StockValue', [
-            'rows' => $all->all(),
-            'total' => round((float) $all->sum('value'), 2),
-            'totalQty' => round((float) $all->sum('qty'), 3),
+            'rows' => $rows->all(),
+            'total' => round((float) $rows->sum('value'), 2),
+            'totalQty' => round((float) $rows->sum('qty'), 3),
             'supplierView' => (bool) ($shop && ($shop->hasFeature('suppliers') || $shop->hasFeature('source_lines'))),
         ]);
     }
@@ -292,84 +277,33 @@ class AccountsController extends Controller
         $shop = Tenancy::shop();
         abort_unless($shop && ($shop->hasFeature('suppliers') || $shop->hasFeature('source_lines')), 404);
 
-        $rootId = $shop->parent_shop_id ?? $shop->id;
-        $memberIds = $shop->hasFeature('shared_stock_pool') || Shop::withoutGlobalScopes()->find($rootId)?->hasFeature('shared_stock_pool')
-            ? Shop::withoutGlobalScopes()->where('account_type', '!=', 'demo')
-                ->where(fn ($q) => $q->where('id', $rootId)->orWhere('parent_shop_id', $rootId))->pluck('id')->all()
-            : [$shop->id];
-
-        // this shop's own rows carry the (pooled) figure — valued exactly as stockValue() does
-        $products = Product::with(['variants' => fn ($q) => $q->select('id', 'product_id', 'size', 'color', 'stock', 'cost')])
-            ->get(['id', 'name', 'emoji', 'cost', 'stock', 'supplier_id', 'master_product_id']);
-
-        $masterSupplier = Product::withoutGlobalScopes()
-            ->whereIn('id', $products->pluck('master_product_id')->filter()->unique())
-            ->pluck('supplier_id', 'id');
-
-        // lots across every member, keyed by pool group (master id, or the product's own id)
-        $groupOf = $products->mapWithKeys(fn (Product $p) => [$p->id => $p->master_product_id ?? $p->id]);
-        $lotsByGroup = collect();
-        if (count($memberIds) > 1 || $shop->hasFeature('source_lines')) {
-            $memberProducts = Product::withoutGlobalScopes()->whereIn('shop_id', $memberIds)->whereNull('deleted_at')
-                ->whereIn(\Illuminate\Support\Facades\DB::raw('COALESCE(master_product_id, id)'), $groupOf->values()->unique())
-                ->get(['id', 'master_product_id']);
-            $memberGroup = $memberProducts->mapWithKeys(fn (Product $p) => [$p->id => $p->master_product_id ?? $p->id]);
-            $lots = ProductSource::withoutGlobalScopes()->whereIn('shop_id', $memberIds)->whereNull('deleted_at')
-                ->where('stock', '>', 0)->whereIn('product_id', $memberGroup->keys())
-                ->get(['product_id', 'supplier_id', 'stock', 'cost']);
-            $lotsByGroup = $lots->groupBy(fn ($l) => $memberGroup[$l->product_id] ?? 0);
-        }
+        // The same valuation as the Accounts card (StockValuation), cut by supplier: a lot is valued at its own cost and
+        // belongs to the lot's supplier; whatever no lot covers belongs to the article's supplier (its master's, for a
+        // branch copy) — "unknown" only when there is truly no supplier on record. Under a shared stock pool the lots of
+        // every branch are summed, so the figure is the same on each branch, like the card itself.
+        $memberIds = StockValuation::memberIds($shop->id);
+        $usesLots = false;
 
         $supplierNames = Supplier::withoutGlobalScopes()->whereIn('shop_id', $memberIds)->pluck('name', 'id');
         $bySupplier = []; // key => ['name', 'qty', 'value', 'products' => []]
-        $add = function ($key, string $name, Product $p, float $qty, float $value, string $via) use (&$bySupplier) {
+        $add = function ($key, string $name, array $article, float $qty, float $value, string $via) use (&$bySupplier) {
             if ($value <= 0 && $qty <= 0) {
                 return;
             }
             $bySupplier[$key] ??= ['id' => is_int($key) ? $key : null, 'name' => $name, 'qty' => 0.0, 'value' => 0.0, 'products' => []];
             $bySupplier[$key]['qty'] += $qty;
             $bySupplier[$key]['value'] += $value;
-            $bySupplier[$key]['products'][] = ['name' => $p->name, 'emoji' => $p->emoji, 'qty' => round($qty, 3), 'value' => round($value, 2), 'via' => $via];
+            $bySupplier[$key]['products'][] = ['name' => $article['name'], 'emoji' => $article['emoji'], 'qty' => round($qty, 3), 'value' => round($value, 2), 'via' => $via];
         };
 
-        foreach ($products as $p) {
-            $hasVariants = $p->variants->isNotEmpty();
-            $qty = $hasVariants ? (float) $p->variants->sum('stock') : (float) $p->stock;
-            $value = $hasVariants
-                ? (float) $p->variants->sum(fn ($v) => (float) ($v->cost ?? $p->cost) * (float) $v->stock)
-                : (float) $p->cost * (float) $p->stock;
-
-            $covered = 0.0;
-            $coveredQty = 0.0;
-            // The lots' own ledger can run AHEAD of the article's stock (a stock
-            // correction that never touched the lots: SEAMAN's Bideshi Boiler Suit
-            // had 22 pcs on the shelf and 46 in its lots). Counting the lots in
-            // full then pushed the report ৳25,000 above the real stock value, found
-            // by checking every paid shop's totals against stockValue(). The
-            // report's total is the card's total, so lots are scaled down to what
-            // the article really holds, pro rata across its suppliers.
-            $articleLots = $lotsByGroup->get($groupOf[$p->id]) ?? collect();
-            $lotsValueAll = (float) $articleLots->sum(fn ($l) => (float) $l->stock * (float) $l->cost);
-            $lotsQtyAll = (float) $articleLots->sum('stock');
-            $valueScale = $lotsValueAll > $value && $lotsValueAll > 0 ? $value / $lotsValueAll : 1.0;
-            $qtyScale = $lotsQtyAll > $qty && $lotsQtyAll > 0 ? $qty / $lotsQtyAll : 1.0;
-            foreach ($articleLots->groupBy('supplier_id') as $supplierId => $lots) {
-                $lotValue = (float) $lots->sum(fn ($l) => (float) $l->stock * (float) $l->cost) * $valueScale;
-                $lotQty = (float) $lots->sum('stock') * $qtyScale;
-                $key = $supplierId ? (int) $supplierId : 'unknown';
-                $add($key, $supplierId ? ($supplierNames[$supplierId] ?? "#{$supplierId}") : '', $p, $lotQty, $lotValue, 'lot');
-                $covered += $lotValue;
-                $coveredQty += $lotQty;
-            }
-
-            $rest = max(0.0, $value - $covered);
-            $restQty = max(0.0, $qty - $coveredQty);
-            if ($rest > 0 || $restQty > 0) {
-                $supplierId = $p->master_product_id ? ($masterSupplier[$p->master_product_id] ?? $p->supplier_id) : $p->supplier_id;
-                $key = $supplierId ? (int) $supplierId : 'unknown';
-                $add($key, $supplierId ? ($supplierNames[$supplierId] ?? "#{$supplierId}") : '', $p, $restQty, $rest, 'article');
+        foreach (StockValuation::articles($shop->id) as $article) {
+            foreach ($article['parts'] as $part) {
+                $supplierId = $part['supplier_id'];
+                $usesLots = $usesLots || $part['via'] === 'lot';
+                $add($supplierId ?: 'unknown', $supplierId ? ($supplierNames[$supplierId] ?? "#{$supplierId}") : '', $article, (float) $part['qty'], (float) $part['value'], $part['via']);
             }
         }
+
 
         // received / sold in the chosen window — a supplier with goods
         // received or sold but nothing left on the shelf still gets a row
@@ -421,7 +355,7 @@ class AccountsController extends Controller
             'pooledWith' => count($memberIds) > 1
                 ? Shop::withoutGlobalScopes()->whereIn('id', $memberIds)->where('id', '!=', $shop->id)->pluck('name')->all()
                 : [],
-            'usesLots' => $lotsByGroup->isNotEmpty(),
+            'usesLots' => $usesLots,
             'period' => $period,
             'from' => $period === 'custom' ? $from?->toDateString() : null,
             'to' => $period === 'custom' ? $to?->toDateString() : null,
@@ -436,17 +370,9 @@ class AccountsController extends Controller
         ]);
     }
 
+    /** the stock value card — one definition for the whole app, see StockValuation */
     private function stockValue(): float
     {
-        $fromVariants = (float) ProductVariant::query()
-            ->join('products', 'products.id', '=', 'product_variants.product_id')
-            ->whereNull('products.deleted_at')
-            ->selectRaw('COALESCE(SUM(COALESCE(product_variants.cost, products.cost) * product_variants.stock), 0) as v')
-            ->value('v');
-
-        $fromPlainProducts = (float) Product::whereDoesntHave('variants')
-            ->selectRaw('COALESCE(SUM(cost * stock), 0) as v')->value('v');
-
-        return $fromVariants + $fromPlainProducts;
+        return StockValuation::total();
     }
 }

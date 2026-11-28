@@ -76,8 +76,11 @@ class StockMovementController extends Controller
         if (in_array($typeFilter, ['all', 'sale'], true)) {
             $rows = $rows->concat(
                 SaleItem::withoutGlobalScopes()->whereIn('shop_id', $shopIds)
-                    ->whereHas('sale', fn ($q) => $q->withoutGlobalScopes()->where('sale_type', '!=', 'exchange'))
-                    ->with(['sale:id,invoice_no,date,shop_id'])
+                    // a VOIDED bill gave its pieces back, so it is not an outflow (D14); an undelivered online order
+                    // (counted_in_reports = false) has really taken its stock, so it stays — and its invoice must still
+                    // show, hence the unscoped eager load
+                    ->whereHas('sale', fn ($q) => $q->withoutGlobalScopes()->whereNull('voided_at')->where('sale_type', '!=', 'exchange'))
+                    ->with(['sale' => fn ($q) => $q->withoutGlobalScopes()->select('id', 'invoice_no', 'date', 'shop_id')])
                     ->when($productQuery, fn ($q) => $q->where('product_name', 'like', "%{$productQuery}%"))
                     ->latest('id')->limit($limit)->get()
                     ->map(fn (SaleItem $i) => [

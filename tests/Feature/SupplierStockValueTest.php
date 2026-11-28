@@ -63,11 +63,14 @@ class SupplierStockValueTest extends TestCase
         $props = $this->rowsOf($this->actingAs($owner, 'web')->get(route('app.accounts.stockValueBySupplier')));
         $rows = $this->byName($props);
 
-        $this->assertEquals(1100, $props['total']);
-        $this->assertEquals(670, $rows['Bulu']['value']);   // 360 lot + 310 article remainder
+        // D7 (owner decision 2026-11-28): a lot is valued at its OWN cost; only the pieces no lot covers (3 of the 10)
+        // are valued at the size's current cost (100). 4x90 + 3x110 + 3x100 + Polish 2x50 = 1,090 (was 1,100 when every
+        // piece was valued at the article's cost)
+        $this->assertEquals(1090, $props['total']);
+        $this->assertEquals(660, $rows['Bulu']['value']);   // 360 lot + 300 article remainder
         $this->assertEquals(330, $rows['Sujon']['value']);  // 330 lot
         $this->assertEquals(100, $rows['unknown']['value']);
-        $this->assertEquals(1100, array_sum(array_column($props['rows'], 'value')), 'the split always adds up to the stock value card');
+        $this->assertEquals(1090, array_sum(array_column($props['rows'], 'value')), 'the split always adds up to the stock value card');
         $this->assertSame(['lot', 'article'], array_column($rows['Bulu']['products'], 'via'));
         $this->assertTrue($props['usesLots']);
         $this->assertSame([], $props['pooledWith']);

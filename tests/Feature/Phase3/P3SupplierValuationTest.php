@@ -74,12 +74,23 @@ class P3SupplierValuationTest extends TestCase
         $this->assertEquals($this->sizeStock(), array_sum($this->lots()), "the supplier lots must add up to the size's stock after {$after}: ".json_encode(['lots' => $this->lots(), 'size' => $this->sizeStock()]));
     }
 
-    /** the independent oracle for the Accounts "stock value" card: cost x stock, per size, raw */
+    /**
+     * The independent oracle for the Accounts "stock value" card of a lot-tracked shop (D7): each lot at its OWN cost;
+     * the pieces no lot covers at the size's current cost; lots larger than the shelf scaled down pro rata. Raw rows only.
+     */
     private function cardValue(): float
     {
-        return round((float) DB::table('product_variants as v')->join('products as p', 'p.id', '=', 'v.product_id')->whereNull('v.deleted_at')->whereNull('p.deleted_at')
-            ->where('v.shop_id', $this->shop->id)
-            ->selectRaw('COALESCE(SUM(COALESCE(v.cost, p.cost) * v.stock), 0) as t')->value('t'), 2);
+        $stock = $this->sizeStock();
+        $mirror = (float) DB::table('product_variants')->where('id', $this->m->id)->value('cost');
+        $lots = DB::table('product_sources')->where('product_variant_id', $this->m->id)->whereNull('deleted_at')->where('stock', '>', 0)->get();
+        $lotQty = (float) $lots->sum('stock');
+        if ($stock <= 0 || $lotQty <= 0) {
+            return round($stock * $mirror, 2);
+        }
+        $scale = $lotQty > $stock ? $stock / $lotQty : 1.0;
+        $value = (float) $lots->sum(fn ($l) => (float) $l->stock * (float) $l->cost) * $scale;
+
+        return round($value + ($stock - min($lotQty, $stock)) * $mirror, 2);
     }
 
     /** @return array{props:array,rows:array<string,array>} */
@@ -128,12 +139,47 @@ class P3SupplierValuationTest extends TestCase
         $this->assertEquals(800.0, $rep['rows']['Supplier B']['value']);
         $this->assertLotsAddUpToTheSize('two purchases');
 
-        // DECISION D7 (see QA_REPORT.md): the card values every piece at the size's latest cost (80), so the card says
-        // 1,600 while the lots say 1,300; the 300 difference is shown as "supplier unknown" although both suppliers
-        // are known. Pinned here so a change is a conscious one.
-        $this->assertEquals(1600.0, $this->cardValue());
-        $this->assertEquals(1600.0, array_sum(array_column($rep['props']['rows'], 'value')), 'rows are forced to add up to the card');
-        $this->assertEquals(300.0, $rep['rows']['unknown']['value'] ?? 0.0, 'the gap between card and lots is labelled unknown');
+        // D7 (owner decision 2026-11-28): every lot at its OWN cost — 10x50 + 10x80 = 1,300 on the card, in the supplier
+        // report and in the by-hand oracle; no artificial "supplier unknown" gap (it used to be 1,600 with 300 unknown)
+        $this->assertEquals(1300.0, $this->cardValue());
+        $this->assertEquals(1300.0, $rep['props']['total'], 'the card');
+        $this->assertEquals(1300.0, array_sum(array_column($rep['props']['rows'], 'value')), 'rows add up to the card');
+        $this->assertArrayNotHasKey('unknown', $rep['rows'], 'both suppliers are known — nothing is "unknown"');
+    }
+
+    public function test_cost_is_conserved_what_was_bought_equals_what_was_sold_at_lot_cost_plus_what_is_still_on_the_shelf(): void
+    {
+        $this->buy($this->a, 10, 50);
+        $this->buy($this->b, 10, 80);
+        $this->sell(10, 3);     // 10 pieces of A's lot at 50, 3 of B's at 80
+
+        $boughtAtCost = 10 * 50 + 10 * 80;
+        $soldAtCost = (float) DB::table('sale_items')->where('product_variant_id', $this->m->id)->selectRaw('SUM(qty * cost) as t')->value('t');
+        $this->assertEquals(10 * 50 + 3 * 80, $soldAtCost, 'profit uses each lot\'s own cost');
+        $this->assertEquals(7 * 80.0, $this->cardValue(), '7 pieces of B\'s lot are left');
+        $this->assertEquals(7 * 80.0, $this->report()['props']['total']);
+        $this->assertEquals($boughtAtCost, $soldAtCost + $this->report()['props']['total'], 'valuation and profit follow ONE costing logic: nothing is lost or invented between "bought", "sold" and "on the shelf"');
+    }
+
+    public function test_a_shop_without_lots_is_still_valued_at_the_current_cost(): void
+    {
+        // a second shop on the default (no source_lines) rules: stock x the size's current cost, exactly as before
+        [$plain, $owner] = $this->createShopWithOwner();
+        $this->grantFeature($plain, 'accounts');
+        $this->grantFeature($plain, 'product_variants');
+        $p = Product::create(['shop_id' => $plain->id, 'name' => 'Plain Boot', 'cost' => 100, 'price' => 150, 'stock' => 0]);
+        ProductVariant::create(['shop_id' => $plain->id, 'product_id' => $p->id, 'size' => 'M', 'color' => 'Black', 'stock' => 7, 'cost' => 90]);
+        ProductVariant::create(['shop_id' => $plain->id, 'product_id' => $p->id, 'size' => 'L', 'color' => 'Black', 'stock' => 3, 'cost' => null]);
+        Product::create(['shop_id' => $plain->id, 'name' => 'Rice', 'cost' => 60, 'price' => 80, 'stock' => 10]);
+
+        \App\Support\Tenancy::clear();
+        \App\Support\Tenancy::forgetShopCache();
+        $props = null;
+        $this->actingAs($owner, 'web')->get('/app/accounts')->assertOk()->assertInertia(function ($page) use (&$props) {
+            $props = $page->toArray()['props'];
+        });
+
+        $this->assertEquals(7 * 90 + 3 * 100 + 10 * 60, $props['stockValue'], '630 + 300 + 600');
     }
 
     public function test_a_cart_line_spanning_two_lots_is_refused_cleanly_and_two_lines_deplete_oldest_lot_first(): void
@@ -245,37 +291,50 @@ class P3SupplierValuationTest extends TestCase
         $this->assertArrayNotHasKey('unknown', $rep['rows'], 'nothing was bought or sold from an unknown supplier');
     }
 
-    // ---- characterisation: documented behaviour pinned so a future change is a conscious one
+    // ---- D7: edge cases of the one valuation
 
-    public function test_the_stock_value_card_uses_the_latest_cost_while_the_supplier_report_keeps_the_difference_as_supplier_unknown(): void
+    public function test_lots_that_run_ahead_of_the_shelf_are_scaled_down_and_never_inflate_the_card(): void
     {
         $this->buy($this->a, 10, 50);
-        $this->buy($this->b, 10, 80);      // the size's own cost is now 80 (latest cost wins)
-        $this->sell(10, 5);                // lot A emptied, 5 left in B ... B sold first? no: oldest first
-        // oldest first: 10 from A, 5 from B  ->  A 0, B 5
-        $this->assertEquals([$this->a->id => 0.0, $this->b->id => 5.0], $this->lots());
+        // a damage write-off lowers the shelf (10 -> 7) — whether or not it also lowers the lot, the card never exceeds the shelf
+        $this->p3As()->post('/app/damages', ['product_id' => $this->boot->id, 'product_variant_id' => $this->m->id, 'qty' => 3, 'reason' => 'QA'])->assertSessionHasNoErrors();
 
+        $this->assertEquals(7.0, $this->sizeStock());
+        $this->assertEquals(7 * 50.0, $this->cardValue(), '7 pieces at the lot cost');
         $rep = $this->report();
-        $this->assertEquals(5 * 80.0, $this->cardValue());
-        $this->assertEquals($this->cardValue(), array_sum(array_column($rep['props']['rows'], 'value')), 'rows still add up to the card');
-        $this->assertEquals(400.0, $rep['rows']['Supplier B']['value']);
+        $this->assertEquals(350.0, $rep['props']['total']);
+        $this->assertEquals(350.0, array_sum(array_column($rep['props']['rows'], 'value')), 'the supplier report never exceeds the shelf');
+        $this->assertEquals(7.0, array_sum(array_column($rep['props']['rows'], 'qty')), 'and neither does its quantity');
     }
 
-    public function test_the_latest_cost_overwrites_the_size_cost_so_the_card_values_an_older_cheaper_lot_at_the_newer_price(): void
+    public function test_pieces_no_lot_covers_are_valued_at_the_size_cost_and_unknown_appears_only_when_no_supplier_is_on_record(): void
+    {
+        $this->buy($this->a, 10, 50);
+        // 5 pieces appear on the shelf with no lot behind them (e.g. stock that predates lot tracking); the size's current cost is 60
+        DB::table('product_variants')->where('id', $this->m->id)->update(['stock' => 15, 'cost' => 60]);
+        DB::table('products')->where('id', $this->boot->id)->update(['stock' => 15]);
+
+        $rep = $this->report();
+
+        $this->assertEquals(10 * 50 + 5 * 60, $rep['props']['total'], 'lot at its own cost, the untracked 5 at the current cost');
+        $this->assertEquals(500.0, $rep['rows']['Supplier A']['value']);
+        $this->assertEquals(300.0, $rep['rows']['unknown']['value'], 'the article has no supplier on record, so this part really is unknown');
+        $this->assertEquals(15 * 0 + 800.0, array_sum(array_column($rep['props']['rows'], 'value')));
+    }
+
+    public function test_the_stock_value_detail_page_total_equals_the_card_for_a_lot_tracked_shop(): void
     {
         $this->buy($this->a, 10, 50);
         $this->buy($this->b, 10, 80);
-        $this->sell(5);                    // 5 of A's lot gone: A 5 @ 50, B 10 @ 80
+        $this->sell(4);
 
-        $lotTruth = 5 * 50 + 10 * 80;      // 1,050 — what the lots say the goods cost
-        $card = $this->cardValue();        // 15 x 80 = 1,200 — the mirror's cost applied to every piece
+        $detail = null;
+        $this->p3As()->get(route('app.accounts.stockValue'))->assertOk()->assertInertia(function ($page) use (&$detail) {
+            $detail = $page->toArray()['props'];
+        });
 
-        $this->assertEquals(1050.0, (float) $lotTruth);
-        $this->assertEquals(1200.0, $card, 'documented: the card is cost-of-the-size x stock, not the sum of lots');
-        $rep = $this->report();
-        $this->assertEquals($card, array_sum(array_column($rep['props']['rows'], 'value')), 'the report is forced to add up to the card');
-        $this->assertEquals(250.0, $rep['rows']['Supplier A']['value'], 'A\'s own lot, valued at its own price');
-        $this->assertEquals(800.0, $rep['rows']['Supplier B']['value']);
-        $this->assertEquals(150.0, $rep['rows']['unknown']['value'] ?? 0.0, 'the 150 gap between lot truth and the card is shown as supplier unknown, never guessed');
+        $this->assertEquals(6 * 50 + 10 * 80, $detail['total'], 'A 6 left at 50 + B 10 at 80');
+        $this->assertEquals($this->report()['props']['total'], $detail['total'], 'detail page, supplier report and card are one figure');
+        $this->assertEquals(16.0, $detail['totalQty']);
     }
 }

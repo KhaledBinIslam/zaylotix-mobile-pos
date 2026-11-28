@@ -46,7 +46,7 @@ class CompanyDashboardController extends Controller
         // last 6 months' company-wide revenue, for the trend chart — one
         // cheap grouped query rather than 6 separate rangeStats() calls
         $trendStart = now()->subMonths(5)->startOfMonth();
-        $monthlyRows = Sale::withoutGlobalScopes()->whereIn('shop_id', $shopIds)
+        $monthlyRows = Sale::withoutGlobalScopes()->live()->whereIn('shop_id', $shopIds)
             ->where('sale_type', '!=', 'exchange')
             ->whereDate('date', '>=', $trendStart->toDateString())
             ->selectRaw("DATE_FORMAT(date, '%Y-%m') as ym, SUM(total) as total")
@@ -60,7 +60,7 @@ class CompanyDashboardController extends Controller
             ];
         }
 
-        $recentInvoices = Sale::withoutGlobalScopes()->whereIn('shop_id', $shopIds)
+        $recentInvoices = Sale::withoutGlobalScopes()->live()->whereIn('shop_id', $shopIds)
             ->where('sale_type', '!=', 'exchange')
             ->with('customer')
             ->latest('id')->limit(10)->get()
